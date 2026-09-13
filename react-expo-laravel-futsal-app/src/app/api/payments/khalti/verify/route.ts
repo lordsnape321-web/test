@@ -100,6 +100,7 @@ export async function POST(req: Request) {
 
     return Response.json({ ok: true, booking: updated[0], transactionId: lookup.transaction_id, lookup });
   } catch (e) {
+    console.error(`[/api/payments/khalti/verify POST] failed:`, e);
     return Response.json({ error: String(e) }, { status: 500 });
   }
 }

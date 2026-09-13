@@ -5,6 +5,7 @@ import { Building2, Plus, Power, Star, MapPin, Pencil, MessageCircleHeart, Walle
 import { useUser } from "@/components/UserProvider";
 import { OwnerGuard } from "@/components/OwnerGuard";
 import { ImagePicker } from "@/components/ImagePicker";
+import { PromoManager } from "@/components/PromoManager";
 import { Stars } from "@/components/Reviews";
 import { Avatar } from "@/components/Avatar";
 import { formatNPR } from "@/lib/futsal";
@@ -106,7 +107,7 @@ export default function OwnerVenuesPage() {
   const [venues, setVenues] = useState<Venue[]>([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<number | null>(null);
-  const [tab, setTab] = useState<"courts" | "reviews">("courts");
+  const [tab, setTab] = useState<"courts" | "reviews" | "promos">("courts");
   const [reviews, setReviews] = useState<Review[]>([]);
 
   // Add venue (full details from the start)
@@ -546,6 +547,14 @@ export default function OwnerVenuesPage() {
                   >
                     Reviews 💬 ({reviews.length})
                   </button>
+                  <button
+                    onClick={() => setTab("promos")}
+                    className={`rounded-t-xl px-4 py-2.5 text-xs font-black uppercase tracking-wide transition ${
+                      tab === "promos" ? "bg-slate-900 text-white dark:bg-white dark:text-slate-900" : "text-slate-400 hover:text-slate-700"
+                    }`}
+                  >
+                    Promos 🎟️
+                  </button>
                 </div>
 
                 {tab === "courts" ? (
@@ -615,7 +624,7 @@ export default function OwnerVenuesPage() {
                       </div>
                     ))}
                   </div>
-                ) : (
+                ) : tab === "reviews" ? (
                   <div className="space-y-2.5 p-4">
                     {reviews.length === 0 ? (
                       <p className="rounded-xl bg-slate-50 px-4 py-8 text-center text-sm text-slate-400 dark:bg-slate-800/60">
@@ -638,6 +647,14 @@ export default function OwnerVenuesPage() {
                         </div>
                       ))
                     )}
+                  </div>
+                ) : (
+                  <div className="space-y-2.5 p-4">
+                    <PromoManager
+                      venue={{ id: active.id, name: active.name }}
+                      ownerId={user?.id ?? 0}
+                      samplePrice={active.minPrice || 1500}
+                    />
                   </div>
                 )}
               </div>

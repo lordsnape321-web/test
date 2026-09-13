@@ -1,0 +1,346 @@
+import { db } from "@/db";
+import { teamMembers, teamRequests, teams, users } from "@/db/schema";
+import { and, eq, inArray } from "drizzle-orm";
+import { REQUEST_PENDING, normalizeTeamCode } from "./teams";
+
+/**
+ * A team as the booking flow needs it: enough to render a chip and to sync the
+ * crew size to the real squad. See `findTeamForUser` for the server-side
+ * authority check that decides whether a booking may claim a team.
+ */
+export type UserTeam = {
+  id: number;
+  name: string;
+  teamCode: string;
+  memberCount: number;
+  logoColor: string;
+  level: string;
+  /** "captain" | "player" — lets the UI flag the squads you lead. */
+  role: string;
+};
+
+/** A roster row: the member plus everything the captain panel renders. */
+export type RosterMember = {
+  userId: number;
+  name: string;
+  email: string;
+  avatarColor: string;
+  avatarUrl: string;
+  position: string;
+  level: string;
+  role: string;
+  isCaptain: boolean;
+  joinedAt: Date | null;
+};
+
+/** A join request with the requester's profile attached. */
+export type JoinRequest = {
+  id: number;
+  teamId: number;
+  userId: number;
+  name: string;
+  email: string;
+  avatarColor: string;
+  avatarUrl: string;
+  position: string;
+  level: string;
+  message: string;
+  status: string;
+  createdAt: Date | null;
+};
+
+/**
+ * Every team `userId` belongs to: squads you captain first, then alphabetical.
+ * Returns [] for a player in no team, which is what makes the booking flow fall
+ * back to an individual booking instead of showing an empty picker.
+ *
+ * `role` is derived from `teams.captainId` rather than the membership row, so the
+ * two can never disagree about who leads the squad.
+ */
+export async function teamsForUser(userId: number): Promise<UserTeam[]> {
+  if (!Number.isInteger(userId) || userId <= 0) return [];
+  const mine = await db
+    .select()
+    .from(teamMembers)
+    .where(eq(teamMembers.userId, userId));
+  if (mine.length === 0) return [];
+
+  const allTeams = await db.select().from(teams);
+  const allMembers = await db.select().from(teamMembers);
+
+  const out: UserTeam[] = [];
+  for (const m of mine) {
+    const t = allTeams.find((x) => x.id === m.teamId);
+    // A membership row whose team is gone contributes nothing.
+    if (!t) continue;
+    out.push({
+      id: t.id,
+      name: t.name,
+      teamCode: t.teamCode ?? "",
+      memberCount: allMembers.filter((x) => x.teamId === t.id).length,
+      logoColor: t.logoColor,
+      level: t.level,
+      role: t.captainId === userId ? "captain" : "player",
+    });
+  }
+
+  return out.sort((a, b) => {
+    const notCaptain = (x: UserTeam) => (x.role === "captain" ? 0 : 1);
+    return notCaptain(a) - notCaptain(b) || a.name.localeCompare(b.name);
+  });
+}
+
+/**
+ * Authority check for POST /api/bookings: resolves the team only when `userId`
+ * is genuinely a member, so a hand-edited request cannot attach a booking to a
+ * squad the player has nothing to do with. The returned `name` is what gets
+ * snapshotted onto the booking — never the client-supplied label.
+ */
+export async function findTeamForUser(
+  teamId: number,
+  userId: number
+): Promise<{ id: number; name: string } | null> {
+  if (!Number.isInteger(teamId) || teamId <= 0) return null;
+  if (!Number.isInteger(userId) || userId <= 0) return null;
+  const rows = await db
+    .select({ id: teams.id, name: teams.name })
+    .from(teams)
+    .innerJoin(teamMembers, eq(teamMembers.teamId, teams.id))
+    .where(and(eq(teams.id, teamId), eq(teamMembers.userId, userId)))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+/** Is this code already taken? `excludeTeamId` lets a team keep its own code. */
+export async function teamCodeTaken(
+  code: unknown,
+  excludeTeamId = 0
+): Promise<boolean> {
+  const t = normalizeTeamCode(code);
+  if (!t) return false;
+  // Compared after normalising both sides, so a legacy or hand-seeded row stored
+  // in a different case still blocks the duplicate. Teams are few by nature.
+  const rows = await db
+    .select({ id: teams.id, teamCode: teams.teamCode })
+    .from(teams);
+  return rows.some(
+    (r) => r.id !== excludeTeamId && normalizeTeamCode(r.teamCode ?? "") === t
+  );
+}
+
+/** Look a team up by its unique code — what the search box uses. */
+export async function findTeamByCode(
+  code: unknown
+): Promise<typeof teams.$inferSelect | null> {
+  const t = normalizeTeamCode(code);
+  if (!t) return null;
+  const rows = await db.select().from(teams);
+  return rows.find((r) => normalizeTeamCode(r.teamCode ?? "") === t) ?? null;
+}
+
+/**
+ * Search by code (exact or prefix) or by name (substring). Codes match first so
+ * typing a full code always lands on that exact squad.
+ */
+export async function searchTeams(query: unknown, limit = 20) {
+  const q = String(query ?? "").trim();
+  const all = await db.select().from(teams);
+  const members = await db.select().from(teamMembers);
+  const code = normalizeTeamCode(q);
+
+  const hits = q
+    ? all.filter((t) => {
+        const tc = normalizeTeamCode(t.teamCode ?? "");
+        return (
+          (code && (tc === code || tc.startsWith(code))) ||
+          t.name.toLowerCase().includes(q.toLowerCase())
+        );
+      })
+    : all;
+
+  // Exact code match wins, then name matches, everything else keeps its order.
+  const rank = (t: typeof teams.$inferSelect) => {
+    const tc = normalizeTeamCode(t.teamCode ?? "");
+    if (code && tc === code) return 0;
+    if (code && tc.startsWith(code)) return 1;
+    return 2;
+  };
+
+  return [...hits]
+    .sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name))
+    .slice(0, Math.max(1, limit))
+    .map((t) => ({
+      ...t,
+      teamCode: t.teamCode ?? "",
+      memberCount: members.filter((m) => m.teamId === t.id).length,
+    }));
+}
+
+/** Pending-request counts for a batch of teams, so cards can badge them. */
+export async function pendingRequestCounts(
+  teamIds: number[]
+): Promise<Map<number, number>> {
+  const out = new Map<number, number>();
+  if (teamIds.length === 0) return out;
+  const rows = await db
+    .select()
+    .from(teamRequests)
+    .where(
+      and(inArray(teamRequests.teamId, teamIds), eq(teamRequests.status, REQUEST_PENDING))
+    );
+  for (const r of rows) out.set(r.teamId, (out.get(r.teamId) ?? 0) + 1);
+  return out;
+}
+
+/** Only the captain manages a squad — the gate every mutation goes through. */
+export async function isCaptain(teamId: number, userId: number): Promise<boolean> {
+  if (!Number.isInteger(teamId) || teamId <= 0) return false;
+  if (!Number.isInteger(userId) || userId <= 0) return false;
+  const rows = await db.select().from(teams).where(eq(teams.id, teamId));
+  return rows[0]?.captainId === userId;
+}
+
+/** The full roster with profiles, captain first. */
+export async function teamRoster(teamId: number): Promise<RosterMember[]> {
+  if (!Number.isInteger(teamId) || teamId <= 0) return [];
+  const teamRows = await db.select().from(teams).where(eq(teams.id, teamId));
+  const team = teamRows[0];
+  if (!team) return [];
+  const memberships = await db
+    .select()
+    .from(teamMembers)
+    .where(eq(teamMembers.teamId, teamId));
+  if (memberships.length === 0) return [];
+  const people = await db
+    .select()
+    .from(users)
+    .where(inArray(users.id, memberships.map((m) => m.userId)));
+
+  return memberships
+    .map((m) => {
+      const u = people.find((p) => p.id === m.userId);
+      if (!u) return null;
+      const captain = team.captainId === u.id;
+      return {
+        userId: u.id,
+        name: u.name,
+        email: u.email,
+        avatarColor: u.avatarColor,
+        avatarUrl: u.avatarUrl,
+        position: u.position,
+        level: u.level,
+        // Derived from teams.captainId so the roster can never show two captains.
+        role: captain ? "captain" : "player",
+        isCaptain: captain,
+        joinedAt: m.joinedAt,
+      } satisfies RosterMember;
+    })
+    .filter((x): x is RosterMember => x !== null)
+    .sort(
+      (a, b) =>
+        Number(b.isCaptain) - Number(a.isCaptain) || a.name.localeCompare(b.name)
+    );
+}
+
+/** Join requests for a team. Defaults to the pending ones the captain must act on. */
+export async function teamJoinRequests(
+  teamId: number,
+  status: string = REQUEST_PENDING
+): Promise<JoinRequest[]> {
+  if (!Number.isInteger(teamId) || teamId <= 0) return [];
+  const rows = await db
+    .select()
+    .from(teamRequests)
+    .where(
+      status
+        ? and(eq(teamRequests.teamId, teamId), eq(teamRequests.status, status))
+        : eq(teamRequests.teamId, teamId)
+    );
+  if (rows.length === 0) return [];
+  const people = await db
+    .select()
+    .from(users)
+    .where(inArray(users.id, rows.map((r) => r.userId)));
+
+  return rows
+    .map((r) => {
+      const u = people.find((p) => p.id === r.userId);
+      if (!u) return null;
+      return {
+        id: r.id,
+        teamId: r.teamId,
+        userId: r.userId,
+        name: u.name,
+        email: u.email,
+        avatarColor: u.avatarColor,
+        avatarUrl: u.avatarUrl,
+        position: u.position,
+        level: u.level,
+        message: r.message,
+        status: r.status,
+        createdAt: r.createdAt,
+      } satisfies JoinRequest;
+    })
+    .filter((x): x is JoinRequest => x !== null)
+    .sort((a, b) => (a.createdAt ?? new Date(0)).getTime() - (b.createdAt ?? new Date(0)).getTime());
+}
+
+/** This player's own pending request for a team, if they have one. */
+export async function myPendingRequest(
+  teamId: number,
+  userId: number
+): Promise<typeof teamRequests.$inferSelect | null> {
+  if (!Number.isInteger(teamId) || teamId <= 0) return null;
+  if (!Number.isInteger(userId) || userId <= 0) return null;
+  const rows = await db
+    .select()
+    .from(teamRequests)
+    .where(
+      and(
+        eq(teamRequests.teamId, teamId),
+        eq(teamRequests.userId, userId),
+        eq(teamRequests.status, REQUEST_PENDING)
+      )
+    );
+  return rows[0] ?? null;
+}
+
+/** Is this player already on the roster? */
+export async function isMember(teamId: number, userId: number): Promise<boolean> {
+  if (!Number.isInteger(teamId) || teamId <= 0) return false;
+  if (!Number.isInteger(userId) || userId <= 0) return false;
+  const rows = await db
+    .select({ id: teamMembers.id })
+    .from(teamMembers)
+    .where(and(eq(teamMembers.teamId, teamId), eq(teamMembers.userId, userId)))
+    .limit(1);
+  return rows.length > 0;
+}
+
+/**
+ * Hand the armband over, keeping the "exactly one captain" invariant in a single
+ * place: the new captain must already be on the roster, `teams.captainId` moves,
+ * and the membership roles follow it. Returns the updated team, or null when the
+ * target is not a member (which is the caller's 400).
+ */
+export async function transferCaptaincy(teamId: number, newCaptainId: number) {
+  const teamRows = await db.select().from(teams).where(eq(teams.id, teamId));
+  const team = teamRows[0];
+  if (!team) return null;
+  if (!(await isMember(teamId, newCaptainId))) return null;
+  if (team.captainId === newCaptainId) return team;
+
+  await db.update(teams).set({ captainId: newCaptainId }).where(eq(teams.id, teamId));
+  // Demote everyone, then promote the new captain — never two, never zero.
+  await db
+    .update(teamMembers)
+    .set({ role: "player" })
+    .where(and(eq(teamMembers.teamId, teamId), eq(teamMembers.role, "captain")));
+  await db
+    .update(teamMembers)
+    .set({ role: "captain" })
+    .where(and(eq(teamMembers.teamId, teamId), eq(teamMembers.userId, newCaptainId)));
+
+  const after = await db.select().from(teams).where(eq(teams.id, teamId));
+  return after[0] ?? null;
+}

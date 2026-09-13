@@ -6,13 +6,16 @@ import {
   bookings,
   teams,
   teamMembers,
+  teamRequests,
   openMatches,
   matchJoins,
   reviews,
+  promos,
 } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { VENUE_IMAGES } from "@/lib/futsal";
 import { hashPassword, DEFAULT_PASSWORD } from "@/lib/auth";
+import { normalizeTeamCode, suggestTeamCode } from "@/lib/teams";
 
 export const dynamic = "force-dynamic";
 
@@ -20,6 +23,182 @@ function d(offset: number) {
   const dt = new Date();
   dt.setDate(dt.getDate() + offset);
   return dt.toISOString().slice(0, 10);
+}
+
+/**
+ * Demo promo codes for the seeded venues. `venueId` resolves a venue name to an
+ * id, so the same list works for a fresh seed and for backfilling an old one.
+ */
+function demoPromos(
+  venueId: (name: string) => number | null
+): Array<typeof promos.$inferInsert> {
+  type PromoSeed = Omit<typeof promos.$inferInsert, "venueId">;
+  const rows: Array<{ venue: string; values: PromoSeed }> = [
+    {
+      venue: "Dhanyentari Futsal Arena",
+      values: {
+        code: "EARLYBIRD15",
+        title: "Early bird evenings",
+        discountType: "percent",
+        discountValue: 15,
+        maxDiscount: 600,
+        minBookingAmount: 2000,
+        startsAt: null,
+        expiresAt: d(21),
+        usageLimit: 40,
+        perUserLimit: 1,
+        isPublic: true,
+        isActive: true,
+      },
+    },
+    {
+      venue: "Dhanyentari Futsal Arena",
+      values: {
+        code: "WEEKDAY10",
+        title: "Fill the weekday slots",
+        discountType: "percent",
+        discountValue: 10,
+        maxDiscount: 0,
+        minBookingAmount: 0,
+        startsAt: null,
+        expiresAt: d(7),
+        usageLimit: 0,
+        perUserLimit: 2,
+        isPublic: true,
+        isActive: true,
+      },
+    },
+    {
+      venue: "KickOff Sports Hub",
+      values: {
+        code: "ROOFTOP300",
+        title: "Rooftop regulars",
+        discountType: "flat",
+        discountValue: 300,
+        maxDiscount: 0,
+        minBookingAmount: 1500,
+        startsAt: null,
+        expiresAt: d(14),
+        usageLimit: 25,
+        perUserLimit: 1,
+        // Hidden: only players the owner shares it with can use it.
+        isPublic: false,
+        isActive: true,
+      },
+    },
+    {
+      venue: "KickOff Sports Hub",
+      values: {
+        code: "NEWYEAR25",
+        title: "New year kickoff (finished)",
+        discountType: "percent",
+        discountValue: 25,
+        maxDiscount: 500,
+        minBookingAmount: 0,
+        startsAt: null,
+        expiresAt: d(-5),
+        usageLimit: 20,
+        perUserLimit: 1,
+        isPublic: true,
+        isActive: true,
+      },
+    },
+    {
+      venue: "Lakeside Strikers Court",
+      values: {
+        code: "LAKESIDE20",
+        title: "Lake breeze special",
+        discountType: "percent",
+        discountValue: 20,
+        maxDiscount: 500,
+        minBookingAmount: 1600,
+        startsAt: null,
+        expiresAt: d(3),
+        usageLimit: 15,
+        perUserLimit: 1,
+        isPublic: true,
+        isActive: true,
+      },
+    },
+    {
+      venue: "NightOwl Futsal",
+      values: {
+        code: "MIDNIGHT50",
+        title: "Midnight madness",
+        discountType: "percent",
+        discountValue: 50,
+        maxDiscount: 950,
+        minBookingAmount: 1900,
+        startsAt: null,
+        expiresAt: d(30),
+        usageLimit: 10,
+        perUserLimit: 1,
+        isPublic: true,
+        isActive: true,
+      },
+    },
+  ];
+  return rows
+    .filter((r) => venueId(r.venue) !== null)
+    .map((r) => ({ ...r.values, venueId: venueId(r.venue) as number }));
+}
+
+/**
+ * Demo accounts in the order `seedUsers` inserts them. Team data below refers to
+ * people by index, so it works both for a fresh seed (where the index maps
+ * straight onto `insertedUsers`) and for rebuilding teams in a database that
+ * already has users (where the index maps onto an email lookup).
+ */
+const DEMO_USER_EMAILS = [
+  "aarav@futsal.np",
+  "bikash@futsal.np",
+  "chirag@futsal.np",
+  "dipesh@futsal.np",
+  "elish@futsal.np",
+  "farhan@futsal.np",
+  "ganesh@futsal.np",
+  "himal@futsal.np",
+  "priya@futsal.np",
+];
+
+/**
+ * The demo squads 🛡️ — each with a unique searchable code and a home turf that
+ * names a venue actually on the platform. `captain` is an index into
+ * `DEMO_USER_EMAILS`.
+ */
+function demoTeams() {
+  return [
+    { name: "Chabahil Chargers", code: "CHARGERS-4X7K", motto: "Speed. Skill. Glory.", captain: 0, level: "Advanced", color: "#16a34a", home: "Dhanyentari Futsal Arena", w: 18, l: 4, d: 3 },
+    { name: "Lalitpur Legends", code: "LEGENDS-9PM3", motto: "Legacy in every goal", captain: 3, level: "Advanced", color: "#7c3aed", home: "KickOff Sports Hub", w: 15, l: 6, d: 2 },
+    { name: "Pokhara Panthers", code: "PANTHERS-7QRT", motto: "Hunt as one", captain: 5, level: "Intermediate", color: "#ea580c", home: "Lakeside Strikers Court", w: 11, l: 7, d: 4 },
+    { name: "Bhaktapur Ballers", code: "BALLERS-K3YD", motto: "Play beautiful", captain: 1, level: "Intermediate", color: "#2563eb", home: "GoalZone Futsal Park", w: 9, l: 8, d: 3 },
+    { name: "Thamel Night Owls", code: "OWLS-MN4P", motto: "We own the night", captain: 4, level: "Beginner", color: "#be123c", home: "NightOwl Futsal", w: 5, l: 9, d: 2 },
+  ];
+}
+
+/** Rosters as [teamIndex, userIndex, role]. Exactly one "captain" per team. */
+function demoTeamMemberships(): Array<[number, number, string]> {
+  return [
+    [0, 0, "captain"], [0, 1, "player"], [0, 2, "player"], [0, 4, "player"], [0, 5, "player"],
+    [1, 3, "captain"], [1, 0, "player"], [1, 6, "player"], [1, 7, "player"],
+    [2, 5, "captain"], [2, 1, "player"], [2, 4, "player"],
+    [3, 1, "captain"], [3, 2, "player"], [3, 7, "player"], [3, 0, "player"],
+    [4, 4, "captain"], [4, 7, "player"],
+  ];
+}
+
+/**
+ * Pending join requests as [teamIndex, userIndex, message], so a captain logging
+ * in has something to decide. Every requester is deliberately NOT already a
+ * member of the squad they are asking to join.
+ */
+function demoTeamJoinRequests(): Array<[number, number, string]> {
+  return [
+    [0, 7, "Sunday league defender, and I live two minutes from the arena. Would love to join the Chargers! 🛡️"],
+    [0, 3, "Played against you last month and lost 4-1 😅 Let me try from the inside."],
+    [4, 2, "Beginner goalkeeper. I can't promise saves but I promise enthusiasm 🧤"],
+    [2, 3, "In Pokhara every weekend — happy to travel for the Panthers."],
+  ];
 }
 
 export async function POST() {
@@ -94,7 +273,114 @@ export async function POST() {
           seededReviews++;
         }
       }
-      return Response.json({ ok: true, message: "Already seeded", count: existing.length, seededReviews });
+      // Backfill promo codes for databases seeded before promos existed.
+      const existingPromos = await db.select().from(promos);
+      let seededPromos = 0;
+      if (existingPromos.length === 0) {
+        const byName = new Map(existing.map((v) => [v.name, v.id]));
+        for (const pr of demoPromos((name: string) => byName.get(name) ?? null)) {
+          await db.insert(promos).values(pr);
+          seededPromos++;
+        }
+      }
+      // Teams 🛡️ — rebuild the demo squads if the table is empty. Without this,
+      // a truncated or hand-cleared `teams` table leaves the app with no squads
+      // and no way to get them back, because this branch reports "Already seeded"
+      // as soon as venues exist.
+      let existingTeams = await db.select().from(teams);
+      const venueByName = new Map(existing.map((v) => [v.name, v.id]));
+      const userByEmail = new Map(allUsers.map((u) => [u.email, u]));
+      const userAt = (i: number) => userByEmail.get(DEMO_USER_EMAILS[i]) ?? null;
+      let seededTeams = 0;
+      if (existingTeams.length === 0) {
+        const rebuilt: Array<typeof teams.$inferSelect> = [];
+        for (const t of demoTeams()) {
+          const captain = userAt(t.captain);
+          if (!captain) continue;
+          const rows = await db
+            .insert(teams)
+            .values({
+              name: t.name,
+              motto: t.motto,
+              teamCode: t.code,
+              captainId: captain.id,
+              maxPlayers: 12,
+              level: t.level,
+              logoColor: t.color,
+              wins: t.w,
+              losses: t.l,
+              draws: t.d,
+              homeVenueId: venueByName.get(t.home) ?? null,
+              homeGround: t.home,
+              lookingForPlayers: true,
+            })
+            .returning();
+          rebuilt.push(rows[0]);
+          seededTeams++;
+        }
+        for (const [ti, ui, role] of demoTeamMemberships()) {
+          const team = rebuilt[ti];
+          const u = userAt(ui);
+          if (!team || !u) continue;
+          await db.insert(teamMembers).values({ teamId: team.id, userId: u.id, role });
+        }
+        for (const [ti, ui, message] of demoTeamJoinRequests()) {
+          const team = rebuilt[ti];
+          const u = userAt(ui);
+          if (!team || !u) continue;
+          await db
+            .insert(teamRequests)
+            .values({ teamId: team.id, userId: u.id, message, status: "pending" });
+        }
+        existingTeams = await db.select().from(teams);
+      }
+
+      // Backfill unique team codes + real home venues for databases seeded
+      // before teams had either.
+      const takenCodes = new Set(
+        existingTeams.map((t) => normalizeTeamCode(t.teamCode ?? "")).filter(Boolean)
+      );
+      let seededTeamCodes = 0;
+      for (const t of existingTeams) {
+        const patch: Partial<typeof teams.$inferInsert> = {};
+        if (!t.teamCode) {
+          let code = suggestTeamCode(t.name);
+          // The tail is random, so retry rather than risk a unique violation.
+          for (let i = 0; i < 8 && takenCodes.has(code); i++) code = suggestTeamCode(t.name);
+          takenCodes.add(code);
+          patch.teamCode = code;
+          seededTeamCodes++;
+        }
+        if (!t.homeVenueId) {
+          const vid = venueByName.get(t.homeGround);
+          if (vid) patch.homeVenueId = vid;
+        }
+        if (Object.keys(patch).length > 0)
+          await db.update(teams).set(patch).where(eq(teams.id, t.id));
+      }
+      // Backfill a few join requests so the captain panel has something to decide.
+      const existingRequests = await db.select().from(teamRequests);
+      let seededTeamRequests = 0;
+      if (existingRequests.length === 0 && existingTeams.length > 0) {
+        const allMembers = await db.select().from(teamMembers);
+        for (const t of existingTeams.slice(0, 3)) {
+          const memberIds = new Set(
+            allMembers.filter((m) => m.teamId === t.id).map((m) => m.userId)
+          );
+          const outsider = allUsers.find(
+            (u) => u.role === "player" && !memberIds.has(u.id)
+          );
+          if (!outsider) continue;
+          await db.insert(teamRequests).values({
+            teamId: t.id,
+            userId: outsider.id,
+            message: `Heard about ${t.name} from a friend${t.homeGround ? ` at ${t.homeGround}` : ""} — any room? 🛡️`,
+            status: "pending",
+          });
+          seededTeamRequests++;
+        }
+      }
+      return Response.json({ ok: true, message: "Already seeded", count: existing.length, seededReviews, seededPromos, seededTeams, seededTeamCodes, seededTeamRequests });
     }
 
     const pw = hashPassword(DEFAULT_PASSWORD);
@@ -258,6 +544,15 @@ export async function POST() {
       insertedCourts.push(rows[0]);
     }
 
+    // Promo codes — owner-created discounts with expiry dates.
+    const venueIdOf = (idx: number) => insertedVenues[idx]?.id ?? null;
+    for (const pr of demoPromos((name: string) => {
+      const idx = ["Dhanyentari Futsal Arena", "KickOff Sports Hub", "GoalZone Futsal Park", "Lakeside Strikers Court", "Rhino Sports Complex", "NightOwl Futsal"].indexOf(name);
+      return idx >= 0 ? venueIdOf(idx) : null;
+    })) {
+      await db.insert(promos).values(pr);
+    }
+
     // Bookings
     const bookingSeeds: Array<{
       court: number;
@@ -270,16 +565,24 @@ export async function POST() {
       pub?: boolean;
       need?: number;
       title?: string;
+      /**
+       * Index into `seedTeams` — the squad this booking was made for. Teams are
+       * inserted after bookings, so this is applied as a follow-up update below.
+       * Bookings without it stay individual bookings, which is a state worth
+       * having in the demo data too.
+       */
+      team?: number;
     }> = [
-      { court: 0, user: 0, dateOff: 0, start: "17:00", end: "18:00", pay: "paid", method: "eSewa", pub: true, need: 10, title: "Evening Rush — Arena A ⚡" },
-      { court: 0, user: 1, dateOff: 0, start: "18:00", end: "19:00", pay: "pending", method: "Khalti" },
-      { court: 0, user: 2, dateOff: 1, start: "07:00", end: "08:00", pay: "paid", method: "Cash at Venue" },
-      { court: 1, user: 3, dateOff: 0, start: "19:00", end: "20:00", pay: "paid", method: "Khalti" },
+      { court: 0, user: 0, dateOff: 0, start: "17:00", end: "18:00", pay: "paid", method: "eSewa", pub: true, need: 10, title: "Evening Rush — Arena A ⚡", team: 0 },
+      { court: 0, user: 1, dateOff: 0, start: "18:00", end: "19:00", pay: "pending", method: "Khalti", team: 0 },
+      { court: 0, user: 2, dateOff: 1, start: "07:00", end: "08:00", pay: "paid", method: "Cash at Venue", team: 3 },
+      { court: 1, user: 3, dateOff: 0, start: "19:00", end: "20:00", pay: "paid", method: "Khalti", team: 1 },
       { court: 3, user: 4, dateOff: 1, start: "18:00", end: "20:00", pay: "pending", method: "eSewa", pub: true, need: 12, title: "Rooftop Rumble 🌇" },
       { court: 8, user: 5, dateOff: 2, start: "16:00", end: "17:00", pay: "paid", method: "Khalti" },
-      { court: 5, user: 0, dateOff: -1, start: "17:00", end: "18:00", pay: "paid", method: "Cash" },
+      { court: 5, user: 0, dateOff: -1, start: "17:00", end: "18:00", pay: "paid", method: "Cash", team: 3 },
       { court: 10, user: 1, dateOff: 3, start: "08:00", end: "09:00", pay: "pending", method: "eSewa" },
     ];
+    const insertedBookings: Array<{ id: number }> = [];
     for (const b of bookingSeeds) {
       const court = insertedCourts[b.court];
       const hourNum = parseInt(b.start.split(":")[0], 10);
@@ -310,6 +613,7 @@ export async function POST() {
           openSpots: isPublic ? open : 0,
         })
         .returning();
+      insertedBookings.push(inserted[0]);
       // Public bookings get a linked open-match listing.
       if (isPublic) {
         const bookingRow = inserted[0];
@@ -349,13 +653,9 @@ export async function POST() {
     }
 
     // Teams
-    const seedTeams = [
-      { name: "Chabahil Chargers", motto: "Speed. Skill. Glory.", captain: 0, level: "Advanced", color: "#16a34a", home: "Dhanyentari Futsal Arena", w: 18, l: 4, d: 3 },
-      { name: "Lalitpur Legends", motto: "Legacy in every goal", captain: 3, level: "Advanced", color: "#7c3aed", home: "KickOff Sports Hub", w: 15, l: 6, d: 2 },
-      { name: "Pokhara Panthers", motto: "Hunt as one", captain: 5, level: "Intermediate", color: "#ea580c", home: "Lakeside Strikers Court", w: 11, l: 7, d: 4 },
-      { name: "Bhaktapur Ballers", motto: "Play beautiful", captain: 1, level: "Intermediate", color: "#2563eb", home: "GoalZone Futsal Park", w: 9, l: 8, d: 3 },
-      { name: "Thamel Night Owls", motto: "We own the night", captain: 4, level: "Beginner", color: "#be123c", home: "NightOwl Futsal", w: 5, l: 9, d: 2 },
-    ];
+    const seedTeams = demoTeams();
+    // Home turf points at a venue that really exists on the platform.
+    const venueIdByName = new Map(insertedVenues.map((v) => [v.name, v.id]));
     const insertedTeams = [];
     for (const t of seedTeams) {
       const rows = await db
@@ -363,6 +663,7 @@ export async function POST() {
         .values({
           name: t.name,
           motto: t.motto,
+          teamCode: t.code,
           captainId: insertedUsers[t.captain].id,
           maxPlayers: 12,
           level: t.level,
@@ -370,25 +671,46 @@ export async function POST() {
           wins: t.w,
           losses: t.l,
           draws: t.d,
+          homeVenueId: venueIdByName.get(t.home) ?? null,
           homeGround: t.home,
           lookingForPlayers: true,
         })
         .returning();
       insertedTeams.push(rows[0]);
     }
-    const memberships: Array<[number, number, string]> = [
-      [0, 0, "captain"], [0, 1, "player"], [0, 2, "player"], [0, 4, "player"], [0, 5, "player"],
-      [1, 3, "captain"], [1, 0, "player"], [1, 6, "player"], [1, 7, "player"],
-      [2, 5, "captain"], [2, 1, "player"], [2, 4, "player"],
-      [3, 1, "captain"], [3, 2, "player"], [3, 7, "player"], [3, 0, "player"],
-      [4, 4, "captain"], [4, 7, "player"],
-    ];
+    const memberships = demoTeamMemberships();
     for (const [ti, ui, role] of memberships) {
       await db.insert(teamMembers).values({
         teamId: insertedTeams[ti].id,
         userId: insertedUsers[ui].id,
         role,
       });
+    }
+
+    // Pending join requests 👑 — so a captain logging in has something to decide.
+    const joinRequests = demoTeamJoinRequests();
+    for (const [ti, ui, message] of joinRequests) {
+      await db.insert(teamRequests).values({
+        teamId: insertedTeams[ti].id,
+        userId: insertedUsers[ui].id,
+        message,
+        status: "pending",
+      });
+    }
+
+    // Attach squads to the bookings that asked for one (`bookingSeeds[].team`).
+    // Teams only exist at this point, hence the follow-up update. Every team used
+    // here is one the booker genuinely belongs to, matching what POST
+    // /api/bookings enforces; the bookings left untagged stay individual.
+    for (let bi = 0; bi < bookingSeeds.length; bi++) {
+      const ti = bookingSeeds[bi].team;
+      const row = insertedBookings[bi];
+      if (ti === undefined || !row || !insertedTeams[ti]) continue;
+      const t = insertedTeams[ti];
+      await db
+        .update(bookings)
+        .set({ teamId: t.id, teamName: t.name })
+        .where(eq(bookings.id, row.id));
     }
 
     // Open matches
@@ -466,6 +788,7 @@ export async function POST() {
 
     return Response.json({ ok: true, message: "Seeded successfully" });
   } catch (e) {
+    console.error(`[/api/seed POST] failed:`, e);
     return Response.json({ error: String(e) }, { status: 500 });
   }
 }

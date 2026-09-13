@@ -18,6 +18,7 @@ export async function PATCH(
       .returning();
     return Response.json({ notification: updated[0] ?? null });
   } catch (e) {
+    console.error(`[/api/notifications/[id] PATCH] failed:`, e);
     return Response.json({ error: String(e) }, { status: 500 });
   }
 }
@@ -31,6 +32,7 @@ export async function DELETE(
     await db.delete(notifications).where(eq(notifications.id, Number(id)));
     return Response.json({ ok: true });
   } catch (e) {
+    console.error(`[/api/notifications/[id] DELETE] failed:`, e);
     return Response.json({ error: String(e) }, { status: 500 });
   }
 }

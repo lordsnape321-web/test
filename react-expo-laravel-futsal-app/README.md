@@ -1,0 +1,268 @@
+# FutsalNepal — futsal court booking app
+
+A Next.js 16 (App Router) + Drizzle ORM + PostgreSQL app for booking futsal courts in Nepal: browse
+venues, pick a court and time slot, book it, pay via eSewa/Khalti (simulated), join open matches,
+manage a venue as an owner, and redeem **promo codes** for a discount at checkout.
+
+---
+
+## Quick start
+
+> **Run these one at a time.** Pasting the whole block at once feeds the later lines to whatever
+> command is still running, which silently aborts `db:push` and leaves you with an empty database.
+
+```bash
+cd react-expo-laravel-futsal-app
+npm install
+```
+
+Create `.env` in this folder:
+
+```bash
+echo 'DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:5432/app_db' > .env
+```
+
+Start Postgres (pick one — see [Database](#database) below), then:
+
+```bash
+npm run db:check    # confirms Postgres is reachable and tells you what is missing
+npm run db:push     # create the 12 tables — must print "[✓] Changes applied"
+npm run dev         # http://localhost:3000
+```
+
+Finally, seed demo data (venues, courts, users, bookings, promo codes):
+
+```bash
+curl -X POST http://localhost:3000/api/seed
+```
+
+### Demo logins
+
+All demo accounts use the password `futsal123`.
+
+| Role         | Email                | What you can do                                     |
+| ------------ | -------------------- | --------------------------------------------------- |
+| Venue owner  | `ganesh@futsal.np`   | Manage venue, courts, bookings, **promo codes**     |
+| Venue owner  | `priya@futsal.np`    | A second owner, for testing ownership checks        |
+| Player       | `aarav@futsal.np`    | Book courts, apply promo codes, join open matches   |
+
+---
+
+## Database
+
+The app needs PostgreSQL 14+ and a database named in `DATABASE_URL`. Both the app
+(`src/db/index.ts`) and the schema tooling (`drizzle.config.ts`) read the **same** `DATABASE_URL`
+from `.env`.
+
+**Option A — Docker (recommended, no local setup):**
+
+```bash
+docker run --name futsal-pg \
+  -e POSTGRES_PASSWORD=postgres \
+  -e POSTGRES_DB=app_db \
+  -p 5432:5432 -d postgres:16
+```
+
+This creates `app_db` with user/password `postgres`/`postgres`, matching the `.env` above.
+
+**Option B — Postgres already installed (Debian/Ubuntu/Parrot/Kali):**
+
+```bash
+sudo service postgresql start
+sudo -u postgres psql -c "ALTER USER postgres PASSWORD 'postgres';"
+sudo -u postgres createdb app_db
+```
+
+Then re-run `npm run db:check` to confirm the app can authenticate over TCP.
+
+**If `npm run db:push` stops and asks about truncating a table, answer `No`.** drizzle-kit compares
+`src/db/schema.ts` with the live database, and a change it cannot make safely on a table that already
+has rows — adding the `UNIQUE` index on `teams.team_code` is the one to watch — makes it print
+something like `You're about to add a unique constraint to team_code ... Do you want to truncate
+teams table?` and wait for `y/N`. `--force` does **not** skip that prompt. Answering `No` still
+applies the constraint: `UNIQUE` allows NULLs, so teams created before the column existed are fine,
+and `POST /api/seed` backfills a generated code for any team missing one. Only answer `y` if you
+genuinely want the rows gone. A fresh clone never sees the prompt, because its tables are empty.
+
+---
+
+## Scripts
+
+| Script                  | What it does                                                  |
+| ----------------------- | ------------------------------------------------------------- |
+| `npm run dev`           | Dev server on :3000 (Turbopack, the Next 16 default)          |
+| `npm run dev:webpack`   | Dev server on the webpack bundler instead — see troubleshooting|
+| `npm run build`         | Production build                                              |
+| `npm run build:webpack` | Production build with webpack                                 |
+| `npm start`             | Serve the production build                                    |
+| `npm run db:check`      | Diagnose connectivity, missing database, un-pushed schema     |
+| `npm run db:push`       | Push `src/db/schema.ts` to the database (drizzle-kit)         |
+| `npm run typecheck`     | `tsc --noEmit`                                                |
+| `npm run lint`          | ESLint                                                        |
+
+---
+
+## Troubleshooting
+
+### Every API route returns 500, pages render empty
+
+Almost always the database: either Postgres is not running, the database does not exist, or
+`db:push` never completed. Run:
+
+```bash
+npm run db:check
+```
+
+It prints the exact cause and the command to fix it. Since API handlers log the underlying error,
+your `npm run dev` terminal will also show lines like:
+
+```
+[/api/venues GET] failed: error: relation "venues" does not exist
+```
+
+`relation "..." does not exist` means the schema was never pushed → `npm run db:push`.
+`ECONNREFUSED` means Postgres is not running → start it.
+
+### "Specified module format (CommonJs) is not matching … EcmaScript Modules"
+
+A Turbopack module-format error on `src/app/layout.tsx`. Usually a stale build cache or a stray
+`package.json` somewhere **above** the app folder that Turbopack adopts as the project root.
+
+```bash
+rm -rf .next          # Windows: rmdir /s /q .next
+npm run dev
+```
+
+If it persists, check for an ancestor `package.json` and rename it out of the way:
+
+```bash
+d="$(pwd)"; while [ "$d" != "/" ]; do
+  [ -f "$d/package.json" ] && echo "$d/package.json"
+  d="$(dirname "$d")"
+done
+```
+
+`next.config.ts` already pins `turbopack.root` to the app folder, which prevents Turbopack from
+walking up past it. As an immediate workaround you can also bypass Turbopack entirely:
+
+```bash
+npm run dev:webpack
+```
+
+Two related gotchas: Next 16 allows only **one dev server per project folder**, and `.next` must be
+deleted when **switching between Turbopack and webpack**, since they share that directory.
+
+---
+
+## Promo codes
+
+Owners create percentage or flat-rate codes with a validity window, optional usage cap, and optional
+minimum spend. Players apply a code on the venue page and see the discounted total before booking;
+the discount is re-validated server-side when the booking is created, so a stale or tampered client
+cannot get a discount it is not entitled to.
+
+- `src/lib/promos.ts` — pure promo logic (normalisation, validity window, discount maths)
+- `src/lib/promo-store.ts` — database access for promos and their usage counts
+- `src/app/api/promos/` — CRUD, owner-gated; usage is derived from bookings, not a counter column
+- `src/components/PromoManager.tsx` — owner UI (admin → venues → Promos tab)
+
+Promos stack with loyalty free-play vouchers: free play is applied first, then the promo discount to
+whatever balance remains. When free play covers the whole booking, promos are blocked.
+
+> Note: the separate `vouchers` table is the loyalty free-hour system — it is **not** promo codes.
+
+---
+
+## Booking for a squad ("Just our gang")
+
+Step 4 of the booking flow asks whether the game is **Just our gang** (private) or **Invite
+everyone!** (an open listing others can join). Both branches can name a squad:
+
+- **Player belongs to teams** → chips list every team they are in, captained squads first, each
+  showing its member count. A "Just me" / "Just friends" chip books without attaching a team.
+- **Player belongs to no team** → no picker is rendered. The booking stays an *individual booking*
+  with a link to `/teams` to find a squad, because an empty picker with one dead chip is worse than
+  no picker at all.
+
+Choosing a squad on an open invite also syncs the crew size to the real squad and names the team on
+the public listing, so joiners know whose crew they are walking into.
+
+Membership is verified server-side in `POST /api/bookings` — a hand-edited request cannot attach a
+booking to a team the player does not belong to. The team **name is snapshotted** onto the booking
+(the same way `promoCode` is), so bookings keep their label if a team is later renamed or deleted.
+The squad then appears as a badge on the player's bookings and on the owner's request/booking
+screens, and in the owner's booking-request notification.
+
+- `src/lib/team-store.ts` — `teamsForUser()` for the picker, `findTeamForUser()` for the authority check
+- `GET /api/teams?userId=N` — that player's squads only; no parameter returns every team with full
+  rosters, as before
+
+Demo data covers both paths: `aarav@futsal.np` captains one squad and is in two more, while a freshly
+signed-up account is in none.
+
+---
+
+## Teams: one captain, one code, one home turf
+
+`/teams` is where squads are found and run. Three rules are enforced in the schema and the API, not
+just hidden behind the UI.
+
+**1. Exactly one captain.** `teams.captain_id` is the source of truth, and every captain is also a
+member. The member row's `role` label is kept in step with it by `transferCaptaincy()`, which demotes
+every `captain` row and then promotes the new one — never two captains, never zero. Handing over the
+armband is the only way to move it, and the new captain must already be in the squad. A captain
+cannot step away while holding it: `DELETE /api/teams/{id}/join` answers `409` and says so.
+
+**2. A unique, searchable code.** Every team carries a `team_code` like `CHARGERS-4X7K` — letters,
+numbers and dashes, 4–24 chars, no spaces — stored uppercased behind a `UNIQUE` index. The captain
+types one or hits the dice button to generate it from the team name; a code that is already taken is
+refused with `409 codeError: "taken"` on both create and edit. `GET /api/teams?q=` matches codes
+case-insensitively (exact first, then prefix) and falls back to a name search, so reading a code out
+loud over the phone is enough to find a squad.
+
+**3. Home turf comes from the platform.** `teams.home_venue_id` points at a real row in `venues` and
+`teams.home_ground` snapshots that venue's name for display. Both the create form and the captain's
+edit form offer a **dropdown of venues**, and a free-text turf in the request body is ignored
+server-side — a team can never claim a court that does not exist.
+
+### Joining is approval-based
+
+Asking to join files a row in `team_requests`; it does **not** add you to the squad. The captain
+accepts (the member row is created then) or declines. Re-asking after a decline reuses that declined
+row instead of stacking duplicates, and the player can withdraw a pending request — the same
+`DELETE /api/teams/{id}/join` endpoint handles both leaving and withdrawing.
+
+`GET /api/teams?viewerId=N` computes each team's relationship to that viewer server-side
+(`isMember`, `isCaptain`, `requestStatus`, `requestId`, plus a `pendingRequests` count), so the cards
+draw honest buttons — **Manage your squad**, **Request pending ⏳ — tap to withdraw**, **Take a break
+from team**, or **Request to join** — rather than guessing from the roster.
+
+### The captain's panel
+
+**Manage your squad** appears only on teams you captain and opens `TeamManager`: decide join
+requests, add members directly from a search of platform users, remove members (never yourself while
+you captain), hand over the armband, and edit the name, motto, level, colours, squad size, code, home
+turf and looking-for-players flag. Every action re-checks captaincy on the server, so hiding a button
+is a courtesy rather than the security.
+
+| Endpoint                                        | What it does                                                    |
+| ----------------------------------------------- | --------------------------------------------------------------- |
+| `GET /api/teams?q=&viewerId=`                    | search by code or name, with the viewer's relationship to each team |
+| `POST /api/teams`                                | create a team; `409` if the code is taken                        |
+| `PATCH /api/teams/{id}`                          | captain-only edit; `newCaptainId` transfers the armband          |
+| `POST /api/teams/{id}/join`                      | file a join request                                              |
+| `DELETE /api/teams/{id}/join?userId=N`           | leave the squad, or withdraw a pending request                   |
+| `GET /api/teams/{id}/requests?captainId=N`       | the captain's queue (`status=all` includes decided ones)         |
+| `POST /api/teams/{id}/requests`                  | `action: accept` or `decline`                                    |
+| `GET /api/teams/{id}/members`                    | public roster — member emails are included only for `?viewerId=` the captain |
+| `POST`/`DELETE /api/teams/{id}/members`          | captain adds or removes a member                                 |
+| `GET /api/users?q=`                              | people search behind the add-member box                          |
+
+- `src/lib/teams.ts` — code helpers (`normalizeTeamCode`, `suggestTeamCode`, role labels)
+- `src/lib/team-store.ts` — search, code uniqueness, rosters, requests, `transferCaptaincy()`
+- `src/components/TeamManager.tsx` — the captain's panel
+- `src/app/teams/page.tsx` — search bar, honest buttons, create form
+
+Demo data: `aarav@futsal.np` captains **Chabahil Chargers** (`CHARGERS-4X7K`) with two requests
+waiting on them, so the panel has something to decide on the first login. Every seeded team has a
+code and a home turf picked from the seeded venues.

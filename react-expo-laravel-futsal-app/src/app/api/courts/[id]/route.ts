@@ -44,6 +44,7 @@ export async function PATCH(
       return Response.json({ error: "Court not found" }, { status: 404 });
     return Response.json({ court: updated[0] });
   } catch (e) {
+    console.error(`[/api/courts/[id] PATCH] failed:`, e);
     return Response.json({ error: String(e) }, { status: 500 });
   }
 }

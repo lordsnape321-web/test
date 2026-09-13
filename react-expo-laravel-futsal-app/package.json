@@ -1,12 +1,17 @@
 {
   "name": "nextjs-postgresql-template",
   "private": true,
+  "type": "module",
   "scripts": {
     "dev": "next dev",
+    "dev:webpack": "next dev --webpack",
     "build": "next build",
+    "build:webpack": "next build --webpack",
     "start": "next start",
     "lint": "eslint .",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "db:push": "drizzle-kit push",
+    "db:check": "node scripts/db-check.mjs"
   },
   "dependencies": {
     "dotenv": "17.3.1",

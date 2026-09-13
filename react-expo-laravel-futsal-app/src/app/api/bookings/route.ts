@@ -1,8 +1,11 @@
 import { db } from "@/db";
-import { bookings, courts, venues, users, openMatches, matchJoins, vouchers } from "@/db/schema";
+import { bookings, courts, venues, users, openMatches, matchJoins, vouchers, promos } from "@/db/schema";
 import { formatNPR, prettyDate, formatTime12, rangesOverlap, addHours } from "@/lib/futsal";
 import { playerRating, CANCEL_LIMIT_PER_MONTH, depositDecision, depositAmountFor, parsePayments, ONLINE_PAYMENTS, TRUST_START } from "@/lib/loyalty";
-import { validateTitle, validateNotes, validatePhone, validateCrew, validateTotalPlayers, validateDateISO, validateTimeHM, validateHours, validateCustomPrice, firstError } from "@/lib/validation";
+import { checkPromo, normalizePromoCode } from "@/lib/promos";
+import { promoUsage } from "@/lib/promo-store";
+import { findTeamForUser } from "@/lib/team-store";
+import { validateTitle, validateNotes, validatePhone, validateCrew, validateTotalPlayers, validateDateISO, validateTimeHM, validateHours, validateCustomPrice, validateTeamId, firstError } from "@/lib/validation";
 import { sendNotification } from "@/lib/notify";
 import { eq, and, desc } from "drizzle-orm";
 
@@ -95,6 +98,7 @@ export async function GET(req: Request) {
 
     return Response.json({ bookings: enriched });
   } catch (e) {
+    console.error(`[/api/bookings GET] failed:`, e);
     return Response.json({ bookings: [], error: String(e) }, { status: 500 });
   }
 }
@@ -245,11 +249,73 @@ export async function POST(req: Request) {
     }
 
     const fullPrice = rate * hours;
-    const totalPrice = useFreePlay ? Math.max(0, fullPrice - rate) : fullPrice;
+    const priceAfterVoucher = useFreePlay ? Math.max(0, fullPrice - rate) : fullPrice;
 
-    // Payment method must be one the venue accepts (free-play covers all = no payment needed).
+    // Squad 🛡️ — a booking can be made on behalf of one of the player's teams,
+    // which is the point of picking "Just our gang". Membership is verified here
+    // rather than trusted from the client, and the name is snapshotted from the
+    // row we just read so the booking keeps its label if the team is renamed or
+    // deleted later. No teamId means an individual booking — which is also what
+    // a player in no team gets, since the picker is never shown to them.
+    const teamErr = validateTeamId(body.teamId);
+    if (teamErr) return Response.json({ error: teamErr }, { status: 400 });
+    let teamId: number | null = null;
+    let teamName = "";
+    const wantedTeam = Number(body.teamId ?? 0);
+    if (wantedTeam > 0) {
+      const team = await findTeamForUser(wantedTeam, Number(userId));
+      if (!team)
+        return Response.json(
+          { error: "That isn't one of your teams — pick another, or book just for yourself 🛡️" },
+          { status: 400 }
+        );
+      teamId = team.id;
+      teamName = team.name;
+    }
+
+    // Promo code 🎟️ — owner-created discount with an expiry date and usage limits.
+    // It applies to what's left after any loyalty free hour, and is re-checked here
+    // (never trusting the client's maths) right before the booking is written.
+    let promoId: number | null = null;
+    let promoCode = "";
+    let discountAmount = 0;
+    let promoMessage = "";
+    const wantedCode = normalizePromoCode(body.promoCode);
+    if (wantedCode) {
+      if (!venue) return Response.json({ error: "Venue not found 📍" }, { status: 404 });
+      if (priceAfterVoucher <= 0)
+        return Response.json(
+          { error: "Your FREE hour already covers this game — no promo code needed 🎁", promoError: "nothing_to_discount" },
+          { status: 400 }
+        );
+      const venuePromos = await db.select().from(promos).where(eq(promos.venueId, venue.id));
+      const found = venuePromos.find((p) => p.code === wantedCode) ?? null;
+      const promoUsed = found ? await promoUsage([found.id]) : new Map();
+      const usedSoFar = found ? promoUsed.get(found.id) : undefined;
+      const check = checkPromo({
+        promo: found,
+        code: wantedCode,
+        venueName: venue.name,
+        subtotal: priceAfterVoucher,
+        usedCount: usedSoFar?.used ?? 0,
+        userUsedCount: usedSoFar?.byUser.get(Number(userId)) ?? 0,
+      });
+      if (!check.ok || !found)
+        return Response.json(
+          { error: check.ok ? "That promo code isn't available right now 🎟️" : check.error, promoError: check.ok ? "unavailable" : check.reason },
+          { status: 400 }
+        );
+      promoId = found.id;
+      promoCode = found.code;
+      discountAmount = check.discount;
+      promoMessage = check.message;
+    }
+
+    const totalPrice = Math.max(0, priceAfterVoucher - discountAmount);
+
+    // Payment method must be one the venue accepts (nothing left to pay = no payment needed).
     let payMethod = String(body.paymentMethod ?? venuePayments[0] ?? "eSewa");
-    const isFreeCovered = useFreePlay && totalPrice === 0;
+    const isFreeCovered = totalPrice === 0;
     if (isFreeCovered) {
       payMethod = "Free Play 🎁";
     } else if (!venuePayments.includes(payMethod)) {
@@ -304,9 +370,15 @@ export async function POST(req: Request) {
         playersNeeded,
         ourCrew,
         openSpots,
+        teamId,
+        teamName,
         receiptUrl: String(body.receiptUrl ?? "").slice(0, 2000000),
         isFreePlay: useFreePlay,
         voucherId,
+        promoId,
+        promoCode,
+        priceBeforeDiscount: priceAfterVoucher,
+        discountAmount,
         chargeMode: visibility === "public" ? chargeMode : "split",
         customPricePerPlayer: visibility === "public" && chargeMode === "custom" ? customPrice : 0,
         depositRequired,
@@ -329,9 +401,24 @@ export async function POST(req: Request) {
         userId: venue.ownerId,
         type: "booking_request",
         title: `📩 New booking request — ${venue.name}`,
-        message: `${booking.bookerName || "A player"} (${stats.emoji} ${stats.rating}★ ${stats.label}, trust ${bookerTrust}/100) requested ${court?.name ?? "a court"} on ${prettyDate(booking.date)} at ${formatTime12(booking.startTime)} (${hours} hr, ${formatNPR(booking.totalPrice)}${useFreePlay ? `, 🎁 FREE HOUR ${voucherCode}` : ""}${depositRequired ? `, 🛡️ ${depDecision.percent}% deposit ${formatNPR(depositAmount)} due via test gateway (non-refundable)` : ""}). Tap to accept or decline.`,
+        message: `${booking.bookerName || "A player"} (${stats.emoji} ${stats.rating}★ ${stats.label}, trust ${bookerTrust}/100) requested ${court?.name ?? "a court"} on ${prettyDate(booking.date)} at ${formatTime12(booking.startTime)} (${hours} hr, ${formatNPR(booking.totalPrice)}${useFreePlay ? `, 🎁 FREE HOUR ${voucherCode}` : ""}${promoId ? `, 🎟️ ${promoCode} −${formatNPR(discountAmount)} (was ${formatNPR(priceAfterVoucher)})` : ""}${teamId ? `, 👥 squad ${teamName}` : ""}${depositRequired ? `, 🛡️ ${depDecision.percent}% deposit ${formatNPR(depositAmount)} due via test gateway (non-refundable)` : ""}). Tap to accept or decline.`,
         link: "/admin/requests",
       });
+      // Heads-up when this redemption fills the code's cap.
+      if (promoId) {
+        const promoRows = await db.select().from(promos).where(eq(promos.id, promoId));
+        const limit = Math.max(0, Number(promoRows[0]?.usageLimit ?? 0));
+        const usedNow = (await promoUsage([promoId])).get(promoId)?.used ?? 0;
+        if (limit > 0 && usedNow >= limit) {
+          await sendNotification({
+            userId: venue.ownerId,
+            type: "promo",
+            title: `🏁 ${promoCode} is fully redeemed`,
+            message: `Your promo ${promoCode} at ${venue.name} just hit its ${limit}-booking cap, so players can't use it any more. ${formatNPR(booking.discountAmount)} off this one. Extend the limit or launch a fresh code from My Venues → Promos 🎟️`,
+            link: "/admin/venues",
+          });
+        }
+      }
     }
     if (depositRequired) {
       await sendNotification({
@@ -350,6 +437,11 @@ export async function POST(req: Request) {
         String(body.matchTitle ?? "").trim() || `⚡ Open game at ${venueName}`;
       const autoPer = playersNeeded > 0 ? Math.round(booking.totalPrice / playersNeeded) : 0;
       const perPlayer = chargeMode === "custom" ? customPrice : Math.max(0, autoPer);
+      // Name the squad on the public listing when the host booked for a team,
+      // so joiners know which crew they'd be walking into.
+      const crewLine = teamId
+        ? `🛡️ ${teamName} • 👥 ${ourCrew} from the squad`
+        : `👥 ${ourCrew} from our crew`;
       const matchRows = await db
         .insert(openMatches)
         .values({
@@ -370,8 +462,8 @@ export async function POST(req: Request) {
           description:
             String(body.matchDescription ?? "").trim() ||
             (chargeMode === "custom"
-              ? `👥 ${ourCrew} from our crew • 🙋 ${openSpots} open for you! Host set a custom ${formatNPR(perPlayer)} per joiner — listing goes live once the venue accepts! 🤝`
-              : `👥 ${ourCrew} from our crew • 🙋 ${openSpots} open for you! Court requested by the host — listing goes live once the venue accepts. Split ${formatNPR(perPlayer)} each! 🤝`),
+              ? `${crewLine} • 🙋 ${openSpots} open for you! Host set a custom ${formatNPR(perPlayer)} per joiner — listing goes live once the venue accepts! 🤝`
+              : `${crewLine} • 🙋 ${openSpots} open for you! Court requested by the host — listing goes live once the venue accepts. Split ${formatNPR(perPlayer)} each! 🤝`),
         })
         .returning();
       match = matchRows[0];
@@ -381,8 +473,23 @@ export async function POST(req: Request) {
       });
     }
 
-    return Response.json({ booking, match, freePlayUsed: useFreePlay, depositRequired, depositAmount, depositPercent: depDecision.percent }, { status: 201 });
+    return Response.json(
+      {
+        booking,
+        match,
+        freePlayUsed: useFreePlay,
+        depositRequired,
+        depositAmount,
+        depositPercent: depDecision.percent,
+        promo: promoId
+          ? { id: promoId, code: promoCode, discount: discountAmount, message: promoMessage }
+          : null,
+        team: teamId ? { id: teamId, name: teamName } : null,
+      },
+      { status: 201 }
+    );
   } catch (e) {
+    console.error(`[/api/bookings POST] failed:`, e);
     return Response.json({ error: String(e) }, { status: 500 });
   }
 }

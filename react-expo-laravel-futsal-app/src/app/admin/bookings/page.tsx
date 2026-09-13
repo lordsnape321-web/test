@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { CalendarCheck, Check, X, ReceiptText, Gift } from "lucide-react";
+import { CalendarCheck, Check, X, ReceiptText, Gift, Ticket, Shield } from "lucide-react";
 import { useUser } from "@/components/UserProvider";
 import { OwnerGuard } from "@/components/OwnerGuard";
 import { ReceiptViewer } from "@/components/ReceiptUploader";
@@ -20,8 +20,13 @@ type Booking = {
   paymentMethod: string;
   bookerName: string;
   bookerPhone: string;
+  /** Squad this booking was made for; "" = individual booking. */
+  teamName: string;
   receiptUrl: string;
   isFreePlay: boolean;
+  promoCode: string;
+  discountAmount: number;
+  priceBeforeDiscount: number;
   depositRequired: boolean;
   depositAmount: number;
   depositStatus: string;
@@ -164,6 +169,11 @@ export default function OwnerBookingsPage() {
                           <Gift className="h-2.5 w-2.5" /> FREE
                         </span>
                       )}
+                      {b.teamName && (
+                        <span className="mt-1 inline-flex items-center gap-1 rounded-full bg-sky-500/15 px-1.5 py-0.5 text-[9px] font-black text-sky-700 dark:text-sky-300">
+                          <Shield className="h-2.5 w-2.5" /> {b.teamName}
+                        </span>
+                      )}
                       <span className="mt-1 block">
                         {b.playerStats && <PlayerRatingBadge stats={b.playerStats} size="sm" />}
                       </span>
@@ -182,10 +192,20 @@ export default function OwnerBookingsPage() {
                       </span>
                     </td>
                     <td className="px-3 py-3 font-black">
+                      {b.discountAmount > 0 && b.priceBeforeDiscount > b.totalPrice && (
+                        <span className="block text-[11px] font-bold text-slate-400 line-through dark:text-slate-500">
+                          {formatNPR(b.priceBeforeDiscount)}
+                        </span>
+                      )}
                       {formatNPR(b.totalPrice)}
                       <span className="block text-[11px] font-semibold text-slate-400 dark:text-slate-500">
                         {b.paymentMethod}
                       </span>
+                      {b.promoCode && b.discountAmount > 0 && (
+                        <span className="mt-1 inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-black text-emerald-700 dark:text-emerald-300">
+                          <Ticket className="h-3 w-3" /> {b.promoCode} −{formatNPR(b.discountAmount)}
+                        </span>
+                      )}
                     </td>
                     <td className="px-3 py-3">
                       {b.paymentStatus === "paid" ? (

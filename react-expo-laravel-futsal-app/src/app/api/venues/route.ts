@@ -40,6 +40,7 @@ export async function GET(req: Request) {
 
     return Response.json({ venues: enriched });
   } catch (e) {
+    console.error(`[/api/venues GET] failed:`, e);
     return Response.json({ venues: [], error: String(e) }, { status: 500 });
   }
 }
@@ -116,6 +117,7 @@ export async function POST(req: Request) {
     }
     return Response.json({ venue: inserted[0] }, { status: 201 });
   } catch (e) {
+    console.error(`[/api/venues POST] failed:`, e);
     return Response.json({ error: String(e) }, { status: 500 });
   }
 }

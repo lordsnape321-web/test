@@ -36,6 +36,7 @@ export async function GET() {
       },
     });
   } catch (e) {
+    console.error(`[/api/stats GET] failed:`, e);
     return Response.json({ stats: null, error: String(e) }, { status: 500 });
   }
 }

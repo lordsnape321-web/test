@@ -40,6 +40,7 @@ export async function GET() {
     });
     return Response.json({ matches: enriched });
   } catch (e) {
+    console.error(`[/api/matches GET] failed:`, e);
     return Response.json({ matches: [], error: String(e) }, { status: 500 });
   }
 }
@@ -116,6 +117,7 @@ export async function POST(req: Request) {
     });
     return Response.json({ match: inserted[0] }, { status: 201 });
   } catch (e) {
+    console.error(`[/api/matches POST] failed:`, e);
     return Response.json({ error: String(e) }, { status: 500 });
   }
 }

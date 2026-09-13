@@ -22,6 +22,7 @@ export async function GET(req: Request) {
     const unread = rows.filter((r) => !r.isRead).length;
     return Response.json({ notifications: rows, unread });
   } catch (e) {
+    console.error(`[/api/notifications GET] failed:`, e);
     return Response.json({ notifications: [], unread: 0, error: String(e) }, { status: 500 });
   }
 }
@@ -50,6 +51,7 @@ export async function POST(req: Request) {
       .returning();
     return Response.json({ notification: rows[0] }, { status: 201 });
   } catch (e) {
+    console.error(`[/api/notifications POST] failed:`, e);
     return Response.json({ error: String(e) }, { status: 500 });
   }
 }

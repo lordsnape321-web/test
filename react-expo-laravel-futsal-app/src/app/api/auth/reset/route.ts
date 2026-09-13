@@ -42,6 +42,7 @@ export async function POST(req: Request) {
 
     return Response.json({ ok: true });
   } catch (e) {
+    console.error(`[/api/auth/reset POST] failed:`, e);
     return Response.json({ error: String(e) }, { status: 500 });
   }
 }

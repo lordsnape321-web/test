@@ -77,9 +77,21 @@ export const bookings = pgTable("bookings", {
   playersNeeded: integer("players_needed").notNull().default(0),
   ourCrew: integer("our_crew").notNull().default(1),
   openSpots: integer("open_spots").notNull().default(0),
+  // Squad this booking was made for — set when the player picks "Just our gang"
+  // (or an open invite) and chooses one of the teams they belong to. Null means
+  // an individual booking: the player is in no team, or chose "Just me".
+  // `teamName` is snapshotted the way `promoCode` is, so a booking keeps its
+  // label even if the team is later renamed or deleted.
+  teamId: integer("team_id"),
+  teamName: text("team_name").notNull().default(""),
   receiptUrl: text("receipt_url").notNull().default(""),
   isFreePlay: boolean("is_free_play").notNull().default(false),
   voucherId: integer("voucher_id"),
+  // Promo code applied by the player (owner-created, see `promos`).
+  promoId: integer("promo_id"),
+  promoCode: text("promo_code").notNull().default(""),
+  priceBeforeDiscount: integer("price_before_discount").notNull().default(0),
+  discountAmount: integer("discount_amount").notNull().default(0),
   chargeMode: text("charge_mode").notNull().default("split"),
   customPricePerPlayer: integer("custom_price_per_player").notNull().default(0),
   depositRequired: boolean("deposit_required").notNull().default(false),
@@ -96,6 +108,19 @@ export const teams = pgTable("teams", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
   motto: text("motto").notNull().default(""),
+  /**
+   * Short unique handle other players search by (e.g. "CHARGERS-4X7K"), the same
+   * idea as a promo code. Nullable rather than NOT NULL DEFAULT '' purely so the
+   * column can be added to a database that already has teams — Postgres treats
+   * NULLs as distinct under a unique constraint, so legacy rows migrate cleanly
+   * and get backfilled by /api/seed. Every team created through the API gets one.
+   */
+  teamCode: text("team_code").unique(),
+  /**
+   * Exactly one captain per team. `teamMembers.role` mirrors this for the roster,
+   * and the API refuses to let a captain leave or be removed without first
+   * handing the armband to another member — so the two can never disagree.
+   */
   captainId: integer("captain_id").notNull().default(1),
   maxPlayers: integer("max_players").notNull().default(12),
   level: text("level").notNull().default("Intermediate"),
@@ -103,7 +128,14 @@ export const teams = pgTable("teams", {
   wins: integer("wins").notNull().default(0),
   losses: integer("losses").notNull().default(0),
   draws: integer("draws").notNull().default(0),
+  /** Venue name snapshot — see `homeVenueId`. */
   homeGround: text("home_ground").notNull().default(""),
+  /**
+   * Home turf picked from the venues that actually exist on the platform, not
+   * free text. Null means "no home turf chosen". `homeGround` holds the name so
+   * cards keep rendering if the venue is later renamed or removed.
+   */
+  homeVenueId: integer("home_venue_id"),
   lookingForPlayers: boolean("looking_for_players").notNull().default(true),
   createdAt: timestamp("created_at").defaultNow(),
 });
@@ -114,6 +146,25 @@ export const teamMembers = pgTable("team_members", {
   userId: integer("user_id").notNull(),
   role: text("role").notNull().default("player"),
   joinedAt: timestamp("joined_at").defaultNow(),
+});
+
+/**
+ * Join requests 🛡️ — asking to join a team no longer adds you straight to the
+ * roster. The request sits here until the captain accepts or declines it, which
+ * is what gives the captain control over who is in their squad.
+ *
+ * `pending` is the only status that blocks a new request; `cancelled` (player
+ * withdrew) and `declined` both allow asking again later.
+ */
+export const teamRequests = pgTable("team_requests", {
+  id: serial("id").primaryKey(),
+  teamId: integer("team_id").notNull(),
+  userId: integer("user_id").notNull(),
+  message: text("message").notNull().default(""),
+  status: text("status").notNull().default("pending"),
+  createdAt: timestamp("created_at").defaultNow(),
+  decidedAt: timestamp("decided_at"),
+  decidedBy: integer("decided_by"),
 });
 
 export const openMatches = pgTable("open_matches", {
@@ -167,6 +218,27 @@ export const vouchers = pgTable("vouchers", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+// Promo codes: venue owners hand out discounts with an expiry date.
+// Percent ("15% off, capped at Rs. 500") or flat ("Rs. 300 off"), optionally
+// hidden from the public list, with total + per-player redemption limits.
+export const promos = pgTable("promos", {
+  id: serial("id").primaryKey(),
+  venueId: integer("venue_id").notNull(),
+  code: text("code").notNull(),
+  title: text("title").notNull().default(""),
+  discountType: text("discount_type").notNull().default("percent"),
+  discountValue: integer("discount_value").notNull().default(10),
+  maxDiscount: integer("max_discount").notNull().default(0),
+  minBookingAmount: integer("min_booking_amount").notNull().default(0),
+  startsAt: text("starts_at"),
+  expiresAt: text("expires_at").notNull(),
+  usageLimit: integer("usage_limit").notNull().default(0),
+  perUserLimit: integer("per_user_limit").notNull().default(1),
+  isPublic: boolean("is_public").notNull().default(true),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 // Player reviews: rating + message after playing. Visible to everyone + owner.
 export const reviews = pgTable("reviews", {
   id: serial("id").primaryKey(),
@@ -186,4 +258,5 @@ export type Team = typeof teams.$inferSelect;
 export type OpenMatch = typeof openMatches.$inferSelect;
 export type Notification = typeof notifications.$inferSelect;
 export type Voucher = typeof vouchers.$inferSelect;
+export type Promo = typeof promos.$inferSelect;
 export type Review = typeof reviews.$inferSelect;

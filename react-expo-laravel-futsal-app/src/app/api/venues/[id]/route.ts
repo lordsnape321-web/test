@@ -31,6 +31,7 @@ export async function GET(
       venue: { ...found[0], courts: venueCourts, totalBookings: count },
     });
   } catch (e) {
+    console.error(`[/api/venues/[id] GET] failed:`, e);
     return Response.json({ error: String(e) }, { status: 500 });
   }
 }
@@ -104,6 +105,7 @@ export async function PATCH(
       .returning();
     return Response.json({ venue: updated[0] });
   } catch (e) {
+    console.error(`[/api/venues/[id] PATCH] failed:`, e);
     return Response.json({ error: String(e) }, { status: 500 });
   }
 }

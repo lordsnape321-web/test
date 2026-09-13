@@ -29,6 +29,7 @@ export async function GET(req: Request) {
     });
     return Response.json({ reviews: enriched });
   } catch (e) {
+    console.error(`[/api/reviews GET] failed:`, e);
     return Response.json({ reviews: [], error: String(e) }, { status: 500 });
   }
 }
@@ -127,6 +128,7 @@ export async function POST(req: Request) {
 
     return Response.json({ review: inserted[0] }, { status: 201 });
   } catch (e) {
+    console.error(`[/api/reviews POST] failed:`, e);
     return Response.json({ error: String(e) }, { status: 500 });
   }
 }
@@ -153,6 +155,7 @@ export async function DELETE(req: Request) {
       .where(eq(venues.id, r.venueId));
     return Response.json({ ok: true });
   } catch (e) {
+    console.error(`[/api/reviews DELETE] failed:`, e);
     return Response.json({ error: String(e) }, { status: 500 });
   }
 }

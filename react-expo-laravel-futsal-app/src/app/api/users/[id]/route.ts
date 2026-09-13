@@ -31,6 +31,7 @@ export async function GET(
     );
     return Response.json({ user: safeUser(rows[0]), stats });
   } catch (e) {
+    console.error(`[/api/users/[id] GET] failed:`, e);
     return Response.json({ error: String(e) }, { status: 500 });
   }
 }
@@ -110,6 +111,7 @@ export async function PATCH(
 
     return Response.json({ user: safeUser(updated[0]) });
   } catch (e) {
+    console.error(`[/api/users/[id] PATCH] failed:`, e);
     return Response.json({ error: String(e) }, { status: 500 });
   }
 }
