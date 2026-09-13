@@ -41,6 +41,7 @@ export async function GET(
     const usage = await promoUsage([promo.id]);
     return Response.json({ promo: ownerPromo(promo, usage.get(promo.id)) });
   } catch (e) {
+    console.error(`[/api/promos/[id] GET] failed:`, e);
     return Response.json({ error: String(e) }, { status: 500 });
   }
 }
@@ -130,6 +131,7 @@ export async function PATCH(
     const usage = await promoUsage([promo.id]);
     return Response.json({ promo: ownerPromo(updated[0], usage.get(promo.id)) });
   } catch (e) {
+    console.error(`[/api/promos/[id] PATCH] failed:`, e);
     return Response.json({ error: String(e) }, { status: 500 });
   }
 }
@@ -169,6 +171,7 @@ export async function DELETE(
     await db.delete(promos).where(eq(promos.id, promo.id));
     return Response.json({ ok: true, deletedId: promo.id });
   } catch (e) {
+    console.error(`[/api/promos/[id] DELETE] failed:`, e);
     return Response.json({ error: String(e) }, { status: 500 });
   }
 }

@@ -265,6 +265,7 @@ export async function PATCH(
 
     return Response.json({ booking: next });
   } catch (e) {
+    console.error(`[/api/bookings/[id] PATCH] failed:`, e);
     return Response.json({ error: String(e) }, { status: 500 });
   }
 }
@@ -285,6 +286,7 @@ export async function DELETE(
       .where(eq(openMatches.bookingId, Number(id)));
     return Response.json({ ok: true });
   } catch (e) {
+    console.error(`[/api/bookings/[id] DELETE] failed:`, e);
     return Response.json({ error: String(e) }, { status: 500 });
   }
 }

@@ -27,6 +27,7 @@ export async function GET(req: Request) {
     );
     return Response.json({ booked: bookedSlots, bookings: active });
   } catch (e) {
+    console.error(`[/api/availability GET] failed:`, e);
     return Response.json({ booked: [], error: String(e) }, { status: 500 });
   }
 }

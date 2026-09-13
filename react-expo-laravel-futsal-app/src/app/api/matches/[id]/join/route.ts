@@ -65,6 +65,7 @@ export async function POST(
 
     return Response.json({ ok: true });
   } catch (e) {
+    console.error(`[/api/matches/[id]/join POST] failed:`, e);
     return Response.json({ error: String(e) }, { status: 500 });
   }
 }
@@ -92,6 +93,7 @@ export async function DELETE(
     }
     return Response.json({ ok: true });
   } catch (e) {
+    console.error(`[/api/matches/[id]/join DELETE] failed:`, e);
     return Response.json({ error: String(e) }, { status: 500 });
   }
 }

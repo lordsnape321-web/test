@@ -59,6 +59,7 @@ export async function GET(req: Request) {
 
     return Response.json({ vouchers: enriched, progress, month });
   } catch (e) {
+    console.error(`[/api/vouchers GET] failed:`, e);
     return Response.json({ vouchers: [], progress: [], error: String(e) }, { status: 500 });
   }
 }

@@ -115,6 +115,7 @@ export async function GET(req: Request) {
       .map(publicPromo);
     return Response.json({ promos: live, venueId: Number(venueId), venueName: venue.name });
   } catch (e) {
+    console.error(`[/api/promos GET] failed:`, e);
     return Response.json({ promos: [], error: String(e) }, { status: 500 });
   }
 }
@@ -182,6 +183,7 @@ export async function POST(req: Request) {
 
     return Response.json({ promo: ownerPromo(inserted[0]) }, { status: 201 });
   } catch (e) {
+    console.error(`[/api/promos POST] failed:`, e);
     return Response.json({ error: String(e) }, { status: 500 });
   }
 }

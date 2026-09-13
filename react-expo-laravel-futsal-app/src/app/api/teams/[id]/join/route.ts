@@ -26,6 +26,7 @@ export async function POST(
     await db.insert(teamMembers).values({ teamId, userId, role: "player" });
     return Response.json({ ok: true });
   } catch (e) {
+    console.error(`[/api/teams/[id]/join POST] failed:`, e);
     return Response.json({ error: String(e) }, { status: 500 });
   }
 }
@@ -53,6 +54,7 @@ export async function DELETE(
     }
     return Response.json({ ok: true });
   } catch (e) {
+    console.error(`[/api/teams/[id]/join DELETE] failed:`, e);
     return Response.json({ error: String(e) }, { status: 500 });
   }
 }

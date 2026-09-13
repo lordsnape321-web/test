@@ -114,6 +114,7 @@ export async function POST(req: Request) {
       });
     }
   } catch (e) {
+    console.error(`[/api/payments/khalti/initiate POST] failed:`, e);
     return Response.json({ error: String(e) }, { status: 500 });
   }
 }

@@ -77,6 +77,7 @@ export async function POST(req: Request) {
       testHint: "eSewa UAT: use ID 9806800001 / password 123456 / MPIN 1122 / token 123456",
     });
   } catch (e) {
+    console.error(`[/api/payments/esewa/initiate POST] failed:`, e);
     return Response.json({ error: String(e) }, { status: 500 });
   }
 }

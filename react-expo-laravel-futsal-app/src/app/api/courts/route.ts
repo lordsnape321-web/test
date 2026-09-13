@@ -47,6 +47,7 @@ export async function POST(req: Request) {
       .returning();
     return Response.json({ court: inserted[0] }, { status: 201 });
   } catch (e) {
+    console.error(`[/api/courts POST] failed:`, e);
     return Response.json({ error: String(e) }, { status: 500 });
   }
 }

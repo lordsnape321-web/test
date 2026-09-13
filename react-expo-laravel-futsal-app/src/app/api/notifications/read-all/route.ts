@@ -15,6 +15,7 @@ export async function POST(req: Request) {
       .where(eq(notifications.userId, userId));
     return Response.json({ ok: true });
   } catch (e) {
+    console.error(`[/api/notifications/read-all POST] failed:`, e);
     return Response.json({ error: String(e) }, { status: 500 });
   }
 }

@@ -9,6 +9,7 @@ export async function GET() {
     const list = await db.select().from(users);
     return Response.json({ users: list.map(safeUser) });
   } catch (e) {
+    console.error(`[/api/users GET] failed:`, e);
     return Response.json({ users: [], error: String(e) }, { status: 500 });
   }
 }

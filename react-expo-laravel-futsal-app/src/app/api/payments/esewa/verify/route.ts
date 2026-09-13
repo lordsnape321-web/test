@@ -157,6 +157,7 @@ export async function POST(req: Request) {
 
     return Response.json({ ok: true, booking: updated[0], transactionCode: txnCode });
   } catch (e) {
+    console.error(`[/api/payments/esewa/verify POST] failed:`, e);
     return Response.json({ error: String(e) }, { status: 500 });
   }
 }

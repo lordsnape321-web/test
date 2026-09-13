@@ -83,6 +83,7 @@ export async function POST(req: Request) {
 
     return Response.json({ user: safeUser(inserted[0]) }, { status: 201 });
   } catch (e) {
+    console.error(`[/api/auth/signup POST] failed:`, e);
     return Response.json({ error: String(e) }, { status: 500 });
   }
 }

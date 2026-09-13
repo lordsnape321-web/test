@@ -97,6 +97,7 @@ export async function GET(req: Request) {
 
     return Response.json({ bookings: enriched });
   } catch (e) {
+    console.error(`[/api/bookings GET] failed:`, e);
     return Response.json({ bookings: [], error: String(e) }, { status: 500 });
   }
 }
@@ -457,6 +458,7 @@ export async function POST(req: Request) {
       { status: 201 }
     );
   } catch (e) {
+    console.error(`[/api/bookings POST] failed:`, e);
     return Response.json({ error: String(e) }, { status: 500 });
   }
 }

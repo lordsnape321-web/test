@@ -604,6 +604,7 @@ export async function POST() {
 
     return Response.json({ ok: true, message: "Seeded successfully" });
   } catch (e) {
+    console.error(`[/api/seed POST] failed:`, e);
     return Response.json({ error: String(e) }, { status: 500 });
   }
 }
