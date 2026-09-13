@@ -1,13 +1,22 @@
 import { db } from "@/db";
 import { teams, teamMembers, users } from "@/db/schema";
 import { validateTitle, validateMessage, firstError } from "@/lib/validation";
+import { teamsForUser } from "@/lib/team-store";
 
 export const dynamic = "force-dynamic";
 
 const LEVELS = ["Beginner", "Intermediate", "Advanced"];
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
+    // ?userId=N returns just that player's squads — the shape the booking flow's
+    // team picker needs (id/name/memberCount/logoColor/role), without shipping
+    // every team and every roster in the database.
+    const userId = Number(new URL(req.url).searchParams.get("userId") ?? 0);
+    if (Number.isInteger(userId) && userId > 0) {
+      return Response.json({ teams: await teamsForUser(userId) });
+    }
+
     const allTeams = await db.select().from(teams);
     const members = await db.select().from(teamMembers);
     const allUsers = await db.select().from(users);

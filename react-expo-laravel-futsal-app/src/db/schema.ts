@@ -77,6 +77,13 @@ export const bookings = pgTable("bookings", {
   playersNeeded: integer("players_needed").notNull().default(0),
   ourCrew: integer("our_crew").notNull().default(1),
   openSpots: integer("open_spots").notNull().default(0),
+  // Squad this booking was made for — set when the player picks "Just our gang"
+  // (or an open invite) and chooses one of the teams they belong to. Null means
+  // an individual booking: the player is in no team, or chose "Just me".
+  // `teamName` is snapshotted the way `promoCode` is, so a booking keeps its
+  // label even if the team is later renamed or deleted.
+  teamId: integer("team_id"),
+  teamName: text("team_name").notNull().default(""),
   receiptUrl: text("receipt_url").notNull().default(""),
   isFreePlay: boolean("is_free_play").notNull().default(false),
   voucherId: integer("voucher_id"),

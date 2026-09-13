@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Inbox, Check, X, Phone, Globe, Lock, Wallet, ReceiptText, Gift, Ticket } from "lucide-react";
+import { Inbox, Check, X, Phone, Globe, Lock, Wallet, ReceiptText, Gift, Ticket, Shield } from "lucide-react";
 import { useUser } from "@/components/UserProvider";
 import { OwnerGuard } from "@/components/OwnerGuard";
 import { ReceiptViewer } from "@/components/ReceiptUploader";
@@ -26,6 +26,8 @@ type Booking = {
   playersNeeded: number;
   ourCrew: number;
   openSpots: number;
+  /** Squad this booking was made for; "" = individual booking. */
+  teamName: string;
   receiptUrl: string;
   isFreePlay: boolean;
   promoCode: string;
@@ -199,6 +201,11 @@ export default function OwnerRequestsPage() {
                     {b.promoCode && b.discountAmount > 0 && (
                       <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-black text-emerald-700 dark:text-emerald-300">
                         <Ticket className="h-3 w-3" /> {b.promoCode} −{formatNPR(b.discountAmount)}
+                      </span>
+                    )}
+                    {b.teamName && (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-sky-500/15 px-2 py-0.5 text-[10px] font-black text-sky-700 dark:text-sky-300">
+                        <Shield className="h-3 w-3" /> {b.teamName}
                       </span>
                     )}
                     {b.depositRequired && (

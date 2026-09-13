@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { CalendarCheck, MapPin, Clock, XCircle, QrCode, Wallet, LogIn, Lock, Globe, ArrowRight, Hourglass, PartyPopper, ReceiptText, Star, Gift, Ticket } from "lucide-react";
+import { CalendarCheck, MapPin, Clock, XCircle, QrCode, Wallet, LogIn, Lock, Globe, ArrowRight, Hourglass, PartyPopper, ReceiptText, Star, Gift, Ticket, Shield } from "lucide-react";
 import { useUser } from "@/components/UserProvider";
 import { ReceiptUploader, ReceiptViewer, isOnlineMethod } from "@/components/ReceiptUploader";
 import { StarInput } from "@/components/Reviews";
@@ -27,6 +27,8 @@ type Booking = {
   playersNeeded: number;
   ourCrew: number;
   openSpots: number;
+  /** Squad this booking was made for; "" = individual booking. */
+  teamName: string;
   receiptUrl: string;
   isFreePlay: boolean;
   promoCode: string;
@@ -493,6 +495,11 @@ export default function BookingsPage() {
                       <span className="flex items-center gap-1.5 rounded-full bg-stone-100 px-3 py-1.5 text-[11px] font-bold text-stone-500 dark:bg-white/10 dark:text-stone-400">
                         <QrCode className="h-3.5 w-3.5" /> Show at court
                       </span>
+                      {b.teamName && (
+                        <span className="flex items-center gap-1.5 rounded-full bg-sky-500/15 px-3 py-1.5 text-[11px] font-black text-sky-700 dark:text-sky-300">
+                          <Shield className="h-3.5 w-3.5" /> {b.teamName}
+                        </span>
+                      )}
                       {b.isFreePlay && (
                         <span className="flex items-center gap-1.5 rounded-full bg-violet-500/15 px-3 py-1.5 text-[11px] font-black text-violet-700 dark:text-violet-300">
                           <Gift className="h-3.5 w-3.5" /> Free hour used 🎁

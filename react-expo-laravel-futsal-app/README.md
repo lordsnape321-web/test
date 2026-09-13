@@ -161,3 +161,32 @@ Promos stack with loyalty free-play vouchers: free play is applied first, then t
 whatever balance remains. When free play covers the whole booking, promos are blocked.
 
 > Note: the separate `vouchers` table is the loyalty free-hour system — it is **not** promo codes.
+
+---
+
+## Booking for a squad ("Just our gang")
+
+Step 4 of the booking flow asks whether the game is **Just our gang** (private) or **Invite
+everyone!** (an open listing others can join). Both branches can name a squad:
+
+- **Player belongs to teams** → chips list every team they are in, captained squads first, each
+  showing its member count. A "Just me" / "Just friends" chip books without attaching a team.
+- **Player belongs to no team** → no picker is rendered. The booking stays an *individual booking*
+  with a link to `/teams` to find a squad, because an empty picker with one dead chip is worse than
+  no picker at all.
+
+Choosing a squad on an open invite also syncs the crew size to the real squad and names the team on
+the public listing, so joiners know whose crew they are walking into.
+
+Membership is verified server-side in `POST /api/bookings` — a hand-edited request cannot attach a
+booking to a team the player does not belong to. The team **name is snapshotted** onto the booking
+(the same way `promoCode` is), so bookings keep their label if a team is later renamed or deleted.
+The squad then appears as a badge on the player's bookings and on the owner's request/booking
+screens, and in the owner's booking-request notification.
+
+- `src/lib/team-store.ts` — `teamsForUser()` for the picker, `findTeamForUser()` for the authority check
+- `GET /api/teams?userId=N` — that player's squads only; no parameter returns every team with full
+  rosters, as before
+
+Demo data covers both paths: `aarav@futsal.np` captains one squad and is in two more, while a freshly
+signed-up account is in none.

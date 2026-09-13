@@ -408,16 +408,24 @@ export async function POST() {
       pub?: boolean;
       need?: number;
       title?: string;
+      /**
+       * Index into `seedTeams` — the squad this booking was made for. Teams are
+       * inserted after bookings, so this is applied as a follow-up update below.
+       * Bookings without it stay individual bookings, which is a state worth
+       * having in the demo data too.
+       */
+      team?: number;
     }> = [
-      { court: 0, user: 0, dateOff: 0, start: "17:00", end: "18:00", pay: "paid", method: "eSewa", pub: true, need: 10, title: "Evening Rush — Arena A ⚡" },
-      { court: 0, user: 1, dateOff: 0, start: "18:00", end: "19:00", pay: "pending", method: "Khalti" },
-      { court: 0, user: 2, dateOff: 1, start: "07:00", end: "08:00", pay: "paid", method: "Cash at Venue" },
-      { court: 1, user: 3, dateOff: 0, start: "19:00", end: "20:00", pay: "paid", method: "Khalti" },
+      { court: 0, user: 0, dateOff: 0, start: "17:00", end: "18:00", pay: "paid", method: "eSewa", pub: true, need: 10, title: "Evening Rush — Arena A ⚡", team: 0 },
+      { court: 0, user: 1, dateOff: 0, start: "18:00", end: "19:00", pay: "pending", method: "Khalti", team: 0 },
+      { court: 0, user: 2, dateOff: 1, start: "07:00", end: "08:00", pay: "paid", method: "Cash at Venue", team: 3 },
+      { court: 1, user: 3, dateOff: 0, start: "19:00", end: "20:00", pay: "paid", method: "Khalti", team: 1 },
       { court: 3, user: 4, dateOff: 1, start: "18:00", end: "20:00", pay: "pending", method: "eSewa", pub: true, need: 12, title: "Rooftop Rumble 🌇" },
       { court: 8, user: 5, dateOff: 2, start: "16:00", end: "17:00", pay: "paid", method: "Khalti" },
-      { court: 5, user: 0, dateOff: -1, start: "17:00", end: "18:00", pay: "paid", method: "Cash" },
+      { court: 5, user: 0, dateOff: -1, start: "17:00", end: "18:00", pay: "paid", method: "Cash", team: 3 },
       { court: 10, user: 1, dateOff: 3, start: "08:00", end: "09:00", pay: "pending", method: "eSewa" },
     ];
+    const insertedBookings: Array<{ id: number }> = [];
     for (const b of bookingSeeds) {
       const court = insertedCourts[b.court];
       const hourNum = parseInt(b.start.split(":")[0], 10);
@@ -448,6 +456,7 @@ export async function POST() {
           openSpots: isPublic ? open : 0,
         })
         .returning();
+      insertedBookings.push(inserted[0]);
       // Public bookings get a linked open-match listing.
       if (isPublic) {
         const bookingRow = inserted[0];
@@ -527,6 +536,21 @@ export async function POST() {
         userId: insertedUsers[ui].id,
         role,
       });
+    }
+
+    // Attach squads to the bookings that asked for one (`bookingSeeds[].team`).
+    // Teams only exist at this point, hence the follow-up update. Every team used
+    // here is one the booker genuinely belongs to, matching what POST
+    // /api/bookings enforces; the bookings left untagged stay individual.
+    for (let bi = 0; bi < bookingSeeds.length; bi++) {
+      const ti = bookingSeeds[bi].team;
+      const row = insertedBookings[bi];
+      if (ti === undefined || !row || !insertedTeams[ti]) continue;
+      const t = insertedTeams[ti];
+      await db
+        .update(bookings)
+        .set({ teamId: t.id, teamName: t.name })
+        .where(eq(bookings.id, row.id));
     }
 
     // Open matches

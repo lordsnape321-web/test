@@ -383,6 +383,20 @@ export function validateAvatarUrl(url: string): FieldError {
   return "Photo must be an uploaded image or https link 📸";
 }
 
+/**
+ * The optional squad selector on a booking. Blank or 0 means "individual
+ * booking" and is always allowed — a player in no team has nothing to pick, and
+ * picking "Just me" is a legitimate choice for a player who is in teams.
+ * Actual membership is verified server-side in POST /api/bookings, not here.
+ */
+export function validateTeamId(value: unknown): FieldError {
+  if (isBlank(value) || Number(value) === 0) return null;
+  const n = Number(value);
+  if (!Number.isInteger(n) || n <= 0)
+    return "Pick one of your teams, or book individually 🛡️";
+  return null;
+}
+
 export function firstError(...errs: FieldError[]): FieldError {
   for (const e of errs) {
     if (e) return e;

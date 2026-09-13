@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { CalendarCheck, Check, X, ReceiptText, Gift, Ticket } from "lucide-react";
+import { CalendarCheck, Check, X, ReceiptText, Gift, Ticket, Shield } from "lucide-react";
 import { useUser } from "@/components/UserProvider";
 import { OwnerGuard } from "@/components/OwnerGuard";
 import { ReceiptViewer } from "@/components/ReceiptUploader";
@@ -20,6 +20,8 @@ type Booking = {
   paymentMethod: string;
   bookerName: string;
   bookerPhone: string;
+  /** Squad this booking was made for; "" = individual booking. */
+  teamName: string;
   receiptUrl: string;
   isFreePlay: boolean;
   promoCode: string;
@@ -165,6 +167,11 @@ export default function OwnerBookingsPage() {
                       {b.isFreePlay && (
                         <span className="ml-1.5 inline-flex items-center gap-0.5 rounded-full bg-violet-500/15 px-1.5 py-0.5 text-[9px] font-black text-violet-700 dark:text-violet-300">
                           <Gift className="h-2.5 w-2.5" /> FREE
+                        </span>
+                      )}
+                      {b.teamName && (
+                        <span className="mt-1 inline-flex items-center gap-1 rounded-full bg-sky-500/15 px-1.5 py-0.5 text-[9px] font-black text-sky-700 dark:text-sky-300">
+                          <Shield className="h-2.5 w-2.5" /> {b.teamName}
                         </span>
                       )}
                       <span className="mt-1 block">

@@ -70,11 +70,15 @@ type Venue = {
   courts: Court[];
 };
 
+/** A squad the logged-in player belongs to — see `/api/teams?userId=`. */
 type UserTeam = {
   id: number;
   name: string;
   memberCount: number;
   logoColor: string;
+  level?: string;
+  /** "captain" | "player" */
+  role?: string;
 };
 
 /** A code the venue advertises right now (tap to apply). */
@@ -133,7 +137,7 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
   const [selectedTeam, setSelectedTeam] = useState("");
   const [booking, setBooking] = useState(false);
   const [payRedirect, setPayRedirect] = useState(false);
-  const [success, setSuccess] = useState<null | { id: number; total: number; isPublic: boolean; freePlay: boolean; saved: number; promoCode: string }>(null);
+  const [success, setSuccess] = useState<null | { id: number; total: number; isPublic: boolean; freePlay: boolean; saved: number; promoCode: string; teamName: string }>(null);
   const [error, setError] = useState("");
   const [myVouchers, setMyVouchers] = useState<Array<{ id: number; code: string; status: string }>>([]);
   const [loyalty, setLoyalty] = useState<{ count: number; target: number; remaining: number } | null>(null);
@@ -244,20 +248,20 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
   useEffect(() => {
     if (user) {
       setPhone(user.phone || "");
-      // Load my teams so crew size can sync with the real squad.
+      // Load my teams: they populate the squad picker under "Just our gang" and
+      // let an open invite sync its crew size to the real squad.
       (async () => {
         try {
-          const res = await fetch("/api/teams");
+          // ?userId= returns only this player's squads, membership already
+          // verified server-side, so there is nothing to filter here.
+          const res = await fetch(`/api/teams?userId=${user.id}`);
           const data = await res.json();
-          const mine = ((data.teams ?? []) as Array<{
-            id: number;
-            name: string;
-            memberCount: number;
-            logoColor: string;
-            players: Array<{ id: number }>;
-          }>).filter((t) => t.players?.some((p) => p.id === user.id));
-          setUserTeams(mine);
-        } catch {}
+          setUserTeams((data.teams ?? []) as UserTeam[]);
+        } catch {
+          // No teams (or the request failed) → the flow falls back to an
+          // individual booking rather than showing an empty picker.
+          setUserTeams([]);
+        }
       })();
       loadLoyalty(user.id);
     }
@@ -331,6 +335,11 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
   }
 
   const totalPlayers = ourCrew + openSpots;
+  /** Name of the squad this booking is for, or "" for an individual booking. */
+  const selectedTeamName = useMemo(
+    () => userTeams.find((t) => String(t.id) === selectedTeam)?.name ?? "",
+    [userTeams, selectedTeam]
+  );
   const matchLevelString =
     welcomeMode === "any" || welcomeLevels.length === 0
       ? "All Levels"
@@ -518,6 +527,8 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
           bookerPhone: phone,
           notes,
           visibility,
+          // 0 = individual booking ("Just me", or a player in no team).
+          teamId: selectedTeam ? Number(selectedTeam) : 0,
           playersNeeded: visibility === "public" ? totalPlayers : 0,
           ourCrew: visibility === "public" ? ourCrew : 1,
           openSpots: visibility === "public" ? openSpots : 0,
@@ -580,6 +591,9 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
         freePlay: !!data.freePlayUsed,
         saved: Number(created.discountAmount) || 0,
         promoCode: String(created.promoCode ?? ""),
+        // From the server's snapshot, not local state — it reflects what was
+        // actually written after the membership check.
+        teamName: String(created.teamName ?? ""),
       });
       setReceipt("");
       setUseFreePlay(false);
@@ -940,6 +954,49 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
               </button>
             </div>
 
+            {/* "Just our gang" — pick which of your squads this private game is for. */}
+            {visibility === "private" && (
+              <div className="mt-3 rounded-2xl border border-emerald-200 bg-emerald-50/60 p-4 dark:border-emerald-500/25 dark:bg-emerald-500/5">
+                {userTeams.length > 0 ? (
+                  <>
+                    <TeamPicker
+                      teams={userTeams}
+                      selected={selectedTeam}
+                      onPick={pickTeam}
+                      idleLabel="Just me"
+                      accent="emerald"
+                      title="Which of your teams is this for? 🛡️"
+                    />
+                    <p className="mt-2 text-[11px] font-bold leading-relaxed text-emerald-700 dark:text-emerald-400">
+                      {selectedTeam
+                        ? `Booked for ${
+                            userTeams.find((t) => String(t.id) === selectedTeam)?.name ??
+                            "your team"
+                          } — it shows up on your squad&apos;s fixtures. 🛡️`
+                        : "Individual booking — no team attached. Tap a squad above to book for them instead. 👆"}
+                    </p>
+                  </>
+                ) : (
+                  <div>
+                    <span className="block text-xs font-black uppercase tracking-wider text-stone-400 dark:text-stone-500">
+                      Individual booking 🙋
+                    </span>
+                    <p className="mt-1 text-[11px] leading-relaxed text-stone-500 dark:text-stone-400">
+                      You&apos;re not in a team yet, so this game is booked for you and whoever you
+                      invite along.{" "}
+                      <Link
+                        href="/teams"
+                        className="font-black text-emerald-700 underline decoration-emerald-400/50 underline-offset-2 dark:text-emerald-400"
+                      >
+                        Find a team to join
+                      </Link>{" "}
+                      and you&apos;ll be able to book for your squad right here.
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
+
             {visibility === "public" && (
               <div className="mt-3 space-y-3 rounded-2xl border border-orange-200 bg-orange-50/60 p-4 dark:border-orange-500/25 dark:bg-orange-500/5">
                 <label className="block">
@@ -969,40 +1026,14 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
 
                 {userTeams.length > 0 && (
                   <div>
-                    <span className="mb-1.5 block text-xs font-black uppercase tracking-wider text-stone-400 dark:text-stone-500">
-                      Playing with one of your teams? 🛡️
-                    </span>
-                    <div className="flex flex-wrap gap-1.5">
-                      <button
-                        onClick={() => pickTeam("")}
-                        className={`rounded-full px-3.5 py-2 text-xs font-black transition ${
-                          selectedTeam === ""
-                            ? "bg-stone-800 text-white dark:bg-white dark:text-stone-900"
-                            : "border border-stone-200 bg-white text-stone-600 dark:border-white/10 dark:bg-white/5 dark:text-stone-300"
-                        }`}
-                      >
-                        Just friends
-                      </button>
-                      {userTeams.map((t) => (
-                        <button
-                          key={t.id}
-                          onClick={() => pickTeam(String(t.id))}
-                          className={`flex items-center gap-1.5 rounded-full px-3.5 py-2 text-xs font-black transition ${
-                            selectedTeam === String(t.id)
-                              ? "bg-orange-500 text-white shadow-md"
-                              : "border border-stone-200 bg-white text-stone-600 dark:border-white/10 dark:bg-white/5 dark:text-stone-300"
-                          }`}
-                        >
-                          <span
-                            className="grid h-4 w-4 place-items-center rounded-full text-[8px] font-black text-white"
-                            style={{ background: t.logoColor }}
-                          >
-                            <Shield className="h-2.5 w-2.5" />
-                          </span>
-                          {t.name} ({t.memberCount})
-                        </button>
-                      ))}
-                    </div>
+                    <TeamPicker
+                      teams={userTeams}
+                      selected={selectedTeam}
+                      onPick={pickTeam}
+                      idleLabel="Just friends"
+                      accent="orange"
+                      title="Playing with one of your teams? 🛡️"
+                    />
                     {selectedTeam && (
                       <p className="mt-1.5 text-[11px] font-bold text-orange-600 dark:text-orange-400">
                         Crew size synced to your team — tweak it below if not everyone&apos;s coming. 👇
@@ -1345,6 +1376,10 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
                 k="Game type"
                 v={visibility === "public" ? `🌍 Open • 👥${ourCrew} + 🙋${openSpots}` : "🔒 Just our gang"}
               />
+              <Row
+                k="Squad"
+                v={selectedTeamName ? `🛡️ ${selectedTeamName}` : "🙋 Individual booking"}
+              />
               {visibility === "public" && (
                 <Row k="Welcome" v={matchLevelString} />
               )}
@@ -1676,6 +1711,15 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
                 🎟️ {success.promoCode} saved you {formatNPR(success.saved)}
               </p>
             )}
+            {success.teamName ? (
+              <p className="mx-auto mt-2 inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-black text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300">
+                <Shield className="h-3.5 w-3.5" /> Booked for {success.teamName}
+              </p>
+            ) : (
+              <p className="mt-1 text-[11px] text-stone-400 dark:text-stone-500">
+                🙋 Individual booking — no squad attached
+              </p>
+            )}
             <p className="mt-1 text-[11px] text-stone-400 dark:text-stone-500">Booking ref: #FN-{success.id}</p>
             <p className="mx-auto mt-3 max-w-[280px] rounded-xl bg-amber-50 px-3 py-2.5 text-xs font-bold leading-relaxed text-amber-700 dark:bg-amber-500/10 dark:text-amber-300">
               ⏳ The lovely folks at the venue are reviewing it — we&apos;ll
@@ -1712,6 +1756,83 @@ function Row({ k, v }: { k: string; v: string }) {
     <div className="flex items-center justify-between gap-3">
       <span className="text-[13px] font-semibold text-stone-400 dark:text-stone-500">{k}</span>
       <span className="truncate text-[13px] font-extrabold text-stone-900 dark:text-stone-100">{v}</span>
+    </div>
+  );
+}
+
+/**
+ * Squad chips, shared by both game types: "Just our gang" books the court for a
+ * team the player belongs to, and "Invite everyone" uses the same list to sync
+ * the crew size to the real squad.
+ *
+ * `idleLabel` is the no-team chip — "Just me" for a private game, "Just friends"
+ * for an open invite. Callers only render this when `teams` is non-empty; a
+ * player in no team gets the individual-booking fallback instead, because an
+ * empty picker with one dead chip is worse than no picker at all.
+ */
+function TeamPicker({
+  teams,
+  selected,
+  onPick,
+  idleLabel,
+  accent,
+  title,
+}: {
+  teams: UserTeam[];
+  selected: string;
+  onPick: (teamId: string) => void;
+  idleLabel: string;
+  accent: "emerald" | "orange";
+  title: string;
+}) {
+  const activeChip =
+    accent === "emerald"
+      ? "bg-emerald-600 text-white shadow-md"
+      : "bg-orange-500 text-white shadow-md";
+  return (
+    <div>
+      <span className="mb-1.5 block text-xs font-black uppercase tracking-wider text-stone-400 dark:text-stone-500">
+        {title}
+      </span>
+      <div className="flex flex-wrap gap-1.5">
+        <button
+          type="button"
+          onClick={() => onPick("")}
+          className={`rounded-full px-3.5 py-2 text-xs font-black transition ${
+            selected === ""
+              ? "bg-stone-800 text-white dark:bg-white dark:text-stone-900"
+              : "border border-stone-200 bg-white text-stone-600 dark:border-white/10 dark:bg-white/5 dark:text-stone-300"
+          }`}
+        >
+          {idleLabel}
+        </button>
+        {teams.map((t) => (
+          <button
+            type="button"
+            key={t.id}
+            onClick={() => onPick(String(t.id))}
+            title={
+              t.role === "captain"
+                ? `You captain ${t.name}`
+                : `${t.memberCount} players • ${t.level ?? "All Levels"}`
+            }
+            className={`flex items-center gap-1.5 rounded-full px-3.5 py-2 text-xs font-black transition ${
+              selected === String(t.id)
+                ? activeChip
+                : "border border-stone-200 bg-white text-stone-600 dark:border-white/10 dark:bg-white/5 dark:text-stone-300"
+            }`}
+          >
+            <span
+              className="grid h-4 w-4 place-items-center rounded-full text-[8px] font-black text-white"
+              style={{ background: t.logoColor }}
+            >
+              <Shield className="h-2.5 w-2.5" />
+            </span>
+            {t.name} ({t.memberCount})
+            {t.role === "captain" && <span aria-hidden>★</span>}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }
