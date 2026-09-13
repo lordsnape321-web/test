@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Inbox, Check, X, Phone, Globe, Lock, Wallet, ReceiptText, Gift } from "lucide-react";
+import { Inbox, Check, X, Phone, Globe, Lock, Wallet, ReceiptText, Gift, Ticket } from "lucide-react";
 import { useUser } from "@/components/UserProvider";
 import { OwnerGuard } from "@/components/OwnerGuard";
 import { ReceiptViewer } from "@/components/ReceiptUploader";
@@ -28,6 +28,9 @@ type Booking = {
   openSpots: number;
   receiptUrl: string;
   isFreePlay: boolean;
+  promoCode: string;
+  discountAmount: number;
+  priceBeforeDiscount: number;
   depositRequired: boolean;
   depositAmount: number;
   depositStatus: string;
@@ -193,6 +196,11 @@ export default function OwnerRequestsPage() {
                         <Gift className="h-3 w-3" /> FREE HOUR 🎁
                       </span>
                     )}
+                    {b.promoCode && b.discountAmount > 0 && (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-black text-emerald-700 dark:text-emerald-300">
+                        <Ticket className="h-3 w-3" /> {b.promoCode} −{formatNPR(b.discountAmount)}
+                      </span>
+                    )}
                     {b.depositRequired && (
                       <span
                         className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-black ${
@@ -242,7 +250,14 @@ export default function OwnerRequestsPage() {
                   </div>
                 </div>
                 <div className="flex shrink-0 items-center gap-3 sm:flex-col sm:items-end">
-                  <p className="text-xl font-black">{formatNPR(b.totalPrice)}</p>
+                  <p className="text-right text-xl font-black">
+                    {b.discountAmount > 0 && b.priceBeforeDiscount > b.totalPrice && (
+                      <span className="mr-1.5 text-xs font-bold text-slate-400 line-through dark:text-slate-500">
+                        {formatNPR(b.priceBeforeDiscount)}
+                      </span>
+                    )}
+                    {formatNPR(b.totalPrice)}
+                  </p>
                   {tab === "pending" ? (
                     <div className="flex gap-2">
                       <button

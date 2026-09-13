@@ -20,11 +20,13 @@ import {
   Plus,
   Shield,
   ShieldAlert,
+  Ticket,
 } from "lucide-react";
 import { useUser } from "@/components/UserProvider";
 import { ReceiptUploader, isOnlineMethod } from "@/components/ReceiptUploader";
 import { ReviewsSection } from "@/components/Reviews";
 import { validateTitle, validatePhone, validateNotes, validateCustomPrice, firstError } from "@/lib/validation";
+import { normalizePromoCode } from "@/lib/promos";
 import { depositDecision, depositAmountFor, parsePayments, ONLINE_PAYMENTS, TRUST_START, type PlayerStats } from "@/lib/loyalty";
 import {
   formatNPR,
@@ -75,6 +77,27 @@ type UserTeam = {
   logoColor: string;
 };
 
+/** A code the venue advertises right now (tap to apply). */
+type PromoAd = {
+  id: number;
+  code: string;
+  title: string;
+  summary: string;
+  expiryLabel: string;
+  expiresAt: string;
+  minBookingAmount: number;
+};
+
+/** A code the server accepted for the current bill. */
+type AppliedPromo = {
+  id: number;
+  code: string;
+  title: string;
+  summary: string;
+  discount: number;
+  expiryLabel: string;
+};
+
 const PAY_METHODS = ["eSewa", "Khalti", "Cash at Venue"];
 const LEVEL_OPTIONS = [
   { name: "Beginner", emoji: "🌱", hint: "Just for fun" },
@@ -110,11 +133,16 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
   const [selectedTeam, setSelectedTeam] = useState("");
   const [booking, setBooking] = useState(false);
   const [payRedirect, setPayRedirect] = useState(false);
-  const [success, setSuccess] = useState<null | { id: number; total: number; isPublic: boolean; freePlay: boolean }>(null);
+  const [success, setSuccess] = useState<null | { id: number; total: number; isPublic: boolean; freePlay: boolean; saved: number; promoCode: string }>(null);
   const [error, setError] = useState("");
   const [myVouchers, setMyVouchers] = useState<Array<{ id: number; code: string; status: string }>>([]);
   const [loyalty, setLoyalty] = useState<{ count: number; target: number; remaining: number } | null>(null);
   const [useFreePlay, setUseFreePlay] = useState(false);
+  const [venuePromos, setVenuePromos] = useState<PromoAd[]>([]);
+  const [promoCode, setPromoCode] = useState("");
+  const [appliedPromo, setAppliedPromo] = useState<AppliedPromo | null>(null);
+  const [promoError, setPromoError] = useState("");
+  const [promoChecking, setPromoChecking] = useState(false);
   const [myVenueBookings, setMyVenueBookings] = useState<Array<{ id: number; label: string }>>([]);
   const [myStats, setMyStats] = useState<PlayerStats | null>(null);
   const [myTrust, setMyTrust] = useState(TRUST_START);
@@ -128,6 +156,23 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
         if (data.venue?.courts?.length > 0) setCourtId(data.venue.courts[0].id);
       } finally {
         setLoading(false);
+      }
+    })();
+  }, [id]);
+
+  // Codes this venue is advertising — hidden ones stay unlisted but still work.
+  useEffect(() => {
+    (async () => {
+      // Different venue -> drop any code carried over from the last one.
+      setAppliedPromo(null);
+      setPromoCode("");
+      setPromoError("");
+      try {
+        const res = await fetch(`/api/promos?venueId=${id}`);
+        const data = await res.json().catch(() => ({}));
+        setVenuePromos(data.promos ?? []);
+      } catch {
+        setVenuePromos([]);
       }
     })();
   }, [id]);
@@ -298,7 +343,60 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
 
   const fullTotal = rate * hours;
   const freePlayActive = useFreePlay && myVouchers.length > 0 && hours >= 1;
-  const total = freePlayActive ? Math.max(0, fullTotal - rate) : fullTotal;
+  // Loyalty free hour first, then the owner's promo code takes its cut.
+  const afterFreePlay = freePlayActive ? Math.max(0, fullTotal - rate) : fullTotal;
+  const promoDiscount = appliedPromo?.discount ?? 0;
+  const total = Math.max(0, afterFreePlay - promoDiscount);
+
+  /** Ask the server whether this code works on the current bill (never trust local maths). */
+  async function applyPromoCode(raw?: string) {
+    const code = normalizePromoCode(raw ?? promoCode);
+    if (!venue || !code) {
+      setPromoError("Type a promo code first 🎟️");
+      return;
+    }
+    if (afterFreePlay <= 0) {
+      setAppliedPromo(null);
+      setPromoError("Your FREE hour already covers this game — nothing left to discount 🎁");
+      return;
+    }
+    setPromoChecking(true);
+    setPromoError("");
+    try {
+      const qs = new URLSearchParams({
+        venueId: String(venue.id),
+        code,
+        amount: String(Math.round(afterFreePlay)),
+      });
+      if (user) qs.set("userId", String(user.id));
+      const res = await fetch(`/api/promos?${qs.toString()}`);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.valid) throw new Error(data.error || `"${code}" didn't work 🎟️`);
+      setAppliedPromo({
+        id: data.promo.id,
+        code: data.promo.code,
+        title: data.promo.title ?? "",
+        summary: data.promo.summary ?? "",
+        discount: Number(data.discount) || 0,
+        expiryLabel: data.promo.expiryLabel ?? "",
+      });
+      setPromoCode(data.promo.code);
+    } catch (e) {
+      setAppliedPromo(null);
+      setPromoError(e instanceof Error ? e.message : "Couldn't check that code 🙏");
+    } finally {
+      setPromoChecking(false);
+    }
+  }
+
+  // Court / slot / hours / free-hour changed -> the bill changed, so re-check the code.
+  const promoBillKey = `${venue?.id ?? 0}|${afterFreePlay}|${user?.id ?? 0}`;
+  useEffect(() => {
+    if (!appliedPromo) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- the bill changed, so the applied code must be re-checked (and cleared if it no longer fits)
+    void applyPromoCode(appliedPromo.code);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [promoBillKey]);
   const availableMethods = useMemo(
     () => parsePayments(venue?.acceptedPayments),
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -411,10 +509,11 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
           startTime: slot,
           endTime: addHours(slot, hours),
           durationHours: hours,
-          paymentMethod: freePlayActive && total === 0 ? "Free Play 🎁" : payMethod,
+          paymentMethod: total === 0 ? "Free Play 🎁" : payMethod,
           paymentStatus: "pending",
-          receiptUrl: isOnlineMethod(payMethod) && !(freePlayActive && total === 0) ? receipt : "",
+          receiptUrl: isOnlineMethod(payMethod) && total > 0 ? receipt : "",
           useFreePlay: freePlayActive,
+          promoCode: appliedPromo?.code ?? "",
           bookerName: user.name,
           bookerPhone: phone,
           notes,
@@ -479,9 +578,14 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
         total: created.totalPrice,
         isPublic: visibility === "public",
         freePlay: !!data.freePlayUsed,
+        saved: Number(created.discountAmount) || 0,
+        promoCode: String(created.promoCode ?? ""),
       });
       setReceipt("");
       setUseFreePlay(false);
+      setAppliedPromo(null);
+      setPromoCode("");
+      setPromoError("");
       loadAvailability();
       if (user) loadLoyalty(user.id);
     } catch (e) {
@@ -1283,17 +1387,106 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
                   </span>
                 </button>
               )}
+              {/* Promo code 🎟️ — owner-set discount with an expiry date */}
+              {afterFreePlay > 0 && (
+                <div className="rounded-2xl border border-dashed border-emerald-300 bg-emerald-50/50 p-3 dark:border-emerald-500/40 dark:bg-emerald-500/5">
+                  <p className="flex items-center gap-1.5 text-[11px] font-black uppercase tracking-wider text-stone-400 dark:text-stone-500">
+                    <Ticket className="h-3.5 w-3.5" /> Promo code
+                  </p>
+                  {venuePromos.length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {venuePromos.map((pr) => (
+                        <button
+                          key={pr.id}
+                          type="button"
+                          onClick={() => {
+                            setPromoCode(pr.code);
+                            void applyPromoCode(pr.code);
+                          }}
+                          className={`rounded-full border px-2.5 py-1.5 text-[11px] font-black transition ${
+                            appliedPromo?.code === pr.code
+                              ? "border-emerald-600 bg-emerald-600 text-white"
+                              : "border-emerald-300 bg-white text-emerald-700 hover:bg-emerald-100 dark:border-emerald-500/40 dark:bg-transparent dark:text-emerald-300"
+                          }`}
+                        >
+                          🎟️ {pr.code} • {pr.summary}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {appliedPromo ? (
+                    <div className="mt-2 flex items-center gap-2 rounded-xl bg-emerald-600 px-3 py-2.5 text-white shadow">
+                      <span className="min-w-0 flex-1">
+                        <span className="block font-mono text-[13px] font-black">{appliedPromo.code} ✓</span>
+                        <span className="block text-[11px] font-bold text-emerald-100">
+                          −{formatNPR(appliedPromo.discount)} on this bill • {appliedPromo.expiryLabel}
+                        </span>
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAppliedPromo(null);
+                          setPromoCode("");
+                          setPromoError("");
+                        }}
+                        className="shrink-0 rounded-lg bg-white/20 px-2.5 py-1.5 text-[11px] font-black transition hover:bg-white/30"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="mt-2 flex gap-2">
+                      <input
+                        value={promoCode}
+                        onChange={(e) => {
+                          setPromoCode(normalizePromoCode(e.target.value));
+                          setPromoError("");
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            void applyPromoCode();
+                          }
+                        }}
+                        placeholder="e.g. SAVE10"
+                        maxLength={24}
+                        autoCapitalize="characters"
+                        spellCheck={false}
+                        className="min-w-0 flex-1 rounded-xl border border-emerald-200 bg-white px-3 py-2.5 font-mono text-sm font-black uppercase tracking-wider text-stone-900 placeholder:font-sans placeholder:font-semibold placeholder:normal-case placeholder:tracking-normal placeholder:text-stone-400 focus:border-emerald-500 focus:outline-none dark:border-emerald-500/30 dark:bg-stone-950 dark:text-stone-100"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => void applyPromoCode()}
+                        disabled={promoChecking || !promoCode.trim()}
+                        className="shrink-0 rounded-xl bg-emerald-600 px-4 py-2.5 text-xs font-black text-white transition hover:bg-emerald-700 disabled:opacity-40"
+                      >
+                        {promoChecking ? "…" : "Apply"}
+                      </button>
+                    </div>
+                  )}
+                  {promoError ? (
+                    <p className="mt-1.5 text-[11px] font-bold text-red-500">{promoError}</p>
+                  ) : (
+                    venuePromos.length === 0 &&
+                    !appliedPromo && (
+                      <p className="mt-1.5 text-[11px] text-stone-400">
+                        Got a code from {venue?.name ?? "the venue"}? Type it in and we&apos;ll check it 💚
+                      </p>
+                    )
+                  )}
+                </div>
+              )}
               <div className="border-t border-dashed border-stone-200 pt-3 dark:border-white/10">
                 <div className="flex items-center justify-between">
                   <span className="font-bold text-stone-500 dark:text-stone-400">Total</span>
                   <span className="text-right">
-                    {freePlayActive && (
+                    {total < fullTotal && (
                       <span className="mr-2 text-sm font-bold text-stone-400 line-through">
                         {formatNPR(fullTotal)}
                       </span>
                     )}
                     <span className="text-2xl font-black text-emerald-700 dark:text-emerald-300">
-                      {slot ? (freePlayActive && total === 0 ? "FREE 🎉" : formatNPR(total)) : formatNPR(0)}
+                      {slot ? (total === 0 ? "FREE 🎉" : formatNPR(total)) : formatNPR(0)}
                     </span>
                   </span>
                 </div>
@@ -1302,8 +1495,13 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
                     🎁 1 free hour applied ({myVouchers[0]?.code})
                   </p>
                 )}
+                {promoDiscount > 0 && appliedPromo && (
+                  <p className="mt-1 text-right text-[11px] font-black text-emerald-600 dark:text-emerald-300">
+                    🎟️ {appliedPromo.code} — you save {formatNPR(promoDiscount)}
+                  </p>
+                )}
               </div>
-              {!(freePlayActive && total === 0) ? (
+              {total > 0 ? (
                 <>
                   <div>
                     <p className="mb-2 text-xs font-black uppercase tracking-wider text-stone-400 dark:text-stone-500">
@@ -1366,7 +1564,11 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
                 </>
               ) : (
                 <p className="rounded-xl bg-violet-500/10 px-3.5 py-2.5 text-center text-xs font-black text-violet-700 dark:text-violet-300">
-                  🎁 Fully covered by your FREE hour — no payment needed!
+                  {freePlayActive && promoDiscount > 0
+                    ? "🎁 Free hour + 🎟️ promo — nothing left to pay!"
+                    : promoDiscount > 0
+                      ? `🎟️ ${appliedPromo?.code ?? "Promo"} covers the whole bill — nothing to pay!`
+                      : "🎁 Fully covered by your FREE hour — no payment needed!"}
                 </p>
               )}
               <label className="block">
@@ -1436,9 +1638,9 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
                       ? "Pick a time first ☝️"
                       : !rangeValid
                         ? "Pick a fully free block 🙏"
-                        : payMethod === "eSewa" && !(freePlayActive && total === 0)
+                        : payMethod === "eSewa" && total > 0
                           ? `Request + Pay ${formatNPR(depositPreview.required ? depositPreview.amount : total)} via eSewa 💚`
-                          : payMethod === "Khalti" && !(freePlayActive && total === 0)
+                          : payMethod === "Khalti" && total > 0
                             ? `Request + Pay ${formatNPR(depositPreview.required ? depositPreview.amount : total)} via Khalti 💜`
                             : `Request ${hours} hr • ${formatNPR(total)}`}
                 </button>
@@ -1463,10 +1665,17 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
               {court?.name} • {prettyDate(date)} • {slot ? `${formatTime12(slot)} (${hours} hr)` : ""}
             </p>
             <p className="mt-1 text-sm font-bold text-emerald-700 dark:text-emerald-300">
-              {success.freePlay && success.total === 0
-                ? "FREE with your loyalty hour! 🎁"
+              {success.total === 0
+                ? success.freePlay
+                  ? "FREE with your loyalty hour! 🎁"
+                  : "FREE with your promo code! 🎟️"
                 : `${formatNPR(success.total)} via ${success.freePlay ? `${payMethod} (1hr free 🎁)` : payMethod}`}
             </p>
+            {success.saved > 0 && (
+              <p className="mx-auto mt-2 inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-black text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300">
+                🎟️ {success.promoCode} saved you {formatNPR(success.saved)}
+              </p>
+            )}
             <p className="mt-1 text-[11px] text-stone-400 dark:text-stone-500">Booking ref: #FN-{success.id}</p>
             <p className="mx-auto mt-3 max-w-[280px] rounded-xl bg-amber-50 px-3 py-2.5 text-xs font-bold leading-relaxed text-amber-700 dark:bg-amber-500/10 dark:text-amber-300">
               ⏳ The lovely folks at the venue are reviewing it — we&apos;ll

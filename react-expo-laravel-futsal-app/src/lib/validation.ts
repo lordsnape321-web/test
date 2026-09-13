@@ -1,3 +1,17 @@
+import { formatNPR } from "./futsal";
+import {
+  PROMO_CODE_MAX,
+  PROMO_CODE_MIN,
+  PROMO_DISCOUNT_TYPES,
+  PROMO_MAX_CAP,
+  PROMO_MAX_DAYS_AHEAD,
+  PROMO_MAX_FLAT,
+  PROMO_MAX_PERCENT,
+  isValidDateISO,
+  normalizePromoCode,
+  promoDateISO,
+} from "./promos";
+
 export type FieldError = string | null;
 
 export function isBlank(v: unknown) {
@@ -262,6 +276,92 @@ export function validateDepositPercent(p: unknown): FieldError {
   if (v < 0) return "Deposit % can't be negative 🙂";
   if (v > 100) return "Deposit % can't be more than 100 🛡️";
   if (v > 0 && v < 10) return "Deposit must be 0 (off) or at least 10% 🛡️";
+  return null;
+}
+
+/* ----------------------------- Promo codes 🎟️ ----------------------------- */
+
+export function validatePromoCode(code: unknown): FieldError {
+  const raw = String(code ?? "").trim();
+  if (!raw) return "Promo code is required 🎟️";
+  const t = normalizePromoCode(raw);
+  if (t.length < PROMO_CODE_MIN) return `Promo code needs at least ${PROMO_CODE_MIN} characters 🎟️`;
+  if (t.length > PROMO_CODE_MAX) return `Promo code is too long (max ${PROMO_CODE_MAX} characters) 🎟️`;
+  if (!/^[A-Z0-9-]+$/.test(t)) return "Promo code can only have letters, numbers and dashes 🎟️";
+  if (!/^[A-Z0-9]/.test(t) || !/[A-Z0-9]$/.test(t))
+    return "Promo code should start and end with a letter or number 🎟️";
+  if (/^-{2,}/.test(t) || /\d{8,}/.test(t)) return "That promo code is a bit odd — keep it simple 🎟️";
+  const reserved = ["FREE", "FREEPLAY", "PROMO", "DISCOUNT", "ADMIN", "NULL"];
+  if (reserved.includes(t)) return `"${t}" is reserved — pick something more specific 🎟️`;
+  return null;
+}
+
+export function validatePromoTitle(title: unknown): FieldError {
+  return validateTitle(String(title ?? ""), { min: 3, max: 60, label: "Promo name" });
+}
+
+export function validateDiscountType(type: unknown): FieldError {
+  if (!PROMO_DISCOUNT_TYPES.includes(String(type))) return "Pick percent or flat discount 🎟️";
+  return null;
+}
+
+export function validateDiscountValue(value: unknown, type: unknown): FieldError {
+  const kind = String(type) === "flat" ? "flat" : "percent";
+  if (value === "" || value === undefined || value === null)
+    return kind === "flat" ? "How many rupees off? 💸" : "What % off? 💸";
+  const v = Number(value);
+  if (!Number.isFinite(v) || !Number.isInteger(v)) return "Discount must be a whole number 💸";
+  if (v <= 0) return "Discount must be more than 0 — otherwise it's not a discount 🙂";
+  if (kind === "percent") {
+    if (v > PROMO_MAX_PERCENT) return `Percent off can't be more than ${PROMO_MAX_PERCENT} 💸`;
+    return null;
+  }
+  if (v > PROMO_MAX_FLAT) return `Flat discount is too big (max ${formatNPR(PROMO_MAX_FLAT)}) 💸`;
+  return null;
+}
+
+/** 0 = no cap. Percent codes only. */
+export function validateMaxDiscount(value: unknown): FieldError {
+  if (value === "" || value === undefined || value === null) return null;
+  const v = Number(value);
+  if (!Number.isFinite(v) || !Number.isInteger(v)) return "Discount cap must be a whole number 🧢";
+  if (v < 0) return "Discount cap can't be negative 🧢";
+  if (v > PROMO_MAX_CAP) return `Discount cap is too big (max ${formatNPR(PROMO_MAX_CAP)}) 🧢`;
+  return null;
+}
+
+export function validateMinBookingAmount(value: unknown): FieldError {
+  if (value === "" || value === undefined || value === null) return null;
+  const v = Number(value);
+  if (!Number.isFinite(v) || !Number.isInteger(v)) return "Minimum booking must be a whole number 💰";
+  if (v < 0) return "Minimum booking can't be negative 💰";
+  if (v > PROMO_MAX_CAP) return `Minimum booking is too big (max ${formatNPR(PROMO_MAX_CAP)}) 💰`;
+  return null;
+}
+
+/** 0 = unlimited. */
+export function validateUsageLimit(value: unknown, label = "Usage limit"): FieldError {
+  if (value === "" || value === undefined || value === null) return null;
+  const v = Number(value);
+  if (!Number.isFinite(v) || !Number.isInteger(v)) return `${label} must be a whole number 🔢`;
+  if (v < 0) return `${label} can't be negative (0 = unlimited) 🔢`;
+  if (v > 100000) return `${label} is too big (max 100,000) 🔢`;
+  return null;
+}
+
+export function validatePromoWindow(startsAt: unknown, expiresAt: unknown): FieldError {
+  const start = String(startsAt ?? "").trim();
+  const end = String(expiresAt ?? "").trim();
+  if (!end) return "Expiry date is required — when does this code stop working? 📅";
+  if (!isValidDateISO(end)) return "Expiry date looks wrong (use YYYY-MM-DD) 📅";
+  if (start && !isValidDateISO(start)) return "Start date looks wrong (use YYYY-MM-DD) 📅";
+  if (start && start > end) return "Start date must be on or before the expiry date 📅";
+  const today = promoDateISO();
+  if (end < today) return "Expiry date can't be in the past — nobody could use it 📅";
+  const far = new Date();
+  far.setDate(far.getDate() + PROMO_MAX_DAYS_AHEAD);
+  if (new Date(`${end}T00:00:00`) > far)
+    return `Expiry is too far ahead (max ${PROMO_MAX_DAYS_AHEAD} days) 📅`;
   return null;
 }
 

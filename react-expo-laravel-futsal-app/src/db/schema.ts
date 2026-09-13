@@ -80,6 +80,11 @@ export const bookings = pgTable("bookings", {
   receiptUrl: text("receipt_url").notNull().default(""),
   isFreePlay: boolean("is_free_play").notNull().default(false),
   voucherId: integer("voucher_id"),
+  // Promo code applied by the player (owner-created, see `promos`).
+  promoId: integer("promo_id"),
+  promoCode: text("promo_code").notNull().default(""),
+  priceBeforeDiscount: integer("price_before_discount").notNull().default(0),
+  discountAmount: integer("discount_amount").notNull().default(0),
   chargeMode: text("charge_mode").notNull().default("split"),
   customPricePerPlayer: integer("custom_price_per_player").notNull().default(0),
   depositRequired: boolean("deposit_required").notNull().default(false),
@@ -167,6 +172,27 @@ export const vouchers = pgTable("vouchers", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+// Promo codes: venue owners hand out discounts with an expiry date.
+// Percent ("15% off, capped at Rs. 500") or flat ("Rs. 300 off"), optionally
+// hidden from the public list, with total + per-player redemption limits.
+export const promos = pgTable("promos", {
+  id: serial("id").primaryKey(),
+  venueId: integer("venue_id").notNull(),
+  code: text("code").notNull(),
+  title: text("title").notNull().default(""),
+  discountType: text("discount_type").notNull().default("percent"),
+  discountValue: integer("discount_value").notNull().default(10),
+  maxDiscount: integer("max_discount").notNull().default(0),
+  minBookingAmount: integer("min_booking_amount").notNull().default(0),
+  startsAt: text("starts_at"),
+  expiresAt: text("expires_at").notNull(),
+  usageLimit: integer("usage_limit").notNull().default(0),
+  perUserLimit: integer("per_user_limit").notNull().default(1),
+  isPublic: boolean("is_public").notNull().default(true),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 // Player reviews: rating + message after playing. Visible to everyone + owner.
 export const reviews = pgTable("reviews", {
   id: serial("id").primaryKey(),
@@ -186,4 +212,5 @@ export type Team = typeof teams.$inferSelect;
 export type OpenMatch = typeof openMatches.$inferSelect;
 export type Notification = typeof notifications.$inferSelect;
 export type Voucher = typeof vouchers.$inferSelect;
+export type Promo = typeof promos.$inferSelect;
 export type Review = typeof reviews.$inferSelect;

@@ -1,7 +1,9 @@
 import { db } from "@/db";
-import { bookings, courts, venues, users, openMatches, matchJoins, vouchers } from "@/db/schema";
+import { bookings, courts, venues, users, openMatches, matchJoins, vouchers, promos } from "@/db/schema";
 import { formatNPR, prettyDate, formatTime12, rangesOverlap, addHours } from "@/lib/futsal";
 import { playerRating, CANCEL_LIMIT_PER_MONTH, depositDecision, depositAmountFor, parsePayments, ONLINE_PAYMENTS, TRUST_START } from "@/lib/loyalty";
+import { checkPromo, normalizePromoCode } from "@/lib/promos";
+import { promoUsage } from "@/lib/promo-store";
 import { validateTitle, validateNotes, validatePhone, validateCrew, validateTotalPlayers, validateDateISO, validateTimeHM, validateHours, validateCustomPrice, firstError } from "@/lib/validation";
 import { sendNotification } from "@/lib/notify";
 import { eq, and, desc } from "drizzle-orm";
@@ -245,11 +247,51 @@ export async function POST(req: Request) {
     }
 
     const fullPrice = rate * hours;
-    const totalPrice = useFreePlay ? Math.max(0, fullPrice - rate) : fullPrice;
+    const priceAfterVoucher = useFreePlay ? Math.max(0, fullPrice - rate) : fullPrice;
 
-    // Payment method must be one the venue accepts (free-play covers all = no payment needed).
+    // Promo code 🎟️ — owner-created discount with an expiry date and usage limits.
+    // It applies to what's left after any loyalty free hour, and is re-checked here
+    // (never trusting the client's maths) right before the booking is written.
+    let promoId: number | null = null;
+    let promoCode = "";
+    let discountAmount = 0;
+    let promoMessage = "";
+    const wantedCode = normalizePromoCode(body.promoCode);
+    if (wantedCode) {
+      if (!venue) return Response.json({ error: "Venue not found 📍" }, { status: 404 });
+      if (priceAfterVoucher <= 0)
+        return Response.json(
+          { error: "Your FREE hour already covers this game — no promo code needed 🎁", promoError: "nothing_to_discount" },
+          { status: 400 }
+        );
+      const venuePromos = await db.select().from(promos).where(eq(promos.venueId, venue.id));
+      const found = venuePromos.find((p) => p.code === wantedCode) ?? null;
+      const promoUsed = found ? await promoUsage([found.id]) : new Map();
+      const usedSoFar = found ? promoUsed.get(found.id) : undefined;
+      const check = checkPromo({
+        promo: found,
+        code: wantedCode,
+        venueName: venue.name,
+        subtotal: priceAfterVoucher,
+        usedCount: usedSoFar?.used ?? 0,
+        userUsedCount: usedSoFar?.byUser.get(Number(userId)) ?? 0,
+      });
+      if (!check.ok || !found)
+        return Response.json(
+          { error: check.ok ? "That promo code isn't available right now 🎟️" : check.error, promoError: check.ok ? "unavailable" : check.reason },
+          { status: 400 }
+        );
+      promoId = found.id;
+      promoCode = found.code;
+      discountAmount = check.discount;
+      promoMessage = check.message;
+    }
+
+    const totalPrice = Math.max(0, priceAfterVoucher - discountAmount);
+
+    // Payment method must be one the venue accepts (nothing left to pay = no payment needed).
     let payMethod = String(body.paymentMethod ?? venuePayments[0] ?? "eSewa");
-    const isFreeCovered = useFreePlay && totalPrice === 0;
+    const isFreeCovered = totalPrice === 0;
     if (isFreeCovered) {
       payMethod = "Free Play 🎁";
     } else if (!venuePayments.includes(payMethod)) {
@@ -307,6 +349,10 @@ export async function POST(req: Request) {
         receiptUrl: String(body.receiptUrl ?? "").slice(0, 2000000),
         isFreePlay: useFreePlay,
         voucherId,
+        promoId,
+        promoCode,
+        priceBeforeDiscount: priceAfterVoucher,
+        discountAmount,
         chargeMode: visibility === "public" ? chargeMode : "split",
         customPricePerPlayer: visibility === "public" && chargeMode === "custom" ? customPrice : 0,
         depositRequired,
@@ -329,9 +375,24 @@ export async function POST(req: Request) {
         userId: venue.ownerId,
         type: "booking_request",
         title: `📩 New booking request — ${venue.name}`,
-        message: `${booking.bookerName || "A player"} (${stats.emoji} ${stats.rating}★ ${stats.label}, trust ${bookerTrust}/100) requested ${court?.name ?? "a court"} on ${prettyDate(booking.date)} at ${formatTime12(booking.startTime)} (${hours} hr, ${formatNPR(booking.totalPrice)}${useFreePlay ? `, 🎁 FREE HOUR ${voucherCode}` : ""}${depositRequired ? `, 🛡️ ${depDecision.percent}% deposit ${formatNPR(depositAmount)} due via test gateway (non-refundable)` : ""}). Tap to accept or decline.`,
+        message: `${booking.bookerName || "A player"} (${stats.emoji} ${stats.rating}★ ${stats.label}, trust ${bookerTrust}/100) requested ${court?.name ?? "a court"} on ${prettyDate(booking.date)} at ${formatTime12(booking.startTime)} (${hours} hr, ${formatNPR(booking.totalPrice)}${useFreePlay ? `, 🎁 FREE HOUR ${voucherCode}` : ""}${promoId ? `, 🎟️ ${promoCode} −${formatNPR(discountAmount)} (was ${formatNPR(priceAfterVoucher)})` : ""}${depositRequired ? `, 🛡️ ${depDecision.percent}% deposit ${formatNPR(depositAmount)} due via test gateway (non-refundable)` : ""}). Tap to accept or decline.`,
         link: "/admin/requests",
       });
+      // Heads-up when this redemption fills the code's cap.
+      if (promoId) {
+        const promoRows = await db.select().from(promos).where(eq(promos.id, promoId));
+        const limit = Math.max(0, Number(promoRows[0]?.usageLimit ?? 0));
+        const usedNow = (await promoUsage([promoId])).get(promoId)?.used ?? 0;
+        if (limit > 0 && usedNow >= limit) {
+          await sendNotification({
+            userId: venue.ownerId,
+            type: "promo",
+            title: `🏁 ${promoCode} is fully redeemed`,
+            message: `Your promo ${promoCode} at ${venue.name} just hit its ${limit}-booking cap, so players can't use it any more. ${formatNPR(booking.discountAmount)} off this one. Extend the limit or launch a fresh code from My Venues → Promos 🎟️`,
+            link: "/admin/venues",
+          });
+        }
+      }
     }
     if (depositRequired) {
       await sendNotification({
@@ -381,7 +442,20 @@ export async function POST(req: Request) {
       });
     }
 
-    return Response.json({ booking, match, freePlayUsed: useFreePlay, depositRequired, depositAmount, depositPercent: depDecision.percent }, { status: 201 });
+    return Response.json(
+      {
+        booking,
+        match,
+        freePlayUsed: useFreePlay,
+        depositRequired,
+        depositAmount,
+        depositPercent: depDecision.percent,
+        promo: promoId
+          ? { id: promoId, code: promoCode, discount: discountAmount, message: promoMessage }
+          : null,
+      },
+      { status: 201 }
+    );
   } catch (e) {
     return Response.json({ error: String(e) }, { status: 500 });
   }

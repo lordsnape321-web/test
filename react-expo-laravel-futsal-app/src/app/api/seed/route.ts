@@ -9,6 +9,7 @@ import {
   openMatches,
   matchJoins,
   reviews,
+  promos,
 } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { VENUE_IMAGES } from "@/lib/futsal";
@@ -20,6 +21,124 @@ function d(offset: number) {
   const dt = new Date();
   dt.setDate(dt.getDate() + offset);
   return dt.toISOString().slice(0, 10);
+}
+
+/**
+ * Demo promo codes for the seeded venues. `venueId` resolves a venue name to an
+ * id, so the same list works for a fresh seed and for backfilling an old one.
+ */
+function demoPromos(
+  venueId: (name: string) => number | null
+): Array<typeof promos.$inferInsert> {
+  type PromoSeed = Omit<typeof promos.$inferInsert, "venueId">;
+  const rows: Array<{ venue: string; values: PromoSeed }> = [
+    {
+      venue: "Dhanyentari Futsal Arena",
+      values: {
+        code: "EARLYBIRD15",
+        title: "Early bird evenings",
+        discountType: "percent",
+        discountValue: 15,
+        maxDiscount: 600,
+        minBookingAmount: 2000,
+        startsAt: null,
+        expiresAt: d(21),
+        usageLimit: 40,
+        perUserLimit: 1,
+        isPublic: true,
+        isActive: true,
+      },
+    },
+    {
+      venue: "Dhanyentari Futsal Arena",
+      values: {
+        code: "WEEKDAY10",
+        title: "Fill the weekday slots",
+        discountType: "percent",
+        discountValue: 10,
+        maxDiscount: 0,
+        minBookingAmount: 0,
+        startsAt: null,
+        expiresAt: d(7),
+        usageLimit: 0,
+        perUserLimit: 2,
+        isPublic: true,
+        isActive: true,
+      },
+    },
+    {
+      venue: "KickOff Sports Hub",
+      values: {
+        code: "ROOFTOP300",
+        title: "Rooftop regulars",
+        discountType: "flat",
+        discountValue: 300,
+        maxDiscount: 0,
+        minBookingAmount: 1500,
+        startsAt: null,
+        expiresAt: d(14),
+        usageLimit: 25,
+        perUserLimit: 1,
+        // Hidden: only players the owner shares it with can use it.
+        isPublic: false,
+        isActive: true,
+      },
+    },
+    {
+      venue: "KickOff Sports Hub",
+      values: {
+        code: "NEWYEAR25",
+        title: "New year kickoff (finished)",
+        discountType: "percent",
+        discountValue: 25,
+        maxDiscount: 500,
+        minBookingAmount: 0,
+        startsAt: null,
+        expiresAt: d(-5),
+        usageLimit: 20,
+        perUserLimit: 1,
+        isPublic: true,
+        isActive: true,
+      },
+    },
+    {
+      venue: "Lakeside Strikers Court",
+      values: {
+        code: "LAKESIDE20",
+        title: "Lake breeze special",
+        discountType: "percent",
+        discountValue: 20,
+        maxDiscount: 500,
+        minBookingAmount: 1600,
+        startsAt: null,
+        expiresAt: d(3),
+        usageLimit: 15,
+        perUserLimit: 1,
+        isPublic: true,
+        isActive: true,
+      },
+    },
+    {
+      venue: "NightOwl Futsal",
+      values: {
+        code: "MIDNIGHT50",
+        title: "Midnight madness",
+        discountType: "percent",
+        discountValue: 50,
+        maxDiscount: 950,
+        minBookingAmount: 1900,
+        startsAt: null,
+        expiresAt: d(30),
+        usageLimit: 10,
+        perUserLimit: 1,
+        isPublic: true,
+        isActive: true,
+      },
+    },
+  ];
+  return rows
+    .filter((r) => venueId(r.venue) !== null)
+    .map((r) => ({ ...r.values, venueId: venueId(r.venue) as number }));
 }
 
 export async function POST() {
@@ -94,7 +213,17 @@ export async function POST() {
           seededReviews++;
         }
       }
-      return Response.json({ ok: true, message: "Already seeded", count: existing.length, seededReviews });
+      // Backfill promo codes for databases seeded before promos existed.
+      const existingPromos = await db.select().from(promos);
+      let seededPromos = 0;
+      if (existingPromos.length === 0) {
+        const byName = new Map(existing.map((v) => [v.name, v.id]));
+        for (const pr of demoPromos((name: string) => byName.get(name) ?? null)) {
+          await db.insert(promos).values(pr);
+          seededPromos++;
+        }
+      }
+      return Response.json({ ok: true, message: "Already seeded", count: existing.length, seededReviews, seededPromos });
     }
 
     const pw = hashPassword(DEFAULT_PASSWORD);
@@ -256,6 +385,15 @@ export async function POST() {
         })
         .returning();
       insertedCourts.push(rows[0]);
+    }
+
+    // Promo codes — owner-created discounts with expiry dates.
+    const venueIdOf = (idx: number) => insertedVenues[idx]?.id ?? null;
+    for (const pr of demoPromos((name: string) => {
+      const idx = ["Dhanyentari Futsal Arena", "KickOff Sports Hub", "GoalZone Futsal Park", "Lakeside Strikers Court", "Rhino Sports Complex", "NightOwl Futsal"].indexOf(name);
+      return idx >= 0 ? venueIdOf(idx) : null;
+    })) {
+      await db.insert(promos).values(pr);
     }
 
     // Bookings
