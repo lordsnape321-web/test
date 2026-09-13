@@ -6,6 +6,7 @@ import {
   bookings,
   teams,
   teamMembers,
+  teamRequests,
   openMatches,
   matchJoins,
   reviews,
@@ -14,6 +15,7 @@ import {
 import { eq } from "drizzle-orm";
 import { VENUE_IMAGES } from "@/lib/futsal";
 import { hashPassword, DEFAULT_PASSWORD } from "@/lib/auth";
+import { normalizeTeamCode, suggestTeamCode } from "@/lib/teams";
 
 export const dynamic = "force-dynamic";
 
@@ -141,6 +143,64 @@ function demoPromos(
     .map((r) => ({ ...r.values, venueId: venueId(r.venue) as number }));
 }
 
+/**
+ * Demo accounts in the order `seedUsers` inserts them. Team data below refers to
+ * people by index, so it works both for a fresh seed (where the index maps
+ * straight onto `insertedUsers`) and for rebuilding teams in a database that
+ * already has users (where the index maps onto an email lookup).
+ */
+const DEMO_USER_EMAILS = [
+  "aarav@futsal.np",
+  "bikash@futsal.np",
+  "chirag@futsal.np",
+  "dipesh@futsal.np",
+  "elish@futsal.np",
+  "farhan@futsal.np",
+  "ganesh@futsal.np",
+  "himal@futsal.np",
+  "priya@futsal.np",
+];
+
+/**
+ * The demo squads 🛡️ — each with a unique searchable code and a home turf that
+ * names a venue actually on the platform. `captain` is an index into
+ * `DEMO_USER_EMAILS`.
+ */
+function demoTeams() {
+  return [
+    { name: "Chabahil Chargers", code: "CHARGERS-4X7K", motto: "Speed. Skill. Glory.", captain: 0, level: "Advanced", color: "#16a34a", home: "Dhanyentari Futsal Arena", w: 18, l: 4, d: 3 },
+    { name: "Lalitpur Legends", code: "LEGENDS-9PM3", motto: "Legacy in every goal", captain: 3, level: "Advanced", color: "#7c3aed", home: "KickOff Sports Hub", w: 15, l: 6, d: 2 },
+    { name: "Pokhara Panthers", code: "PANTHERS-7QRT", motto: "Hunt as one", captain: 5, level: "Intermediate", color: "#ea580c", home: "Lakeside Strikers Court", w: 11, l: 7, d: 4 },
+    { name: "Bhaktapur Ballers", code: "BALLERS-K3YD", motto: "Play beautiful", captain: 1, level: "Intermediate", color: "#2563eb", home: "GoalZone Futsal Park", w: 9, l: 8, d: 3 },
+    { name: "Thamel Night Owls", code: "OWLS-MN4P", motto: "We own the night", captain: 4, level: "Beginner", color: "#be123c", home: "NightOwl Futsal", w: 5, l: 9, d: 2 },
+  ];
+}
+
+/** Rosters as [teamIndex, userIndex, role]. Exactly one "captain" per team. */
+function demoTeamMemberships(): Array<[number, number, string]> {
+  return [
+    [0, 0, "captain"], [0, 1, "player"], [0, 2, "player"], [0, 4, "player"], [0, 5, "player"],
+    [1, 3, "captain"], [1, 0, "player"], [1, 6, "player"], [1, 7, "player"],
+    [2, 5, "captain"], [2, 1, "player"], [2, 4, "player"],
+    [3, 1, "captain"], [3, 2, "player"], [3, 7, "player"], [3, 0, "player"],
+    [4, 4, "captain"], [4, 7, "player"],
+  ];
+}
+
+/**
+ * Pending join requests as [teamIndex, userIndex, message], so a captain logging
+ * in has something to decide. Every requester is deliberately NOT already a
+ * member of the squad they are asking to join.
+ */
+function demoTeamJoinRequests(): Array<[number, number, string]> {
+  return [
+    [0, 7, "Sunday league defender, and I live two minutes from the arena. Would love to join the Chargers! 🛡️"],
+    [0, 3, "Played against you last month and lost 4-1 😅 Let me try from the inside."],
+    [4, 2, "Beginner goalkeeper. I can't promise saves but I promise enthusiasm 🧤"],
+    [2, 3, "In Pokhara every weekend — happy to travel for the Panthers."],
+  ];
+}
+
 export async function POST() {
   try {
     const existing = await db.select().from(venues);
@@ -223,7 +283,104 @@ export async function POST() {
           seededPromos++;
         }
       }
-      return Response.json({ ok: true, message: "Already seeded", count: existing.length, seededReviews, seededPromos });
+      // Teams 🛡️ — rebuild the demo squads if the table is empty. Without this,
+      // a truncated or hand-cleared `teams` table leaves the app with no squads
+      // and no way to get them back, because this branch reports "Already seeded"
+      // as soon as venues exist.
+      let existingTeams = await db.select().from(teams);
+      const venueByName = new Map(existing.map((v) => [v.name, v.id]));
+      const userByEmail = new Map(allUsers.map((u) => [u.email, u]));
+      const userAt = (i: number) => userByEmail.get(DEMO_USER_EMAILS[i]) ?? null;
+      let seededTeams = 0;
+      if (existingTeams.length === 0) {
+        const rebuilt: Array<typeof teams.$inferSelect> = [];
+        for (const t of demoTeams()) {
+          const captain = userAt(t.captain);
+          if (!captain) continue;
+          const rows = await db
+            .insert(teams)
+            .values({
+              name: t.name,
+              motto: t.motto,
+              teamCode: t.code,
+              captainId: captain.id,
+              maxPlayers: 12,
+              level: t.level,
+              logoColor: t.color,
+              wins: t.w,
+              losses: t.l,
+              draws: t.d,
+              homeVenueId: venueByName.get(t.home) ?? null,
+              homeGround: t.home,
+              lookingForPlayers: true,
+            })
+            .returning();
+          rebuilt.push(rows[0]);
+          seededTeams++;
+        }
+        for (const [ti, ui, role] of demoTeamMemberships()) {
+          const team = rebuilt[ti];
+          const u = userAt(ui);
+          if (!team || !u) continue;
+          await db.insert(teamMembers).values({ teamId: team.id, userId: u.id, role });
+        }
+        for (const [ti, ui, message] of demoTeamJoinRequests()) {
+          const team = rebuilt[ti];
+          const u = userAt(ui);
+          if (!team || !u) continue;
+          await db
+            .insert(teamRequests)
+            .values({ teamId: team.id, userId: u.id, message, status: "pending" });
+        }
+        existingTeams = await db.select().from(teams);
+      }
+
+      // Backfill unique team codes + real home venues for databases seeded
+      // before teams had either.
+      const takenCodes = new Set(
+        existingTeams.map((t) => normalizeTeamCode(t.teamCode ?? "")).filter(Boolean)
+      );
+      let seededTeamCodes = 0;
+      for (const t of existingTeams) {
+        const patch: Partial<typeof teams.$inferInsert> = {};
+        if (!t.teamCode) {
+          let code = suggestTeamCode(t.name);
+          // The tail is random, so retry rather than risk a unique violation.
+          for (let i = 0; i < 8 && takenCodes.has(code); i++) code = suggestTeamCode(t.name);
+          takenCodes.add(code);
+          patch.teamCode = code;
+          seededTeamCodes++;
+        }
+        if (!t.homeVenueId) {
+          const vid = venueByName.get(t.homeGround);
+          if (vid) patch.homeVenueId = vid;
+        }
+        if (Object.keys(patch).length > 0)
+          await db.update(teams).set(patch).where(eq(teams.id, t.id));
+      }
+      // Backfill a few join requests so the captain panel has something to decide.
+      const existingRequests = await db.select().from(teamRequests);
+      let seededTeamRequests = 0;
+      if (existingRequests.length === 0 && existingTeams.length > 0) {
+        const allMembers = await db.select().from(teamMembers);
+        for (const t of existingTeams.slice(0, 3)) {
+          const memberIds = new Set(
+            allMembers.filter((m) => m.teamId === t.id).map((m) => m.userId)
+          );
+          const outsider = allUsers.find(
+            (u) => u.role === "player" && !memberIds.has(u.id)
+          );
+          if (!outsider) continue;
+          await db.insert(teamRequests).values({
+            teamId: t.id,
+            userId: outsider.id,
+            message: `Heard about ${t.name} from a friend${t.homeGround ? ` at ${t.homeGround}` : ""} — any room? 🛡️`,
+            status: "pending",
+          });
+          seededTeamRequests++;
+        }
+      }
+      return Response.json({ ok: true, message: "Already seeded", count: existing.length, seededReviews, seededPromos, seededTeams, seededTeamCodes, seededTeamRequests });
     }
 
     const pw = hashPassword(DEFAULT_PASSWORD);
@@ -496,13 +653,9 @@ export async function POST() {
     }
 
     // Teams
-    const seedTeams = [
-      { name: "Chabahil Chargers", motto: "Speed. Skill. Glory.", captain: 0, level: "Advanced", color: "#16a34a", home: "Dhanyentari Futsal Arena", w: 18, l: 4, d: 3 },
-      { name: "Lalitpur Legends", motto: "Legacy in every goal", captain: 3, level: "Advanced", color: "#7c3aed", home: "KickOff Sports Hub", w: 15, l: 6, d: 2 },
-      { name: "Pokhara Panthers", motto: "Hunt as one", captain: 5, level: "Intermediate", color: "#ea580c", home: "Lakeside Strikers Court", w: 11, l: 7, d: 4 },
-      { name: "Bhaktapur Ballers", motto: "Play beautiful", captain: 1, level: "Intermediate", color: "#2563eb", home: "GoalZone Futsal Park", w: 9, l: 8, d: 3 },
-      { name: "Thamel Night Owls", motto: "We own the night", captain: 4, level: "Beginner", color: "#be123c", home: "NightOwl Futsal", w: 5, l: 9, d: 2 },
-    ];
+    const seedTeams = demoTeams();
+    // Home turf points at a venue that really exists on the platform.
+    const venueIdByName = new Map(insertedVenues.map((v) => [v.name, v.id]));
     const insertedTeams = [];
     for (const t of seedTeams) {
       const rows = await db
@@ -510,6 +663,7 @@ export async function POST() {
         .values({
           name: t.name,
           motto: t.motto,
+          teamCode: t.code,
           captainId: insertedUsers[t.captain].id,
           maxPlayers: 12,
           level: t.level,
@@ -517,24 +671,30 @@ export async function POST() {
           wins: t.w,
           losses: t.l,
           draws: t.d,
+          homeVenueId: venueIdByName.get(t.home) ?? null,
           homeGround: t.home,
           lookingForPlayers: true,
         })
         .returning();
       insertedTeams.push(rows[0]);
     }
-    const memberships: Array<[number, number, string]> = [
-      [0, 0, "captain"], [0, 1, "player"], [0, 2, "player"], [0, 4, "player"], [0, 5, "player"],
-      [1, 3, "captain"], [1, 0, "player"], [1, 6, "player"], [1, 7, "player"],
-      [2, 5, "captain"], [2, 1, "player"], [2, 4, "player"],
-      [3, 1, "captain"], [3, 2, "player"], [3, 7, "player"], [3, 0, "player"],
-      [4, 4, "captain"], [4, 7, "player"],
-    ];
+    const memberships = demoTeamMemberships();
     for (const [ti, ui, role] of memberships) {
       await db.insert(teamMembers).values({
         teamId: insertedTeams[ti].id,
         userId: insertedUsers[ui].id,
         role,
+      });
+    }
+
+    // Pending join requests 👑 — so a captain logging in has something to decide.
+    const joinRequests = demoTeamJoinRequests();
+    for (const [ti, ui, message] of joinRequests) {
+      await db.insert(teamRequests).values({
+        teamId: insertedTeams[ti].id,
+        userId: insertedUsers[ui].id,
+        message,
+        status: "pending",
       });
     }
 

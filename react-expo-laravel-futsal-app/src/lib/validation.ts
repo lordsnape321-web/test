@@ -11,6 +11,7 @@ import {
   normalizePromoCode,
   promoDateISO,
 } from "./promos";
+import { TEAM_CODE_MAX, TEAM_CODE_MIN, normalizeTeamCode } from "./teams";
 
 export type FieldError = string | null;
 
@@ -381,6 +382,45 @@ export function validateAvatarUrl(url: string): FieldError {
   if (t.startsWith("data:image/")) return null;
   if (/^https?:\/\/.+\..+/.test(t)) return null;
   return "Photo must be an uploaded image or https link 📸";
+}
+
+/**
+ * The unique handle other players search a team by. Same shape rules as a promo
+ * code so both feel like one system; uniqueness itself is checked against the
+ * database in POST /api/teams, not here.
+ */
+export function validateTeamCode(
+  code: unknown,
+  opts: { required?: boolean } = {}
+): FieldError {
+  const raw = String(code ?? "").trim();
+  if (!raw)
+    return opts.required === false
+      ? null
+      : "Your team needs a unique code so others can find it 🛡️";
+  const t = normalizeTeamCode(raw);
+  if (t.length < TEAM_CODE_MIN)
+    return `Team code needs at least ${TEAM_CODE_MIN} characters 🛡️`;
+  if (t.length > TEAM_CODE_MAX)
+    return `Team code is too long (max ${TEAM_CODE_MAX} characters) 🛡️`;
+  if (!/^[A-Z0-9-]+$/.test(t))
+    return "Team code can only have letters, numbers and dashes 🛡️";
+  if (!/^[A-Z0-9]/.test(t) || !/[A-Z0-9]$/.test(t))
+    return "Team code should start and end with a letter or number 🛡️";
+  if (/^-{2,}/.test(t) || /\d{8,}/.test(t))
+    return "That team code is a bit odd — keep it simple 🛡️";
+  const reserved = ["TEAM", "TEAMS", "ADMIN", "NULL", "SEARCH", "JOIN", "NONE"];
+  if (reserved.includes(t))
+    return `"${t}" is reserved — pick something specific to your squad 🛡️`;
+  return null;
+}
+
+/** Optional note a player sends along with a join request. */
+export function validateJoinMessage(msg: unknown): FieldError {
+  const t = String(msg ?? "").trim();
+  if (!t) return null;
+  if (t.length > 200) return "Keep your join note under 200 characters 📝";
+  return null;
 }
 
 /**

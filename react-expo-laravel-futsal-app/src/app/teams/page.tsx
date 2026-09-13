@@ -1,11 +1,31 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Plus, Trophy, Shield, X, Crown, MapPin, Users } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import {
+  Plus,
+  Trophy,
+  Shield,
+  X,
+  Crown,
+  MapPin,
+  Users,
+  Search,
+  Dice5,
+  Settings,
+  Hourglass,
+  Hash,
+} from "lucide-react";
 import { useUser } from "@/components/UserProvider";
 import { Avatar } from "@/components/Avatar";
+import { TeamManager } from "@/components/TeamManager";
 import { initials } from "@/lib/futsal";
-import { validateTitle, validateMessage, firstError } from "@/lib/validation";
+import { normalizeTeamCode, suggestTeamCode } from "@/lib/teams";
+import {
+  firstError,
+  validateMessage,
+  validateTeamCode,
+  validateTitle,
+} from "@/lib/validation";
 
 type Team = {
   id: number;
@@ -17,67 +37,148 @@ type Team = {
   losses: number;
   draws: number;
   homeGround: string;
+  /** Venue on this platform the squad calls home, if it picked one. */
+  homeVenueId: number | null;
+  /** Unique searchable handle. */
+  teamCode: string;
+  captainId: number;
   lookingForPlayers: boolean;
   maxPlayers: number;
   memberCount: number;
   captainName: string;
+  /** Waiting join requests — only non-zero for the captain. */
+  pendingRequests: number;
+  /** This viewer's relationship to the squad, when logged in. */
+  viewer: {
+    isMember: boolean;
+    isCaptain: boolean;
+    requestStatus: string | null;
+    requestId: number | null;
+  } | null;
   players: Array<{ id: number; name: string; avatarColor: string; avatarUrl?: string; position: string }>;
 };
+
+type VenueOption = { id: number; name: string; city: string };
 
 const COLORS = ["#16a34a", "#2563eb", "#dc2626", "#7c3aed", "#ea580c", "#0891b2", "#be123c", "#4d7c0f"];
 
 export default function TeamsPage() {
   const { user } = useUser();
   const [teams, setTeams] = useState<Team[]>([]);
+  const [venues, setVenues] = useState<VenueOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
   const [name, setName] = useState("");
   const [motto, setMotto] = useState("");
   const [level, setLevel] = useState("Intermediate");
   const [color, setColor] = useState(COLORS[0]);
-  const [home, setHome] = useState("");
+  const [homeVenueId, setHomeVenueId] = useState("0");
+  const [code, setCode] = useState("");
   const [creating, setCreating] = useState(false);
   const [acting, setActing] = useState<number | null>(null);
   const [formError, setFormError] = useState("");
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [managing, setManaging] = useState<Team | null>(null);
+  const [notice, setNotice] = useState("");
+  const [noticeBad, setNoticeBad] = useState(false);
+  // `find` is what's typed, `q` is what has been submitted — searching on submit
+  // keeps a keystroke from firing a request (and a re-seed) every time.
+  const [find, setFind] = useState("");
+  const [q, setQ] = useState("");
 
-  const load = async () => {
-    const res = await fetch("/api/teams");
-    const data = await res.json();
-    setTeams(data.teams ?? []);
-  };
+  /**
+   * `viewerId` tells the API whose buttons to draw: it comes back with whether
+   * this player is a member, whether they captain the squad, and whether they
+   * have a request waiting on the captain.
+   */
+  const load = useCallback(async () => {
+    const params = new URLSearchParams();
+    if (q.trim()) params.set("q", q.trim());
+    if (user) params.set("viewerId", String(user.id));
+    const res = await fetch(`/api/teams?${params.toString()}`);
+    const data = await res.json().catch(() => ({}));
+    // Returned as well as stored so callers (the captain panel) can react to
+    // what the server now says — e.g. "you handed the armband over".
+    const fresh = (data.teams ?? []) as Team[];
+    setTeams(fresh);
+    return fresh;
+  }, [q, user]);
 
   useEffect(() => {
+    let alive = true;
     (async () => {
       try {
+        // Seed on first visit so a fresh database has squads to show. The call is
+        // idempotent ("Already seeded"), so re-running it after a search is cheap.
         await fetch("/api/seed", { method: "POST" });
         await load();
       } finally {
-        setLoading(false);
+        if (alive) setLoading(false);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [load]);
+
+  // Venues for the home-turf dropdowns — only courts that exist on the platform.
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch("/api/venues");
+        const data = await res.json().catch(() => ({}));
+        setVenues(
+          ((data.venues ?? []) as Array<{ id: number; name: string; city: string }>).map(
+            (v) => ({ id: v.id, name: v.name, city: v.city })
+          )
+        );
+      } catch {
+        setVenues([]);
       }
     })();
   }, []);
 
+  /**
+   * Join / withdraw. Asking no longer adds you to the squad — it files a request
+   * the captain accepts or declines, so the button reports what is really true.
+   */
   async function toggleMembership(t: Team) {
     if (!user) {
       window.location.href = "/login";
       return;
     }
-    const member = t.players.some((p) => p.id === user.id);
     setActing(t.id);
+    setNotice("");
+    setNoticeBad(false);
     try {
-      if (member) {
-        await fetch(`/api/teams/${t.id}/join?userId=${user.id}`, { method: "DELETE" });
-      } else {
-        await fetch(`/api/teams/${t.id}/join`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ userId: user.id }),
-        });
-      }
-      await load();
+      const pending = t.viewer?.requestStatus === "pending";
+      const res = await fetch(
+        `/api/teams/${t.id}/join${pending || t.viewer?.isMember ? `?userId=${user.id}` : ""}`,
+        pending || t.viewer?.isMember
+          ? { method: "DELETE" }
+          : {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ userId: user.id }),
+            }
+      );
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(String(data.error || "That didn't work 🛡️"));
+      setNotice(
+        data.cancelled
+          ? `Request to join ${t.name} withdrawn`
+          : data.left
+            ? `You've stepped away from ${t.name}`
+            : data.alreadyMember
+              ? `You're already in ${t.name} 🛡️`
+              : `Request sent — ${t.name}'s captain will review it 👑`
+      );
+    } catch (e) {
+      setNotice(e instanceof Error ? e.message : "That didn't work 🛡️");
+      setNoticeBad(true);
     } finally {
       setActing(null);
+      await load();
     }
   }
 
@@ -90,7 +191,8 @@ export default function TeamsPage() {
       const mErr = validateMessage(motto.trim(), { min: 3, max: 120, label: "Motto", required: false });
       if (mErr) errs.motto = mErr;
     }
-    if (home.trim() && home.trim().length > 100) errs.home = "Home ground is too long (max 100 characters) 📍";
+    const cErr = validateTeamCode(code);
+    if (cErr) errs.code = cErr;
     if (Object.keys(errs).length > 0) {
       setFieldErrors(errs);
       setFormError(firstError(...Object.values(errs)) ?? "Please fix the highlighted fields 🙏");
@@ -106,10 +208,13 @@ export default function TeamsPage() {
         body: JSON.stringify({
           name: name.trim(),
           motto: motto.trim(),
+          // Unique searchable handle — normalised here and again server-side.
+          teamCode: normalizeTeamCode(code),
           captainId: user.id,
           level,
           logoColor: color,
-          homeGround: home.trim(),
+          // A venue that exists on the platform, never free text.
+          homeVenueId: Number(homeVenueId) || 0,
           maxPlayers: 12,
           lookingForPlayers: true,
         }),
@@ -119,8 +224,14 @@ export default function TeamsPage() {
       setShowCreate(false);
       setName("");
       setMotto("");
-      setHome("");
+      setCode("");
+      setHomeVenueId("0");
       setFormError("");
+      setNotice(
+        `${data.team?.name ?? "Your team"} is live 🎉 Share the code ${
+          data.team?.teamCode ?? ""
+        } so other players can find you`
+      );
     } catch (e) {
       setFormError(e instanceof Error ? e.message : "Couldn't create team 🙏");
     } finally {
@@ -141,7 +252,9 @@ export default function TeamsPage() {
             </p>
             <h1 className="mt-1 text-3xl font-black text-stone-900 dark:text-stone-100">Teams & friendly leagues</h1>
             <p className="mt-1 text-sm text-stone-500 dark:text-stone-400">
-              {teams.length} welcoming squads • every skill level has a home here
+              {q
+                ? `${teams.length} squad${teams.length === 1 ? "" : "s"} matching "${q}"`
+                : `${teams.length} welcoming squads • every skill level has a home here`}
             </p>
           </div>
           <button
@@ -151,6 +264,55 @@ export default function TeamsPage() {
             <Plus className="h-4 w-4" strokeWidth={3} /> Start a team
           </button>
         </div>
+
+        {/* Find a squad by the unique code a teammate read you, or by name. */}
+        <div className="mt-5 flex flex-wrap items-center gap-2">
+          <div className="relative min-w-[16rem] flex-1">
+            <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400" />
+            <input
+              value={find}
+              onChange={(e) => setFind(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  setQ(find);
+                }
+              }}
+              placeholder="Search a team code — e.g. CHARGERS-4X7K"
+              aria-label="Search teams by code or name"
+              className="w-full rounded-2xl border border-[#F0E3CC] bg-white py-3 pl-10 pr-3 text-sm font-semibold text-stone-900 placeholder:text-stone-400 focus:border-emerald-500 focus:outline-none dark:border-white/10 dark:bg-stone-900 dark:text-stone-100 dark:placeholder:text-stone-500"
+            />
+          </div>
+          <button
+            onClick={() => setQ(find)}
+            className="rounded-2xl bg-stone-900 px-5 py-3 text-sm font-black text-white transition hover:bg-stone-800 dark:bg-white dark:text-stone-900 dark:hover:bg-stone-200"
+          >
+            Search
+          </button>
+          {q && (
+            <button
+              onClick={() => {
+                setQ("");
+                setFind("");
+              }}
+              className="flex items-center gap-1.5 rounded-2xl border border-stone-200 px-4 py-3 text-sm font-black text-stone-600 transition hover:bg-stone-100 dark:border-white/10 dark:text-stone-300 dark:hover:bg-white/10"
+            >
+              <X className="h-4 w-4" /> Clear
+            </button>
+          )}
+        </div>
+
+        {notice && (
+          <p
+            className={`mt-3 rounded-2xl px-4 py-3 text-xs font-bold ${
+              noticeBad
+                ? "bg-red-50 text-red-600 dark:bg-red-500/10 dark:text-red-400"
+                : "bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300"
+            }`}
+          >
+            {notice}
+          </p>
+        )}
 
         {loading ? (
           <div className="mt-6 grid gap-4 md:grid-cols-2">
@@ -192,9 +354,26 @@ export default function TeamsPage() {
               </div>
             </div>
 
+            {teams.length === 0 && (
+              <div className="mt-6 rounded-3xl border border-dashed border-stone-300 bg-white p-10 text-center dark:border-white/10 dark:bg-stone-900">
+                <p className="text-sm font-black text-stone-700 dark:text-stone-200">
+                  {q ? `No squad matches "${q}" yet` : "No squads on the platform yet"}
+                </p>
+                <p className="mt-1 text-xs font-semibold text-stone-400 dark:text-stone-500">
+                  {q
+                    ? "Check the code for typos — no spaces, and dashes count."
+                    : "Be the first to start one 🎉"}
+                </p>
+              </div>
+            )}
+
             <div className="mt-6 grid gap-4 md:grid-cols-2">
               {teams.map((t) => {
-                const member = t.players.some((p) => p.id === user?.id);
+                // The API tells us this viewer's relationship to the squad; fall
+                // back to the roster for a logged-out visitor.
+                const isCaptain = t.viewer?.isCaptain ?? (user ? t.captainId === user.id : false);
+                const member = t.viewer?.isMember ?? t.players.some((p) => p.id === user?.id);
+                const pending = t.viewer?.requestStatus === "pending";
                 const winRate =
                   t.wins + t.losses + t.draws > 0
                     ? Math.round((t.wins / (t.wins + t.losses + t.draws)) * 100)
@@ -224,8 +403,18 @@ export default function TeamsPage() {
                         <p className="truncate text-xs italic text-stone-400 dark:text-stone-500">
                           &quot;{t.motto || "Come play with us!"}&quot;
                         </p>
-                        <p className="mt-1 flex items-center gap-1 text-xs text-stone-500 dark:text-stone-400">
-                          <Crown className="h-3 w-3 text-amber-500" /> {t.captainName} • {t.level}
+                        <p className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-stone-500 dark:text-stone-400">
+                          <span className="flex items-center gap-1">
+                            <Crown className="h-3 w-3 text-amber-500" /> {t.captainName} • {t.level}
+                          </span>
+                          {t.teamCode && (
+                            <span
+                              title="Search this code to find the squad again"
+                              className="flex items-center gap-1 rounded-full bg-stone-100 px-2 py-0.5 font-mono text-[10px] font-black text-stone-600 dark:bg-white/10 dark:text-stone-300"
+                            >
+                              <Hash className="h-2.5 w-2.5" /> {t.teamCode}
+                            </span>
+                          )}
                         </p>
                       </div>
                     </div>
@@ -274,17 +463,45 @@ export default function TeamsPage() {
                       </span>
                     </div>
 
-                    <button
-                      onClick={() => toggleMembership(t)}
-                      disabled={acting === t.id}
-                      className={`mt-4 w-full rounded-2xl py-3 text-sm font-black transition ${
-                        member
-                          ? "border border-stone-200 bg-stone-50 text-stone-600 hover:bg-stone-100 dark:border-white/10 dark:bg-white/5 dark:text-stone-300 dark:hover:bg-white/10"
-                          : "bg-emerald-600 text-white shadow-md hover:bg-emerald-700"
-                      }`}
-                    >
-                      {acting === t.id ? "One sec…" : member ? "Take a break from team" : "Join this family 🤗"}
-                    </button>
+                    {isCaptain ? (
+                      <>
+                        <button
+                          onClick={() => setManaging(t)}
+                          className="mt-4 flex w-full items-center justify-center gap-2 rounded-2xl bg-amber-500 py-3 text-sm font-black text-white shadow-md transition hover:bg-amber-600"
+                        >
+                          <Settings className="h-4 w-4" /> Manage your squad
+                          {t.pendingRequests > 0 && (
+                            <span className="flex items-center gap-1 rounded-full bg-white/25 px-2 py-0.5 text-[10px]">
+                              <Hourglass className="h-2.5 w-2.5" /> {t.pendingRequests} waiting
+                            </span>
+                          )}
+                        </button>
+                        <p className="mt-1.5 text-center text-[10px] font-bold leading-relaxed text-stone-400 dark:text-stone-500">
+                          👑 You captain this squad — a team always has exactly one captain, so hand
+                          over the armband in Manage before stepping away
+                        </p>
+                      </>
+                    ) : (
+                      <button
+                        onClick={() => toggleMembership(t)}
+                        disabled={acting === t.id}
+                        className={`mt-4 w-full rounded-2xl py-3 text-sm font-black transition ${
+                          pending
+                            ? "border border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-300"
+                            : member
+                              ? "border border-stone-200 bg-stone-50 text-stone-600 hover:bg-stone-100 dark:border-white/10 dark:bg-white/5 dark:text-stone-300 dark:hover:bg-white/10"
+                              : "bg-emerald-600 text-white shadow-md hover:bg-emerald-700"
+                        }`}
+                      >
+                        {acting === t.id
+                          ? "One sec…"
+                          : pending
+                            ? "Request pending ⏳ — tap to withdraw"
+                            : member
+                              ? "Take a break from team"
+                              : "Request to join 🛡️"}
+                      </button>
+                    )}
                   </div>
                 );
               })}
@@ -345,6 +562,47 @@ export default function TeamsPage() {
                 />
                 {fieldErrors.motto && <span className="mt-1 block text-[11px] font-bold text-red-500">{fieldErrors.motto}</span>}
               </label>
+              <label className="block">
+                <span className="mb-1 flex items-center gap-1 text-xs font-black uppercase tracking-wider text-stone-400 dark:text-stone-500">
+                  <Hash className="h-3 w-3" /> Team code — unique
+                </span>
+                <div className="flex gap-2">
+                  <input
+                    value={code}
+                    onChange={(e) => {
+                      setCode(e.target.value.toUpperCase());
+                      setFieldErrors((p) => ({ ...p, code: "", teamCode: "" }));
+                    }}
+                    placeholder="CHARGERS-4X7K"
+                    maxLength={24}
+                    aria-label="Team code"
+                    className={`w-full rounded-xl border bg-[#FFF6E9] px-3.5 py-2.5 font-mono text-sm font-black tracking-wider text-stone-900 placeholder:font-sans placeholder:font-semibold placeholder:tracking-normal placeholder:text-stone-400 focus:outline-none dark:bg-white/5 dark:text-stone-100 dark:placeholder:text-stone-500 ${
+                      fieldErrors.teamCode || fieldErrors.code
+                        ? "border-red-400"
+                        : "border-stone-200 focus:border-emerald-500 dark:border-white/10"
+                    }`}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setCode(suggestTeamCode(name))}
+                    title="Generate a code from the team name"
+                    aria-label="Generate a team code"
+                    className="shrink-0 rounded-xl border border-stone-200 bg-white px-3 text-stone-500 transition hover:bg-stone-100 dark:border-white/10 dark:bg-white/5 dark:text-stone-300 dark:hover:bg-white/10"
+                  >
+                    <Dice5 className="h-4 w-4" />
+                  </button>
+                </div>
+                {fieldErrors.teamCode || fieldErrors.code ? (
+                  <span className="mt-1 block text-[11px] font-bold text-red-500">
+                    {fieldErrors.teamCode || fieldErrors.code}
+                  </span>
+                ) : (
+                  <span className="mt-1 block text-[11px] text-stone-400">
+                    Optional — leave it blank and we&apos;ll generate one. Letters, numbers and
+                    dashes only, 4–24 chars. Teammates search this exact code to find you 🔎
+                  </span>
+                )}
+              </label>
               <div className="grid grid-cols-2 gap-3">
                 <label className="block">
                   <span className="mb-1 block text-xs font-black uppercase tracking-wider text-stone-400 dark:text-stone-500">Level</span>
@@ -359,20 +617,26 @@ export default function TeamsPage() {
                   </select>
                 </label>
                 <label className="block">
-                  <span className="mb-1 block text-xs font-black uppercase tracking-wider text-stone-400 dark:text-stone-500">Home turf</span>
-                  <input
-                    value={home}
-                    onChange={(e) => {
-                      setHome(e.target.value);
-                      setFieldErrors((p) => ({ ...p, home: "" }));
-                    }}
-                    placeholder="Favourite court"
-                    maxLength={100}
-                    className={`w-full rounded-xl border bg-[#FFF6E9] px-3.5 py-2.5 text-sm font-semibold text-stone-900 placeholder:text-stone-400 focus:outline-none dark:bg-white/5 dark:text-stone-100 dark:placeholder:text-stone-500 ${
-                      fieldErrors.home ? "border-red-400" : "border-stone-200 focus:border-emerald-500 dark:border-white/10"
-                    }`}
-                  />
-                  {fieldErrors.home && <span className="mt-1 block text-[11px] font-bold text-red-500">{fieldErrors.home}</span>}
+                  <span className="mb-1 flex items-center gap-1 text-xs font-black uppercase tracking-wider text-stone-400 dark:text-stone-500">
+                    <MapPin className="h-3 w-3" /> Home turf
+                  </span>
+                  <select
+                    value={homeVenueId}
+                    onChange={(e) => setHomeVenueId(e.target.value)}
+                    className="w-full rounded-xl border border-stone-200 bg-[#FFF6E9] px-3.5 py-2.5 text-sm font-semibold text-stone-900 focus:border-emerald-500 focus:outline-none dark:border-white/10 dark:bg-white/5 dark:text-stone-100 [&>option]:bg-white [&>option]:text-stone-900 dark:[&>option]:bg-stone-900 dark:[&>option]:text-stone-100"
+                  >
+                    <option value="0">No home turf yet</option>
+                    {venues.map((v) => (
+                      <option key={v.id} value={v.id}>
+                        {v.name} — {v.city}
+                      </option>
+                    ))}
+                  </select>
+                  <span className="mt-1 block text-[11px] text-stone-400">
+                    {venues.length > 0
+                      ? `From the platform's ${venues.length} venues 📍`
+                      : "No venues yet — set it later"}
+                  </span>
                 </label>
               </div>
               <div>
@@ -404,6 +668,36 @@ export default function TeamsPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Captain's control panel 👑 — only ever mounted for the squad's captain. */}
+      {managing && user && (
+        <TeamManager
+          team={{
+            id: managing.id,
+            name: managing.name,
+            motto: managing.motto,
+            teamCode: managing.teamCode ?? "",
+            level: managing.level,
+            logoColor: managing.logoColor,
+            maxPlayers: managing.maxPlayers,
+            homeGround: managing.homeGround,
+            homeVenueId: managing.homeVenueId,
+            lookingForPlayers: managing.lookingForPlayers,
+            captainId: managing.captainId,
+          }}
+          captainId={user.id}
+          onClose={() => setManaging(null)}
+          onChanged={async () => {
+            const fresh = await load();
+            const stillCaptain = fresh.find((t) => t.id === managing.id)?.viewer?.isCaptain ?? false;
+            if (!stillCaptain) {
+              setManaging(null);
+              setNoticeBad(false);
+              setNotice("Armband handed over 👑 you're a regular member of the squad now");
+            }
+          }}
+        />
       )}
     </main>
   );

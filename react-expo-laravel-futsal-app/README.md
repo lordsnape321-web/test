@@ -75,6 +75,15 @@ sudo -u postgres createdb app_db
 
 Then re-run `npm run db:check` to confirm the app can authenticate over TCP.
 
+**If `npm run db:push` stops and asks about truncating a table, answer `No`.** drizzle-kit compares
+`src/db/schema.ts` with the live database, and a change it cannot make safely on a table that already
+has rows — adding the `UNIQUE` index on `teams.team_code` is the one to watch — makes it print
+something like `You're about to add a unique constraint to team_code ... Do you want to truncate
+teams table?` and wait for `y/N`. `--force` does **not** skip that prompt. Answering `No` still
+applies the constraint: `UNIQUE` allows NULLs, so teams created before the column existed are fine,
+and `POST /api/seed` backfills a generated code for any team missing one. Only answer `y` if you
+genuinely want the rows gone. A fresh clone never sees the prompt, because its tables are empty.
+
 ---
 
 ## Scripts
@@ -190,3 +199,70 @@ screens, and in the owner's booking-request notification.
 
 Demo data covers both paths: `aarav@futsal.np` captains one squad and is in two more, while a freshly
 signed-up account is in none.
+
+---
+
+## Teams: one captain, one code, one home turf
+
+`/teams` is where squads are found and run. Three rules are enforced in the schema and the API, not
+just hidden behind the UI.
+
+**1. Exactly one captain.** `teams.captain_id` is the source of truth, and every captain is also a
+member. The member row's `role` label is kept in step with it by `transferCaptaincy()`, which demotes
+every `captain` row and then promotes the new one — never two captains, never zero. Handing over the
+armband is the only way to move it, and the new captain must already be in the squad. A captain
+cannot step away while holding it: `DELETE /api/teams/{id}/join` answers `409` and says so.
+
+**2. A unique, searchable code.** Every team carries a `team_code` like `CHARGERS-4X7K` — letters,
+numbers and dashes, 4–24 chars, no spaces — stored uppercased behind a `UNIQUE` index. The captain
+types one or hits the dice button to generate it from the team name; a code that is already taken is
+refused with `409 codeError: "taken"` on both create and edit. `GET /api/teams?q=` matches codes
+case-insensitively (exact first, then prefix) and falls back to a name search, so reading a code out
+loud over the phone is enough to find a squad.
+
+**3. Home turf comes from the platform.** `teams.home_venue_id` points at a real row in `venues` and
+`teams.home_ground` snapshots that venue's name for display. Both the create form and the captain's
+edit form offer a **dropdown of venues**, and a free-text turf in the request body is ignored
+server-side — a team can never claim a court that does not exist.
+
+### Joining is approval-based
+
+Asking to join files a row in `team_requests`; it does **not** add you to the squad. The captain
+accepts (the member row is created then) or declines. Re-asking after a decline reuses that declined
+row instead of stacking duplicates, and the player can withdraw a pending request — the same
+`DELETE /api/teams/{id}/join` endpoint handles both leaving and withdrawing.
+
+`GET /api/teams?viewerId=N` computes each team's relationship to that viewer server-side
+(`isMember`, `isCaptain`, `requestStatus`, `requestId`, plus a `pendingRequests` count), so the cards
+draw honest buttons — **Manage your squad**, **Request pending ⏳ — tap to withdraw**, **Take a break
+from team**, or **Request to join** — rather than guessing from the roster.
+
+### The captain's panel
+
+**Manage your squad** appears only on teams you captain and opens `TeamManager`: decide join
+requests, add members directly from a search of platform users, remove members (never yourself while
+you captain), hand over the armband, and edit the name, motto, level, colours, squad size, code, home
+turf and looking-for-players flag. Every action re-checks captaincy on the server, so hiding a button
+is a courtesy rather than the security.
+
+| Endpoint                                        | What it does                                                    |
+| ----------------------------------------------- | --------------------------------------------------------------- |
+| `GET /api/teams?q=&viewerId=`                    | search by code or name, with the viewer's relationship to each team |
+| `POST /api/teams`                                | create a team; `409` if the code is taken                        |
+| `PATCH /api/teams/{id}`                          | captain-only edit; `newCaptainId` transfers the armband          |
+| `POST /api/teams/{id}/join`                      | file a join request                                              |
+| `DELETE /api/teams/{id}/join?userId=N`           | leave the squad, or withdraw a pending request                   |
+| `GET /api/teams/{id}/requests?captainId=N`       | the captain's queue (`status=all` includes decided ones)         |
+| `POST /api/teams/{id}/requests`                  | `action: accept` or `decline`                                    |
+| `GET /api/teams/{id}/members`                    | public roster — member emails are included only for `?viewerId=` the captain |
+| `POST`/`DELETE /api/teams/{id}/members`          | captain adds or removes a member                                 |
+| `GET /api/users?q=`                              | people search behind the add-member box                          |
+
+- `src/lib/teams.ts` — code helpers (`normalizeTeamCode`, `suggestTeamCode`, role labels)
+- `src/lib/team-store.ts` — search, code uniqueness, rosters, requests, `transferCaptaincy()`
+- `src/components/TeamManager.tsx` — the captain's panel
+- `src/app/teams/page.tsx` — search bar, honest buttons, create form
+
+Demo data: `aarav@futsal.np` captains **Chabahil Chargers** (`CHARGERS-4X7K`) with two requests
+waiting on them, so the panel has something to decide on the first login. Every seeded team has a
+code and a home turf picked from the seeded venues.

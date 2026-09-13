@@ -108,6 +108,19 @@ export const teams = pgTable("teams", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
   motto: text("motto").notNull().default(""),
+  /**
+   * Short unique handle other players search by (e.g. "CHARGERS-4X7K"), the same
+   * idea as a promo code. Nullable rather than NOT NULL DEFAULT '' purely so the
+   * column can be added to a database that already has teams — Postgres treats
+   * NULLs as distinct under a unique constraint, so legacy rows migrate cleanly
+   * and get backfilled by /api/seed. Every team created through the API gets one.
+   */
+  teamCode: text("team_code").unique(),
+  /**
+   * Exactly one captain per team. `teamMembers.role` mirrors this for the roster,
+   * and the API refuses to let a captain leave or be removed without first
+   * handing the armband to another member — so the two can never disagree.
+   */
   captainId: integer("captain_id").notNull().default(1),
   maxPlayers: integer("max_players").notNull().default(12),
   level: text("level").notNull().default("Intermediate"),
@@ -115,7 +128,14 @@ export const teams = pgTable("teams", {
   wins: integer("wins").notNull().default(0),
   losses: integer("losses").notNull().default(0),
   draws: integer("draws").notNull().default(0),
+  /** Venue name snapshot — see `homeVenueId`. */
   homeGround: text("home_ground").notNull().default(""),
+  /**
+   * Home turf picked from the venues that actually exist on the platform, not
+   * free text. Null means "no home turf chosen". `homeGround` holds the name so
+   * cards keep rendering if the venue is later renamed or removed.
+   */
+  homeVenueId: integer("home_venue_id"),
   lookingForPlayers: boolean("looking_for_players").notNull().default(true),
   createdAt: timestamp("created_at").defaultNow(),
 });
@@ -126,6 +146,25 @@ export const teamMembers = pgTable("team_members", {
   userId: integer("user_id").notNull(),
   role: text("role").notNull().default("player"),
   joinedAt: timestamp("joined_at").defaultNow(),
+});
+
+/**
+ * Join requests 🛡️ — asking to join a team no longer adds you straight to the
+ * roster. The request sits here until the captain accepts or declines it, which
+ * is what gives the captain control over who is in their squad.
+ *
+ * `pending` is the only status that blocks a new request; `cancelled` (player
+ * withdrew) and `declined` both allow asking again later.
+ */
+export const teamRequests = pgTable("team_requests", {
+  id: serial("id").primaryKey(),
+  teamId: integer("team_id").notNull(),
+  userId: integer("user_id").notNull(),
+  message: text("message").notNull().default(""),
+  status: text("status").notNull().default("pending"),
+  createdAt: timestamp("created_at").defaultNow(),
+  decidedAt: timestamp("decided_at"),
+  decidedBy: integer("decided_by"),
 });
 
 export const openMatches = pgTable("open_matches", {

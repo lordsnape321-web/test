@@ -14,7 +14,7 @@ import pg from "pg";
 
 const { Client } = pg;
 
-/** The 12 tables declared in src/db/schema.ts. */
+/** The tables declared in src/db/schema.ts. */
 const EXPECTED = [
   "users",
   "venues",
@@ -22,6 +22,7 @@ const EXPECTED = [
   "bookings",
   "teams",
   "team_members",
+  "team_requests",
   "open_matches",
   "match_joins",
   "notifications",
