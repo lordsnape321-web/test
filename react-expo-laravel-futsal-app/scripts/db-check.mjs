@@ -92,8 +92,25 @@ try {
     bad(`authentication failed for the user/password in DATABASE_URL`);
     hint([
       `  ${msg}`,
-      "Either fix the credentials in .env, or set the local postgres password to match:",
+      "",
+      "Good news: Postgres IS running and reachable — only the credentials were rejected.",
+      "",
+      "On Debian/Ubuntu/Parrot/Kali the postgres role is created for *peer* auth over the",
+      "Unix socket with no password, so every TCP connection to 127.0.0.1 fails until you",
+      "set one. Fix it with peer auth (no password needed, hence the sudo):",
       "  sudo -u postgres psql -c \"ALTER USER postgres PASSWORD 'postgres'\"",
+      "",
+      "Then make sure the database exists and push the schema:",
+      `  sudo -u postgres createdb ${p.db}`,
+      "  npm run db:check && npm run db:push",
+      "",
+      "Prefer not to use the superuser? Create a dedicated role instead and point .env at it:",
+      "  sudo -u postgres psql -c \"CREATE USER futsal WITH PASSWORD 'futsal'\"",
+      `  sudo -u postgres psql -c "CREATE DATABASE ${p.db} OWNER futsal"`,
+      `  echo 'DATABASE_URL=postgresql://futsal:futsal@${p.host}:${p.port}/${p.db}' > .env`,
+      "",
+      "Already know the real password? Put it in .env instead — percent-encode any of",
+      "  : / @ # ? & =  (e.g. p@ss -> p%40ss), or the URL parses incorrectly.",
     ]);
   } else {
     bad(`could not connect: ${msg}`);
