@@ -109,6 +109,13 @@ export const teams = pgTable("teams", {
   name: text("name").notNull(),
   motto: text("motto").notNull().default(""),
   /**
+   * Free-text "about us" box, optional on purpose: a motto is the slogan, the
+   * description is where a captain explains how the squad actually runs
+   * (training nights, who pays for the court, whether beginners get game time).
+   * Searchers read it before asking to join, so it renders on the team card.
+   */
+  description: text("description").notNull().default(""),
+  /**
    * Short unique handle other players search by (e.g. "CHARGERS-4X7K"), the same
    * idea as a promo code. Nullable rather than NOT NULL DEFAULT '' purely so the
    * column can be added to a database that already has teams — Postgres treats
@@ -166,6 +173,35 @@ export const teamRequests = pgTable("team_requests", {
   decidedAt: timestamp("decided_at"),
   decidedBy: integer("decided_by"),
 });
+
+/**
+ * Team invites 📨 — the same consent rule, pointed the other way.
+ *
+ * A captain used to be able to drop a player straight onto the roster, which
+ * meant a squad could gain members who never agreed to be in it (and whose
+ * name then showed up on booking chips and open matches). Nobody is added
+ * without saying yes: an invite sits here until the *player* accepts or
+ * declines, exactly as a `teamRequests` row waits on the captain.
+ *
+ * `createdAt` doubles as "when was this last sent", because a declined/withdrawn
+ * invite is reopened in place rather than duplicated — and that column is what
+ * the daily quota counts. Owner/admin accounts can never be invited; see
+ * `canBeInvitedToTeam` in `src/lib/teams.ts`.
+ */
+export const teamInvites = pgTable("team_invites", {
+  id: serial("id").primaryKey(),
+  teamId: integer("team_id").notNull(),
+  /** The player being invited — the only person who can answer it. */
+  userId: integer("user_id").notNull(),
+  /** The captain who sent it, so the reply always has somebody to go back to. */
+  invitedBy: integer("invited_by").notNull().default(0),
+  message: text("message").notNull().default(""),
+  status: text("status").notNull().default("pending"),
+  createdAt: timestamp("created_at").defaultNow(),
+  decidedAt: timestamp("decided_at"),
+  decidedBy: integer("decided_by"),
+});
+
 
 export const openMatches = pgTable("open_matches", {
   id: serial("id").primaryKey(),

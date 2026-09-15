@@ -11,7 +11,12 @@ import {
   normalizePromoCode,
   promoDateISO,
 } from "./promos";
-import { TEAM_CODE_MAX, TEAM_CODE_MIN, normalizeTeamCode } from "./teams";
+import {
+  TEAM_CODE_MAX,
+  TEAM_CODE_MIN,
+  TEAM_DESCRIPTION_MAX,
+  normalizeTeamCode,
+} from "./teams";
 
 export type FieldError = string | null;
 
@@ -420,6 +425,29 @@ export function validateJoinMessage(msg: unknown): FieldError {
   const t = String(msg ?? "").trim();
   if (!t) return null;
   if (t.length > 200) return "Keep your join note under 200 characters 📝";
+  return null;
+}
+
+/**
+ * The note a captain writes on an invitation. Same cap as a join note on purpose:
+ * both are "a sentence or two about why", and one shared limit stops the two sides
+ * of the flow from feeling like different products.
+ */
+export function validateInviteMessage(msg: unknown): FieldError {
+  const t = String(msg ?? "").trim();
+  if (!t) return null;
+  if (t.length > 200) return "Keep your invite note under 200 characters 📝";
+  return null;
+}
+
+/** Optional "about us" box on a squad — see `teams.description`. */
+export function validateTeamDescription(desc: unknown): FieldError {
+  const t = String(desc ?? "").trim();
+  if (!t) return null;
+  if (t.length < 10)
+    return "Give the description a little more to say — at least 10 characters ✍️";
+  if (t.length > TEAM_DESCRIPTION_MAX)
+    return `Team description is too long (max ${TEAM_DESCRIPTION_MAX} characters) 📝`;
   return null;
 }
 
