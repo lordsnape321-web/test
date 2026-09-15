@@ -23,6 +23,7 @@ const EXPECTED = [
   "teams",
   "team_members",
   "team_requests",
+  "team_invites",
   "open_matches",
   "match_joins",
   "notifications",

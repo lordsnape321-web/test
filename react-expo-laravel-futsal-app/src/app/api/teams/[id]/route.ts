@@ -2,7 +2,12 @@ import { db } from "@/db";
 import { teams, users, venues } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { sendNotification } from "@/lib/notify";
-import { validateMessage, validateTeamCode, validateTitle } from "@/lib/validation";
+import {
+  validateMessage,
+  validateTeamCode,
+  validateTeamDescription,
+  validateTitle,
+} from "@/lib/validation";
 import { isCaptain, teamCodeTaken, teamRoster, transferCaptaincy } from "@/lib/team-store";
 import { normalizeTeamCode } from "@/lib/teams";
 
@@ -57,6 +62,14 @@ export async function PATCH(
       });
       if (mErr) return Response.json({ error: mErr }, { status: 400 });
       patch.motto = motto;
+    }
+    if (body.description !== undefined) {
+      // "About us" is optional, but never blank-by-accident: an all-whitespace
+      // edit clears the description, which is a legitimate thing to want.
+      const description = String(body.description).trim();
+      const dErr = validateTeamDescription(description);
+      if (dErr) return Response.json({ error: dErr }, { status: 400 });
+      patch.description = description;
     }
     if (body.level !== undefined) {
       if (!LEVELS.includes(String(body.level)))

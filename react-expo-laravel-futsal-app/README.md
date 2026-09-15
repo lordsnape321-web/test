@@ -26,7 +26,7 @@ Start Postgres (pick one — see [Database](#database) below), then:
 
 ```bash
 npm run db:check    # confirms Postgres is reachable and tells you what is missing
-npm run db:push     # create the 12 tables — must print "[✓] Changes applied"
+npm run db:push     # create/refresh the schema — must print "[✓] Changes applied"
 npm run dev         # http://localhost:3000
 ```
 
@@ -202,10 +202,11 @@ signed-up account is in none.
 
 ---
 
-## Teams: one captain, one code, one home turf
+## Teams: one captain, one code, one home turf — and nobody joins without consenting
 
-`/teams` is where squads are found and run. Three rules are enforced in the schema and the API, not
-just hidden behind the UI.
+`/teams` is where squads are found and run. Four rules are enforced in the schema and the API, not
+just hidden behind the UI: one captain, a unique code, a real home turf, and consent in both
+directions (see below).
 
 **1. Exactly one captain.** `teams.captain_id` is the source of truth, and every captain is also a
 member. The member row's `role` label is kept in step with it by `transferCaptaincy()`, which demotes
@@ -225,23 +226,69 @@ loud over the phone is enough to find a squad.
 edit form offer a **dropdown of venues**, and a free-text turf in the request body is ignored
 server-side — a team can never claim a court that does not exist.
 
-### Joining is approval-based
+### Joining is consent-based — in both directions
 
-Asking to join files a row in `team_requests`; it does **not** add you to the squad. The captain
-accepts (the member row is created then) or declines. Re-asking after a decline reuses that declined
-row instead of stacking duplicates, and the player can withdraw a pending request — the same
-`DELETE /api/teams/{id}/join` endpoint handles both leaving and withdrawing.
+Nobody is ever added to a squad without saying yes. There are two queues, one per initiator, and
+both are settled by the person who has to play with the newcomer:
+
+| Direction | Filed in | Who answers | The answer creates the roster row |
+| --------- | -------- | ----------- | --------------------------------- |
+| Player asks to join | `team_requests` | the **captain** | `POST /api/teams/{id}/requests` with `action: accept` |
+| Captain invites a player | `team_invites` | the **player** | `POST /api/team-invites` with `action: accept` |
+
+Asking to join files a request; it does **not** add you to the squad. Re-asking after a decline
+reuses that declined row instead of stacking duplicates, and the player can withdraw a pending
+request — the same `DELETE /api/teams/{id}/join` endpoint handles both leaving and withdrawing.
+Inviting works the same way in reverse: `POST /api/teams/{id}/invites` files the invitation, it sits
+in the player's inbox, and only their accept (`/api/team-invites`) writes the membership. A decline
+or a withdrawn invite can be reopened later; an accepted one is settled.
+
+The captain used to be able to add someone straight to the roster and that write is gone:
+`POST /api/teams/{id}/members` answers `405 consent_required` and points at the invite endpoint, so
+no client — including an old one — can put a name on a squad without consent.
+
+### Five asks a day, each way
+
+`TEAM_INVITE_DAILY_LIMIT` and `JOIN_REQUEST_DAILY_LIMIT` (both **5**) cap how many invitations a
+squad may send and how many join requests a player may file **per calendar day**, counted on the
+row's `createdAt` — a reopen that fires today burns today's slot. The day is the server's, so the
+count resets at midnight. The point is symmetry: a captain cannot carpet-bomb the roster, and a
+player cannot flood every captain with the same message. Quotas are per *team* and per *player*, not
+per captain, so captaining two squads does not double either limit.
+
+Both numbers ride along on the responses the UI already makes (`GET /api/teams` returns
+`invitesLeftToday` for squads you captain and the viewer's `quota`), so the pages say
+**"3 of 5 invites left today"** before the fifth tap instead of failing after it. A 6th attempt gets
+`429 { reason: "daily_limit", quota, resetsAt }`.
+
+Answering is never capped — reading your inbox and saying yes costs nothing.
+
+### Only players can be invited
+
+`GET /api/users?role=player` is what feeds the captain's invite search, so venue owners and admin
+accounts are not listed as recruitable at all; `POST /api/teams/{id}/invites` then re-checks the
+role and answers `403 not_invitable` for anything that is not a player. Hiding them in the list is a
+courtesy, refusing them on the server is the rule.
+
+### The team's description
+
+`teams.description` is the optional **"about us"** box: who plays, when the squad meets, how the
+court bill gets split. It is a `textarea` on the create form and in `TeamManager`, validated at up
+to `TEAM_DESCRIPTION_MAX` (400) characters, and it renders under the motto on every team card — the
+one paragraph that helps a stranger decide to ask, and helps a captain decide to accept.
 
 `GET /api/teams?viewerId=N` computes each team's relationship to that viewer server-side
-(`isMember`, `isCaptain`, `requestStatus`, `requestId`, plus a `pendingRequests` count), so the cards
-draw honest buttons — **Manage your squad**, **Request pending ⏳ — tap to withdraw**, **Take a break
-from team**, or **Request to join** — rather than guessing from the roster.
+(`isMember`, `isCaptain`, `requestStatus`, `requestId`, `inviteStatus`, `inviteId`, plus
+`pendingRequests` / `pendingInvites` counts), so the cards draw honest buttons — **Manage your
+squad**, **Accept & join** when a squad has invited you, **Request pending ⏳ — tap to withdraw**,
+**Take a break from team**, or **Request to join** — rather than guessing from the roster.
 
 ### The captain's panel
 
 **Manage your squad** appears only on teams you captain and opens `TeamManager`: decide join
-requests, add members directly from a search of platform users, remove members (never yourself while
-you captain), hand over the armband, and edit the name, motto, level, colours, squad size, code, home
+requests, invite players from a search that lists players only (with each open invitation and its
+status underneath, withdrawable until answered), remove members (never yourself while you captain),
+hand over the armband, and edit the name, description, motto, level, colours, squad size, code, home
 turf and looking-for-players flag. Every action re-checks captaincy on the server, so hiding a button
 is a courtesy rather than the security.
 
@@ -250,19 +297,28 @@ is a courtesy rather than the security.
 | `GET /api/teams?q=&viewerId=`                    | search by code or name, with the viewer's relationship to each team |
 | `POST /api/teams`                                | create a team; `409` if the code is taken                        |
 | `PATCH /api/teams/{id}`                          | captain-only edit; `newCaptainId` transfers the armband          |
-| `POST /api/teams/{id}/join`                      | file a join request                                              |
+| `POST /api/teams/{id}/join`                      | file a join request; `429` past the 5-a-day cap                  |
 | `DELETE /api/teams/{id}/join?userId=N`           | leave the squad, or withdraw a pending request                   |
 | `GET /api/teams/{id}/requests?captainId=N`       | the captain's queue (`status=all` includes decided ones)         |
 | `POST /api/teams/{id}/requests`                  | `action: accept` or `decline`                                    |
+| `POST /api/teams/{id}/invites`                   | invite a player; `429` past the cap, `403` for non-players       |
+| `GET /api/teams/{id}/invites?captainId=N`        | the squad's sent invites + today's invite quota                  |
+| `DELETE /api/teams/{id}/invites?captainId=&inviteId=` | take a still-pending invitation back                        |
+| `GET /api/team-invites?userId=N`                 | this player's invitations + their daily request quota            |
+| `POST /api/team-invites`                         | the player's `action: accept` (this is what adds them) or `decline` |
 | `GET /api/teams/{id}/members`                    | public roster — member emails are included only for `?viewerId=` the captain |
-| `POST`/`DELETE /api/teams/{id}/members`          | captain adds or removes a member                                 |
-| `GET /api/users?q=`                              | people search behind the add-member box                          |
+| `DELETE /api/teams/{id}/members?captainId=&userId=` | captain removes a member                                        |
+| `POST /api/teams/{id}/members`                   | `405 consent_required` — direct adds are gone; use an invite     |
+| `GET /api/users?q=&role=player`                  | people search behind the invite box, players only                |
 
 - `src/lib/teams.ts` — code helpers (`normalizeTeamCode`, `suggestTeamCode`, role labels)
-- `src/lib/team-store.ts` — search, code uniqueness, rosters, requests, `transferCaptaincy()`
+- `src/lib/team-store.ts` — search, code uniqueness, rosters, requests, invites, both daily quotas,
+  `transferCaptaincy()`
 - `src/components/TeamManager.tsx` — the captain's panel
 - `src/app/teams/page.tsx` — search bar, honest buttons, create form
 
 Demo data: `aarav@futsal.np` captains **Chabahil Chargers** (`CHARGERS-4X7K`) with two requests
-waiting on them, so the panel has something to decide on the first login. Every seeded team has a
-code and a home turf picked from the seeded venues.
+waiting on them and three invitations waiting on *other* players, so both sides of the consent flow
+have something to decide on the first login. Every seeded team has a code, a home turf picked from
+the seeded venues, and a description. Logged-out? Sign up as a player and the invite queue is the
+one thing you cannot reach — `dipesh@futsal.np` is the invitee of the first one.

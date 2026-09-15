@@ -1,7 +1,22 @@
 import { db } from "@/db";
-import { teamMembers, teamRequests, teams, users } from "@/db/schema";
-import { and, eq, inArray } from "drizzle-orm";
-import { REQUEST_PENDING, normalizeTeamCode } from "./teams";
+import {
+  teamInvites,
+  teamMembers,
+  teamRequests,
+  teams,
+  users,
+} from "@/db/schema";
+import { and, eq, gte, inArray, sql } from "drizzle-orm";
+import {
+  JOIN_REQUEST_DAILY_LIMIT,
+  REOPENABLE_REQUEST_STATUSES,
+  REQUEST_PENDING,
+  TEAM_INVITE_DAILY_LIMIT,
+  makeQuota,
+  normalizeTeamCode,
+  startOfQuotaDay,
+  type Quota,
+} from "./teams";
 
 /**
  * A team as the booking flow needs it: enough to render a chip and to sync the
@@ -343,4 +358,216 @@ export async function transferCaptaincy(teamId: number, newCaptainId: number) {
 
   const after = await db.select().from(teams).where(eq(teams.id, teamId));
   return after[0] ?? null;
+}
+
+/* ------------------------------------------------------------------ invites */
+
+/**
+ * An invite as both panels render it: the squad, the player, and who asked.
+ * `email` is filled only for the captain's own view, mirroring the roster rule —
+ * contact details are for running a team, not for scraping.
+ */
+export type TeamInviteRow = {
+  id: number;
+  teamId: number;
+  teamName: string;
+  teamCode: string;
+  teamLogoColor: string;
+  teamLevel: string;
+  maxPlayers: number;
+  memberCount: number;
+  squadFull: boolean;
+  userId: number;
+  name: string;
+  email: string;
+  avatarColor: string;
+  avatarUrl: string;
+  position: string;
+  level: string;
+  invitedBy: number;
+  captainName: string;
+  message: string;
+  status: string;
+  createdAt: Date | null;
+  decidedAt: Date | null;
+};
+
+/**
+ * How many players this squad has invited today. Per team rather than per
+ * captain, so leading two squads does not quietly double the cap of either, and
+ * a second captain of the same squad cannot get around it either — the limit
+ * belongs to the team.
+ */
+export async function teamInviteQuota(teamId: number): Promise<Quota> {
+  if (!Number.isInteger(teamId) || teamId <= 0)
+    return makeQuota(0, TEAM_INVITE_DAILY_LIMIT);
+  const rows = await db
+    .select({ n: sql<number>`count(*)::int` })
+    .from(teamInvites)
+    .where(
+      and(eq(teamInvites.teamId, teamId), gte(teamInvites.createdAt, startOfQuotaDay()))
+    );
+  return makeQuota(rows[0]?.n ?? 0, TEAM_INVITE_DAILY_LIMIT);
+}
+
+/** How many squads this player has asked to join today. */
+export async function joinRequestQuota(userId: number): Promise<Quota> {
+  if (!Number.isInteger(userId) || userId <= 0)
+    return makeQuota(0, JOIN_REQUEST_DAILY_LIMIT);
+  const rows = await db
+    .select({ n: sql<number>`count(*)::int` })
+    .from(teamRequests)
+    .where(
+      and(eq(teamRequests.userId, userId), gte(teamRequests.createdAt, startOfQuotaDay()))
+    );
+  return makeQuota(rows[0]?.n ?? 0, JOIN_REQUEST_DAILY_LIMIT);
+}
+
+/** The player's pending invite from this squad, if there is one. */
+export async function myPendingInvite(
+  teamId: number,
+  userId: number
+): Promise<typeof teamInvites.$inferSelect | null> {
+  if (!Number.isInteger(teamId) || teamId <= 0) return null;
+  if (!Number.isInteger(userId) || userId <= 0) return null;
+  const rows = await db
+    .select()
+    .from(teamInvites)
+    .where(
+      and(
+        eq(teamInvites.teamId, teamId),
+        eq(teamInvites.userId, userId),
+        eq(teamInvites.status, REQUEST_PENDING)
+      )
+    );
+  return rows[0] ?? null;
+}
+
+/**
+ * A declined or withdrawn invite is reopened in place instead of stacking a
+ * duplicate row per attempt — the same trick `teamRequests` uses, so a player's
+ * history with a squad stays one row. An `accepted` row is history and is left
+ * alone; a fresh one is created beside it.
+ */
+export async function reopenableInvite(
+  teamId: number,
+  userId: number
+): Promise<typeof teamInvites.$inferSelect | null> {
+  const rows = await db
+    .select()
+    .from(teamInvites)
+    .where(and(eq(teamInvites.teamId, teamId), eq(teamInvites.userId, userId)));
+  return rows.find((r) => REOPENABLE_REQUEST_STATUSES.includes(r.status)) ?? null;
+}
+
+export async function findInvite(inviteId: number) {
+  if (!Number.isInteger(inviteId) || inviteId <= 0) return null;
+  const rows = await db.select().from(teamInvites).where(eq(teamInvites.id, inviteId));
+  return rows[0] ?? null;
+}
+
+/** Joins the rows a panel needs into one flat shape — used by both invite lists. */
+async function decorateInvites(
+  rows: Array<typeof teamInvites.$inferSelect>,
+  opts: { forCaptain: boolean }
+): Promise<TeamInviteRow[]> {
+  if (rows.length === 0) return [];
+  const allTeams = await db.select().from(teams);
+  const allMembers = await db.select().from(teamMembers);
+  const people = await db
+    .select()
+    .from(users)
+    .where(inArray(users.id, rows.flatMap((r) => [r.userId, r.invitedBy])));
+
+  const out: TeamInviteRow[] = [];
+  for (const r of rows) {
+    const t = allTeams.find((x) => x.id === r.teamId);
+    // An invite whose team has been deleted contributes nothing.
+    if (!t) continue;
+    const u = people.find((p) => p.id === r.userId);
+    if (!u) continue;
+    const memberCount = allMembers.filter((m) => m.teamId === t.id).length;
+    out.push({
+      id: r.id,
+      teamId: t.id,
+      teamName: t.name,
+      teamCode: t.teamCode ?? "",
+      teamLogoColor: t.logoColor,
+      teamLevel: t.level,
+      maxPlayers: t.maxPlayers,
+      memberCount,
+      squadFull: memberCount >= t.maxPlayers,
+      userId: u.id,
+      name: u.name,
+      email: opts.forCaptain ? u.email : "",
+      avatarColor: u.avatarColor,
+      avatarUrl: u.avatarUrl,
+      position: u.position,
+      level: u.level,
+      invitedBy: r.invitedBy,
+      captainName: people.find((p) => p.id === r.invitedBy)?.name ?? "The captain",
+      message: r.message,
+      status: r.status,
+      createdAt: r.createdAt,
+      decidedAt: r.decidedAt,
+    });
+  }
+  // Oldest ask first, so nobody waits behind the queue-jumper.
+  return out.sort(
+    (a, b) =>
+      (a.createdAt ?? new Date(0)).getTime() - (b.createdAt ?? new Date(0)).getTime()
+  );
+}
+
+/** The captain's sent invites for one squad (pending by default). */
+export async function teamSentInvites(
+  teamId: number,
+  status: string = REQUEST_PENDING
+): Promise<TeamInviteRow[]> {
+  if (!Number.isInteger(teamId) || teamId <= 0) return [];
+  const rows = await db
+    .select()
+    .from(teamInvites)
+    .where(
+      status
+        ? and(eq(teamInvites.teamId, teamId), eq(teamInvites.status, status))
+        : eq(teamInvites.teamId, teamId)
+    );
+  return decorateInvites(rows, { forCaptain: true });
+}
+
+/** Everything this player has been invited to (pending by default). */
+export async function playerInvites(
+  userId: number,
+  status: string = REQUEST_PENDING
+): Promise<TeamInviteRow[]> {
+  if (!Number.isInteger(userId) || userId <= 0) return [];
+  const rows = await db
+    .select()
+    .from(teamInvites)
+    .where(
+      status
+        ? and(eq(teamInvites.userId, userId), eq(teamInvites.status, status))
+        : eq(teamInvites.userId, userId)
+    );
+  return decorateInvites(rows, { forCaptain: false });
+}
+
+/**
+ * Pending invites per squad, for the badge on the captain's own team card. The
+ * list lives in the invite panel; the card only needs a number.
+ */
+export async function pendingInviteCounts(
+  teamIds: number[]
+): Promise<Map<number, number>> {
+  const out = new Map<number, number>();
+  if (teamIds.length === 0) return out;
+  const rows = await db
+    .select()
+    .from(teamInvites)
+    .where(
+      and(inArray(teamInvites.teamId, teamIds), eq(teamInvites.status, REQUEST_PENDING))
+    );
+  for (const r of rows) out.set(r.teamId, (out.get(r.teamId) ?? 0) + 1);
+  return out;
 }

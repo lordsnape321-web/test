@@ -3,11 +3,20 @@ import { teamMembers, teamRequests, teams, users } from "@/db/schema";
 import { and, eq } from "drizzle-orm";
 import { sendNotification } from "@/lib/notify";
 import { validateJoinMessage } from "@/lib/validation";
-import { isCaptain, isMember, myPendingRequest, teamRoster } from "@/lib/team-store";
+import {
+  isCaptain,
+  isMember,
+  joinRequestQuota,
+  myPendingInvite,
+  myPendingRequest,
+  teamRoster,
+} from "@/lib/team-store";
 import {
   REOPENABLE_REQUEST_STATUSES,
   REQUEST_CANCELLED,
   REQUEST_PENDING,
+  quotaExhausted,
+  quotaResetsAt,
 } from "@/lib/teams";
 
 export const dynamic = "force-dynamic";
@@ -18,6 +27,10 @@ export const dynamic = "force-dynamic";
  * Joining is no longer instant. This files a request that the captain accepts or
  * declines, which is what makes "the captain manages the team" real: the roster
  * only changes because the captain decided it should.
+ *
+ * The cap is the other half of the deal: a player may ask `JOIN_REQUEST_DAILY_LIMIT`
+ * squads per day, which is plenty to find a team and enough to stop a bot from
+ * carpet-bombing every captain on the platform with the same message.
  */
 export async function POST(
   req: Request,
@@ -62,6 +75,32 @@ export async function POST(
         { status: 409 }
       );
 
+    // An invitation from this very squad is a better offer than a request: the
+    // captain already wants them, so the answer belongs in the invite, not in a
+    // second queue the captain then has to reconcile.
+    const invite = await myPendingInvite(teamId, userId);
+    if (invite)
+      return Response.json(
+        {
+          error: `${team.name} already invited you — accept the invite instead of asking 🎉`,
+          reason: "invited",
+          inviteId: invite.id,
+        },
+        { status: 409 }
+      );
+
+    const quota = await joinRequestQuota(userId);
+    if (quotaExhausted(quota))
+      return Response.json(
+        {
+          error: `That's ${quota.used} join requests today — players can ask ${quota.limit} squads a day. Your pending asks are still with their captains, and the count resets after midnight 🌙`,
+          reason: "daily_limit",
+          quota,
+          resetsAt: quotaResetsAt(),
+        },
+        { status: 429 }
+      );
+
     // A declined or withdrawn ask may be made again; reuse that row so a player's
     // history with the squad stays one row rather than piling up duplicates.
     const prior = await db
@@ -102,6 +141,8 @@ export async function POST(
         ok: true,
         status: REQUEST_PENDING,
         message: `Request sent — ${team.name}'s captain will review it 🛡️`,
+        // So the page can update "2 of 5 asks left today" without another fetch.
+        quota: { ...quota, used: quota.used + 1, left: Math.max(0, quota.left - 1) },
       },
       { status: 201 }
     );
