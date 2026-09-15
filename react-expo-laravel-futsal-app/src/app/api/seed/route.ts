@@ -199,8 +199,8 @@ function demoTeamMemberships(): Array<[number, number, string]> {
 function demoTeamInvites(): Array<[number, number, string]> {
   return [
     [0, 3, "We lost our left-back to a knee injury — you played against us and I remember. Two nights a week, no trial game 🛡️"],
-    [4, 2, "You are a keeper and we are short of one. Come Friday, and if you hate it, decline and no hard feelings 🧤"],
     [1, 5, "Champions need depth 😄 Sunday mornings only, and we split the court four ways."],
+    [4, 0, "We are the worst team in the league and the friendliest 🦉 an advanced player like you would change that."],
   ];
 }
 
@@ -212,7 +212,6 @@ function demoTeamInvites(): Array<[number, number, string]> {
 function demoTeamJoinRequests(): Array<[number, number, string]> {
   return [
     [0, 7, "Sunday league defender, and I live two minutes from the arena. Would love to join the Chargers! 🛡️"],
-    [0, 3, "Played against you last month and lost 4-1 😅 Let me try from the inside."],
     [4, 2, "Beginner goalkeeper. I can't promise saves but I promise enthusiasm 🧤"],
     [2, 3, "In Pokhara every weekend — happy to travel for the Panthers."],
   ];

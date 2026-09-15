@@ -317,8 +317,8 @@ is a courtesy rather than the security.
 - `src/components/TeamManager.tsx` — the captain's panel
 - `src/app/teams/page.tsx` — search bar, honest buttons, create form
 
-Demo data: `aarav@futsal.np` captains **Chabahil Chargers** (`CHARGERS-4X7K`) with two requests
-waiting on them and three invitations waiting on *other* players, so both sides of the consent flow
-have something to decide on the first login. Every seeded team has a code, a home turf picked from
-the seeded venues, and a description. Logged-out? Sign up as a player and the invite queue is the
-one thing you cannot reach — `dipesh@futsal.np` is the invitee of the first one.
+Demo data: `aarav@futsal.np` captains **Chabahil Chargers** (`CHARGERS-4X7K`) with a join request
+waiting on them, and has sent an invitation to `dipesh@futsal.np` that is still unanswered — log in
+as either account and the respective queue has something to decide. No player is both invited and
+requesting the same squad (the API refuses that pairing anyway), and no owner account sits on a demo
+roster. Every seeded team has a code, a home turf picked from the seeded venues, and a description.
