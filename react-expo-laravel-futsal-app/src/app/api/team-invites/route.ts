@@ -105,7 +105,7 @@ export async function POST(req: Request) {
         type: "team",
         title: `📨 ${player?.name ?? "A player"} declined your invite`,
         message: `${player?.name ?? "They"} said no thanks to ${team.name}. No harm done — you can invite someone else, or wait for a request to come to you.`,
-        link: "/teams",
+        link: `/teams/${team.id}`,
       });
       return Response.json({
         ok: true,
@@ -163,7 +163,9 @@ export async function POST(req: Request) {
       message: `${player?.name ?? "They"} accepted your invite and is on the roster — ${
         roster.length + 1
       }/${team.maxPlayers} in the squad now. Pick them as your team when you book a court ⚽`,
-      link: "/teams",
+      // Both sides land on the squad page: the captain sees the new member in the
+    // roster, the player sees the crew they just joined.
+    link: `/teams/${team.id}`,
     });
     await sendNotification({
       userId,
@@ -172,7 +174,9 @@ export async function POST(req: Request) {
       message: `You accepted the invitation from ${team.name} (${
         team.teamCode ?? "no code"
       }). Choose them under "Just our gang" next time you book a court ⚽`,
-      link: "/teams",
+      // Both sides land on the squad page: the captain sees the new member in the
+    // roster, the player sees the crew they just joined.
+    link: `/teams/${team.id}`,
     });
 
     return Response.json({

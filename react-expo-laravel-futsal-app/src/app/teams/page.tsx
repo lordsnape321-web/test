@@ -1,7 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import {
+  ArrowUpRight,
   Check,
   Plus,
   Trophy,
@@ -477,7 +479,9 @@ export default function TeamsPage() {
                   </span>
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-black text-stone-900 dark:text-stone-100">
-                      {i.teamName}
+                      <Link href={`/teams/${i.teamId}`} className="hover:underline" title="Read the full squad before you answer">
+                        {i.teamName}
+                      </Link>
                       {i.teamCode && (
                         <span className="ml-2 rounded-full bg-stone-100 px-2 py-0.5 font-mono text-[10px] font-black text-stone-600 dark:bg-white/10 dark:text-stone-300">
                           {i.teamCode}
@@ -499,6 +503,15 @@ export default function TeamsPage() {
                         join 👥
                       </p>
                     )}
+                    {/* A one-line note is thin evidence for a yes, so the full
+                        dossier gets its own route: who plays there, how they
+                        perform, and everything the captain wrote. */}
+                    <Link
+                      href={`/teams/${i.teamId}`}
+                      className="mt-1.5 inline-flex items-center gap-1 text-[11px] font-black text-emerald-700 hover:underline dark:text-emerald-400"
+                    >
+                      <ArrowUpRight className="h-3 w-3" /> Read the full squad first
+                    </Link>
                   </div>
                   <div className="flex gap-1.5">
                     <button
@@ -605,7 +618,11 @@ export default function TeamsPage() {
                       </span>
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2">
-                          <h3 className="truncate text-base font-extrabold text-stone-900 dark:text-stone-100">{t.name}</h3>
+                          <h3 className="truncate text-base font-extrabold text-stone-900 dark:text-stone-100">
+                            <Link href={`/teams/${t.id}`} className="hover:underline" title="Full squad page">
+                              {t.name}
+                            </Link>
+                          </h3>
                           {t.lookingForPlayers && (
                             <span className="flex shrink-0 items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-black text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300">
                               <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-500" />
@@ -618,9 +635,17 @@ export default function TeamsPage() {
                         </p>
                         {/* What the captain wants a stranger to know before asking. */}
                         {t.description && (
-                          <p className="mt-1.5 line-clamp-3 text-xs leading-relaxed text-stone-500 dark:text-stone-400">
-                            {t.description}
-                          </p>
+                          <>
+                            <p className="mt-1.5 line-clamp-3 text-xs leading-relaxed text-stone-500 dark:text-stone-400">
+                              {t.description}
+                            </p>
+                            <Link
+                              href={`/teams/${t.id}`}
+                              className="mt-1 inline-flex items-center gap-1 text-[11px] font-black text-emerald-700 hover:underline dark:text-emerald-400"
+                            >
+                              <ArrowUpRight className="h-3 w-3" /> Read the full squad page
+                            </Link>
+                          </>
                         )}
                         <p className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-stone-500 dark:text-stone-400">
                           <span className="flex items-center gap-1">
@@ -663,12 +688,14 @@ export default function TeamsPage() {
                     <div className="mt-3 flex items-center justify-between">
                       <div className="flex -space-x-2">
                         {t.players.slice(0, 6).map((p) => (
-                          <span key={p.id} title={`${p.name} (${p.position})`}>
-                            <Avatar
-                              user={{ name: p.name, avatarColor: p.avatarColor, avatarUrl: p.avatarUrl }}
-                              className="h-8 w-8 text-[10px]"
-                              ring="border-2 border-white shadow dark:border-stone-900"
-                            />
+                          <span key={p.id} title={`${p.name} (${p.position}) — full details`}>
+                            <Link href={`/players/${p.id}`}>
+                              <Avatar
+                                user={{ name: p.name, avatarColor: p.avatarColor, avatarUrl: p.avatarUrl }}
+                                className="h-8 w-8 text-[10px]"
+                                ring="border-2 border-white shadow dark:border-stone-900"
+                              />
+                            </Link>
                           </span>
                         ))}
                         {t.memberCount > 6 && (
@@ -677,9 +704,18 @@ export default function TeamsPage() {
                           </span>
                         )}
                       </div>
-                      <span className="flex items-center gap-1 text-xs font-bold text-stone-500 dark:text-stone-400">
-                        <Shield className="h-3.5 w-3.5" /> {t.memberCount}/{t.maxPlayers} mates
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <span className="flex items-center gap-1 text-xs font-bold text-stone-500 dark:text-stone-400">
+                          <Shield className="h-3.5 w-3.5" /> {t.memberCount}/{t.maxPlayers} mates
+                        </span>
+                        <Link
+                          href={`/teams/${t.id}`}
+                          title="Full page: description, record, roster and how to join"
+                          className="flex items-center gap-1 rounded-full border border-stone-200 px-2 py-1 text-[10px] font-black text-stone-500 transition hover:bg-stone-100 dark:border-white/10 dark:text-stone-300 dark:hover:bg-white/10"
+                        >
+                          <ArrowUpRight className="h-3 w-3" /> Full page
+                        </Link>
+                      </div>
                     </div>
 
                     {isCaptain ? (

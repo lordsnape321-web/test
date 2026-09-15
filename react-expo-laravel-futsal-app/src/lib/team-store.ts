@@ -1,10 +1,14 @@
 import { db } from "@/db";
 import {
+  matchJoins,
+  openMatches,
+  reviews,
   teamInvites,
   teamMembers,
   teamRequests,
   teams,
   users,
+  venues,
 } from "@/db/schema";
 import { and, eq, gte, inArray, sql } from "drizzle-orm";
 import {
@@ -32,6 +36,19 @@ export type UserTeam = {
   level: string;
   /** "captain" | "player" — lets the UI flag the squads you lead. */
   role: string;
+  /**
+   * Extra context for the public player dossier (`/players/{id}`): a captain
+   * deciding on a request can see what the applicant is already part of. The
+   * booking chip ignores these, so widening the shape costs nothing there.
+   */
+  motto: string;
+  description: string;
+  maxPlayers: number;
+  wins: number;
+  draws: number;
+  losses: number;
+  homeGround: string;
+  lookingForPlayers: boolean;
 };
 
 /** A roster row: the member plus everything the captain panel renders. */
@@ -96,6 +113,14 @@ export async function teamsForUser(userId: number): Promise<UserTeam[]> {
       logoColor: t.logoColor,
       level: t.level,
       role: t.captainId === userId ? "captain" : "player",
+      motto: t.motto,
+      description: t.description ?? "",
+      maxPlayers: t.maxPlayers,
+      wins: t.wins,
+      draws: t.draws,
+      losses: t.losses,
+      homeGround: t.homeGround,
+      lookingForPlayers: t.lookingForPlayers,
     });
   }
 
@@ -570,4 +595,100 @@ export async function pendingInviteCounts(
     );
   for (const r of rows) out.set(r.teamId, (out.get(r.teamId) ?? 0) + 1);
   return out;
+}
+
+/**
+ * Everything this player has asked for, newest first, with the squad attached.
+ * The dossier page filters this to the squads the *viewer* captains, which is
+ * what turns "someone asked to join" into "someone is asking, and here is why".
+ */
+export async function joinRequestsFromUser(userId: number) {
+  if (!Number.isInteger(userId) || userId <= 0) return [];
+  const rows = await db
+    .select()
+    .from(teamRequests)
+    .where(eq(teamRequests.userId, userId));
+  if (rows.length === 0) return [];
+  const allTeams = await db.select().from(teams);
+  return rows
+    .map((r) => {
+      const t = allTeams.find((x) => x.id === r.teamId);
+      if (!t) return null;
+      return {
+        id: r.id,
+        teamId: t.id,
+        teamName: t.name,
+        teamCode: t.teamCode ?? "",
+        logoColor: t.logoColor,
+        captainId: t.captainId,
+        message: r.message,
+        status: r.status,
+        createdAt: r.createdAt,
+        decidedAt: r.decidedAt,
+      };
+    })
+    .filter((x): x is NonNullable<typeof x> => x !== null)
+    .sort(
+      (a, b) =>
+        (b.createdAt ?? new Date(0)).getTime() - (a.createdAt ?? new Date(0)).getTime()
+    );
+}
+
+/** A player's own venue reviews — public on the venue pages, so the dossier may show them. */
+export async function playerReviews(userId: number) {
+  if (!Number.isInteger(userId) || userId <= 0) return [];
+  const rows = await db
+    .select()
+    .from(reviews)
+    .where(eq(reviews.userId, userId));
+  if (rows.length === 0) return [];
+  const allVenues = await db.select().from(venues);
+  return rows
+    .map((r) => {
+      const v = allVenues.find((x) => x.id === r.venueId);
+      return {
+        id: r.id,
+        venueId: r.venueId,
+        venueName: v?.name ?? "a venue",
+        rating: r.rating,
+        message: r.message,
+        createdAt: r.createdAt,
+      };
+    })
+    .sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0));
+}
+
+/** Open matches this player organises or has joined, so a captain can see they show up. */
+export async function playerMatchActivity(userId: number) {
+  if (!Number.isInteger(userId) || userId <= 0)
+    return { organized: [], joined: [] };
+  const allMatches = await db.select().from(openMatches);
+  const allVenues = await db.select().from(venues);
+  const joins = await db
+    .select()
+    .from(matchJoins)
+    .where(eq(matchJoins.userId, userId));
+  const joinedIds = new Set(joins.map((j) => j.matchId));
+  const shape = (m: typeof openMatches.$inferSelect) => ({
+    id: m.id,
+    title: m.title,
+    date: m.date,
+    startTime: m.startTime,
+    endTime: m.endTime,
+    level: m.level,
+    status: m.status,
+    pricePerPlayer: m.pricePerPlayer,
+    venueName: allVenues.find((v) => v.id === m.venueId)?.name ?? "",
+  });
+  const today = new Date().toISOString().slice(0, 10);
+  const upcoming = (m: typeof openMatches.$inferSelect) =>
+    m.date >= today && (m.status === "open" || m.status === "confirmed");
+  return {
+    organized: allMatches
+      .filter((m) => m.organizerId === userId && upcoming(m))
+      .map(shape),
+    joined: allMatches
+      .filter((m) => joinedIds.has(m.id) && upcoming(m))
+      .map(shape),
+  };
 }

@@ -275,13 +275,43 @@ courtesy, refusing them on the server is the rule.
 `teams.description` is the optional **"about us"** box: who plays, when the squad meets, how the
 court bill gets split. It is a `textarea` on the create form and in `TeamManager`, validated at up
 to `TEAM_DESCRIPTION_MAX` (400) characters, and it renders under the motto on every team card — the
-one paragraph that helps a stranger decide to ask, and helps a captain decide to accept.
+one paragraph that helps a stranger decide to ask, and helps a captain decide to accept. A card has
+to fit a dozen squads on one screen, so there it is clamped to three lines; on `/teams/{id}` it is
+printed whole, `whitespace-pre-line`, paragraph breaks and all.
 
 `GET /api/teams?viewerId=N` computes each team's relationship to that viewer server-side
 (`isMember`, `isCaptain`, `requestStatus`, `requestId`, `inviteStatus`, `inviteId`, plus
 `pendingRequests` / `pendingInvites` counts), so the cards draw honest buttons — **Manage your
 squad**, **Accept & join** when a squad has invited you, **Request pending ⏳ — tap to withdraw**,
 **Take a break from team**, or **Request to join** — rather than guessing from the roster.
+
+### Nothing worth reading lives only in a dialog box
+
+A request used to be answerable only inside a cramped modal: one line of name, one line of
+`level • position`, and a note clamped to two lines. Both sides of that consent now have a real,
+shareable page instead of an overlay — which also means a notification can land you on the thing
+itself:
+
+| Page | For | What it shows |
+| ---- | --- | ------------- |
+| `/players/{id}` | the **captain** reading a request (or an invite they sent) | the player's level, position, home city, reliability rating, trust badge, matches organised and joined, the venue reviews they wrote, every squad they already play for, and — if they asked or were invited — **Accept / Decline / Withdraw right there**, so deciding does not mean hunting for the panel |
+| `/teams/{id}` | the **player** reading an invitation (or any squad they are eyeing) | the full description, W/D/L and win rate, squad size, home turf linked to the venue, the captain's name linked to their dossier, the whole roster as links, and the button that matches where the viewer actually stands |
+
+Both are read-only `GET`s that reuse the existing write endpoints, so no new decision path — and no
+new quota loophole — exists outside `/api/teams/{id}/requests` and `/api/team-invites`. Names are
+wired to them from the team cards, the invite inbox, the roster, and every request/invite row in
+`TeamManager`.
+
+`GET /api/players/{id}` is deliberately blunt about privacy: no email, no phone, no booking rows,
+even for a captain. The request and invite history it *does* return (`myQueue`) is filtered
+server-side to squads the `?viewerId=` actually captains — re-checked with `isCaptain()`, not trusted
+from the query string — and `captainOptions` (squad size, invites left today, whether this player is
+already in or pending) is computed only for teams that viewer leads. An anonymous visitor gets the
+same public profile anyone else sees, and the page says so rather than showing a dead button.
+
+Team notifications now deep-link instead of dumping you on a list: **"Himal Basnet asked to join"**
+opens `/players/8` for the captain; **invites, acceptances and declines** open `/teams/{id}` so the
+player reads the squad before answering, and the captain sees the new name in the roster.
 
 ### The captain's panel
 
@@ -306,6 +336,8 @@ is a courtesy rather than the security.
 | `DELETE /api/teams/{id}/invites?captainId=&inviteId=` | take a still-pending invitation back                        |
 | `GET /api/team-invites?userId=N`                 | this player's invitations + their daily request quota            |
 | `POST /api/team-invites`                         | the player's `action: accept` (this is what adds them) or `decline` |
+| `GET /api/teams/{id}?viewerId=N`                 | one squad in full for `/teams/{id}` — record, roster, the viewer's standing, and the captain's queue only when that viewer is the captain |
+| `GET /api/players/{id}?viewerId=N`               | a player's dossier for `/players/{id}` — public profile, reliability, activity, and their request/invite history with teams *this viewer* captains |
 | `GET /api/teams/{id}/members`                    | public roster — member emails are included only for `?viewerId=` the captain |
 | `DELETE /api/teams/{id}/members?captainId=&userId=` | captain removes a member                                        |
 | `POST /api/teams/{id}/members`                   | `405 consent_required` — direct adds are gone; use an invite     |
@@ -316,6 +348,9 @@ is a courtesy rather than the security.
   `transferCaptaincy()`
 - `src/components/TeamManager.tsx` — the captain's panel
 - `src/app/teams/page.tsx` — search bar, honest buttons, create form
+- `src/app/teams/[id]/page.tsx` — the squad in full: description, record, roster, and the one button
+  that is true for you
+- `src/app/players/[id]/page.tsx` — the player's dossier a captain reads before answering
 
 Demo data: `aarav@futsal.np` captains **Chabahil Chargers** (`CHARGERS-4X7K`) with a join request
 waiting on them, and has sent an invitation to `dipesh@futsal.np` that is still unanswered — log in

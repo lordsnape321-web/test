@@ -131,8 +131,10 @@ export async function POST(
         userId: team.captainId,
         type: "team",
         title: `🛡️ ${requester?.name ?? "A player"} asked to join ${team.name}`,
-        message: `${requester?.name ?? "A player"} (${requester?.level ?? "—"} • ${requester?.position ?? "—"}) wants to join${message ? ` — "${message}"` : ""}. Accept or decline from your team panel.`,
-        link: "/teams",
+        message: `${requester?.name ?? "A player"} (${requester?.level ?? "—"} • ${requester?.position ?? "—"}) wants to join${message ? ` — "${message}"` : ""}. Open their profile to see their record, reliability and other squads before you answer.`,
+        // Straight to the player's dossier — everything about the person asking,
+        // with Accept/Decline on the same page so no one has to hunt for the panel.
+        link: `/players/${userId}`,
       });
     }
 

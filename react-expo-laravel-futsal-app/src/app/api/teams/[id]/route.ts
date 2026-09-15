@@ -8,12 +8,110 @@ import {
   validateTeamDescription,
   validateTitle,
 } from "@/lib/validation";
-import { isCaptain, teamCodeTaken, teamRoster, transferCaptaincy } from "@/lib/team-store";
-import { normalizeTeamCode } from "@/lib/teams";
+import {
+  isCaptain,
+  isMember,
+  myPendingInvite,
+  myPendingRequest,
+  teamCodeTaken,
+  teamInviteQuota,
+  teamJoinRequests,
+  teamRoster,
+  teamSentInvites,
+  transferCaptaincy,
+} from "@/lib/team-store";
+import { REQUEST_PENDING, normalizeTeamCode } from "@/lib/teams";
 
 export const dynamic = "force-dynamic";
 
 const LEVELS = ["Beginner", "Intermediate", "Advanced"];
+
+/**
+ * GET — one squad in full 👤
+ *
+ * The list endpoint answers "which squads match?"; this one answers "tell me
+ * about this squad", which is what a player weighing an invitation — or a
+ * stranger who found a code — actually needs: the description, the record, the
+ * whole roster, and their own relationship to the team so the buttons are honest.
+ *
+ * The captain-only extras (the request queue, the sent invitations, today's
+ * invite quota) are attached only when `viewerId` really is the captain, checked
+ * server-side, so nobody can read a rival's inbox by asking nicely.
+ */
+export async function GET(
+  req: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await params;
+    const teamId = Number(id);
+    if (!Number.isInteger(teamId) || teamId <= 0)
+      return Response.json({ error: "Invalid team 🛡️" }, { status: 400 });
+
+    const team = (await db.select().from(teams).where(eq(teams.id, teamId)))[0];
+    if (!team) return Response.json({ error: "Team not found 🛡️" }, { status: 404 });
+
+    const viewerId = Number(new URL(req.url).searchParams.get("viewerId") ?? 0);
+    const hasViewer = Number.isInteger(viewerId) && viewerId > 0;
+    const leads = hasViewer && (await isCaptain(teamId, viewerId));
+    const mine = hasViewer ? await isMember(teamId, viewerId) : false;
+
+    const [roster, captainRow, request, invite] = await Promise.all([
+      teamRoster(teamId),
+      db.select().from(users).where(eq(users.id, team.captainId)),
+      hasViewer && !mine ? myPendingRequest(teamId, viewerId) : Promise.resolve(null),
+      hasViewer && !mine ? myPendingInvite(teamId, viewerId) : Promise.resolve(null),
+    ]);
+
+    const wins = team.wins;
+    const played = team.wins + team.losses + team.draws;
+    const body: Record<string, unknown> = {
+      team: {
+        ...team,
+        teamCode: team.teamCode ?? "",
+        memberCount: roster.length,
+        captainName: captainRow[0]?.name ?? "—",
+        winRate: played > 0 ? Math.round((wins / played) * 100) : 0,
+        gamesPlayed: played,
+      },
+      roster: leads
+        ? roster
+        // Contact details stay with the captain, as on the panel.
+        : roster.map((m) => ({ ...m, email: "" })),
+      viewer: hasViewer
+        ? {
+            isMember: mine,
+            isCaptain: leads,
+            requestStatus: request?.status ?? null,
+            requestId: request?.id ?? null,
+            inviteStatus: invite?.status ?? null,
+            inviteId: invite?.id ?? null,
+          }
+        : null,
+    };
+
+    if (leads) {
+      const [pending, answered, invites, quota] = await Promise.all([
+        teamJoinRequests(teamId),
+        teamJoinRequests(teamId, ""),
+        teamSentInvites(teamId, ""),
+        teamInviteQuota(teamId),
+      ]);
+      body.captain = {
+        pendingRequests: pending,
+        requestHistory: answered.filter((r) => r.status !== REQUEST_PENDING).slice(-8),
+        invites,
+        quota,
+      };
+    }
+
+    return Response.json(body);
+  } catch (e) {
+    console.error(`[/api/teams/[id] GET] failed:`, e);
+    return Response.json({ error: String(e) }, { status: 500 });
+  }
+}
+
 
 /**
  * PATCH — the captain edits their squad 👑

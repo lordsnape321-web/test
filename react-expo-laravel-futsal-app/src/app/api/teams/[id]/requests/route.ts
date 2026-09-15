@@ -105,7 +105,9 @@ export async function POST(
         type: "team",
         title: `🛡️ ${team.name} couldn't take you this time`,
         message: `${team.captainId === captainId ? "The captain" : "The captain"} declined your request to join ${team.name}. Nothing personal — squads stay small on purpose. You're welcome to ask again later or find another team.`,
-        link: "/teams",
+        // The squad page — the player can read the team properly and,
+        // if they were turned down, ask again from there.
+        link: `/teams/${team.id}`,
       });
       return Response.json({ ok: true, action, request: decided[0], memberAdded: false });
     }
@@ -140,7 +142,9 @@ export async function POST(
       type: "team",
       title: `🎉 You're in ${team.name}!`,
       message: `The captain accepted your request — you're officially part of ${team.name} (${team.teamCode ?? "no code"}). Pick "Just our gang" and choose them when you book a court 🛡️`,
-      link: "/teams",
+      // Straight to the squad page, so the first thing a new member reads is who
+      // they'll be playing with.
+      link: `/teams/${team.id}`,
     });
 
     return Response.json({ ok: true, action, request: decided[0], memberAdded: true });

@@ -1,7 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import {
+  ArrowUpRight,
   Check,
   Copy,
   Crown,
@@ -438,12 +440,18 @@ export function TeamManager({
                       key={r.id}
                       className="flex flex-wrap items-center gap-2.5 rounded-xl border border-stone-200 bg-white p-3 dark:border-white/10 dark:bg-stone-950"
                     >
-                      <Avatar
-                        user={{ name: r.name, avatarColor: r.avatarColor, avatarUrl: r.avatarUrl }}
-                        className="h-9 w-9 text-[11px]"
-                      />
+                      <Link href={`/players/${r.userId}`} title="See their full details">
+                        <Avatar
+                          user={{ name: r.name, avatarColor: r.avatarColor, avatarUrl: r.avatarUrl }}
+                          className="h-9 w-9 text-[11px]"
+                        />
+                      </Link>
                       <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-black text-stone-900 dark:text-stone-100">{r.name}</p>
+                        <p className="truncate text-sm font-black text-stone-900 dark:text-stone-100">
+                          <Link href={`/players/${r.userId}`} className="hover:underline" title="Full profile, reliability and other squads">
+                            {r.name}
+                          </Link>
+                        </p>
                         <p className="truncate text-[11px] font-semibold text-stone-400 dark:text-stone-500">
                           {r.level} • {r.position}
                         </p>
@@ -453,6 +461,13 @@ export function TeamManager({
                           </p>
                         )}
                       </div>
+                      <Link
+                        href={`/players/${r.userId}`}
+                        title="Everything about this player, on a proper page"
+                        className="flex items-center gap-1 rounded-xl border border-stone-200 px-2.5 py-2 text-[10px] font-black text-stone-500 transition hover:bg-stone-100 dark:border-white/10 dark:text-stone-300 dark:hover:bg-white/10"
+                      >
+                        <ArrowUpRight className="h-3.5 w-3.5" /> Details
+                      </Link>
                       <div className="flex gap-1.5">
                         <button
                           onClick={() => decide(r.id, "accept", r.name)}
@@ -498,7 +513,9 @@ export function TeamManager({
                     />
                     <div className="min-w-0 flex-1">
                       <p className="flex items-center gap-1.5 truncate text-sm font-bold text-stone-900 dark:text-stone-100">
-                        {m.name}
+                        <Link href={`/players/${m.userId}`} className="hover:underline" title="Full profile">
+                          {m.name}
+                        </Link>
                         {m.isCaptain && (
                           <span className="flex items-center gap-0.5 rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] font-black text-amber-700 dark:bg-amber-500/15 dark:text-amber-300">
                             <Crown className="h-2.5 w-2.5" /> Captain
@@ -597,7 +614,11 @@ export function TeamManager({
                           className="h-8 w-8 text-[10px]"
                         />
                         <div className="min-w-0 flex-1">
-                          <p className="truncate text-sm font-bold text-stone-900 dark:text-stone-100">{p.name}</p>
+                          <p className="truncate text-sm font-bold text-stone-900 dark:text-stone-100">
+                            <Link href={`/players/${p.id}`} className="hover:underline" title="Read their dossier before you invite">
+                              {p.name}
+                            </Link>
+                          </p>
                           <p className="truncate text-[11px] text-stone-400 dark:text-stone-500">
                             {p.level} • {p.position}
                           </p>
@@ -644,7 +665,11 @@ export function TeamManager({
                           className="h-7 w-7 text-[9px]"
                         />
                         <div className="min-w-0 flex-1">
-                          <p className="truncate text-xs font-bold text-stone-900 dark:text-stone-100">{i.name}</p>
+                          <p className="truncate text-xs font-bold text-stone-900 dark:text-stone-100">
+                            <Link href={`/players/${i.userId}`} className="hover:underline" title="See their full details">
+                              {i.name}
+                            </Link>
+                          </p>
                           {i.message && (
                             <p className="truncate text-[10px] italic text-stone-400 dark:text-stone-500">
                               &ldquo;{i.message}&rdquo;

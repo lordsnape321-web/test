@@ -208,7 +208,9 @@ export async function POST(
       }. ${
         message ? `They wrote: "${message}". ` : ""
       }Accept to join the squad, or decline — nothing changes until you answer.`,
-      link: "/teams",
+      // The squad's own page: full description, the record and every name already
+      // in it, which is what makes an invitation answerable.
+      link: `/teams/${teamId}`,
     });
 
     return Response.json(
@@ -279,7 +281,7 @@ export async function DELETE(
       message: `The captain took back the invitation to ${
         team?.name ?? "the squad"
       }. If you still want in, ask to join from the Teams page.`,
-      link: "/teams",
+      link: teamId ? `/teams/${teamId}` : "/teams",
     });
 
     return Response.json({
