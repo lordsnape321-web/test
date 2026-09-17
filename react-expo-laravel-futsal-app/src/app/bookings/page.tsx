@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { CalendarCheck, MapPin, Clock, XCircle, QrCode, Wallet, LogIn, Lock, Globe, ArrowRight, Hourglass, PartyPopper, ReceiptText, Star, Gift, Ticket, Shield } from "lucide-react";
+import { CalendarCheck, MapPin, Clock, XCircle, QrCode, Wallet, LogIn, Lock, Globe, ArrowRight, Hourglass, PartyPopper, ReceiptText, Star, Gift, Ticket, Shield, Swords } from "lucide-react";
 import { useUser } from "@/components/UserProvider";
 import { ReceiptUploader, ReceiptViewer, isOnlineMethod } from "@/components/ReceiptUploader";
 import { StarInput } from "@/components/Reviews";
@@ -39,6 +39,16 @@ type Booking = {
   depositStatus: string;
   paidAmount: number;
   gatewayTxnId: string;
+  /** Present on competition bookings — who we played and the score so far. */
+  competition: {
+    opponentTeamId: number | null;
+    opponentName: string;
+    leagueId: number | null;
+    leagueName: string;
+    homeScore: number | null;
+    awayScore: number | null;
+    scoreStatus: string;
+  } | null;
   linkedMatch: {
     id: number;
     title: string;
@@ -449,6 +459,44 @@ export default function BookingsPage() {
                         <MapPin className="h-4 w-4 text-emerald-600 dark:text-emerald-400" /> {b.venue?.address}
                       </span>
                     </div>
+                    {b.competition && (
+                      <div className="mt-3 rounded-2xl border border-indigo-200 bg-indigo-50 px-4 py-3 dark:border-indigo-500/25 dark:bg-indigo-500/10">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <span className="flex items-center gap-1.5 text-[12px] font-black text-indigo-800 dark:text-indigo-200">
+                            <Swords className="h-3.5 w-3.5" />
+                            {b.teamName || "Your squad"} vs {b.competition.opponentName}
+                          </span>
+                          <span
+                            className={`rounded-full px-3 py-1 text-[11px] font-black ${
+                              b.competition.scoreStatus === "recorded"
+                                ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
+                                : "bg-white text-indigo-700 dark:bg-white/10 dark:text-indigo-200"
+                            }`}
+                          >
+                            {b.competition.scoreStatus === "recorded"
+                              ? `⚽ ${b.competition.homeScore}–${b.competition.awayScore}`
+                              : "score pending"}
+                          </span>
+                        </div>
+                        <p className="mt-1 text-[11px] font-semibold leading-relaxed text-indigo-700 dark:text-indigo-300">
+                          {b.competition.scoreStatus === "recorded"
+                            ? "The venue owner recorded this result — it counts on both squads' profiles."
+                            : "The venue owner records the final score after kick-off — it then counts on both squads' profiles."}
+                          {b.competition.leagueName ? ` 🏆 Counts towards ${b.competition.leagueName}.` : ""}
+                          {b.competition.leagueId ? (
+                            <>
+                              {" "}
+                              <Link
+                                href={`/leagues/${b.competition.leagueId}`}
+                                className="font-black underline decoration-indigo-400/50 underline-offset-2"
+                              >
+                                Open the league
+                              </Link>
+                            </>
+                          ) : null}
+                        </p>
+                      </div>
+                    )}
                     {isPublic && b.linkedMatch && !gone(b.status) && (
                       <div className="mt-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 dark:border-emerald-500/25 dark:bg-emerald-500/10">
                         <div className="flex items-center justify-between text-[11px] font-bold">
@@ -486,6 +534,10 @@ export default function BookingsPage() {
                       {isPublic ? (
                         <span className="flex items-center gap-1.5 rounded-full bg-orange-100 px-3 py-1.5 text-[11px] font-black text-orange-700 dark:bg-orange-500/15 dark:text-orange-300">
                           <Globe className="h-3.5 w-3.5" /> Open • 👥{b.ourCrew ?? 0}+🙋{b.openSpots ?? 0}
+                        </span>
+                      ) : b.competition ? (
+                        <span className="flex items-center gap-1.5 rounded-full bg-indigo-500/15 px-3 py-1.5 text-[11px] font-black text-indigo-700 dark:text-indigo-300">
+                          <Swords className="h-3.5 w-3.5" /> Competition
                         </span>
                       ) : (
                         <span className="flex items-center gap-1.5 rounded-full bg-stone-100 px-3 py-1.5 text-[11px] font-bold text-stone-500 dark:bg-white/10 dark:text-stone-400">

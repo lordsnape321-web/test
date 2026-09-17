@@ -1,5 +1,17 @@
 import { db } from "@/db";
-import { bookings, courts, venues, users, openMatches, matchJoins, vouchers, promos } from "@/db/schema";
+import {
+  bookings,
+  courts,
+  venues,
+  users,
+  openMatches,
+  matchJoins,
+  vouchers,
+  promos,
+  teams,
+  tournamentTeams,
+  tournaments,
+} from "@/db/schema";
 import { formatNPR, prettyDate, formatTime12, rangesOverlap, addHours } from "@/lib/futsal";
 import { playerRating, CANCEL_LIMIT_PER_MONTH, depositDecision, depositAmountFor, parsePayments, ONLINE_PAYMENTS, TRUST_START } from "@/lib/loyalty";
 import { checkPromo, normalizePromoCode } from "@/lib/promos";
@@ -46,6 +58,10 @@ export async function GET(req: Request) {
     const allUsers = await db.select().from(users);
     const allMatches = await db.select().from(openMatches);
     const allJoins = await db.select().from(matchJoins);
+    // Competition context: the opposing squad's name and the league it belongs
+    // to, so a card renders the fixture instead of a bare time slot.
+    const allUsersTeams = await db.select().from(teams);
+    const allTournaments = await db.select().from(tournaments);
 
     const enriched = rows.map((b) => {
       const court = allCourts.find((c) => c.id === b.courtId);
@@ -73,12 +89,32 @@ export async function GET(req: Request) {
         joinedCount = crewSize + otherJoined;
         spotsLeft = Math.max(0, linked.maxPlayers - joinedCount);
       }
+      // Competition bookings carry the other squad's name so a booking card can
+      // say "vs Chargers 3–2" without a second round trip.
+      const opponent = b.opponentTeamId
+        ? allUsersTeams.find((t) => t.id === b.opponentTeamId)
+        : undefined;
+      const league = b.tournamentId
+        ? allTournaments.find((t) => t.id === b.tournamentId)
+        : undefined;
       return {
         ...b,
         court,
         venue,
         user,
         playerStats: stats,
+        competition:
+          b.visibility === "competition"
+            ? {
+                opponentTeamId: b.opponentTeamId,
+                opponentName: opponent?.name ?? "",
+                leagueId: b.tournamentId,
+                leagueName: league?.name ?? "",
+                homeScore: b.homeScore,
+                awayScore: b.awayScore,
+                scoreStatus: b.scoreStatus,
+              }
+            : null,
         linkedMatch: linked
           ? {
               id: linked.id,
@@ -142,8 +178,22 @@ export async function POST(req: Request) {
       );
     }
 
-    const visibility: "private" | "public" =
-      body.visibility === "public" ? "public" : "private";
+    /*
+     * Three kinds of game now, not two:
+     *
+     * - "private"     — the crew's own game, nobody else's business.
+     * - "public"      — an open invite; the rest of the slots get filled.
+     * - "competition" — a *competitive* fixture between two squads (a league
+     *                   round or a friendly both sides are counting). It stores
+     *                   the opponent, waits to be scored by the venue owner,
+     *                   and the result lands on both squads' records.
+     */
+    const visibility: "private" | "public" | "competition" =
+      body.visibility === "public"
+        ? "public"
+        : body.visibility === "competition"
+          ? "competition"
+          : "private";
 
     let ourCrew = Math.max(1, Number(body.ourCrew ?? 1) || 1);
     let openSpots = Math.max(0, Number(body.openSpots ?? 0) || 0);
@@ -161,6 +211,8 @@ export async function POST(req: Request) {
       ourCrew = Math.min(21, Math.max(1, ourCrew));
       openSpots = Math.min(21, Math.max(1, openSpots));
     } else {
+      // Private and competition games aren't advertised, so there is nothing
+      // to split with strangers and no spots to open.
       openSpots = 0;
       ourCrew = 1;
     }
@@ -273,6 +325,67 @@ export async function POST(req: Request) {
       teamName = team.name;
     }
 
+    /*
+     * Competition bookings 🏆 — two squads, one court, a score to come.
+     *
+     * The squad side is already verified above (it has to be one of the
+     * booker's). The opponent is checked against the real team list, and when
+     * the game is part of a league, *both* squads must actually be in that
+     * league — otherwise "league fixture" would just be a label anyone could
+     * type on a Sunday kickabout.
+     */
+    let opponentTeamId: number | null = null;
+    let opponentName = "";
+    let tournamentId: number | null = null;
+    let tournamentName = "";
+    let scoreStatus = "none";
+    if (visibility === "competition") {
+      if (!teamId)
+        return Response.json(
+          {
+            error:
+              "Pick which of your squads is playing — a competition game needs your team on it 🛡️",
+          },
+          { status: 400 }
+        );
+      const wantedOpponent = Number(body.opponentTeamId ?? 0);
+      if (!Number.isInteger(wantedOpponent) || wantedOpponent <= 0)
+        return Response.json({ error: "Pick the squad you're playing against 🆚" }, { status: 400 });
+      if (wantedOpponent === teamId)
+        return Response.json({ error: "A squad can't play itself 🙂" }, { status: 400 });
+
+      const opponent = (await db.select().from(teams).where(eq(teams.id, wantedOpponent)))[0];
+      if (!opponent)
+        return Response.json({ error: "That opponent squad doesn't exist 🆚" }, { status: 400 });
+      opponentTeamId = opponent.id;
+      opponentName = opponent.name;
+
+      const wantedLeague = Number(body.tournamentId ?? 0);
+      if (wantedLeague > 0) {
+        const league = (
+          await db.select().from(tournaments).where(eq(tournaments.id, wantedLeague))
+        )[0];
+        if (!league)
+          return Response.json({ error: "That league no longer exists 🏆" }, { status: 400 });
+        const entries = await db
+          .select()
+          .from(tournamentTeams)
+          .where(eq(tournamentTeams.tournamentId, wantedLeague));
+        const inLeague = (id: number) =>
+          entries.some((e) => e.teamId === id && e.status === "approved");
+        if (!inLeague(teamId) || !inLeague(wantedOpponent))
+          return Response.json(
+            {
+              error: `${league.name} runs only fixtures between squads that are in it — both teams need an approved place first 🏆`,
+            },
+            { status: 400 }
+          );
+        tournamentId = league.id;
+        tournamentName = league.name;
+      }
+      scoreStatus = "awaiting";
+    }
+
     // Promo code 🎟️ — owner-created discount with an expiry date and usage limits.
     // It applies to what's left after any loyalty free hour, and is re-checked here
     // (never trusting the client's maths) right before the booking is written.
@@ -379,6 +492,9 @@ export async function POST(req: Request) {
         promoCode,
         priceBeforeDiscount: priceAfterVoucher,
         discountAmount,
+        tournamentId,
+        opponentTeamId,
+        scoreStatus,
         chargeMode: visibility === "public" ? chargeMode : "split",
         customPricePerPlayer: visibility === "public" && chargeMode === "custom" ? customPrice : 0,
         depositRequired,
@@ -401,7 +517,7 @@ export async function POST(req: Request) {
         userId: venue.ownerId,
         type: "booking_request",
         title: `📩 New booking request — ${venue.name}`,
-        message: `${booking.bookerName || "A player"} (${stats.emoji} ${stats.rating}★ ${stats.label}, trust ${bookerTrust}/100) requested ${court?.name ?? "a court"} on ${prettyDate(booking.date)} at ${formatTime12(booking.startTime)} (${hours} hr, ${formatNPR(booking.totalPrice)}${useFreePlay ? `, 🎁 FREE HOUR ${voucherCode}` : ""}${promoId ? `, 🎟️ ${promoCode} −${formatNPR(discountAmount)} (was ${formatNPR(priceAfterVoucher)})` : ""}${teamId ? `, 👥 squad ${teamName}` : ""}${depositRequired ? `, 🛡️ ${depDecision.percent}% deposit ${formatNPR(depositAmount)} due via test gateway (non-refundable)` : ""}). Tap to accept or decline.`,
+        message: `${booking.bookerName || "A player"} (${stats.emoji} ${stats.rating}★ ${stats.label}, trust ${bookerTrust}/100) requested ${court?.name ?? "a court"} on ${prettyDate(booking.date)} at ${formatTime12(booking.startTime)} (${hours} hr, ${formatNPR(booking.totalPrice)}${useFreePlay ? `, 🎁 FREE HOUR ${voucherCode}` : ""}${promoId ? `, 🎟️ ${promoCode} −${formatNPR(discountAmount)} (was ${formatNPR(priceAfterVoucher)})` : ""}${teamId ? `, 👥 squad ${teamName}` : ""}${opponentTeamId ? `, 🆚 ${teamName} vs ${opponentName}${tournamentName ? ` (${tournamentName})` : ""} — the winner's result goes on both squads' records, so you'll be asked for the score` : ""}${depositRequired ? `, 🛡️ ${depDecision.percent}% deposit ${formatNPR(depositAmount)} due via test gateway (non-refundable)` : ""}). Tap to accept or decline.`,
         link: "/admin/requests",
       });
       // Heads-up when this redemption fills the code's cap.
@@ -473,11 +589,26 @@ export async function POST(req: Request) {
       });
     }
 
+    // Competition game: the other captain has to know they're being played 🆚
+    if (opponentTeamId) {
+      const opponent = (await db.select().from(teams).where(eq(teams.id, opponentTeamId)))[0];
+      await sendNotification({
+        userId: opponent?.captainId ?? 0,
+        type: "competition",
+        title: `🆚 ${teamName} vs ${opponentName} — court booked`,
+        message: `${booking.bookerName || "The other captain"} booked ${court?.name ?? "a court"} at ${venue?.name ?? "the venue"} for ${prettyDate(booking.date)} at ${formatTime12(booking.startTime)}.${tournamentName ? ` It counts towards ${tournamentName}.` : ""} The venue owner records the final score, and it goes on both squads' records — bring your best! ⚽`,
+        link: tournamentId ? `/leagues/${tournamentId}` : "/bookings",
+      });
+    }
+
     return Response.json(
       {
         booking,
         match,
         freePlayUsed: useFreePlay,
+        competition: opponentTeamId
+          ? { opponentId: opponentTeamId, opponentName, leagueId: tournamentId, leagueName: tournamentName }
+          : null,
         depositRequired,
         depositAmount,
         depositPercent: depDecision.percent,

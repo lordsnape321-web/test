@@ -246,8 +246,19 @@ export default function HomePage() {
                 </div>
               </div>
             </div>
-            {/* rating badge */}
-            <div className="absolute -left-6 bottom-16 flex items-center gap-2.5 rounded-2xl border border-[#F0E3CC] bg-white p-3 pr-5 shadow-xl dark:border-white/10 dark:bg-stone-900">
+            {/*
+              * Rating badge 🏅 — parked on the photo's left edge, halfway up.
+              *
+              * It used to sit at `bottom-16`, which on large screens landed it
+              * on top of the "NEXT FREE SLOT" card in the photo's bottom row,
+              * and being a *sibling* of the floating card it also refused to
+              * move while the photo bobbed. Mid-left is the one clear band
+              * between the booking card (top) and the slot/join cards (bottom),
+              * the explicit top offset keeps it centred without a transform the
+              * animation would overwrite, and sharing `animate-float-slow` puts
+              * it on the same 5s clock as the photo so the two move together.
+              */}
+            <div className="animate-float-slow absolute -left-6 top-[calc(50%-2.1rem)] z-10 flex items-center gap-2.5 rounded-2xl border border-[#F0E3CC] bg-white p-3 pr-5 shadow-xl dark:border-white/10 dark:bg-stone-900">
               <span className="grid h-10 w-10 place-items-center rounded-xl bg-amber-100 dark:bg-amber-500/15">
                 <Star className="h-5 w-5 fill-amber-400 text-amber-400" />
               </span>

@@ -92,6 +92,22 @@ export const bookings = pgTable("bookings", {
   promoCode: text("promo_code").notNull().default(""),
   priceBeforeDiscount: integer("price_before_discount").notNull().default(0),
   discountAmount: integer("discount_amount").notNull().default(0),
+  /**
+   * Competition bookings 🏆 — a third kind of game next to "private" and
+   * "public": a *competitive* fixture between two squads (a league round or a
+   * friendly that both sides are counting). It stores both squads so the
+   * result has two sides, plus the score the venue owner or league host enters
+   * after kickoff. Those scores are what a team's profile shows as its
+   * competitive record, and what a league table is built from.
+   */
+  tournamentId: integer("tournament_id"),
+  opponentTeamId: integer("opponent_team_id"),
+  homeScore: integer("home_score"),
+  awayScore: integer("away_score"),
+  /** "none" (not a competition game) | "awaiting" | "recorded". */
+  scoreStatus: text("score_status").notNull().default("none"),
+  scoreUpdatedBy: integer("score_updated_by"),
+  scoreUpdatedAt: timestamp("score_updated_at"),
   chargeMode: text("charge_mode").notNull().default("split"),
   customPricePerPlayer: integer("custom_price_per_player").notNull().default(0),
   depositRequired: boolean("deposit_required").notNull().default(false),
@@ -231,6 +247,189 @@ export const matchJoins = pgTable("match_joins", {
   joinedAt: timestamp("joined_at").defaultNow(),
 });
 
+/**
+ * Leagues 🏆 — the tournament layer.
+ *
+ * An open match is one pitch, one score, players joining as individuals. A
+ * league is the other shape of competition: **one ground, many squads**, every
+ * team playing the others over weeks, with an entry fee, a prize pool and a
+ * table that actually means something.
+ *
+ * Anyone can host one — a player with a free weekend, or the venue owner who
+ * knows every captain in the neighbourhood — so `hostId` points at a `users`
+ * row and `hostRole` records which side of the app they run it from. The league
+ * is pinned to a real venue (`venueId`), because "where is it played?" is the
+ * first question every captain asks.
+ *
+ * `visibility` is the difference between a noticeboard and a private party:
+ * `public` leagues are listed for anyone to find and request a spot in, while
+ * `private` ones are invisible to everybody except the teams that were invited
+ * and the squads the host admitted.
+ *
+ * Money is real in shape but simulated in movement (same as every other
+ * gateway in this app): a squad pays at least `depositPercent` of `entryFee` to
+ * lock its place and only `refundPercent` of what it paid comes back if it
+ * walks away — both are stored per league so the terms are visible *before*
+ * anybody pays, not buried in a rule nobody read.
+ */
+export const tournaments = pgTable("tournaments", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  /** Who runs the league. A player captain and a venue owner host identically. */
+  hostId: integer("host_id").notNull(),
+  /** "player" | "owner" — which UI the host came from, for labelling only. */
+  hostRole: text("host_role").notNull().default("player"),
+  /** Always on one ground, so every squad knows where to turn up. */
+  venueId: integer("venue_id"),
+  /** Optional: the specific pitch the league runs on. */
+  courtId: integer("court_id"),
+  format: text("format").notNull().default("5v5"),
+  /** How many squads can be in it — the "tournament size" on the listing. */
+  maxTeams: integer("max_teams").notNull().default(8),
+  /** Entry fee per squad, in NPR. 0 means a free-to-enter league. */
+  entryFee: integer("entry_fee").notNull().default(0),
+  /** Percent of the entry fee due before a squad counts as in (25% by default). */
+  depositPercent: integer("deposit_percent").notNull().default(25),
+  /** Percent of what a squad paid that comes back if it backs out (10%). */
+  refundPercent: integer("refund_percent").notNull().default(10),
+  prizePool: integer("prize_pool").notNull().default(0),
+  /**
+   * Human-readable prize split, one place per line ("Champion: Rs. 40,000").
+   * A list is what a captain actually wants to see, and free text keeps it
+   * open — trophies, free hours and momos are all legitimate prizes.
+   */
+  prizeBreakdown: text("prize_breakdown").notNull().default(""),
+  startsAt: text("starts_at").notNull(),
+  endsAt: text("ends_at").notNull().default(""),
+  /** Last day squads can join. Blank means "whenever the league fills". */
+  closesAt: text("closes_at").notNull().default(""),
+  /** Free text like "Sat & Sun mornings, 7–9 AM". */
+  matchDays: text("match_days").notNull().default(""),
+  /** "public" (findable, requests welcome) | "private" (invitation only). */
+  visibility: text("visibility").notNull().default("public"),
+  /** "registration" | "ongoing" | "completed" | "cancelled". */
+  status: text("status").notNull().default("registration"),
+  description: text("description").notNull().default(""),
+  rules: text("rules").notNull().default(""),
+  contactPhone: text("contact_phone").notNull().default(""),
+  bannerUrl: text("banner_url").notNull().default(""),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+/**
+ * Who is in the league, and how far along their entry is.
+ *
+ * One row per squad per league, and the status is the whole conversation:
+ *
+ * - `requested` — the captain asked to join a public league; the host decides.
+ * - `invited`   — the host asked the squad (the only way into a private league);
+ *                 paying the deposit *is* the yes.
+ * - `approved`  — in the league, with at least the deposit in the till.
+ * - `rejected`  / `declined` — the two ways a question gets answered with no.
+ * - `withdrawn` — a squad that was in, backed out. `refundedAmount` holds the
+ *                 10% that went back; the rest is forfeited to the league.
+ *
+ * `paidAmount` / `refundedAmount` are running totals mirrored from
+ * `tournamentPayments`, so the listing can render a payment chip without
+ * joining the ledger every time.
+ */
+export const tournamentTeams = pgTable("tournament_teams", {
+  id: serial("id").primaryKey(),
+  tournamentId: integer("tournament_id").notNull(),
+  teamId: integer("team_id").notNull(),
+  status: text("status").notNull().default("requested"),
+  /** The captain who asked, or the host who invited — whoever started it. */
+  requestedBy: integer("requested_by").notNull().default(0),
+  message: text("message").notNull().default(""),
+  paidAmount: integer("paid_amount").notNull().default(0),
+  refundedAmount: integer("refunded_amount").notNull().default(0),
+  decidedBy: integer("decided_by"),
+  decidedAt: timestamp("decided_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+/**
+ * The league ledger 📒 — every rupee in and out, one row at a time.
+ *
+ * `paidAmount` on a squad answers "how much?"; this table answers "when, how,
+ * to whom, and for what" the way a host counting cash after a Saturday needs
+ * it. `kind` is `entry` (a squad paying in), `refund` (10% going back when a
+ * squad withdraws) or `prize` (the host paying out the pool at the end).
+ */
+export const tournamentPayments = pgTable("tournament_payments", {
+  id: serial("id").primaryKey(),
+  tournamentId: integer("tournament_id").notNull(),
+  teamId: integer("team_id").notNull(),
+  /** Who handed the money over (or received it, for a refund). */
+  userId: integer("user_id").notNull().default(0),
+  /** "entry" | "refund" | "prize" */
+  kind: text("kind").notNull().default("entry"),
+  amount: integer("amount").notNull().default(0),
+  /** "eSewa" | "Khalti" | "Cash at Venue" — the same three the app accepts. */
+  method: text("method").notNull().default("eSewa"),
+  reference: text("reference").notNull().default(""),
+  recordedBy: integer("recorded_by").notNull().default(0),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+/**
+ * Fixtures & results ⚽ — the league's calendar.
+ *
+ * A row is one game between two squads of the same league. Null scores mean
+ * "not played yet"; the moment both numbers are in, the table moves and the
+ * referee's sheet is attached to the squads' records. `bookingId` links a
+ * fixture to the court booking that holds the slot, so the same game can be
+ * scored either from the league's console or from the venue's booking list.
+ */
+export const tournamentMatches = pgTable("tournament_matches", {
+  id: serial("id").primaryKey(),
+  tournamentId: integer("tournament_id").notNull(),
+  /** "League" for the round robin, or "Semi-final", "Final", "Friendly"... */
+  round: text("round").notNull().default("League"),
+  homeTeamId: integer("home_team_id").notNull(),
+  awayTeamId: integer("away_team_id").notNull(),
+  /** Blank until the host schedules it ("TBD" on the fixture card). */
+  date: text("date").notNull().default(""),
+  startTime: text("start_time").notNull().default(""),
+  courtId: integer("court_id"),
+  homeScore: integer("home_score"),
+  awayScore: integer("away_score"),
+  /** "scheduled" | "played" — set automatically when both scores exist. */
+  status: text("status").notNull().default("scheduled"),
+  bookingId: integer("booking_id"),
+  notes: text("notes").notNull().default(""),
+  updatedBy: integer("updated_by"),
+  updatedAt: timestamp("updated_at").defaultNow(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+/**
+ * Match photos & videos 📸 — the memories, and who is allowed to see them.
+ *
+ * Two ways in, because two ways is what hosts actually have: `file` holds a
+ * photo the host picked in the app (a data URL, the same trick the receipt
+ * uploader uses), and `link` points at a Google Drive / Facebook album the
+ * host already keeps. Nothing here is public: a league's album is readable by
+ * the host plus players of the squads in that league, and a photo attached to
+ * one fixture (`matchId` set) is readable only by the two squads that played
+ * it and the host. That rule lives in `src/lib/league-store.ts` and is applied
+ * on the server for every read, not by hiding pixels in the UI.
+ */
+export const tournamentMedia = pgTable("tournament_media", {
+  id: serial("id").primaryKey(),
+  tournamentId: integer("tournament_id").notNull(),
+  /** Set for a fixture's album; null for "the league in general". */
+  matchId: integer("match_id"),
+  /** "file" (data URL) | "link" (an album somewhere else). */
+  kind: text("kind").notNull().default("link"),
+  url: text("url").notNull(),
+  caption: text("caption").notNull().default(""),
+  credit: text("credit").notNull().default(""),
+  uploadedBy: integer("uploaded_by").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 export const notifications = pgTable("notifications", {
   id: serial("id").primaryKey(),
   userId: integer("user_id").notNull(),
@@ -296,3 +495,8 @@ export type Notification = typeof notifications.$inferSelect;
 export type Voucher = typeof vouchers.$inferSelect;
 export type Promo = typeof promos.$inferSelect;
 export type Review = typeof reviews.$inferSelect;
+export type Tournament = typeof tournaments.$inferSelect;
+export type TournamentTeam = typeof tournamentTeams.$inferSelect;
+export type TournamentPayment = typeof tournamentPayments.$inferSelect;
+export type TournamentMatch = typeof tournamentMatches.$inferSelect;
+export type TournamentMedia = typeof tournamentMedia.$inferSelect;

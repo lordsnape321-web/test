@@ -23,6 +23,8 @@ import {
 import { useUser } from "@/components/UserProvider";
 import { Avatar } from "@/components/Avatar";
 import { TeamManager } from "@/components/TeamManager";
+import { LeagueTable } from "@/components/LeagueTable";
+import type { LeagueSummary } from "@/lib/league-store";
 import { initials } from "@/lib/futsal";
 import { TEAM_DESCRIPTION_MAX, normalizeTeamCode, suggestTeamCode } from "@/lib/teams";
 import {
@@ -118,6 +120,7 @@ export default function TeamsPage() {
   const [formError, setFormError] = useState("");
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [managing, setManaging] = useState<Team | null>(null);
+  const [leagues, setLeagues] = useState<LeagueSummary[]>([]);
   const [notice, setNotice] = useState("");
   const [noticeBad, setNoticeBad] = useState(false);
   // `find` is what's typed, `q` is what has been submitted — searching on submit
@@ -174,6 +177,21 @@ export default function TeamsPage() {
       alive = false;
     };
   }, [load]);
+
+  // Live leagues this viewer may see (public ones, plus any private league they
+  // host or hold a place in). `viewerId` is what keeps a private league private —
+  // the same rule the leagues board uses.
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch(`/api/tournaments?viewerId=${user?.id ?? 0}&limit=12`);
+        const data = await res.json().catch(() => ({}));
+        setLeagues((data.leagues ?? []) as LeagueSummary[]);
+      } catch {
+        setLeagues([]);
+      }
+    })();
+  }, [user?.id]);
 
   // Venues for the home-turf dropdowns — only courts that exist on the platform.
   useEffect(() => {
@@ -351,8 +369,6 @@ export default function TeamsPage() {
       await load();
     }
   }
-
-  const sorted = [...teams].sort((a, b) => b.wins * 3 + b.draws - (a.wins * 3 + a.draws));
 
   return (
     <main className="turf-pattern min-h-screen">
@@ -544,36 +560,88 @@ export default function TeamsPage() {
           </div>
         ) : (
           <>
-            <div className="mt-6 overflow-hidden rounded-3xl border border-[#F0E3CC] bg-white shadow-sm dark:border-white/10 dark:bg-stone-900">
-              <div className="border-b border-stone-100 bg-emerald-700 px-5 py-3 dark:border-white/5">
-                <p className="flex items-center gap-2 text-xs font-black uppercase tracking-widest text-emerald-50">
-                  <Trophy className="h-3.5 w-3.5" /> Family league table — Season 4
+            <div className="mt-6 overflow-hidden rounded-3xl border border-[#F0E3CC] bg-white p-5 shadow-sm dark:border-white/10 dark:bg-stone-900">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="flex items-center gap-2 text-xs font-black uppercase tracking-widest text-emerald-700 dark:text-emerald-400">
+                  <Trophy className="h-4 w-4" /> League tables
                 </p>
+                <Link
+                  href="/leagues"
+                  className="inline-flex items-center gap-1 text-[11px] font-black text-emerald-700 transition hover:text-emerald-800 dark:text-emerald-400"
+                >
+                  All leagues <ArrowUpRight className="h-3.5 w-3.5" />
+                </Link>
               </div>
-              <div className="divide-y divide-stone-100 dark:divide-white/5">
-                {sorted.map((t, i) => (
-                  <div key={t.id} className="flex items-center gap-3 px-5 py-2.5">
-                    <span className={`w-6 text-sm font-black ${i < 3 ? "text-orange-500 dark:text-orange-400" : "text-stone-300 dark:text-stone-600"}`}>
-                      {i + 1}
-                    </span>
-                    <span
-                      className="grid h-8 w-8 place-items-center rounded-xl text-xs font-black text-white shadow"
-                      style={{ background: t.logoColor }}
+              {leagues.length === 0 ? (
+                <div className="mt-3 rounded-2xl border border-dashed border-stone-300 px-4 py-6 text-center dark:border-white/10">
+                  <p className="text-sm font-black text-stone-700 dark:text-stone-200">
+                    No league is running right now 🏆
+                  </p>
+                  <p className="mt-1 text-xs font-semibold text-stone-400 dark:text-stone-500">
+                    Anyone can host one — a player, a captain, or a ground owner. Pick a format,
+                    set the entry fee and prize pool, then invite the squads.
+                  </p>
+                  <Link
+                    href="/leagues"
+                    className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-emerald-600 px-4 py-2 text-xs font-black text-white transition hover:bg-emerald-700"
+                  >
+                    <Plus className="h-3.5 w-3.5" /> Host a league
+                  </Link>
+                </div>
+              ) : (
+                <div className="mt-3 space-y-4">
+                  {leagues.slice(0, 3).map((l) => {
+                    const status =
+                      l.status === "registration"
+                        ? { emoji: "📝", label: "Taking entries" }
+                        : l.status === "ongoing"
+                          ? { emoji: "⚽", label: "In progress" }
+                          : l.status === "completed"
+                            ? { emoji: "🏁", label: "Finished" }
+                            : { emoji: "🚫", label: "Cancelled" };
+                    const myTeamIds = (l.viewer?.myTeams ?? []).map((m) => m.teamId);
+                    return (
+                      <div key={l.id}>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Link
+                            href={`/leagues/${l.id}`}
+                            className="truncate text-sm font-black text-stone-900 hover:text-emerald-700 dark:text-stone-100 dark:hover:text-emerald-400"
+                          >
+                            {l.name}
+                          </Link>
+                          <span className="rounded-full bg-stone-100 px-2 py-0.5 text-[10px] font-black text-stone-600 dark:bg-white/10 dark:text-stone-300">
+                            {status.emoji} {status.label}
+                          </span>
+                          {l.visibility === "private" && (
+                            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-black text-amber-700 dark:bg-amber-500/15 dark:text-amber-300">
+                              🔒 Private
+                            </span>
+                          )}
+                          <span className="text-[11px] font-bold text-stone-400 dark:text-stone-500">
+                            {l.format} • {l.approvedTeams}/{l.maxTeams} squads
+                            {l.venueName ? ` • ${l.venueName}` : ""}
+                          </span>
+                        </div>
+                        <div className="mt-2">
+                          <LeagueTable
+                            standings={l.standings}
+                            highlightTeamIds={myTeamIds}
+                            emptyHint="No results in yet — the table fills up as matches are played."
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {leagues.length > 3 && (
+                    <Link
+                      href="/leagues"
+                      className="block text-center text-[11px] font-black text-emerald-700 dark:text-emerald-400"
                     >
-                      {initials(t.name)}
-                    </span>
-                    <span className="min-w-0 flex-1 truncate text-sm font-bold text-stone-900 dark:text-stone-100">
-                      {t.name}
-                    </span>
-                    <span className="hidden text-xs text-stone-400 sm:block dark:text-stone-500">
-                      {t.wins}W • {t.draws}D • {t.losses}L
-                    </span>
-                    <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-black text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300">
-                      {t.wins * 3 + t.draws} pts
-                    </span>
-                  </div>
-                ))}
-              </div>
+                      +{leagues.length - 3} more league{leagues.length - 3 === 1 ? "" : "s"} →
+                    </Link>
+                  )}
+                </div>
+              )}
             </div>
 
             {teams.length === 0 && (

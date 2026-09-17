@@ -21,6 +21,7 @@ import {
   transferCaptaincy,
 } from "@/lib/team-store";
 import { REQUEST_PENDING, normalizeTeamCode } from "@/lib/teams";
+import { teamCompetitionProfile } from "@/lib/league-store";
 
 export const dynamic = "force-dynamic";
 
@@ -56,11 +57,15 @@ export async function GET(
     const leads = hasViewer && (await isCaptain(teamId, viewerId));
     const mine = hasViewer ? await isMember(teamId, viewerId) : false;
 
-    const [roster, captainRow, request, invite] = await Promise.all([
+    const [roster, captainRow, request, invite, competition] = await Promise.all([
       teamRoster(teamId),
       db.select().from(users).where(eq(users.id, team.captainId)),
       hasViewer && !mine ? myPendingRequest(teamId, viewerId) : Promise.resolve(null),
       hasViewer && !mine ? myPendingInvite(teamId, viewerId) : Promise.resolve(null),
+      // League & competition record 🏆 — the fixtures this squad played under a
+      // host's eye, plus the competition games a venue owner scored. Public on
+      // purpose: a record a squad earned is part of who they are.
+      teamCompetitionProfile(teamId),
     ]);
 
     const wins = team.wins;
@@ -78,6 +83,7 @@ export async function GET(
         ? roster
         // Contact details stay with the captain, as on the panel.
         : roster.map((m) => ({ ...m, email: "" })),
+      competition,
       viewer: hasViewer
         ? {
             isMember: mine,

@@ -21,6 +21,9 @@ import {
   Shield,
   ShieldAlert,
   Ticket,
+  Swords,
+  Trophy,
+  Search,
 } from "lucide-react";
 import { useUser } from "@/components/UserProvider";
 import { ReceiptUploader, isOnlineMethod } from "@/components/ReceiptUploader";
@@ -81,6 +84,28 @@ type UserTeam = {
   role?: string;
 };
 
+/**
+ * A league this player could book a fixture in — from
+ * `/api/tournaments?viewerId=`. `teams` is the approved-squad list (the pool an
+ * opponent can be picked from) and `viewer.myTeams` says which of this player's
+ * squads actually hold a place.
+ */
+type MyLeague = {
+  id: number;
+  name: string;
+  venueId: number | null;
+  venueName: string;
+  status: string;
+  teams: Array<{ teamId: number; name: string; logoColor: string; teamCode: string }>;
+  viewer: {
+    isHost: boolean;
+    myTeams: Array<{ teamId: number; teamName: string; status: string; isCaptain: boolean }>;
+  } | null;
+};
+
+/** A squad an opponent can be picked from (all teams, or a league's squads). */
+type OpponentOption = { teamId: number; name: string; logoColor: string; teamCode: string };
+
 /** A code the venue advertises right now (tap to apply). */
 type PromoAd = {
   id: number;
@@ -124,7 +149,12 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
   const [receipt, setReceipt] = useState("");
   const [phone, setPhone] = useState("");
   const [notes, setNotes] = useState("");
-  const [visibility, setVisibility] = useState<"private" | "public">("private");
+  const [visibility, setVisibility] = useState<"private" | "public" | "competition">("private");
+  const [myLeagues, setMyLeagues] = useState<MyLeague[]>([]);
+  const [allTeams, setAllTeams] = useState<OpponentOption[]>([]);
+  const [leagueChoice, setLeagueChoice] = useState("");
+  const [opponentTeamId, setOpponentTeamId] = useState("");
+  const [opponentQuery, setOpponentQuery] = useState("");
   const [matchTitle, setMatchTitle] = useState("");
   const [ourCrew, setOurCrew] = useState(5);
   const [openSpots, setOpenSpots] = useState(5);
@@ -137,7 +167,7 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
   const [selectedTeam, setSelectedTeam] = useState("");
   const [booking, setBooking] = useState(false);
   const [payRedirect, setPayRedirect] = useState(false);
-  const [success, setSuccess] = useState<null | { id: number; total: number; isPublic: boolean; freePlay: boolean; saved: number; promoCode: string; teamName: string }>(null);
+  const [success, setSuccess] = useState<null | { id: number; total: number; isPublic: boolean; freePlay: boolean; saved: number; promoCode: string; teamName: string; opponentName: string; leagueName: string }>(null);
   const [error, setError] = useState("");
   const [myVouchers, setMyVouchers] = useState<Array<{ id: number; code: string; status: string }>>([]);
   const [loyalty, setLoyalty] = useState<{ count: number; target: number; remaining: number } | null>(null);
@@ -263,9 +293,43 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
           setUserTeams([]);
         }
       })();
+      // Leagues I could book a competitive fixture in. `viewerId` is what lets
+      // a *private* league show up here at all — its host and its squads are
+      // the only ones who ever receive it.
+      (async () => {
+        try {
+          const res = await fetch(`/api/tournaments?viewerId=${user.id}&limit=60`);
+          const data = await res.json();
+          setMyLeagues((data.leagues ?? []) as MyLeague[]);
+        } catch {
+          setMyLeagues([]);
+        }
+      })();
       loadLoyalty(user.id);
     }
   }, [user, loadLoyalty]);
+
+  // A competition game outside a league can be against anyone — so the full
+  // squad list is fetched lazily, the first time that path is used.
+  useEffect(() => {
+    if (visibility !== "competition" || allTeams.length > 0) return;
+    (async () => {
+      try {
+        const res = await fetch("/api/teams");
+        const data = await res.json();
+        setAllTeams(
+          ((data.teams ?? []) as Array<{ id: number; name: string; logoColor: string }>).map((t) => ({
+            teamId: t.id,
+            name: t.name,
+            logoColor: t.logoColor,
+            teamCode: "",
+          }))
+        );
+      } catch {
+        setAllTeams([]);
+      }
+    })();
+  }, [visibility, allTeams.length]);
 
   const court = useMemo(
     () => venue?.courts.find((c) => c.id === courtId) ?? venue?.courts[0],
@@ -321,6 +385,20 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
 
   function pickTeam(teamId: string) {
     setSelectedTeam(teamId);
+    // A competition game is tied to the squad that plays it, so switching
+    // squads drops the opponent — and any league the new squad isn't in.
+    setOpponentTeamId("");
+    setOpponentQuery("");
+    setLeagueChoice((prev) => {
+      if (!prev) return prev;
+      const id = Number(teamId) || 0;
+      const stillIn = myLeagues.some(
+        (l) =>
+          String(l.id) === prev &&
+          (l.viewer?.myTeams ?? []).some((m) => m.teamId === id && m.status === "approved")
+      );
+      return stillIn ? prev : "";
+    });
     if (!teamId) return;
     const t = userTeams.find((x) => String(x.id) === teamId);
     if (t) {
@@ -336,6 +414,31 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
 
   const totalPlayers = ourCrew + openSpots;
   /** Name of the squad this booking is for, or "" for an individual booking. */
+  const competitionSquad = Number(selectedTeam) || 0;
+  /** Leagues where the chosen squad holds an approved place — the only ones a
+   *  booked fixture can count towards (the server checks both squads again). */
+  const squadLeagues = useMemo(
+    () =>
+      myLeagues.filter((l) =>
+        (l.viewer?.myTeams ?? []).some(
+          (m) => m.teamId === competitionSquad && m.status === "approved"
+        )
+      ),
+    [myLeagues, competitionSquad]
+  );
+  const chosenLeague = squadLeagues.find((l) => String(l.id) === leagueChoice) ?? null;
+  /** Who can be played: the league's other squads, or any squad at all. */
+  const opponentPool = useMemo(() => {
+    const pool: OpponentOption[] = chosenLeague ? chosenLeague.teams : allTeams;
+    return pool.filter((t) => t.teamId !== competitionSquad);
+  }, [chosenLeague, allTeams, competitionSquad]);
+  const opponentMatches = useMemo(() => {
+    const q = opponentQuery.trim().toLowerCase();
+    const list = q ? opponentPool.filter((t) => t.name.toLowerCase().includes(q)) : opponentPool;
+    return list.slice(0, 8);
+  }, [opponentPool, opponentQuery]);
+  const chosenOpponent = opponentPool.find((t) => String(t.teamId) === opponentTeamId) ?? null;
+
   const selectedTeamName = useMemo(
     () => userTeams.find((t) => String(t.id) === selectedTeam)?.name ?? "",
     [userTeams, selectedTeam]
@@ -463,6 +566,22 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
         return;
       }
     }
+    if (visibility === "competition") {
+      if (!selectedTeam) {
+        setError(
+          "Pick which of your squads is playing — a competition game needs your team on it 🛡️"
+        );
+        return;
+      }
+      if (!opponentTeamId || !chosenOpponent) {
+        setError("Pick the squad you're playing against 🆚");
+        return;
+      }
+      if (Number(opponentTeamId) === Number(selectedTeam)) {
+        setError("A squad can't play itself 🙂");
+        return;
+      }
+    }
     if (visibility === "public") {
       if (ourCrew < 1) {
         setError("Tell us how many from your crew are coming 👥");
@@ -529,6 +648,11 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
           visibility,
           // 0 = individual booking ("Just me", or a player in no team).
           teamId: selectedTeam ? Number(selectedTeam) : 0,
+          // Competition only: who we're playing, and (optionally) the league
+          // this fixture counts towards. Both squads are re-checked server-side.
+          opponentTeamId: visibility === "competition" ? Number(opponentTeamId) || 0 : 0,
+          tournamentId:
+            visibility === "competition" && chosenLeague ? chosenLeague.id : 0,
           playersNeeded: visibility === "public" ? totalPlayers : 0,
           ourCrew: visibility === "public" ? ourCrew : 1,
           openSpots: visibility === "public" ? openSpots : 0,
@@ -594,6 +718,8 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
         // From the server's snapshot, not local state — it reflects what was
         // actually written after the membership check.
         teamName: String(created.teamName ?? ""),
+        opponentName: String(data.competition?.opponentName ?? ""),
+        leagueName: String(data.competition?.leagueName ?? ""),
       });
       setReceipt("");
       setUseFreePlay(false);
@@ -909,9 +1035,9 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
           {/* Match visibility */}
           <section className="rounded-3xl border border-[#F0E3CC] bg-white p-5 shadow-sm dark:border-white/10 dark:bg-stone-900">
             <h2 className="text-sm font-black uppercase tracking-widest text-emerald-700 dark:text-emerald-400">
-              Step 4 • Just your crew, or open invite?
+              Step 4 • Just your crew, an open invite, or a competition?
             </h2>
-            <div className="mt-3 grid gap-2 sm:grid-cols-2">
+            <div className="mt-3 grid gap-2 sm:grid-cols-3">
               <button
                 onClick={() => setVisibility("private")}
                 className={`rounded-2xl border p-4 text-left transition ${
@@ -950,6 +1076,27 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
                 </span>
                 <span className="mt-1.5 block text-xs leading-relaxed text-stone-500 dark:text-stone-400">
                   Short on players? Tell us your crew + open spots — we&apos;ll help fill the rest.
+                </span>
+              </button>
+              <button
+                onClick={() => setVisibility("competition")}
+                className={`rounded-2xl border p-4 text-left transition ${
+                  visibility === "competition"
+                    ? "border-sky-500 bg-sky-50 shadow-md dark:border-sky-500/60 dark:bg-sky-500/10"
+                    : "border-stone-200 bg-stone-50 hover:border-stone-300 dark:border-white/10 dark:bg-white/5 dark:hover:border-white/20"
+                }`}
+              >
+                <span className="flex items-center gap-2 text-sm font-black text-stone-900 dark:text-stone-100">
+                  <Swords className="h-4 w-4 text-sky-600 dark:text-sky-400" /> Competition
+                  {visibility === "competition" && (
+                    <span className="ml-auto grid h-5 w-5 place-items-center rounded-full bg-sky-600">
+                      <Check className="h-3 w-3 text-white" strokeWidth={3.5} />
+                    </span>
+                  )}
+                </span>
+                <span className="mt-1.5 block text-xs leading-relaxed text-stone-500 dark:text-stone-400">
+                  Two squads, one result. The venue records the score and it counts on both
+                  teams&apos; profiles.
                 </span>
               </button>
             </div>
@@ -1350,6 +1497,153 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
                 </p>
               </div>
             )}
+
+            {/* Competition: two named squads, a score the venue will record. */}
+            {visibility === "competition" && (
+              <div className="mt-3 space-y-3 rounded-2xl border border-sky-200 bg-sky-50/60 p-4 dark:border-sky-500/25 dark:bg-sky-500/5">
+                {userTeams.length > 0 ? (
+                  <TeamPicker
+                    teams={userTeams}
+                    selected={selectedTeam}
+                    onPick={pickTeam}
+                    idleLabel=""
+                    accent="sky"
+                    title="Your squad 🛡️"
+                    hideIdle
+                  />
+                ) : (
+                  <div>
+                    <span className="block text-xs font-black uppercase tracking-wider text-stone-400 dark:text-stone-500">
+                      A competition game needs a squad 🛡️
+                    </span>
+                    <p className="mt-1 text-[11px] leading-relaxed text-stone-500 dark:text-stone-400">
+                      You&apos;re not in a team yet, so there&apos;s nobody to play for.{" "}
+                      <Link
+                        href="/teams"
+                        className="font-black text-sky-700 underline decoration-sky-400/50 underline-offset-2 dark:text-sky-400"
+                      >
+                        Join or start a team
+                      </Link>{" "}
+                      and come back — the result then counts on your squad&apos;s profile.
+                    </p>
+                  </div>
+                )}
+
+                {selectedTeam && (
+                  <>
+                    <label className="block">
+                      <span className="mb-1.5 block text-xs font-black uppercase tracking-wider text-stone-400 dark:text-stone-500">
+                        🏆 Does this count towards a league?
+                      </span>
+                      <select
+                        value={leagueChoice}
+                        onChange={(e) => {
+                          setLeagueChoice(e.target.value);
+                          setOpponentTeamId("");
+                          setOpponentQuery("");
+                        }}
+                        className="w-full rounded-xl border border-stone-200 bg-white px-3.5 py-2.5 text-sm font-semibold text-stone-900 focus:border-sky-400 focus:outline-none dark:border-white/10 dark:bg-stone-950 dark:text-stone-100"
+                      >
+                        <option value="">Just a friendly — no league</option>
+                        {squadLeagues.map((l) => (
+                          <option key={l.id} value={String(l.id)}>
+                            {l.name}
+                            {l.venueName ? ` • ${l.venueName}` : ""}
+                          </option>
+                        ))}
+                      </select>
+                      <span className="mt-1 block text-[11px] text-stone-400 dark:text-stone-500">
+                        {squadLeagues.length > 0
+                          ? "Only leagues your squad is already accepted into can be picked."
+                          : "Your squad isn't in a league yet, so this will be a standalone competition game."}
+                      </span>
+                    </label>
+
+                    <div>
+                      <span className="mb-1.5 block text-xs font-black uppercase tracking-wider text-stone-400 dark:text-stone-500">
+                        🆚 Who are you playing?
+                      </span>
+                      {chosenOpponent ? (
+                        <div className="flex items-center gap-2 rounded-2xl border border-sky-300 bg-white px-3.5 py-3 dark:border-sky-500/40 dark:bg-stone-950">
+                          <span
+                            className="grid h-6 w-6 shrink-0 place-items-center rounded-full text-white"
+                            style={{ background: chosenOpponent.logoColor }}
+                          >
+                            <Shield className="h-3 w-3" />
+                          </span>
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate text-sm font-black text-stone-900 dark:text-stone-100">
+                              {selectedTeamName || "Your squad"} <span className="text-sky-600 dark:text-sky-400">vs</span>{" "}
+                              {chosenOpponent.name}
+                            </span>
+                            <span className="block text-[11px] text-stone-400 dark:text-stone-500">
+                              {chosenLeague ? `🏆 ${chosenLeague.name}` : "Friendly competition"} •{" "}
+                              {chosenOpponent.teamCode ? `code ${chosenOpponent.teamCode}` : "squad"}
+                            </span>
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setOpponentTeamId("");
+                              setOpponentQuery("");
+                            }}
+                            className="rounded-full border border-stone-200 px-3 py-1.5 text-[11px] font-black text-stone-500 transition hover:bg-stone-100 dark:border-white/10 dark:text-stone-300 dark:hover:bg-white/10"
+                          >
+                            Change
+                          </button>
+                        </div>
+                      ) : (
+                        <>
+                          <div className="relative">
+                            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400" />
+                            <input
+                              value={opponentQuery}
+                              onChange={(e) => setOpponentQuery(e.target.value)}
+                              placeholder={
+                                chosenLeague ? `Search ${chosenLeague.name} squads…` : "Search squads by name…"
+                              }
+                              maxLength={40}
+                              className="w-full rounded-xl border border-stone-200 bg-white py-2.5 pl-9 pr-3.5 text-sm font-semibold text-stone-900 placeholder:text-stone-400 focus:border-sky-400 focus:outline-none dark:border-white/10 dark:bg-stone-950 dark:text-stone-100 dark:placeholder:text-stone-500"
+                            />
+                          </div>
+                          <div className="mt-2 flex flex-wrap gap-1.5">
+                            {opponentMatches.map((t) => (
+                              <button
+                                type="button"
+                                key={t.teamId}
+                                onClick={() => setOpponentTeamId(String(t.teamId))}
+                                className="flex items-center gap-1.5 rounded-full border border-stone-200 bg-white px-3.5 py-2 text-xs font-black text-stone-600 transition hover:border-sky-400 hover:text-sky-700 dark:border-white/10 dark:bg-white/5 dark:text-stone-300 dark:hover:border-sky-500/50"
+                              >
+                                <span
+                                  className="grid h-4 w-4 place-items-center rounded-full text-white"
+                                  style={{ background: t.logoColor }}
+                                >
+                                  <Shield className="h-2.5 w-2.5" />
+                                </span>
+                                {t.name}
+                              </button>
+                            ))}
+                            {opponentMatches.length === 0 && (
+                              <span className="text-[11px] font-bold text-stone-400 dark:text-stone-500">
+                                {opponentPool.length === 0
+                                  ? "No other squads to play yet — invite a team first 🆚"
+                                  : "No squad matches that name."}
+                              </span>
+                            )}
+                          </div>
+                        </>
+                      )}
+                    </div>
+
+                    <p className="rounded-xl bg-sky-100/70 px-3 py-2 text-[11px] font-semibold leading-relaxed text-sky-800 dark:bg-sky-500/10 dark:text-sky-300">
+                      🏆 The venue owner enters the final score and it lands on both squads&apos; profiles
+                      {chosenLeague ? ` plus the ${chosenLeague.name} table` : ""}. Only the two squads
+                      involved (and the host) can ever see the result.
+                    </p>
+                  </>
+                )}
+              </div>
+            )}
           </section>
         </div>
 
@@ -1374,12 +1668,27 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
               <Row k="Price" v={slot ? `${formatNPR(rate)}/hr${parseInt((slot ?? "13:00").split(":")[0], 10) < 12 ? " ☀️ morning deal" : ""}` : "—"} />
               <Row
                 k="Game type"
-                v={visibility === "public" ? `🌍 Open • 👥${ourCrew} + 🙋${openSpots}` : "🔒 Just our gang"}
+                v={
+                  visibility === "public"
+                    ? `🌍 Open • 👥${ourCrew} + 🙋${openSpots}`
+                    : visibility === "competition"
+                      ? "🆚 Competition • venue scores it"
+                      : "🔒 Just our gang"
+                }
               />
               <Row
                 k="Squad"
                 v={selectedTeamName ? `🛡️ ${selectedTeamName}` : "🙋 Individual booking"}
               />
+              {visibility === "competition" && (
+                <Row
+                  k="Opponent"
+                  v={chosenOpponent ? `🆚 ${chosenOpponent.name}` : "Pick an opponent ☝️"}
+                />
+              )}
+              {visibility === "competition" && chosenLeague && (
+                <Row k="Counts towards" v={`🏆 ${chosenLeague.name}`} />
+              )}
               {visibility === "public" && (
                 <Row k="Welcome" v={matchLevelString} />
               )}
@@ -1730,6 +2039,13 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
                 🌍 Your open invite (👥 {ourCrew} crew + 🙋 {openSpots} spots) goes live once confirmed.
               </p>
             )}
+            {success.opponentName && (
+              <p className="mx-auto mt-2 max-w-[280px] rounded-xl bg-sky-50 px-3 py-2.5 text-xs font-bold leading-relaxed text-sky-700 dark:bg-sky-500/10 dark:text-sky-300">
+                🆚 {success.teamName || "Your squad"} vs {success.opponentName}
+                {success.leagueName ? ` • 🏆 ${success.leagueName}` : ""} — the venue owner records
+                the score, and it shows on both squads&apos; profiles.
+              </p>
+            )}
             <div className="mt-5 grid grid-cols-2 gap-2">
               <button
                 onClick={() => setSuccess(null)}
@@ -1777,35 +2093,42 @@ function TeamPicker({
   idleLabel,
   accent,
   title,
+  hideIdle = false,
 }: {
   teams: UserTeam[];
   selected: string;
   onPick: (teamId: string) => void;
   idleLabel: string;
-  accent: "emerald" | "orange";
+  accent: "emerald" | "orange" | "sky";
   title: string;
+  /** Competition bookings must name a squad, so the "no team" chip is dropped. */
+  hideIdle?: boolean;
 }) {
   const activeChip =
     accent === "emerald"
       ? "bg-emerald-600 text-white shadow-md"
-      : "bg-orange-500 text-white shadow-md";
+      : accent === "sky"
+        ? "bg-sky-600 text-white shadow-md"
+        : "bg-orange-500 text-white shadow-md";
   return (
     <div>
       <span className="mb-1.5 block text-xs font-black uppercase tracking-wider text-stone-400 dark:text-stone-500">
         {title}
       </span>
       <div className="flex flex-wrap gap-1.5">
-        <button
-          type="button"
-          onClick={() => onPick("")}
-          className={`rounded-full px-3.5 py-2 text-xs font-black transition ${
-            selected === ""
-              ? "bg-stone-800 text-white dark:bg-white dark:text-stone-900"
-              : "border border-stone-200 bg-white text-stone-600 dark:border-white/10 dark:bg-white/5 dark:text-stone-300"
-          }`}
-        >
-          {idleLabel}
-        </button>
+        {!hideIdle && (
+          <button
+            type="button"
+            onClick={() => onPick("")}
+            className={`rounded-full px-3.5 py-2 text-xs font-black transition ${
+              selected === ""
+                ? "bg-stone-800 text-white dark:bg-white dark:text-stone-900"
+                : "border border-stone-200 bg-white text-stone-600 dark:border-white/10 dark:bg-white/5 dark:text-stone-300"
+            }`}
+          >
+            {idleLabel}
+          </button>
+        )}
         {teams.map((t) => (
           <button
             type="button"

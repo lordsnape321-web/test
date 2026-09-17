@@ -11,6 +11,8 @@ import {
   Check,
   X,
   Clock,
+  Trophy,
+  Swords,
 } from "lucide-react";
 import { useUser } from "@/components/UserProvider";
 import { OwnerGuard } from "@/components/OwnerGuard";
@@ -45,6 +47,14 @@ type Booking = {
   visibility: string;
   court?: { id: number; name: string };
   venue?: { id: number; name: string };
+  /** Present on competition bookings — the venue owner writes the score. */
+  competition?: {
+    opponentName: string;
+    leagueName: string;
+    homeScore: number | null;
+    awayScore: number | null;
+    scoreStatus: string;
+  } | null;
 };
 
 export default function OwnerOverviewPage() {
@@ -53,6 +63,17 @@ export default function OwnerOverviewPage() {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [loading, setLoading] = useState(true);
   const [acting, setActing] = useState<number | null>(null);
+  /** Competition games at this owner's grounds that still need the final score. */
+  const awaitingScores = useMemo(
+    () =>
+      bookings.filter(
+        (b) =>
+          b.visibility === "competition" &&
+          b.competition &&
+          b.competition.scoreStatus !== "recorded"
+      ),
+    [bookings]
+  );
 
   const load = async () => {
     const [vRes, bRes] = await Promise.all([
@@ -342,6 +363,52 @@ export default function OwnerOverviewPage() {
                 </Link>
               ))}
             </div>
+          </div>
+
+          {/* Leagues & competition — hosting is open to players too, so this is
+              the owner's way in: run one at your ground, or settle the results
+              the squads are waiting on. */}
+          <div className="mt-4 grid gap-4 sm:grid-cols-2">
+            <Link
+              href="/admin/leagues"
+              className="group flex items-start gap-3 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:border-emerald-300 dark:border-slate-800 dark:bg-slate-900 dark:hover:border-emerald-500/40"
+            >
+              <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-emerald-600 text-white">
+                <Trophy className="h-5 w-5" />
+              </span>
+              <span className="min-w-0">
+                <span className="block text-sm font-black text-slate-900 dark:text-slate-100">
+                  Host a league at your ground
+                </span>
+                <span className="mt-0.5 block text-xs font-semibold text-slate-500 dark:text-slate-400">
+                  Size it, set the entry fee and prize pool, then invite squads or take requests.
+                  Photos and results live on the league page.
+                </span>
+              </span>
+              <ArrowRight className="ml-auto h-4 w-4 shrink-0 text-slate-300 transition group-hover:text-emerald-500" />
+            </Link>
+            <Link
+              href="/admin/bookings"
+              className="group flex items-start gap-3 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:border-indigo-300 dark:border-slate-800 dark:bg-slate-900 dark:hover:border-indigo-500/40"
+            >
+              <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-indigo-600 text-white">
+                <Swords className="h-5 w-5" />
+              </span>
+              <span className="min-w-0">
+                <span className="block text-sm font-black text-slate-900 dark:text-slate-100">
+                  Competition score desk
+                </span>
+                <span className="mt-0.5 block text-xs font-semibold text-slate-500 dark:text-slate-400">
+                  {awaitingScores.length > 0
+                    ? `${awaitingScores.length} result${awaitingScores.length === 1 ? "" : "s"} waiting — ${awaitingScores
+                        .slice(0, 2)
+                        .map((b) => `${b.bookerName} vs ${b.competition?.opponentName ?? "opponent"}`)
+                        .join(", ")}${awaitingScores.length > 2 ? "…" : ""}`
+                    : "When two squads book a competition game, you record the score and it lands on both their profiles."}
+                </span>
+              </span>
+              <ArrowRight className="ml-auto h-4 w-4 shrink-0 text-slate-300 transition group-hover:text-indigo-500" />
+            </Link>
           </div>
         </div>
       )}

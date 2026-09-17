@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Inbox, Check, X, Phone, Globe, Lock, Wallet, ReceiptText, Gift, Ticket, Shield } from "lucide-react";
+import { Inbox, Check, X, Phone, Globe, Lock, Wallet, ReceiptText, Gift, Ticket, Shield, Swords } from "lucide-react";
 import { useUser } from "@/components/UserProvider";
 import { OwnerGuard } from "@/components/OwnerGuard";
 import { ReceiptViewer } from "@/components/ReceiptUploader";
@@ -28,6 +28,14 @@ type Booking = {
   openSpots: number;
   /** Squad this booking was made for; "" = individual booking. */
   teamName: string;
+  /** Competition games carry the opponent and the score the owner will write. */
+  competition?: {
+    opponentName: string;
+    leagueName: string;
+    homeScore: number | null;
+    awayScore: number | null;
+    scoreStatus: string;
+  } | null;
   receiptUrl: string;
   isFreePlay: boolean;
   promoCode: string;
@@ -180,7 +188,11 @@ export default function OwnerRequestsPage() {
                     >
                       {b.status}
                     </span>
-                    {b.visibility === "public" ? (
+                    {b.competition ? (
+                      <span className="flex items-center gap-1 rounded-full bg-indigo-100 px-2.5 py-1 text-[10px] font-black text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-300">
+                        <Swords className="h-3 w-3" /> Competition • you score it
+                      </span>
+                    ) : b.visibility === "public" ? (
                       <span className="flex items-center gap-1 rounded-full bg-sky-100 px-2.5 py-1 text-[10px] font-black text-sky-700 dark:bg-sky-500/15 dark:text-sky-300">
                         <Globe className="h-3 w-3" /> Public • 👥{b.ourCrew ?? 0} + 🙋{b.openSpots ?? 0}
                       </span>
@@ -206,6 +218,12 @@ export default function OwnerRequestsPage() {
                     {b.teamName && (
                       <span className="inline-flex items-center gap-1 rounded-full bg-sky-500/15 px-2 py-0.5 text-[10px] font-black text-sky-700 dark:text-sky-300">
                         <Shield className="h-3 w-3" /> {b.teamName}
+                      </span>
+                    )}
+                    {b.competition && (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-indigo-500/15 px-2 py-0.5 text-[10px] font-black text-indigo-700 dark:text-indigo-300">
+                        🆚 vs {b.competition.opponentName || "opponent"}
+                        {b.competition.leagueName ? ` • 🏆 ${b.competition.leagueName}` : ""}
                       </span>
                     )}
                     {b.depositRequired && (

@@ -84,8 +84,57 @@ type InviteRow = {
   createdAt: string | null;
 };
 
+/** A squad's record across one league it played in — see `teamCompetitionProfile`. */
+type TeamLeagueRow = {
+  tournamentId: number;
+  name: string;
+  status: string;
+  format: string;
+  venueName: string;
+  startsAt: string;
+  record: {
+    played: number;
+    won: number;
+    drawn: number;
+    lost: number;
+    goalsFor: number;
+    goalsAgainst: number;
+    goalDiff: number;
+    points: number;
+    form: string[];
+  };
+  standing: number | null;
+  tableSize: number;
+};
+
+/**
+ * League & competition profile 🏆 — merged from the host-scored league fixtures
+ * and the competition bookings a venue owner scored. It rides along on the team
+ * API, and is public: a record a squad earned is part of who they are.
+ */
+type CompetitionProfile = {
+  record: TeamLeagueRow["record"];
+  leagues: TeamLeagueRow[];
+  results: Array<{
+    id: number;
+    source: "league" | "booking";
+    leagueId: number | null;
+    leagueName: string;
+    round: string;
+    opponent: string;
+    opponentId: number | null;
+    home: boolean;
+    scored: number;
+    conceded: number;
+    outcome: "W" | "D" | "L";
+    date: string;
+    link: string;
+  }>;
+};
+
 type Detail = {
   team: Team;
+  competition: CompetitionProfile;
   roster: RosterRow[];
   viewer: {
     isMember: boolean;
@@ -207,6 +256,10 @@ export default function TeamDetailPage({
 
   const { team, roster, viewer } = data;
   const captain = data.captain;
+  // Older responses (or a squad nobody has competed against yet) carry an empty
+  // profile rather than null, so the section can be skipped with one check.
+  const comp: CompetitionProfile =
+    data.competition ?? { record: { played: 0, won: 0, drawn: 0, lost: 0, goalsFor: 0, goalsAgainst: 0, goalDiff: 0, points: 0, form: [] }, leagues: [], results: [] };
   const pendingInvite =
     viewer?.inviteStatus === "pending" && viewer?.inviteId ? viewer.inviteId : null;
   const requested = viewer?.requestStatus === "pending";
@@ -588,6 +641,100 @@ export default function TeamDetailPage({
                 </ul>
               </div>
             )}
+          </section>
+        )}
+
+        {/* ------------------------------------- league & competition record */}
+        {comp && (comp.record.played > 0 || comp.leagues.length > 0) && (
+          <section className={`${card} mt-4`}>
+            <h2 className={`flex items-center gap-2 ${head}`}>
+              <Trophy className="h-3.5 w-3.5" /> League &amp; competition
+            </h2>
+            <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+              {[
+                { l: "Played", v: comp.record.played },
+                { l: "Record", v: `${comp.record.won}W ${comp.record.drawn}D ${comp.record.lost}L` },
+                { l: "Goals", v: `${comp.record.goalsFor}:${comp.record.goalsAgainst}` },
+                { l: "Competition pts", v: comp.record.points },
+              ].map((s) => (
+                <div key={s.l} className="rounded-2xl bg-[#FFF6E9] py-3 text-center dark:bg-white/5">
+                  <p className="text-base font-black text-stone-900 dark:text-stone-100">{s.v}</p>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-stone-400 dark:text-stone-500">
+                    {s.l}
+                  </p>
+                </div>
+              ))}
+            </div>
+
+            {comp.leagues.length > 0 && (
+              <ul className="mt-3 space-y-2">
+                {comp.leagues.map((l) => (
+                  <li key={l.tournamentId}>
+                    <Link
+                      href={`/leagues/${l.tournamentId}`}
+                      className="flex flex-wrap items-center gap-2 rounded-2xl bg-stone-50 px-3.5 py-2.5 transition hover:bg-emerald-50 dark:bg-white/5 dark:hover:bg-emerald-500/10"
+                    >
+                      <span className="text-sm font-bold text-stone-900 dark:text-stone-100">{l.name}</span>
+                      <span className="rounded-full bg-stone-100 px-2 py-0.5 text-[10px] font-black text-stone-600 dark:bg-white/10 dark:text-stone-300">
+                        {l.status === "ongoing" ? "⚽ In progress" : l.status === "completed" ? "🏁 Finished" : l.status === "registration" ? "📝 Entries open" : "🚫 Cancelled"}
+                      </span>
+                      {l.standing && (
+                        <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-black text-amber-700 dark:bg-amber-500/15 dark:text-amber-300">
+                          {l.standing}
+                          {l.standing === 1 ? "st" : l.standing === 2 ? "nd" : l.standing === 3 ? "rd" : "th"} of {l.tableSize}
+                        </span>
+                      )}
+                      <span className="ml-auto text-[11px] font-bold text-stone-400 dark:text-stone-500">
+                        {l.format} • {l.record.played}P {l.record.points}pts
+                      </span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            )}
+
+            {comp.results.length > 0 && (
+              <div className="mt-3">
+                <p className="text-[11px] font-black uppercase tracking-wider text-stone-400 dark:text-stone-500">
+                  Recent results
+                </p>
+                <ul className="mt-2 divide-y divide-stone-100 dark:divide-white/5">
+                  {comp.results.slice(0, 6).map((r) => (
+                    <li key={`${r.source}-${r.id}`} className="flex items-center gap-2.5 py-2">
+                      <span
+                        className={`grid h-6 w-6 shrink-0 place-items-center rounded-lg text-[11px] font-black text-white ${
+                          r.outcome === "W" ? "bg-emerald-600" : r.outcome === "D" ? "bg-stone-400" : "bg-red-500"
+                        }`}
+                      >
+                        {r.outcome}
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-[13px] font-bold text-stone-900 dark:text-stone-100">
+                          {r.home ? "vs" : "at"} {r.opponent}
+                        </span>
+                        <span className="block truncate text-[11px] text-stone-400 dark:text-stone-500">
+                          {r.leagueName}
+                          {r.source === "booking" ? " • venue-scored" : ` • ${r.round}`} • {r.date}
+                        </span>
+                      </span>
+                      <span className="shrink-0 text-sm font-black text-stone-900 dark:text-stone-100">
+                        {r.scored}–{r.conceded}
+                      </span>
+                      <Link
+                        href={r.link}
+                        className="shrink-0 rounded-lg border border-stone-200 px-2 py-1 text-[10px] font-black text-stone-500 hover:bg-stone-100 dark:border-white/10 dark:text-stone-300 dark:hover:bg-white/10"
+                      >
+                        {r.source === "booking" ? "Booking" : "Table"}
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            <p className="mt-3 text-[11px] font-semibold text-stone-400 dark:text-stone-500">
+              🏆 League fixtures are scored by the host; competition bookings by the venue owner.
+              Both count on this record.
+            </p>
           </section>
         )}
 
