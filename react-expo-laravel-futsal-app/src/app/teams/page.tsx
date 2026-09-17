@@ -566,7 +566,7 @@ export default function TeamsPage() {
                   <Trophy className="h-4 w-4" /> League tables
                 </p>
                 <Link
-                  href="/leagues"
+                  href="/matches?tab=leagues"
                   className="inline-flex items-center gap-1 text-[11px] font-black text-emerald-700 transition hover:text-emerald-800 dark:text-emerald-400"
                 >
                   All leagues <ArrowUpRight className="h-3.5 w-3.5" />
@@ -582,7 +582,7 @@ export default function TeamsPage() {
                     set the entry fee and prize pool, then invite the squads.
                   </p>
                   <Link
-                    href="/leagues"
+                    href="/matches?tab=leagues"
                     className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-emerald-600 px-4 py-2 text-xs font-black text-white transition hover:bg-emerald-700"
                   >
                     <Plus className="h-3.5 w-3.5" /> Host a league
@@ -634,7 +634,7 @@ export default function TeamsPage() {
                   })}
                   {leagues.length > 3 && (
                     <Link
-                      href="/leagues"
+                      href="/matches?tab=leagues"
                       className="block text-center text-[11px] font-black text-emerald-700 dark:text-emerald-400"
                     >
                       +{leagues.length - 3} more league{leagues.length - 3 === 1 ? "" : "s"} →
@@ -731,7 +731,7 @@ export default function TeamsPage() {
                       </div>
                     </div>
 
-                    <div className="mt-4 grid grid-cols-4 gap-2 text-center">
+                    <div className="mt-4 grid grid-cols-2 gap-2 text-center sm:grid-cols-4">
                       {[
                         { l: "Wins", v: t.wins },
                         { l: "Draws", v: t.draws },

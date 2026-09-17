@@ -117,11 +117,22 @@ function VenuesInner() {
             </label>
           </div>
           {searchError && <p className="mt-1.5 text-[11px] font-bold text-red-500">{searchError}</p>}
-          <div className="mt-2 flex items-center gap-3 rounded-2xl bg-[#FFF6E9] px-4 py-2.5 dark:bg-white/5">
-            <Banknote className="h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
-            <span className="whitespace-nowrap text-xs font-bold text-stone-600 dark:text-stone-300">
-              Up to Rs. {maxPrice.toLocaleString()}/hr
-            </span>
+          {/*
+            * Price slider.
+            *
+            * Label above the track rather than beside it. "Up to Rs. 3,000/hr" is
+            * `whitespace-nowrap`, and a range input will not shrink below its
+            * intrinsic width — side by side they needed ~300px inside a 256px
+            * content box on a 320px phone, which pushed the whole filter card
+            * (and the page) into horizontal scroll.
+            */}
+          <div className="mt-2 rounded-2xl bg-[#FFF6E9] px-4 py-2.5 dark:bg-white/5">
+            <div className="flex items-center gap-2">
+              <Banknote className="h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
+              <span className="whitespace-nowrap text-xs font-bold text-stone-600 dark:text-stone-300">
+                Up to Rs. {maxPrice.toLocaleString()}/hr
+              </span>
+            </div>
             <input
               type="range"
               min={1000}
@@ -129,7 +140,8 @@ function VenuesInner() {
               step={100}
               value={maxPrice}
               onChange={(e) => setMaxPrice(Number(e.target.value))}
-              className="w-full accent-emerald-600"
+              aria-label={`Maximum price per hour, currently Rs. ${maxPrice.toLocaleString()}`}
+              className="mt-1.5 w-full accent-emerald-600"
             />
           </div>
         </div>

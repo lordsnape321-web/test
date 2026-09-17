@@ -16,26 +16,34 @@ import {
   LogOut,
   LogIn,
   UserPlus,
-  Bell,
+  Settings,
 } from "lucide-react";
 import { useUser } from "./UserProvider";
 import { NotificationBell } from "./NotificationBell";
 import { ThemeToggle } from "./ThemeToggle";
 import { Avatar } from "./Avatar";
 
+/*
+ * The top rail.
+ *
+ * Two things are deliberately absent:
+ *  - Leagues: no longer a destination of their own. They are the second half of
+ *    the Matches screen (`/matches?tab=leagues`), so "Find Match" is the door to
+ *    them for players and owners alike.
+ *  - Alerts: notifications are reached through the bell beside the avatar. That
+ *    is the only place an unread count can live without competing with a nav
+ *    label for width, and having both a tab and a bell for one inbox was two
+ *    doors to the same room.
+ */
 const PUBLIC_LINKS = [
   { href: "/venues", label: "Find Courts", icon: MapPin },
   { href: "/matches", label: "Find Match", icon: Zap },
   { href: "/teams", label: "Teams", icon: Users },
-  // Leagues are for players *and* owners — anyone can host one — so the link
-  // sits in the public rail rather than behind an account type.
-  { href: "/leagues", label: "Leagues", icon: Trophy },
 ];
 
 const PLAYER_LINKS = [
   ...PUBLIC_LINKS,
   { href: "/bookings", label: "My Bookings", icon: CalendarCheck },
-  { href: "/notifications", label: "Alerts", icon: Bell },
 ];
 
 export function Navbar() {
@@ -58,15 +66,18 @@ export function Navbar() {
   return (
     <header className="sticky top-0 z-50 border-b border-[#F0E3CC] bg-[#FFFDF7]/90 backdrop-blur-xl dark:border-white/10 dark:bg-stone-950/90">
       <div className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-3 px-4 sm:px-6">
-        <Link href="/" className="flex items-center gap-2.5">
-          <span className="grid h-10 w-10 place-items-center rounded-2xl bg-gradient-to-br from-emerald-500 to-green-700 shadow-[0_8px_20px_rgba(5,150,105,0.35)]">
+        <Link href="/" className="flex min-w-0 items-center gap-2.5">
+          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-emerald-500 to-green-700 shadow-[0_8px_20px_rgba(5,150,105,0.35)]">
             <Trophy className="h-5 w-5 text-white" strokeWidth={2.5} />
           </span>
-          <span className="leading-tight">
-            <span className="block text-[17px] font-black tracking-tight text-stone-900 dark:text-stone-100">
+          {/* The wordmark shrinks and drops its tagline on the narrowest phones:
+              with a bell, a theme toggle and a hamburger beside it, the full lockup
+              was what pushed the header past 360px. */}
+          <span className="min-w-0 leading-tight">
+            <span className="block truncate text-[15px] font-black tracking-tight text-stone-900 sm:text-[17px] dark:text-stone-100">
               Futsal<span className="text-emerald-600 dark:text-emerald-400">Nepal</span>
             </span>
-            <span className="block text-[10px] font-semibold uppercase tracking-[0.22em] text-stone-400 dark:text-stone-500">
+            <span className="hidden text-[10px] font-semibold uppercase tracking-[0.22em] text-stone-400 sm:block dark:text-stone-500">
               Friends • Fun • Football
             </span>
           </span>
@@ -101,9 +112,27 @@ export function Navbar() {
           )}
         </nav>
 
-        <div className="flex items-center gap-2">
+        <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
           <ThemeToggle />
           {user && <NotificationBell variant="dark" />}
+          {/* Settings — the hub for profile, alerts and everything else account
+              shaped. Hidden below `sm`: it is already the last tab in the bottom
+              rail and a row in the hamburger, and a fourth 40px button up here is
+              what overflowed a 360px header. */}
+          {user && (
+            <Link
+              href="/settings"
+              aria-label="Settings"
+              title="Settings"
+              className={`hidden h-10 w-10 place-items-center rounded-xl border shadow-sm transition sm:grid ${
+                pathname.startsWith("/settings")
+                  ? "border-emerald-600 bg-emerald-600 text-white"
+                  : "border-stone-200 bg-white text-stone-600 hover:bg-stone-50 dark:border-white/10 dark:bg-stone-900 dark:text-stone-300 dark:hover:bg-white/5"
+              }`}
+            >
+              <Settings className="h-5 w-5" />
+            </Link>
+          )}
           {!user ? (
             <div className="hidden items-center gap-2 sm:flex">
               <Link
@@ -165,16 +194,17 @@ export function Navbar() {
                         )}
                         {isOwner ? "Open Owner Studio" : "My Bookings"}
                       </Link>
-                      {!isOwner && (
-                        <Link
-                          href="/notifications"
-                          onClick={() => setProfileOpen(false)}
-                          className="flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-bold text-stone-800 transition hover:bg-orange-50 dark:text-stone-200 dark:hover:bg-white/5"
-                        >
-                          <Bell className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
-                          Notifications
-                        </Link>
-                      )}
+                      {/* Notifications used to be a row of their own here. They
+                          are the bell's job now; Settings is the hub that lists
+                          them alongside the rest of the account. */}
+                      <Link
+                        href="/settings"
+                        onClick={() => setProfileOpen(false)}
+                        className="flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-bold text-stone-800 transition hover:bg-orange-50 dark:text-stone-200 dark:hover:bg-white/5"
+                      >
+                        <Settings className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                        Settings
+                      </Link>
                       <Link
                         href={isOwner ? "/admin/profile" : "/profile"}
                         onClick={() => setProfileOpen(false)}
@@ -235,6 +265,20 @@ export function Navbar() {
               >
                 <LayoutDashboard className="h-4 w-4" />
                 Open Owner Studio
+              </Link>
+            )}
+            {user && (
+              <Link
+                href="/settings"
+                onClick={() => setOpen(false)}
+                className={`flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold ${
+                  pathname.startsWith("/settings")
+                    ? "bg-emerald-600 text-white"
+                    : "bg-stone-100 text-stone-700 dark:bg-white/5 dark:text-stone-200"
+                }`}
+              >
+                <Settings className="h-4 w-4" />
+                Settings
               </Link>
             )}
           </div>

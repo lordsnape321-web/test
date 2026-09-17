@@ -183,8 +183,10 @@ export default function HomePage() {
               </span>
             </div>
 
-            {/* Stats */}
-            <div className="mt-7 grid grid-cols-4 gap-2 sm:gap-3">
+            {/* Stats — two across on a phone. Four across left each cell about
+                66px wide, and "Courts near you" in 10px uppercase with wide
+                tracking simply did not fit in it. */}
+            <div className="mt-7 grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-3">
               {[
                 { n: `${stats?.venues ?? "—"}`, l: "Courts near you" },
                 { n: `${stats?.players ?? "—"}+`, l: "Happy players" },
@@ -247,24 +249,35 @@ export default function HomePage() {
               </div>
             </div>
             {/*
-              * Rating badge 🏅 — parked on the photo's left edge, halfway up.
+              * Rating badge 🏅 — inside the photo's left edge, halfway down.
               *
-              * It used to sit at `bottom-16`, which on large screens landed it
-              * on top of the "NEXT FREE SLOT" card in the photo's bottom row,
-              * and being a *sibling* of the floating card it also refused to
-              * move while the photo bobbed. Mid-left is the one clear band
-              * between the booking card (top) and the slot/join cards (bottom),
-              * the explicit top offset keeps it centred without a transform the
-              * animation would overwrite, and sharing `animate-float-slow` puts
-              * it on the same 5s clock as the photo so the two move together.
+              * Two things this has to get right, both learned the hard way:
+              *
+              * 1. It must not overhang. It used to sit at `-left-6`, which on a
+              *    wide screen parked it in the 40px gutter *between* the copy
+              *    column and the photo — touching neither, so it read as debris
+              *    floating off the layout. `left-5` puts it on the photo, on the
+              *    same inset as the booking card above and the slot/join cards
+              *    below, and `max-w` stops it ever reaching the far edge.
+              * 2. It must not use a transform to centre itself. `animate-float-slow`
+              *    animates `transform`, so a `-translate-y-1/2` here would simply
+              *    be overwritten on the first frame. The explicit `top` offset does
+              *    the centring instead, and sharing the animation puts the badge on
+              *    the same 5s clock as the photo so the two bob together.
+              *
+              * Vertically it lives in the one clear band of the 520px photo: the
+              * booking card ends around 84px and the bottom row starts around
+              * 396px, so a ~64px badge centred at 50% collides with neither.
               */}
-            <div className="animate-float-slow absolute -left-6 top-[calc(50%-2.1rem)] z-10 flex items-center gap-2.5 rounded-2xl border border-[#F0E3CC] bg-white p-3 pr-5 shadow-xl dark:border-white/10 dark:bg-stone-900">
-              <span className="grid h-10 w-10 place-items-center rounded-xl bg-amber-100 dark:bg-amber-500/15">
+            <div className="animate-float-slow absolute left-5 top-[calc(50%-2.1rem)] z-10 flex max-w-[calc(100%-2.5rem)] items-center gap-2.5 rounded-2xl border border-white/60 bg-white/95 p-3 pr-5 shadow-xl backdrop-blur-xl dark:border-white/10 dark:bg-stone-900/95">
+              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-amber-100 dark:bg-amber-500/15">
                 <Star className="h-5 w-5 fill-amber-400 text-amber-400" />
               </span>
-              <div>
+              <div className="min-w-0">
                 <p className="text-sm font-black text-stone-900 dark:text-stone-100">4.8 / 5.0</p>
-                <p className="text-[11px] text-stone-500 dark:text-stone-400">from 2,400+ happy players</p>
+                <p className="truncate text-[11px] text-stone-500 dark:text-stone-400">
+                  from 2,400+ happy players
+                </p>
               </div>
             </div>
           </div>
@@ -289,8 +302,8 @@ export default function HomePage() {
 
       {/* FEATURED VENUES */}
       <section className="mx-auto max-w-7xl px-4 py-12 sm:px-6">
-        <div className="flex items-end justify-between gap-4">
-          <div>
+        <div className="flex flex-col items-start gap-3 sm:flex-row sm:flex-wrap sm:items-end sm:justify-between sm:gap-4">
+          <div className="min-w-0">
             <p className="text-xs font-black uppercase tracking-[0.2em] text-orange-500 dark:text-orange-400">
               Neighbourhood favourites
             </p>
@@ -374,8 +387,8 @@ export default function HomePage() {
 
       {/* OPEN MATCHES */}
       <section className="mx-auto max-w-7xl px-4 py-12 sm:px-6">
-        <div className="flex items-end justify-between gap-4">
-          <div>
+        <div className="flex flex-col items-start gap-3 sm:flex-row sm:flex-wrap sm:items-end sm:justify-between sm:gap-4">
+          <div className="min-w-0">
             <p className="flex items-center gap-1.5 text-xs font-black uppercase tracking-[0.2em] text-orange-500 dark:text-orange-400">
               <Zap className="h-3.5 w-3.5" /> Flying solo? Jump in!
             </p>

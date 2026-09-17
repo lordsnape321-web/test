@@ -1,8 +1,21 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Plus, MapPin, CalendarDays, X, Zap, Check, HandHeart, Minus, Shield } from "lucide-react";
+import { Suspense, useEffect, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import {
+  Plus,
+  MapPin,
+  CalendarDays,
+  X,
+  Zap,
+  Check,
+  HandHeart,
+  Minus,
+  Shield,
+  Trophy,
+} from "lucide-react";
 import { useUser } from "@/components/UserProvider";
+import { LeagueBrowser } from "@/components/LeagueBrowser";
 import { type MatchItem } from "@/components/cards";
 import { Avatar } from "@/components/Avatar";
 import {
@@ -22,8 +35,33 @@ const LEVEL_OPTIONS = [
   { name: "Advanced", emoji: "🔥" },
 ];
 
-export default function MatchesPage() {
+/** Which half of the Matches screen is showing. */
+type MatchTab = "open" | "leagues";
+
+function MatchesInner() {
   const { user } = useUser();
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+
+  /*
+   * The open-games / league-matches toggle lives in the URL rather than in
+   * useState. `/matches?tab=leagues` stays shareable, survives a refresh, and
+   * the back button walks between the two tabs — and because the value is
+   * derived, no effect has to mirror the query string into state (which would
+   * cost a second render on every navigation).
+   */
+  const tab: MatchTab = searchParams.get("tab") === "leagues" ? "leagues" : "open";
+
+  function setTab(next: MatchTab) {
+    if (next === tab) return;
+    const params = new URLSearchParams(searchParams.toString());
+    if (next === "leagues") params.set("tab", "leagues");
+    else params.delete("tab");
+    const qs = params.toString();
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+  }
+
   const [matches, setMatches] = useState<MatchItem[]>([]);
   const [venues, setVenues] = useState<Venue[]>([]);
   const [loading, setLoading] = useState(true);
@@ -212,185 +250,247 @@ export default function MatchesPage() {
   return (
     <main className="turf-pattern min-h-screen">
       <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
-        <div className="flex flex-wrap items-end justify-between gap-3">
-          <div>
+        {/* Header — the copy follows whichever half of the screen is showing */}
+        <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end sm:justify-between">
+          <div className="min-w-0">
             <p className="flex items-center gap-1.5 text-xs font-black uppercase tracking-[0.2em] text-orange-500 dark:text-orange-400">
-              <HandHeart className="h-3.5 w-3.5" /> Come as you are
+              {tab === "leagues" ? (
+                <>
+                  <Trophy className="h-3.5 w-3.5 shrink-0" /> League matches
+                </>
+              ) : (
+                <>
+                  <HandHeart className="h-3.5 w-3.5 shrink-0" /> Come as you are
+                </>
+              )}
             </p>
-            <h1 className="mt-1 text-3xl font-black text-stone-900 dark:text-stone-100">Games looking for you</h1>
+            <h1 className="mt-1 text-2xl font-black text-stone-900 dark:text-stone-100 sm:text-3xl">
+              {tab === "leagues" ? "Leagues and tournaments" : "Games looking for you"}
+            </h1>
             <p className="mt-1 text-sm text-stone-500 dark:text-stone-400">
-              {matches.length} friendly games this week • everyone gets a warm welcome
+              {tab === "leagues"
+                ? "Squad football with a real table — enter, pay the deposit, play the fixtures, climb."
+                : `${matches.length} friendly games this week • everyone gets a warm welcome`}
             </p>
           </div>
-          <button
-            onClick={() => (user ? setShowCreate(true) : (window.location.href = "/login"))}
-            className="flex items-center gap-2 rounded-2xl bg-emerald-600 px-5 py-3 text-sm font-black text-white shadow-md transition hover:bg-emerald-700"
-          >
-            <Plus className="h-4 w-4" strokeWidth={3} /> Start a game
-          </button>
+          {tab === "open" && (
+            <button
+              onClick={() => (user ? setShowCreate(true) : (window.location.href = "/login"))}
+              className="flex w-full shrink-0 items-center justify-center gap-2 rounded-2xl bg-emerald-600 px-5 py-3 text-sm font-black text-white shadow-md transition hover:bg-emerald-700 sm:w-auto"
+            >
+              <Plus className="h-4 w-4 shrink-0" strokeWidth={3} /> Start a game
+            </button>
+          )}
         </div>
 
-        <div className="no-scrollbar mt-5 flex gap-2 overflow-x-auto pb-1">
-          {["All", "Beginner", "Intermediate", "Advanced"].map((f) => (
+        {/*
+         * Open games ⇄ League matches.
+         *
+         * Leagues used to be their own top-level destination. They are matches
+         * with a table attached, so they live here now as the second half of one
+         * toggle — one less concept to learn, and one less tab fighting for room
+         * in the bottom rail on a phone. The choice sits in the query string
+         * (?tab=leagues) so either half can be linked to and shared, and the old
+         * /leagues route redirects here.
+         */}
+        <div
+          role="tablist"
+          aria-label="Match views"
+          className="mt-5 grid w-full grid-cols-2 gap-1 rounded-2xl border border-[#F0E3CC] bg-white p-1 shadow-sm dark:border-white/10 dark:bg-stone-900 sm:inline-grid sm:w-auto sm:min-w-[22rem]"
+        >
+          {(
+            [
+              { id: "open", label: "Open games", icon: Zap },
+              { id: "leagues", label: "League matches", icon: Trophy },
+            ] as const
+          ).map((t) => (
             <button
-              key={f}
-              onClick={() => setFilter(f)}
-              className={`shrink-0 rounded-full px-4 py-2 text-xs font-black transition ${
-                filter === f
+              key={t.id}
+              role="tab"
+              aria-selected={tab === t.id}
+              onClick={() => setTab(t.id)}
+              className={`flex items-center justify-center gap-2 rounded-xl px-3 py-2.5 text-sm font-black transition sm:px-4 ${
+                tab === t.id
                   ? "bg-emerald-600 text-white shadow-md"
-                  : "border border-stone-200 bg-white text-stone-600 shadow-sm hover:bg-orange-50 dark:border-white/10 dark:bg-stone-900 dark:text-stone-300 dark:hover:bg-white/5"
+                  : "text-stone-600 hover:bg-orange-50 dark:text-stone-300 dark:hover:bg-white/5"
               }`}
             >
-              {f === "All" ? "🌍 Everyone" : f === "Beginner" ? "🌱 Beginner" : f === "Intermediate" ? "⚡ Intermediate" : "🔥 Advanced"}
+              <t.icon className="h-4 w-4 shrink-0" strokeWidth={2.5} />
+              <span className="truncate">{t.label}</span>
             </button>
           ))}
         </div>
-        <p className="mt-1.5 text-[11px] font-semibold text-stone-400 dark:text-stone-500">
-          Tip: level filters also show “Anyone welcome” games — they&apos;re open to you too! 💛
-        </p>
 
-        {loading ? (
-          <div className="mt-6 grid gap-4 md:grid-cols-2">
-            {[0, 1, 2, 3].map((i) => (
-              <div key={i} className="h-64 animate-pulse rounded-3xl bg-white dark:bg-stone-900" />
-            ))}
-          </div>
-        ) : filtered.length === 0 ? (
-          <div className="mt-6 rounded-3xl border border-dashed border-stone-300 bg-white p-12 text-center dark:border-white/20 dark:bg-stone-900">
-            <Zap className="mx-auto h-10 w-10 text-stone-300 dark:text-stone-600" />
-            <h3 className="mt-3 text-lg font-extrabold text-stone-900 dark:text-stone-100">Quiet here for now</h3>
-            <p className="mt-1 text-sm text-stone-500 dark:text-stone-400">Be the first to start a game — friends will follow!</p>
+        {tab === "leagues" ? (
+          <div className="mt-6">
+            <LeagueBrowser />
           </div>
         ) : (
-          <div className="mt-6 grid gap-4 md:grid-cols-2">
-            {filtered.map((m) => {
-              const already = (m.players ?? []).some((p) => p.id === user?.id);
-              const full = m.spotsLeft === 0 && !already;
-              const pct = Math.round((m.joinedCount / Math.max(1, m.maxPlayers)) * 100);
-              const crew = m.crewSize ?? 1;
-              const others = m.otherJoined ?? Math.max(0, m.joinedCount - crew);
-              return (
-                <div
-                  key={m.id}
-                  className="overflow-hidden rounded-3xl border border-[#F0E3CC] bg-white p-5 shadow-[0_10px_30px_rgba(180,120,60,0.08)] transition hover:border-emerald-300 dark:border-white/10 dark:bg-stone-900 dark:hover:border-emerald-500/50"
+          <>
+
+            <div className="no-scrollbar mt-5 flex gap-2 overflow-x-auto pb-1">
+              {["All", "Beginner", "Intermediate", "Advanced"].map((f) => (
+                <button
+                  key={f}
+                  onClick={() => setFilter(f)}
+                  className={`shrink-0 rounded-full px-4 py-2 text-xs font-black transition ${
+                    filter === f
+                      ? "bg-emerald-600 text-white shadow-md"
+                      : "border border-stone-200 bg-white text-stone-600 shadow-sm hover:bg-orange-50 dark:border-white/10 dark:bg-stone-900 dark:text-stone-300 dark:hover:bg-white/5"
+                  }`}
                 >
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <h3 className="text-base font-extrabold text-stone-900 dark:text-stone-100">{m.title}</h3>
-                      <p className="mt-0.5 text-xs text-stone-500 dark:text-stone-400">
-                        hosted with 💚 by {m.organizer?.name ?? "a friend"} •{" "}
-                        {m.level === "All Levels" ? "🌍 Anyone welcome" : `🎯 ${m.level}`}
-                      </p>
-                      <p className="mt-1 text-[11px] font-bold text-stone-400 dark:text-stone-500">
-                        👥 {crew} crew • 🙋 {others} joined from outside
-                      </p>
-                      <span className="mt-1.5 flex flex-wrap items-center gap-1.5">
-                        {m.bookingId ? (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-black text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300">
-                            ✓ Court already sorted
-                          </span>
-                        ) : null}
-                        {(m.chargeMode ?? (m.bookingId ? "split" : "custom")) === "custom" ? (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-violet-500/15 px-2 py-0.5 text-[10px] font-black text-violet-700 dark:text-violet-300">
-                            ✨ Custom {formatNPR(m.pricePerPlayer)}
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-sky-500/10 px-2 py-0.5 text-[10px] font-black text-sky-700 dark:text-sky-300">
-                            🤝 Fair split
-                          </span>
-                        )}
-                      </span>
-                    </div>
-                    <span
-                      className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-black uppercase ${
-                        full
-                          ? "bg-stone-200 text-stone-500 dark:bg-white/10 dark:text-stone-400"
-                          : "bg-orange-100 text-orange-700 dark:bg-orange-500/15 dark:text-orange-300"
-                      }`}
+                  {f === "All" ? "🌍 Everyone" : f === "Beginner" ? "🌱 Beginner" : f === "Intermediate" ? "⚡ Intermediate" : "🔥 Advanced"}
+                </button>
+              ))}
+            </div>
+            <p className="mt-1.5 text-[11px] font-semibold text-stone-400 dark:text-stone-500">
+              Tip: level filters also show “Anyone welcome” games — they&apos;re open to you too! 💛
+            </p>
+
+            {loading ? (
+              <div className="mt-6 grid gap-4 md:grid-cols-2">
+                {[0, 1, 2, 3].map((i) => (
+                  <div key={i} className="h-64 animate-pulse rounded-3xl bg-white dark:bg-stone-900" />
+                ))}
+              </div>
+            ) : filtered.length === 0 ? (
+              <div className="mt-6 rounded-3xl border border-dashed border-stone-300 bg-white p-12 text-center dark:border-white/20 dark:bg-stone-900">
+                <Zap className="mx-auto h-10 w-10 text-stone-300 dark:text-stone-600" />
+                <h3 className="mt-3 text-lg font-extrabold text-stone-900 dark:text-stone-100">Quiet here for now</h3>
+                <p className="mt-1 text-sm text-stone-500 dark:text-stone-400">Be the first to start a game — friends will follow!</p>
+              </div>
+            ) : (
+              <div className="mt-6 grid gap-4 md:grid-cols-2">
+                {filtered.map((m) => {
+                  const already = (m.players ?? []).some((p) => p.id === user?.id);
+                  const full = m.spotsLeft === 0 && !already;
+                  const pct = Math.round((m.joinedCount / Math.max(1, m.maxPlayers)) * 100);
+                  const crew = m.crewSize ?? 1;
+                  const others = m.otherJoined ?? Math.max(0, m.joinedCount - crew);
+                  return (
+                    <div
+                      key={m.id}
+                      className="overflow-hidden rounded-3xl border border-[#F0E3CC] bg-white p-5 shadow-[0_10px_30px_rgba(180,120,60,0.08)] transition hover:border-emerald-300 dark:border-white/10 dark:bg-stone-900 dark:hover:border-emerald-500/50"
                     >
-                      {full ? "Full house" : `${m.spotsLeft} left`}
-                    </span>
-                  </div>
-                  {m.description && (
-                    <p className="mt-2 text-[13px] leading-relaxed text-stone-600 dark:text-stone-400">
-                      {m.description}
-                    </p>
-                  )}
-                  <div className="mt-3 space-y-1.5 text-[13px] font-semibold text-stone-600 dark:text-stone-300">
-                    <p className="flex items-center gap-2">
-                      <MapPin className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
-                      {m.venue?.name} — {m.venue?.address}
-                    </p>
-                    <p className="flex items-center gap-2">
-                      <CalendarDays className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
-                      {prettyDate(m.date)} • {formatTime12(m.startTime)} – {formatTime12(m.endTime || m.startTime)}
-                      <span className="ml-auto font-black text-emerald-700 dark:text-emerald-300">
-                        {formatNPR(m.pricePerPlayer)} each
-                      </span>
-                    </p>
-                  </div>
-                  <div className="mt-3">
-                    <div className="h-2 overflow-hidden rounded-full bg-stone-100 dark:bg-white/10">
-                      <div
-                        className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-orange-400"
-                        style={{ width: `${pct}%` }}
-                      />
-                    </div>
-                    <div className="mt-2 flex items-center justify-between">
-                      <div className="flex -space-x-2">
-                        {(m.players ?? []).slice(0, 6).map((p) => (
-                          <span key={p.id} title={p.name}>
-                            <Avatar
-                              user={{ name: p.name, avatarColor: p.avatarColor, avatarUrl: (p as { avatarUrl?: string }).avatarUrl }}
-                              className="h-8 w-8 text-[10px]"
-                              ring="border-2 border-white shadow dark:border-stone-900"
-                            />
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <h3 className="text-base font-extrabold text-stone-900 dark:text-stone-100">{m.title}</h3>
+                          <p className="mt-0.5 text-xs text-stone-500 dark:text-stone-400">
+                            hosted with 💚 by {m.organizer?.name ?? "a friend"} •{" "}
+                            {m.level === "All Levels" ? "🌍 Anyone welcome" : `🎯 ${m.level}`}
+                          </p>
+                          <p className="mt-1 text-[11px] font-bold text-stone-400 dark:text-stone-500">
+                            👥 {crew} crew • 🙋 {others} joined from outside
+                          </p>
+                          <span className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                            {m.bookingId ? (
+                              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-black text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300">
+                                ✓ Court already sorted
+                              </span>
+                            ) : null}
+                            {(m.chargeMode ?? (m.bookingId ? "split" : "custom")) === "custom" ? (
+                              <span className="inline-flex items-center gap-1 rounded-full bg-violet-500/15 px-2 py-0.5 text-[10px] font-black text-violet-700 dark:text-violet-300">
+                                ✨ Custom {formatNPR(m.pricePerPlayer)}
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 rounded-full bg-sky-500/10 px-2 py-0.5 text-[10px] font-black text-sky-700 dark:text-sky-300">
+                                🤝 Fair split
+                              </span>
+                            )}
                           </span>
-                        ))}
-                        {m.joinedCount > 6 && (
-                          <span className="grid h-8 w-8 place-items-center rounded-full border-2 border-white bg-stone-200 text-[10px] font-black text-stone-600 dark:border-stone-900 dark:bg-white/10 dark:text-stone-300">
-                            +{m.joinedCount - 6}
-                          </span>
-                        )}
+                        </div>
+                        <span
+                          className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-black uppercase ${
+                            full
+                              ? "bg-stone-200 text-stone-500 dark:bg-white/10 dark:text-stone-400"
+                              : "bg-orange-100 text-orange-700 dark:bg-orange-500/15 dark:text-orange-300"
+                          }`}
+                        >
+                          {full ? "Full house" : `${m.spotsLeft} left`}
+                        </span>
                       </div>
-                      <span className="text-xs font-bold text-stone-500 dark:text-stone-400">
-                        {m.joinedCount}/{m.maxPlayers} in • {m.spotsLeft} open 🙋
-                      </span>
+                      {m.description && (
+                        <p className="mt-2 text-[13px] leading-relaxed text-stone-600 dark:text-stone-400">
+                          {m.description}
+                        </p>
+                      )}
+                      <div className="mt-3 space-y-1.5 text-[13px] font-semibold text-stone-600 dark:text-stone-300">
+                        <p className="flex items-center gap-2">
+                          <MapPin className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                          {m.venue?.name} — {m.venue?.address}
+                        </p>
+                        <p className="flex items-center gap-2">
+                          <CalendarDays className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                          {prettyDate(m.date)} • {formatTime12(m.startTime)} – {formatTime12(m.endTime || m.startTime)}
+                          <span className="ml-auto font-black text-emerald-700 dark:text-emerald-300">
+                            {formatNPR(m.pricePerPlayer)} each
+                          </span>
+                        </p>
+                      </div>
+                      <div className="mt-3">
+                        <div className="h-2 overflow-hidden rounded-full bg-stone-100 dark:bg-white/10">
+                          <div
+                            className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-orange-400"
+                            style={{ width: `${pct}%` }}
+                          />
+                        </div>
+                        <div className="mt-2 flex items-center justify-between">
+                          <div className="flex -space-x-2">
+                            {(m.players ?? []).slice(0, 6).map((p) => (
+                              <span key={p.id} title={p.name}>
+                                <Avatar
+                                  user={{ name: p.name, avatarColor: p.avatarColor, avatarUrl: (p as { avatarUrl?: string }).avatarUrl }}
+                                  className="h-8 w-8 text-[10px]"
+                                  ring="border-2 border-white shadow dark:border-stone-900"
+                                />
+                              </span>
+                            ))}
+                            {m.joinedCount > 6 && (
+                              <span className="grid h-8 w-8 place-items-center rounded-full border-2 border-white bg-stone-200 text-[10px] font-black text-stone-600 dark:border-stone-900 dark:bg-white/10 dark:text-stone-300">
+                                +{m.joinedCount - 6}
+                              </span>
+                            )}
+                          </div>
+                          <span className="text-xs font-bold text-stone-500 dark:text-stone-400">
+                            {m.joinedCount}/{m.maxPlayers} in • {m.spotsLeft} open 🙋
+                          </span>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => toggleJoin(m)}
+                        disabled={joining === m.id || full}
+                        className={`mt-4 flex w-full items-center justify-center gap-2 rounded-2xl py-3 text-sm font-black transition ${
+                          already
+                            ? "border border-red-200 bg-red-50 text-red-500 hover:bg-red-100 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-400 dark:hover:bg-red-500/20"
+                            : full
+                              ? "cursor-not-allowed bg-stone-100 text-stone-400 dark:bg-white/5 dark:text-stone-500"
+                              : "bg-emerald-600 text-white shadow-md hover:bg-emerald-700"
+                        }`}
+                      >
+                        {joining === m.id ? (
+                          "Saving your spot…"
+                        ) : already ? (
+                          <>Can&apos;t make it — leave game</>
+                        ) : full ? (
+                          "This one's full"
+                        ) : (
+                          <>
+                            <Check className="h-4 w-4" strokeWidth={3} /> Count me in • {formatNPR(m.pricePerPlayer)}
+                          </>
+                        )}
+                      </button>
                     </div>
-                  </div>
-                  <button
-                    onClick={() => toggleJoin(m)}
-                    disabled={joining === m.id || full}
-                    className={`mt-4 flex w-full items-center justify-center gap-2 rounded-2xl py-3 text-sm font-black transition ${
-                      already
-                        ? "border border-red-200 bg-red-50 text-red-500 hover:bg-red-100 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-400 dark:hover:bg-red-500/20"
-                        : full
-                          ? "cursor-not-allowed bg-stone-100 text-stone-400 dark:bg-white/5 dark:text-stone-500"
-                          : "bg-emerald-600 text-white shadow-md hover:bg-emerald-700"
-                    }`}
-                  >
-                    {joining === m.id ? (
-                      "Saving your spot…"
-                    ) : already ? (
-                      <>Can&apos;t make it — leave game</>
-                    ) : full ? (
-                      "This one's full"
-                    ) : (
-                      <>
-                        <Check className="h-4 w-4" strokeWidth={3} /> Count me in • {formatNPR(m.pricePerPlayer)}
-                      </>
-                    )}
-                  </button>
-                </div>
-              );
-            })}
-          </div>
+                  );
+                })}
+              </div>
+            )}
+          </>
         )}
       </div>
 
       {showCreate && (
         <div className="fixed inset-0 z-[60] grid place-items-center overflow-y-auto bg-stone-900/50 p-4 backdrop-blur-sm">
-          <div className="max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-[2rem] border border-stone-200 bg-white p-6 shadow-2xl dark:border-white/10 dark:bg-stone-900">
+          <div className="max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-[2rem] border border-stone-200 bg-white p-4 shadow-2xl sm:p-6 dark:border-white/10 dark:bg-stone-900">
             <div className="flex items-center justify-between">
               <div>
                 <h3 className="text-lg font-black text-stone-900 dark:text-stone-100">Start a friendly game ⚽</h3>
@@ -584,14 +684,14 @@ export default function MatchesPage() {
                         <button
                           key={l.name}
                           onClick={() => toggleLevel(l.name)}
-                          className={`rounded-xl border px-2 py-2 text-center transition ${
+                          className={`min-w-0 rounded-xl border px-1.5 py-2 text-center transition ${
                             on
                               ? "border-orange-500 bg-orange-500 text-white"
                               : "border-stone-200 dark:border-white/10"
                           }`}
                         >
                           <span className="block text-base">{l.emoji}</span>
-                          <span className="block text-[11px] font-black">{l.name}</span>
+                          <span className="block truncate text-[10px] font-black sm:text-[11px]">{l.name}</span>
                         </button>
                       );
                     })}
@@ -687,6 +787,35 @@ export default function MatchesPage() {
           </div>
         </div>
       )}
+    </main>
+  );
+}
+
+/**
+ * `useSearchParams` has to sit under a Suspense boundary, or Next cannot
+ * prerender the route and `next build` fails outright. The fallback mirrors the
+ * skeleton the page already shows while it fetches, so the swap is invisible.
+ */
+export default function MatchesPage() {
+  return (
+    <Suspense fallback={<MatchesFallback />}>
+      <MatchesInner />
+    </Suspense>
+  );
+}
+
+function MatchesFallback() {
+  return (
+    <main className="turf-pattern min-h-screen">
+      <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
+        <div className="h-8 w-52 max-w-full animate-pulse rounded-2xl bg-white dark:bg-stone-900" />
+        <div className="mt-5 h-12 w-full animate-pulse rounded-2xl bg-white dark:bg-stone-900 sm:w-80" />
+        <div className="mt-6 grid gap-4 md:grid-cols-2">
+          {[0, 1, 2, 3].map((i) => (
+            <div key={i} className="h-64 animate-pulse rounded-3xl bg-white dark:bg-stone-900" />
+          ))}
+        </div>
+      </div>
     </main>
   );
 }

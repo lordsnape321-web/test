@@ -349,7 +349,10 @@ export default function BookingsPage() {
           ].map((s) => (
             <div key={s.l} className="rounded-2xl border border-[#F0E3CC] bg-white px-3 py-3.5 text-center shadow-sm dark:border-white/10 dark:bg-stone-900">
               <p className="truncate text-lg font-black text-stone-900 sm:text-xl dark:text-stone-100">{s.v}</p>
-              <p className="text-[10px] font-bold uppercase tracking-widest text-stone-400 dark:text-stone-500">{s.l}</p>
+              {/* `tracking-widest` here needed ~100px for "INVESTED IN FUN" inside a
+                  ~66px cell on a 320px phone; `tracking-wide` + `leading-tight` lets
+                  it wrap to two tidy lines instead of overflowing the card. */}
+              <p className="text-[10px] font-bold uppercase leading-tight tracking-wide text-stone-400 dark:text-stone-500">{s.l}</p>
             </div>
           ))}
         </div>
