@@ -47,76 +47,32 @@ export async function GET(
 }
 
 /**
- * POST — the captain adds a player straight to the roster 👑
+ * POST — no longer a way in 🛡️
  *
- * The direct path, for the friend standing next to you: no request, no waiting.
- * Only the captain can do it, and the squad size limit still applies.
+ * This used to write a roster row straight away, which meant a squad could gain
+ * members who never agreed to be in it. Consent is now the rule on both sides of
+ * the flow, so the captain's side of the deal is an invitation: `POST
+ * /api/teams/{id}/invites` files it, and only the player's own answer
+ * (`POST /api/team-invites`) creates the membership. The endpoint stays here and
+ * says so, because a stale client should learn the new route instead of silently
+ * getting a 404 — and so that nothing can ever re-introduce a direct add by
+ * accident.
  */
 export async function POST(
   req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  try {
-    const { id } = await params;
-    const teamId = Number(id);
-    const body = await req.json().catch(() => ({}));
-    const captainId = Number(body.captainId);
-    const userId = Number(body.userId);
-
-    if (!Number.isInteger(teamId) || teamId <= 0)
-      return Response.json({ error: "Invalid team 🛡️" }, { status: 400 });
-    if (!Number.isInteger(userId) || userId <= 0)
-      return Response.json({ error: "Pick a player to add 👥" }, { status: 400 });
-    if (!(await isCaptain(teamId, captainId)))
-      return Response.json({ error: "Only the captain can add members 👑" }, { status: 403 });
-
-    const team = (await db.select().from(teams).where(eq(teams.id, teamId)))[0];
-    if (!team)
-      return Response.json({ error: "Team not found 🛡️" }, { status: 404 });
-    const person = (await db.select().from(users).where(eq(users.id, userId)))[0];
-    if (!person)
-      return Response.json({ error: "That player doesn't exist 🔒" }, { status: 404 });
-
-    if (await isMember(teamId, userId))
-      return Response.json(
-        { ok: true, alreadyMember: true, message: `${person.name} is already in the squad 🛡️` },
-        { status: 200 }
-      );
-
-    const roster = await teamRoster(teamId);
-    if (roster.length >= team.maxPlayers)
-      return Response.json(
-        {
-          error: `Your squad is full (${roster.length}/${team.maxPlayers}) — raise the team size first 👥`,
-          reason: "squad_full",
-        },
-        { status: 409 }
-      );
-
-    await db.insert(teamMembers).values({ teamId, userId, role: "player" });
-    // A direct add settles any request they had filed, so it can't be accepted twice.
-    await db
-      .delete(teamRequests)
-      .where(
-        and(
-          eq(teamRequests.teamId, teamId),
-          eq(teamRequests.userId, userId),
-          eq(teamRequests.status, "pending")
-        )
-      );
-    await sendNotification({
-      userId,
-      type: "team",
-      title: `🛡️ ${person.name}, you're in ${team.name}!`,
-      message: `The captain added you to ${team.name} (${team.teamCode ?? "no code"}). Choose them under "Just our gang" when you book a court ⚽`,
-      link: "/teams",
-    });
-
-    return Response.json({ ok: true, memberAdded: true, roster: await teamRoster(teamId) }, { status: 201 });
-  } catch (e) {
-    console.error(`[/api/teams/[id]/members POST] failed:`, e);
-    return Response.json({ error: String(e) }, { status: 500 });
-  }
+  const { id } = await params;
+  const teamId = Number(id);
+  return Response.json(
+    {
+      error:
+        "Captains can't add players without their say-so anymore 🛡️ Send an invite instead — the player accepts or declines it.",
+      reason: "consent_required",
+      use: `/api/teams/${Number.isInteger(teamId) && teamId > 0 ? teamId : "{id}"}/invites`,
+    },
+    { status: 405, headers: { Allow: "GET, DELETE" } }
+  );
 }
 
 /**

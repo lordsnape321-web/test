@@ -5,6 +5,7 @@ import {
   courts,
   bookings,
   teams,
+  teamInvites,
   teamMembers,
   teamRequests,
   openMatches,
@@ -168,11 +169,11 @@ const DEMO_USER_EMAILS = [
  */
 function demoTeams() {
   return [
-    { name: "Chabahil Chargers", code: "CHARGERS-4X7K", motto: "Speed. Skill. Glory.", captain: 0, level: "Advanced", color: "#16a34a", home: "Dhanyentari Futsal Arena", w: 18, l: 4, d: 3 },
-    { name: "Lalitpur Legends", code: "LEGENDS-9PM3", motto: "Legacy in every goal", captain: 3, level: "Advanced", color: "#7c3aed", home: "KickOff Sports Hub", w: 15, l: 6, d: 2 },
-    { name: "Pokhara Panthers", code: "PANTHERS-7QRT", motto: "Hunt as one", captain: 5, level: "Intermediate", color: "#ea580c", home: "Lakeside Strikers Court", w: 11, l: 7, d: 4 },
-    { name: "Bhaktapur Ballers", code: "BALLERS-K3YD", motto: "Play beautiful", captain: 1, level: "Intermediate", color: "#2563eb", home: "GoalZone Futsal Park", w: 9, l: 8, d: 3 },
-    { name: "Thamel Night Owls", code: "OWLS-MN4P", motto: "We own the night", captain: 4, level: "Beginner", color: "#be123c", home: "NightOwl Futsal", w: 5, l: 9, d: 2 },
+    { name: "Chabahil Chargers", code: "CHARGERS-4X7K", motto: "Speed. Skill. Glory.", desc: "Tuesday and Friday nights at Dhanyentari, 7pm sharp. We play to win but nobody sits out — new faces get the first half. Court bill split four ways, boots and bibs on us 🥅", captain: 0, level: "Advanced", color: "#16a34a", home: "Dhanyentari Futsal Arena", w: 18, l: 4, d: 3 },
+    { name: "Lalitpur Legends", code: "LEGENDS-9PM3", motto: "Legacy in every goal", desc: "Sunday mornings at KickOff, then chiya and momos. Seven-a-side, defenders must talk, and yes we keep a league table nobody asked for 🏆", captain: 3, level: "Advanced", color: "#7c3aed", home: "KickOff Sports Hub", w: 15, l: 6, d: 2 },
+    { name: "Pokhara Panthers", code: "PANTHERS-7QRT", motto: "Hunt as one", desc: "Lakeside crowd, three times a week whenever the fog clears. Beginners welcome as long as you show up — we track attendance, not talent 🌄", captain: 5, level: "Intermediate", color: "#ea580c", home: "Lakeside Strikers Court", w: 11, l: 7, d: 4 },
+    { name: "Bhaktapur Ballers", code: "BALLERS-K3YD", motto: "Play beautiful", desc: "We are the crew that passes too much. Saturday evenings at GoalZone, Rs. 150 each, and the goalkeeper never pays 😄", captain: 1, level: "Intermediate", color: "#2563eb", home: "GoalZone Futsal Park", w: 9, l: 8, d: 3 },
+    { name: "Thamel Night Owls", code: "OWLS-MN4P", motto: "We own the night", desc: "Late shift only: midnight court at NightOwl after work. Learning group, laughs first, and we are genuinely terrible at defending set pieces 🦉", captain: 4, level: "Beginner", color: "#be123c", home: "NightOwl Futsal", w: 5, l: 9, d: 2 },
   ];
 }
 
@@ -180,10 +181,26 @@ function demoTeams() {
 function demoTeamMemberships(): Array<[number, number, string]> {
   return [
     [0, 0, "captain"], [0, 1, "player"], [0, 2, "player"], [0, 4, "player"], [0, 5, "player"],
-    [1, 3, "captain"], [1, 0, "player"], [1, 6, "player"], [1, 7, "player"],
+    // Every seeded member is a player account — a venue owner runs a court, they
+    // do not turn out for a squad, and /api/teams/{id}/invites refuses them too.
+    [1, 3, "captain"], [1, 0, "player"], [1, 4, "player"], [1, 7, "player"],
     [2, 5, "captain"], [2, 1, "player"], [2, 4, "player"],
     [3, 1, "captain"], [3, 2, "player"], [3, 7, "player"], [3, 0, "player"],
     [4, 4, "captain"], [4, 7, "player"],
+  ];
+}
+
+/**
+ * Pending invitations as [teamIndex, userIndex, note], so a *player* logging in
+ * has something to answer. This is the captain's side of the consent rule: an
+ * invite never adds anyone, the player's own yes does. Each invitee is
+ * deliberately not on that roster, and is a `player` account.
+ */
+function demoTeamInvites(): Array<[number, number, string]> {
+  return [
+    [0, 3, "We lost our left-back to a knee injury — you played against us and I remember. Two nights a week, no trial game 🛡️"],
+    [1, 5, "Champions need depth 😄 Sunday mornings only, and we split the court four ways."],
+    [4, 0, "We are the worst team in the league and the friendliest 🦉 an advanced player like you would change that."],
   ];
 }
 
@@ -195,7 +212,6 @@ function demoTeamMemberships(): Array<[number, number, string]> {
 function demoTeamJoinRequests(): Array<[number, number, string]> {
   return [
     [0, 7, "Sunday league defender, and I live two minutes from the arena. Would love to join the Chargers! 🛡️"],
-    [0, 3, "Played against you last month and lost 4-1 😅 Let me try from the inside."],
     [4, 2, "Beginner goalkeeper. I can't promise saves but I promise enthusiasm 🧤"],
     [2, 3, "In Pokhara every weekend — happy to travel for the Panthers."],
   ];
@@ -302,6 +318,7 @@ export async function POST() {
             .values({
               name: t.name,
               motto: t.motto,
+              description: t.desc,
               teamCode: t.code,
               captainId: captain.id,
               maxPlayers: 12,
@@ -332,6 +349,20 @@ export async function POST() {
             .insert(teamRequests)
             .values({ teamId: team.id, userId: u.id, message, status: "pending" });
         }
+        for (const [ti, ui, message] of demoTeamInvites()) {
+          const team = rebuilt[ti];
+          const u = userAt(ui);
+          if (!team || !u) continue;
+          await db
+            .insert(teamInvites)
+            .values({
+              teamId: team.id,
+              userId: u.id,
+              invitedBy: team.captainId,
+              message,
+              status: "pending",
+            });
+        }
         existingTeams = await db.select().from(teams);
       }
 
@@ -341,8 +372,20 @@ export async function POST() {
         existingTeams.map((t) => normalizeTeamCode(t.teamCode ?? "")).filter(Boolean)
       );
       let seededTeamCodes = 0;
+      let seededTeamDescriptions = 0;
       for (const t of existingTeams) {
         const patch: Partial<typeof teams.$inferInsert> = {};
+        // Databases seeded before teams had an "about us" box: give each one a
+        // sentence built from what it already knows, so the card is never empty.
+        if (!t.description) {
+          const demo = demoTeams().find((d) => d.name === t.name);
+          patch.description =
+            demo?.desc ??
+            `${t.level} squad${t.homeGround ? ` playing at ${t.homeGround}` : ""} — ${
+              t.motto || "ask the captain about training nights and how we split the court."
+            }`;
+          seededTeamDescriptions++;
+        }
         if (!t.teamCode) {
           let code = suggestTeamCode(t.name);
           // The tail is random, so retry rather than risk a unique violation.
@@ -358,6 +401,37 @@ export async function POST() {
         if (Object.keys(patch).length > 0)
           await db.update(teams).set(patch).where(eq(teams.id, t.id));
       }
+      // Backfill a few pending invitations so the player side of the flow has
+      // something to answer in a database that predates `team_invites`.
+      const existingInvites = await db.select().from(teamInvites);
+      let seededTeamInvites = 0;
+      if (existingInvites.length === 0 && existingTeams.length > 0) {
+        const allMembers = await db.select().from(teamMembers);
+        for (const t of existingTeams.slice(0, 3)) {
+          const memberIds = new Set(
+            allMembers.filter((m) => m.teamId === t.id).map((m) => m.userId)
+          );
+          const invited = new Set(
+            (await db.select().from(teamInvites).where(eq(teamInvites.teamId, t.id))).map(
+              (i) => i.userId
+            )
+          );
+          const outsider = allUsers.find(
+            (u) =>
+              u.role === "player" && !memberIds.has(u.id) && !invited.has(u.id) && u.id !== t.captainId
+          );
+          if (!outsider) continue;
+          await db.insert(teamInvites).values({
+            teamId: t.id,
+            userId: outsider.id,
+            invitedBy: t.captainId,
+            message: `${t.name}${t.homeGround ? ` at ${t.homeGround}` : ""} could use one more player — want in? 📨`,
+            status: "pending",
+          });
+          seededTeamInvites++;
+        }
+      }
+
       // Backfill a few join requests so the captain panel has something to decide.
       const existingRequests = await db.select().from(teamRequests);
       let seededTeamRequests = 0;
@@ -367,8 +441,13 @@ export async function POST() {
           const memberIds = new Set(
             allMembers.filter((m) => m.teamId === t.id).map((m) => m.userId)
           );
+          const asked = new Set(
+            (await db.select().from(teamRequests).where(eq(teamRequests.teamId, t.id))).map(
+              (r) => r.userId
+            )
+          );
           const outsider = allUsers.find(
-            (u) => u.role === "player" && !memberIds.has(u.id)
+            (u) => u.role === "player" && !memberIds.has(u.id) && !asked.has(u.id)
           );
           if (!outsider) continue;
           await db.insert(teamRequests).values({
@@ -380,7 +459,18 @@ export async function POST() {
           seededTeamRequests++;
         }
       }
-      return Response.json({ ok: true, message: "Already seeded", count: existing.length, seededReviews, seededPromos, seededTeams, seededTeamCodes, seededTeamRequests });
+      return Response.json({
+        ok: true,
+        message: "Already seeded",
+        count: existing.length,
+        seededReviews,
+        seededPromos,
+        seededTeams,
+        seededTeamCodes,
+        seededTeamDescriptions,
+        seededTeamInvites,
+        seededTeamRequests,
+      });
     }
 
     const pw = hashPassword(DEFAULT_PASSWORD);
@@ -663,6 +753,7 @@ export async function POST() {
         .values({
           name: t.name,
           motto: t.motto,
+          description: t.desc,
           teamCode: t.code,
           captainId: insertedUsers[t.captain].id,
           maxPlayers: 12,
@@ -693,6 +784,21 @@ export async function POST() {
       await db.insert(teamRequests).values({
         teamId: insertedTeams[ti].id,
         userId: insertedUsers[ui].id,
+        message,
+        status: "pending",
+      });
+    }
+
+    // …and pending invitations 📨 — the same queue from the player's side, so the
+    // accept/decline flow is testable the moment you log in as aarav's mate.
+    for (const [ti, ui, message] of demoTeamInvites()) {
+      const team = insertedTeams[ti];
+      const player = insertedUsers[ui];
+      if (!team || !player) continue;
+      await db.insert(teamInvites).values({
+        teamId: team.id,
+        userId: player.id,
+        invitedBy: team.captainId,
         message,
         status: "pending",
       });

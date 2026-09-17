@@ -25,6 +25,8 @@ const TYPE_STYLE: Record<string, string> = {
   match_join: "bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-300",
   free_play: "bg-violet-500/15 text-violet-700 dark:text-violet-300",
   review: "bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300",
+  // Squad traffic: join requests to answer, invitations to accept or decline.
+  team: "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300",
   info: "bg-stone-200 text-stone-600 dark:bg-white/10 dark:text-stone-300",
 };
 
