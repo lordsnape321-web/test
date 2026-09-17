@@ -15,6 +15,7 @@ import {
   Trophy,
   Globe,
   ChevronRight,
+  Settings,
   User as UserIcon,
 } from "lucide-react";
 import { useUser } from "./UserProvider";
@@ -30,7 +31,27 @@ const NAV = [
   { href: "/admin/leagues", label: "Leagues", icon: Trophy },
   { href: "/admin/notifications", label: "Notifications", icon: Bell, badge: "unread" },
   { href: "/admin/profile", label: "My Profile", icon: UserIcon },
+  // The same hub players get: theme, alerts, account. Owners keep their Studio
+  // pages above it — this is the stuff that is about the *person*, not the venue.
+  { href: "/settings", label: "Settings", icon: Settings },
 ];
+
+/*
+ * The owner's bottom rail 📱
+ *
+ * Sized from this array's length instead of a hardcoded `grid-cols-6`, so the
+ * column count and the item count can never drift apart — that is exactly what
+ * happened on the player rail, where a sixth tab wrapped under a five-column
+ * grid. Labels truncate rather than pushing the row wider than the viewport.
+ */
+const MOBILE_TABS = [
+  { href: "/admin", label: "Home", icon: LayoutDashboard, exact: true, count: null },
+  { href: "/admin/requests", label: "Requests", icon: Inbox, exact: false, count: "requests" },
+  { href: "/admin/bookings", label: "Bookings", icon: CalendarCheck, exact: false, count: null },
+  { href: "/admin/venues", label: "Venues", icon: Building2, exact: false, count: null },
+  { href: "/admin/leagues", label: "Leagues", icon: Trophy, exact: false, count: null },
+  { href: "/admin/notifications", label: "Alerts", icon: Bell, exact: false, count: "unread" },
+] as const;
 
 export function OwnerShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
@@ -133,21 +154,21 @@ export function OwnerShell({ children }: { children: ReactNode }) {
           >
             <Menu className="h-5 w-5" />
           </button>
-          <Link href="/admin" className="flex items-center gap-2.5">
-            <span className="grid h-9 w-9 place-items-center rounded-xl bg-slate-900 dark:ring-1 dark:ring-white/20">
+          <Link href="/admin" className="flex min-w-0 items-center gap-2.5">
+            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-slate-900 dark:ring-1 dark:ring-white/20">
               <Trophy className="h-[18px] w-[18px] text-amber-400" strokeWidth={2.5} />
             </span>
-            <span className="leading-tight">
-              <span className="block text-[15px] font-black tracking-tight">
+            <span className="min-w-0 leading-tight">
+              <span className="block truncate text-[13px] font-black tracking-tight sm:text-[15px]">
                 FutsalNepal <span className="text-orange-500">Studio</span>
               </span>
-              <span className="block text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">
+              <span className="hidden text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400 sm:block dark:text-slate-500">
                 Owner Console
               </span>
             </span>
           </Link>
 
-          <div className="ml-auto flex items-center gap-2">
+          <div className="ml-auto flex shrink-0 items-center gap-1.5 sm:gap-2">
             <Link
               href="/"
               className="hidden items-center gap-1.5 rounded-xl border border-slate-200 px-3.5 py-2 text-xs font-bold text-slate-600 transition hover:bg-slate-50 sm:flex dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
@@ -251,34 +272,33 @@ export function OwnerShell({ children }: { children: ReactNode }) {
 
       {/* Bottom nav for owners on mobile */}
       <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-200 bg-white/95 pb-[env(safe-area-inset-bottom)] backdrop-blur lg:hidden dark:border-slate-800 dark:bg-slate-950/95">
-        <div className="grid grid-cols-6 px-1">
-          {[
-            { href: "/admin", label: "Home", icon: LayoutDashboard, exact: true },
-            { href: "/admin/requests", label: "Requests", icon: Inbox, count: pendingCount },
-            { href: "/admin/bookings", label: "Bookings", icon: CalendarCheck },
-            { href: "/admin/venues", label: "Venues", icon: Building2 },
-            { href: "/admin/leagues", label: "Leagues", icon: Trophy },
-            { href: "/admin/notifications", label: "Alerts", icon: Bell, count: unread },
-          ].map((t) => {
+        <div
+          className="grid px-1"
+          style={{ gridTemplateColumns: `repeat(${MOBILE_TABS.length}, minmax(0, 1fr))` }}
+        >
+          {MOBILE_TABS.map((t) => {
             const active = t.exact
               ? pathname === t.href
               : pathname === t.href || pathname.startsWith(t.href + "/");
+            const count =
+              t.count === "requests" ? pendingCount : t.count === "unread" ? unread : 0;
             return (
               <Link
                 key={t.href}
                 href={t.href}
-                className={`relative flex flex-col items-center gap-0.5 py-2.5 text-[10px] font-bold ${
+                aria-current={active ? "page" : undefined}
+                className={`relative flex min-w-0 flex-col items-center gap-0.5 py-2.5 text-[10px] font-bold ${
                   active ? "text-slate-900 dark:text-slate-100" : "text-slate-400 dark:text-slate-500"
                 }`}
               >
-                <t.icon className="h-5 w-5" strokeWidth={active ? 2.5 : 2} />
-                {t.label}
-                {!!t.count && t.count > 0 && (
-                  <span className="absolute right-1/2 top-1 grid h-4 min-w-4 translate-x-5 place-items-center rounded-full bg-red-500 px-1 text-[9px] font-black text-white">
-                    {t.count > 9 ? "9+" : t.count}
+                <t.icon className="h-5 w-5 shrink-0" strokeWidth={active ? 2.5 : 2} />
+                <span className="w-full truncate text-center">{t.label}</span>
+                {count > 0 && (
+                  <span className="absolute right-1/2 top-1 grid h-4 min-w-4 translate-x-4 place-items-center rounded-full bg-red-500 px-1 text-[9px] font-black text-white">
+                    {count > 9 ? "9+" : count}
                   </span>
                 )}
-                {active && <span className="h-1 w-8 rounded-full bg-slate-900 dark:bg-white" />}
+                {active && <span className="h-1 w-6 max-w-full rounded-full bg-slate-900 dark:bg-white" />}
               </Link>
             );
           })}

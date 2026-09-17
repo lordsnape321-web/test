@@ -1323,17 +1323,17 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
                           <button
                             key={l.name}
                             onClick={() => toggleLevel(l.name)}
-                            className={`rounded-2xl border px-2 py-2.5 text-center transition ${
+                            className={`min-w-0 rounded-2xl border px-1.5 py-2.5 text-center transition ${
                               on
                                 ? "border-orange-500 bg-orange-500 text-white shadow-md"
                                 : "border-stone-200 bg-white dark:border-white/10 dark:bg-stone-950"
                             }`}
                           >
                             <span className="block text-lg leading-none">{l.emoji}</span>
-                            <span className={`mt-1 block text-xs font-black ${on ? "text-white" : "text-stone-800 dark:text-stone-200"}`}>
+                            <span className={`mt-1 block truncate text-[11px] font-black sm:text-xs ${on ? "text-white" : "text-stone-800 dark:text-stone-200"}`}>
                               {l.name}
                             </span>
-                            <span className={`block text-[10px] ${on ? "text-orange-100" : "text-stone-400"}`}>
+                            <span className={`block truncate text-[10px] ${on ? "text-orange-100" : "text-stone-400"}`}>
                               {l.hint}
                             </span>
                           </button>

@@ -72,22 +72,25 @@ export function LeagueCard({ league, compact = false }: { league: LeagueSummary;
       </div>
 
       <div className="flex flex-1 flex-col p-4">
+        {/* Three cells of ~80px on a phone: `min-w-0` + `truncate` keeps a big
+            prize pool ("Rs. 1,00,000") from blowing the card wider than the
+            viewport, which is what pushed the whole leagues grid sideways. */}
         <div className="grid grid-cols-3 gap-2 text-center">
-          <div className="rounded-xl bg-[#FFF6E9] py-2 dark:bg-white/5">
-            <p className="text-sm font-black text-stone-900 dark:text-stone-100">
+          <div className="min-w-0 rounded-xl bg-[#FFF6E9] px-1 py-2 dark:bg-white/5">
+            <p className="truncate text-sm font-black text-stone-900 dark:text-stone-100">
               {league.approvedTeams}/{league.maxTeams}
             </p>
-            <p className="text-[10px] font-bold uppercase tracking-wider text-stone-400">Squads</p>
+            <p className="text-[10px] font-bold uppercase leading-tight tracking-wider text-stone-400">Squads</p>
           </div>
-          <div className="rounded-xl bg-[#FFF6E9] py-2 dark:bg-white/5">
-            <p className="text-sm font-black text-stone-900 dark:text-stone-100">{league.format}</p>
-            <p className="text-[10px] font-bold uppercase tracking-wider text-stone-400">Format</p>
+          <div className="min-w-0 rounded-xl bg-[#FFF6E9] px-1 py-2 dark:bg-white/5">
+            <p className="truncate text-sm font-black text-stone-900 dark:text-stone-100">{league.format}</p>
+            <p className="text-[10px] font-bold uppercase leading-tight tracking-wider text-stone-400">Format</p>
           </div>
-          <div className="rounded-xl bg-[#FFF6E9] py-2 dark:bg-white/5">
-            <p className="text-sm font-black text-stone-900 dark:text-stone-100">
+          <div className="min-w-0 rounded-xl bg-[#FFF6E9] px-1 py-2 dark:bg-white/5">
+            <p className="truncate text-[13px] font-black text-stone-900 sm:text-sm dark:text-stone-100">
               {league.prizePool > 0 ? formatNPR(league.prizePool) : "Cup"}
             </p>
-            <p className="text-[10px] font-bold uppercase tracking-wider text-stone-400">Prize</p>
+            <p className="text-[10px] font-bold uppercase leading-tight tracking-wider text-stone-400">Prize</p>
           </div>
         </div>
 

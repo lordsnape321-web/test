@@ -67,9 +67,9 @@ export function PlayerRatingCard({ stats }: { stats: PlayerStats }) {
           { l: "Cancelled 🚫", v: stats.cancelled },
           { l: "This month ⚠️", v: `${stats.cancelsThisMonth}/3` },
         ].map((s) => (
-          <div key={s.l} className="rounded-xl bg-stone-50 py-2 dark:bg-white/5">
-            <p className="text-sm font-black">{s.v}</p>
-            <p className="text-[10px] font-bold text-stone-400">{s.l}</p>
+          <div key={s.l} className="min-w-0 rounded-xl bg-stone-50 px-1 py-2 dark:bg-white/5">
+            <p className="truncate text-sm font-black">{s.v}</p>
+            <p className="text-[10px] font-bold leading-tight text-stone-400">{s.l}</p>
           </div>
         ))}
       </div>
