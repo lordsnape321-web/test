@@ -3,13 +3,14 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
-import { Home, MapPin, Zap, Bell, CalendarCheck } from "lucide-react";
+import { Home, MapPin, Zap, Bell, CalendarCheck, Trophy } from "lucide-react";
 import { useUser } from "./UserProvider";
 
 const TABS = [
   { href: "/", label: "Home", icon: Home },
   { href: "/venues", label: "Courts", icon: MapPin },
   { href: "/matches", label: "Matches", icon: Zap },
+  { href: "/leagues", label: "Leagues", icon: Trophy },
   { href: "/bookings", label: "Bookings", icon: CalendarCheck },
   { href: "/notifications", label: "Alerts", icon: Bell, badge: true },
 ];

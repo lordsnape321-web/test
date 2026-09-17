@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { CalendarCheck, Check, X, ReceiptText, Gift, Ticket, Shield } from "lucide-react";
+import { CalendarCheck, Check, X, ReceiptText, Gift, Ticket, Shield, Swords, Trophy } from "lucide-react";
 import { useUser } from "@/components/UserProvider";
 import { OwnerGuard } from "@/components/OwnerGuard";
 import { ReceiptViewer } from "@/components/ReceiptUploader";
@@ -36,6 +36,21 @@ type Booking = {
   venue?: { id: number; name: string };
   user?: { name: string };
   playerStats?: PlayerStats;
+  /** "private" | "public" | "competition" — see /api/bookings. */
+  visibility: string;
+  /**
+   * Present on competition bookings: the two squads and the result the venue
+   * owner is the only person allowed to write (PATCH with `actorId`).
+   */
+  competition: {
+    opponentTeamId: number | null;
+    opponentName: string;
+    leagueId: number | null;
+    leagueName: string;
+    homeScore: number | null;
+    awayScore: number | null;
+    scoreStatus: string;
+  } | null;
 };
 
 const FILTERS = ["all", "today", "pending", "confirmed", "completed", "cancelled", "rejected"];
@@ -47,6 +62,11 @@ export default function OwnerBookingsPage() {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState("all");
   const [viewReceipt, setViewReceipt] = useState<string | null>(null);
+  const [scoreFor, setScoreFor] = useState<Booking | null>(null);
+  const [homeInput, setHomeInput] = useState("");
+  const [awayInput, setAwayInput] = useState("");
+  const [savingScore, setSavingScore] = useState(false);
+  const [scoreError, setScoreError] = useState("");
 
   const load = async () => {
     const [bRes, vRes] = await Promise.all([
@@ -100,6 +120,49 @@ export default function OwnerBookingsPage() {
       body: JSON.stringify({ paymentStatus: "paid" }),
     });
     load();
+  }
+
+  function openScore(b: Booking) {
+    setScoreFor(b);
+    setHomeInput(b.competition?.homeScore === null || b.competition?.homeScore === undefined ? "" : String(b.competition.homeScore));
+    setAwayInput(b.competition?.awayScore === null || b.competition?.awayScore === undefined ? "" : String(b.competition.awayScore));
+    setScoreError("");
+  }
+
+  /**
+   * Writes the final score of a competition game. `actorId` is the venue owner
+   * — the server rejects anyone else, and refuses a half-filled result, so both
+   * boxes are sent together (or both empty to clear a mistake).
+   */
+  async function saveScore() {
+    if (!scoreFor || !user) return;
+    const home = homeInput.trim();
+    const away = awayInput.trim();
+    if ((home === "") !== (away === "")) {
+      setScoreError("Both scores or neither — a 1–? result isn't a result ⚽");
+      return;
+    }
+    setSavingScore(true);
+    setScoreError("");
+    try {
+      const res = await fetch(`/api/bookings/${scoreFor.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          homeScore: home === "" ? "" : Number(home),
+          awayScore: away === "" ? "" : Number(away),
+          actorId: user.id,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Could not save the score");
+      setScoreFor(null);
+      load();
+    } catch (e) {
+      setScoreError(e instanceof Error ? e.message : "Could not save the score");
+    } finally {
+      setSavingScore(false);
+    }
   }
 
   const statusStyle = (s: string) =>
@@ -172,6 +235,29 @@ export default function OwnerBookingsPage() {
                       {b.teamName && (
                         <span className="mt-1 inline-flex items-center gap-1 rounded-full bg-sky-500/15 px-1.5 py-0.5 text-[9px] font-black text-sky-700 dark:text-sky-300">
                           <Shield className="h-2.5 w-2.5" /> {b.teamName}
+                        </span>
+                      )}
+                      {b.competition && (
+                        <span className="mt-1 flex flex-wrap items-center gap-1">
+                          <span className="inline-flex items-center gap-1 rounded-full bg-indigo-500/15 px-1.5 py-0.5 text-[9px] font-black text-indigo-700 dark:text-indigo-300">
+                            <Swords className="h-2.5 w-2.5" /> vs {b.competition.opponentName || "opponent"}
+                          </span>
+                          {b.competition.leagueName && (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[9px] font-black text-amber-700 dark:text-amber-300">
+                              <Trophy className="h-2.5 w-2.5" /> {b.competition.leagueName}
+                            </span>
+                          )}
+                          <span
+                            className={`inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[9px] font-black ${
+                              b.competition.scoreStatus === "recorded"
+                                ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
+                                : "bg-slate-500/15 text-slate-600 dark:text-slate-300"
+                            }`}
+                          >
+                            {b.competition.scoreStatus === "recorded"
+                              ? `⚽ ${b.competition.homeScore}–${b.competition.awayScore}`
+                              : "score due"}
+                          </span>
                         </span>
                       )}
                       <span className="mt-1 block">
@@ -265,6 +351,23 @@ export default function OwnerBookingsPage() {
                             </button>
                           </>
                         )}
+                        {b.competition && (
+                          <button
+                            onClick={() => openScore(b)}
+                            title={
+                              b.competition.scoreStatus === "recorded"
+                                ? "Fix the recorded score"
+                                : "Record the final score"
+                            }
+                            className={`grid h-8 w-8 place-items-center rounded-full text-white transition ${
+                              b.competition.scoreStatus === "recorded"
+                                ? "bg-emerald-500 hover:bg-emerald-600"
+                                : "bg-indigo-500 hover:bg-indigo-600"
+                            }`}
+                          >
+                            <Swords className="h-4 w-4" />
+                          </button>
+                        )}
                         {b.status === "confirmed" && (
                           <button
                             onClick={() => setStatus(b.id, "completed")}
@@ -294,6 +397,73 @@ export default function OwnerBookingsPage() {
       )}
       {viewReceipt && (
         <ReceiptViewer url={viewReceipt} onClose={() => setViewReceipt(null)} />
+      )}
+
+      {/* Score desk — competition games only, venue owner only. */}
+      {scoreFor && scoreFor.competition && (
+        <div className="fixed inset-0 z-[60] grid place-items-center bg-slate-900/50 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl dark:border-slate-800 dark:bg-slate-900">
+            <h3 className="flex items-center gap-2 text-lg font-black text-slate-900 dark:text-slate-100">
+              <Swords className="h-5 w-5 text-indigo-500" /> Record the final score
+            </h3>
+            <p className="mt-1 text-xs font-semibold text-slate-500 dark:text-slate-400">
+              {scoreFor.teamName || "Home squad"} vs {scoreFor.competition.opponentName || "opponent"} •{" "}
+              {prettyDate(scoreFor.date)} {formatTime12(scoreFor.startTime)}
+              {scoreFor.competition.leagueName ? ` • 🏆 ${scoreFor.competition.leagueName}` : ""}
+            </p>
+            <div className="mt-4 grid grid-cols-2 gap-3">
+              <label className="block">
+                <span className="mb-1.5 block text-[11px] font-black uppercase tracking-wider text-slate-400">
+                  🏠 {scoreFor.teamName || "Home"}
+                </span>
+                <input
+                  value={homeInput}
+                  onChange={(e) => setHomeInput(e.target.value.replace(/[^0-9]/g, "").slice(0, 2))}
+                  inputMode="numeric"
+                  placeholder="—"
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-3 text-center text-2xl font-black text-slate-900 focus:border-indigo-400 focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                />
+              </label>
+              <label className="block">
+                <span className="mb-1.5 block text-[11px] font-black uppercase tracking-wider text-slate-400">
+                  🚩 {scoreFor.competition.opponentName || "Away"}
+                </span>
+                <input
+                  value={awayInput}
+                  onChange={(e) => setAwayInput(e.target.value.replace(/[^0-9]/g, "").slice(0, 2))}
+                  inputMode="numeric"
+                  placeholder="—"
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-3 text-center text-2xl font-black text-slate-900 focus:border-indigo-400 focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                />
+              </label>
+            </div>
+            <p className="mt-3 rounded-xl bg-indigo-50 px-3 py-2 text-[11px] font-semibold leading-relaxed text-indigo-700 dark:bg-indigo-500/10 dark:text-indigo-300">
+              Both squads&apos; profiles update the moment you save
+              {scoreFor.competition.leagueName ? ", and the league table follows" : ""}. Wrong
+              score? Reopen this and fix it — clearing both boxes puts it back to &quot;awaiting&quot;.
+            </p>
+            {scoreError && (
+              <p className="mt-3 rounded-xl bg-red-50 px-3 py-2 text-xs font-bold text-red-600 dark:bg-red-500/10 dark:text-red-400">
+                {scoreError}
+              </p>
+            )}
+            <div className="mt-4 grid grid-cols-2 gap-2">
+              <button
+                onClick={() => setScoreFor(null)}
+                className="rounded-xl border border-slate-200 py-3 text-sm font-black text-slate-600 dark:border-slate-700 dark:text-slate-300"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={saveScore}
+                disabled={savingScore}
+                className="rounded-xl bg-indigo-600 py-3 text-sm font-black text-white transition hover:bg-indigo-700 disabled:opacity-50"
+              >
+                {savingScore ? "Saving…" : "Save result"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </OwnerGuard>
   );

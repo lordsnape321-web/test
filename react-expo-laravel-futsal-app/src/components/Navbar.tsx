@@ -27,6 +27,9 @@ const PUBLIC_LINKS = [
   { href: "/venues", label: "Find Courts", icon: MapPin },
   { href: "/matches", label: "Find Match", icon: Zap },
   { href: "/teams", label: "Teams", icon: Users },
+  // Leagues are for players *and* owners — anyone can host one — so the link
+  // sits in the public rail rather than behind an account type.
+  { href: "/leagues", label: "Leagues", icon: Trophy },
 ];
 
 const PLAYER_LINKS = [

@@ -27,6 +27,7 @@ const NAV = [
   { href: "/admin/requests", label: "Booking Requests", icon: Inbox, badge: "requests" },
   { href: "/admin/bookings", label: "All Bookings", icon: CalendarCheck },
   { href: "/admin/venues", label: "My Venues", icon: Building2 },
+  { href: "/admin/leagues", label: "Leagues", icon: Trophy },
   { href: "/admin/notifications", label: "Notifications", icon: Bell, badge: "unread" },
   { href: "/admin/profile", label: "My Profile", icon: UserIcon },
 ];
@@ -250,12 +251,13 @@ export function OwnerShell({ children }: { children: ReactNode }) {
 
       {/* Bottom nav for owners on mobile */}
       <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-200 bg-white/95 pb-[env(safe-area-inset-bottom)] backdrop-blur lg:hidden dark:border-slate-800 dark:bg-slate-950/95">
-        <div className="grid grid-cols-5 px-1">
+        <div className="grid grid-cols-6 px-1">
           {[
             { href: "/admin", label: "Home", icon: LayoutDashboard, exact: true },
             { href: "/admin/requests", label: "Requests", icon: Inbox, count: pendingCount },
             { href: "/admin/bookings", label: "Bookings", icon: CalendarCheck },
             { href: "/admin/venues", label: "Venues", icon: Building2 },
+            { href: "/admin/leagues", label: "Leagues", icon: Trophy },
             { href: "/admin/notifications", label: "Alerts", icon: Bell, count: unread },
           ].map((t) => {
             const active = t.exact

@@ -1,5 +1,10 @@
 import { db } from "@/db";
 import {
+  tournaments,
+  tournamentMatches,
+  tournamentMedia,
+  tournamentPayments,
+  tournamentTeams,
   users,
   venues,
   courts,
@@ -215,6 +220,366 @@ function demoTeamJoinRequests(): Array<[number, number, string]> {
     [4, 2, "Beginner goalkeeper. I can't promise saves but I promise enthusiasm 🧤"],
     [2, 3, "In Pokhara every weekend — happy to travel for the Panthers."],
   ];
+}
+
+
+/**
+ * Resolve the demo league's references against whatever is already in the
+ * database: emails to users, venue names to ids, the first pitch of a venue,
+ * team codes to squads. Used by the backfill path, where ids from a previous
+ * seed are unknown.
+ */
+function leagueLookup(
+  venues: Array<{ id: number; name: string }>,
+  users: Array<{ id: number; email: string }>,
+  teams: Array<{ id: number; teamCode: string | null }>,
+  courts: Array<{ id: number; venueId: number }>
+) {
+  const venueByName = new Map(venues.map((v) => [v.name, v.id]));
+  const userByEmail = new Map(users.map((u) => [u.email, u.id]));
+  const teamByCode = new Map(teams.filter((t) => t.teamCode).map((t) => [t.teamCode as string, t.id]));
+  return {
+    userId: (email: string) => userByEmail.get(email) ?? null,
+    venueId: (name: string) => venueByName.get(name) ?? null,
+    courtId: (venueName: string) => {
+      const venueId = venueByName.get(venueName);
+      return courts.find((c) => c.venueId === venueId)?.id ?? null;
+    },
+    teamId: (code: string) => teamByCode.get(code) ?? null,
+  };
+}
+
+/**
+ * Demo leagues 🏆 — so the feature has real data the moment you seed.
+ *
+ * Two of them on purpose, because the two are different products:
+ *
+ * - **Chabahil Premier League** is an open 5v5 run by the venue owner: entries
+ *   in, a round robin under way, results in the table, photos in the album, and
+ *   a ledger that shows money arriving in instalments.
+ * - **Sunday Circle Invitational** is a private 7v7 run by a *player*. It isn't
+ *   listed for anyone, its squads were invited by hand, and its album is visible
+ *   only to the teams in it — the other half of the feature in one screen.
+ *
+ * Returns a small report so the seed response can say what it made.
+ */
+async function seedLeagues(lookup: {
+  userId: (email: string) => number | null;
+  venueId: (name: string) => number | null;
+  courtId: (venueName: string) => number | null;
+  teamId: (code: string) => number | null;
+}) {
+  const existing = await db.select().from(tournaments);
+  if (existing.length > 0) return { leagues: 0, entries: 0, fixtures: 0, media: 0 };
+
+  const ganesh = lookup.userId("ganesh@futsal.np");
+  const aarav = lookup.userId("aarav@futsal.np");
+  const dhanyentari = lookup.venueId("Dhanyentari Futsal Arena");
+  const lakeside = lookup.venueId("Lakeside Strikers Court");
+  const arenaA = lookup.courtId("Dhanyentari Futsal Arena");
+  const lakeView = lookup.courtId("Lakeside Strikers Court");
+
+  const chargers = lookup.teamId("CHARGERS-4X7K");
+  const legends = lookup.teamId("LEGENDS-9PM3");
+  const panthers = lookup.teamId("PANTHERS-7QRT");
+  const ballers = lookup.teamId("BALLERS-K3YD");
+  const owls = lookup.teamId("OWLS-MN4P");
+
+  if (!ganesh || !aarav || !dhanyentari || !chargers || !legends || !panthers || !ballers) {
+    return { leagues: 0, entries: 0, fixtures: 0, media: 0 };
+  }
+
+  /* ------------------------------------------- open league, owner-hosted */
+  const premierRows = await db
+    .insert(tournaments)
+    .values({
+      name: "Chabahil Premier League — Season 1",
+      hostId: ganesh,
+      hostRole: "owner",
+      venueId: dhanyentari,
+      courtId: arenaA,
+      format: "5v5",
+      maxTeams: 6,
+      entryFee: 6000,
+      depositPercent: 25,
+      refundPercent: 10,
+      prizePool: 30000,
+      prizeBreakdown: "Champion: Rs. 18,000\nRunner-up: Rs. 8,000\nTop scorer: Rs. 4,000",
+      startsAt: d(-14),
+      endsAt: d(21),
+      closesAt: d(4),
+      matchDays: "Sat & Sun mornings, 7–9 AM",
+      visibility: "public",
+      status: "ongoing",
+      description:
+        "Five-a-side, six squads, one table. Saturday and Sunday mornings at Dhanyentari with proper referees, match balls and a scorer's sheet — the winners take the cup and the cash.",
+      rules:
+        "5v5 • 2 × 20 minute halves • rolling subs • no slide tackles from behind • a player sent off misses the next fixture • teams short of players may borrow from the league's bench list, no ringers.",
+      contactPhone: "9841000007",
+      bannerUrl: VENUE_IMAGES[0],
+    })
+    .returning();
+  const premier = premierRows[0];
+
+  const entry = async (
+    teamId: number | null | undefined,
+    status: string,
+    paidAmount: number,
+    opts: { message?: string; by?: number; refunded?: number } = {}
+  ) => {
+    if (!teamId) return null;
+    const rows = await db
+      .insert(tournamentTeams)
+      .values({
+        tournamentId: premier.id,
+        teamId,
+        status,
+        requestedBy: opts.by ?? 0,
+        message: opts.message ?? "",
+        refundedAmount: opts.refunded ?? 0,
+        decidedBy: status === "approved" ? ganesh : null,
+        decidedAt: status === "approved" ? new Date() : null,
+      })
+      .returning();
+    if (paidAmount > 0) {
+      // The ledger names the captain who paid, not a placeholder id — the same
+      // shape a real "record cash" write produces.
+      const captainId =
+        (await db.select().from(teams).where(eq(teams.id, teamId)))[0]?.captainId ?? 0;
+      await db.insert(tournamentPayments).values({
+        tournamentId: premier.id,
+        teamId,
+        userId: captainId,
+        kind: "entry",
+        amount: paidAmount,
+        method: "eSewa",
+        reference: "Entry fee",
+        recordedBy: ganesh,
+      });
+      await db
+        .update(tournamentTeams)
+        .set({ paidAmount })
+        .where(eq(tournamentTeams.id, rows[0].id));
+    }
+    return rows[0];
+  };
+
+  await entry(chargers, "approved", 6000);
+  await entry(legends, "approved", 6000);
+  await entry(panthers, "approved", 3000, { message: "Half now, half after Dashain 🙏" });
+  await entry(ballers, "approved", 1500);
+  await entry(
+    owls,
+    "requested",
+    0,
+    { message: "Midnight crew here — we'd love a Sunday slot if one is left 🌙", by: lookup.userId("elish@futsal.np") ?? 0 }
+  );
+
+  // Round robin among the four squads that are in, four of six games played.
+  const fixtures: Array<[number, number, number, number, string, string, string]> = [
+    [chargers, legends, 4, 3, "League", d(-7), "07:00"],
+    [panthers, ballers, 2, 2, "League", d(-7), "08:00"],
+    [chargers, panthers, 6, 1, "League", d(-3), "07:00"],
+    [legends, ballers, 3, 5, "League", d(-3), "08:00"],
+    [chargers, ballers, null as unknown as number, null as unknown as number, "League", d(6), "07:00"],
+    [legends, panthers, null as unknown as number, null as unknown as number, "League", d(6), "08:00"],
+  ];
+  let fixtureCount = 0;
+  const createdMatches: Array<{ id: number; played: boolean; label: string }> = [];
+  for (const [home, away, hs, as, round, date, start] of fixtures) {
+    if (!home || !away) continue;
+    const played = hs !== null && as !== null;
+    const rows = await db
+      .insert(tournamentMatches)
+      .values({
+        tournamentId: premier.id,
+        round,
+        homeTeamId: home,
+        awayTeamId: away,
+        date,
+        startTime: start,
+        courtId: arenaA,
+        homeScore: played ? hs : null,
+        awayScore: played ? as : null,
+        status: played ? "played" : "scheduled",
+        updatedBy: ganesh,
+      })
+      .returning();
+    createdMatches.push({ id: rows[0].id, played, label: `${round} fixture` });
+    fixtureCount += 1;
+  }
+
+  let mediaCount = 0;
+  const playedMatch = createdMatches.find((m) => m.played);
+  const album: Array<{ url: string; caption: string; matchId: number | null; credit: string }> = [
+    {
+      url: VENUE_IMAGES[1],
+      caption: "Opening weekend — Chargers vs Legends went to the last minute ⚽",
+      matchId: playedMatch?.id ?? null,
+      credit: "Photos by Ganesh",
+    },
+    {
+      url: VENUE_IMAGES[3],
+      caption: "Full league album on Google Drive — every fixture, every angle 📸",
+      matchId: null,
+      credit: "Drive folder",
+    },
+  ];
+  for (const a of album) {
+    await db.insert(tournamentMedia).values({
+      tournamentId: premier.id,
+      matchId: a.matchId,
+      kind: "link",
+      url: a.url,
+      caption: a.caption,
+      credit: a.credit,
+      uploadedBy: ganesh,
+    });
+    mediaCount += 1;
+  }
+
+  /* ------------------------------------- private league, player-hosted */
+  if (lakeside && owls) {
+    const privateRows = await db
+      .insert(tournaments)
+      .values({
+        name: "Sunday Circle Invitational",
+        hostId: aarav,
+        hostRole: "player",
+        venueId: lakeside,
+        courtId: lakeView,
+        format: "7v7",
+        maxTeams: 4,
+        entryFee: 3000,
+        depositPercent: 25,
+        refundPercent: 10,
+        prizePool: 10000,
+        prizeBreakdown: "Winners: Rs. 7,000\nBest keeper: Rs. 3,000",
+        startsAt: d(9),
+        endsAt: d(37),
+        closesAt: d(5),
+        matchDays: "Sunday mornings, 8–10 AM",
+        visibility: "private",
+        status: "registration",
+        description:
+          "Four squads, invited by hand, one round robin over a month by the lake. We keep it small so everybody plays every week — and the album stays inside the group.",
+        rules: "7v7 • 25 minute halves • rolling subs • no entry without the deposit • leave the ground cleaner than you found it 🌿",
+        contactPhone: "9841000001",
+        bannerUrl: VENUE_IMAGES[2],
+      })
+      .returning();
+    const circle = privateRows[0];
+
+    const circleEntry = async (teamId: number | null | undefined, status: string, by: number, message = "") => {
+      if (!teamId) return;
+      const rows = await db
+        .insert(tournamentTeams)
+        .values({
+          tournamentId: circle.id,
+          teamId,
+          status,
+          requestedBy: by,
+          message,
+          decidedBy: status === "approved" ? aarav : null,
+          decidedAt: status === "approved" ? new Date() : null,
+        })
+        .returning();
+      if (status === "approved") {
+        await db.insert(tournamentPayments).values({
+          tournamentId: circle.id,
+          teamId,
+          userId: by,
+          kind: "entry",
+          amount: 750,
+          method: "Khalti",
+          reference: "25% deposit",
+          recordedBy: by,
+        });
+        await db
+          .update(tournamentTeams)
+          .set({ paidAmount: 750 })
+          .where(eq(tournamentTeams.id, rows[0].id));
+      }
+    };
+
+    await circleEntry(chargers, "approved", aarav, "Invited by the host");
+    await circleEntry(
+      panthers,
+      "invited",
+      aarav,
+      "Lakeside derby? Bring the whole squad 🌄"
+    );
+    await db.insert(tournamentMedia).values({
+      tournamentId: circle.id,
+      matchId: null,
+      kind: "link",
+      url: VENUE_IMAGES[4],
+      caption: "Last season's final — album stays inside the circle 🔒",
+      credit: "Aarav",
+      uploadedBy: aarav,
+    });
+    mediaCount += 1;
+  }
+
+  /*
+   * Competition games 🆚 — the third kind of booking, and the venue owner's
+   * result to write. One is already settled (so both squads carry a
+   * "venue-scored" line on their competition record), the other is still
+   * waiting, which gives the Owner Studio score desk something real to do on a
+   * fresh database.
+   */
+  const booker = (await db.select().from(users).where(eq(users.id, aarav)))[0];
+  const competitionSeeds: Array<{
+    home: number | null;
+    away: number | null;
+    homeScore: number | null;
+    awayScore: number | null;
+    dateOff: number;
+  }> = [
+    { home: chargers, away: ballers, homeScore: 5, awayScore: 4, dateOff: -4 },
+    { home: chargers, away: panthers, homeScore: null, awayScore: null, dateOff: 3 },
+  ];
+  let competitionCount = 0;
+  for (const c of competitionSeeds) {
+    if (!c.home || !c.away || !arenaA) continue;
+    const played = c.homeScore !== null && c.awayScore !== null;
+    await db.insert(bookings).values({
+      courtId: arenaA,
+      userId: aarav,
+      date: d(c.dateOff),
+      startTime: "18:00",
+      endTime: "19:00",
+      durationHours: 1,
+      totalPrice: 2000,
+      status: played ? "completed" : "confirmed",
+      paymentStatus: "paid",
+      paymentMethod: "Cash at Venue",
+      bookerName: booker?.name ?? "Aarav Sharma",
+      bookerPhone: booker?.phone ?? "9841000001",
+      notes: played ? "Midweek friendly — venue recorded the score" : "Midweek friendly",
+      visibility: "competition",
+      playersNeeded: 0,
+      ourCrew: 1,
+      openSpots: 0,
+      teamId: c.home,
+      opponentTeamId: c.away,
+      tournamentId: null,
+      homeScore: c.homeScore,
+      awayScore: c.awayScore,
+      scoreStatus: played ? "recorded" : "awaiting",
+      scoreUpdatedBy: played ? ganesh : null,
+      scoreUpdatedAt: played ? new Date() : null,
+    });
+    competitionCount += 1;
+  }
+
+  return {
+    leagues: 2,
+    entries: 6,
+    fixtures: fixtureCount,
+    media: mediaCount,
+    competition: competitionCount,
+  };
 }
 
 export async function POST() {
@@ -459,10 +824,21 @@ export async function POST() {
           seededTeamRequests++;
         }
       }
+      // Leagues 🏆 — seeded last, because they reference users, venues, courts
+      // and squads that may all have been rebuilt just above.
+      const leagueReport = await seedLeagues(
+        leagueLookup(
+          existing,
+          allUsers,
+          await db.select().from(teams),
+          await db.select().from(courts)
+        )
+      );
       return Response.json({
         ok: true,
         message: "Already seeded",
         count: existing.length,
+        leagues: leagueReport,
         seededReviews,
         seededPromos,
         seededTeams,
@@ -615,7 +991,7 @@ export async function POST() {
       { venueIdx: 5, name: "Neon Court 1", format: "5v5", surface: "Futsal Mat", price: 1900, morning: 1400 },
       { venueIdx: 5, name: "Neon Court 2", format: "5v5", surface: "Futsal Mat", price: 1900, morning: 1400 },
     ];
-    const insertedCourts = [];
+    const insertedCourts: Array<typeof courts.$inferSelect> = [];
     for (let i = 0; i < courtDefs.length; i++) {
       const cd = courtDefs[i];
       const rows = await db
@@ -746,7 +1122,7 @@ export async function POST() {
     const seedTeams = demoTeams();
     // Home turf points at a venue that really exists on the platform.
     const venueIdByName = new Map(insertedVenues.map((v) => [v.name, v.id]));
-    const insertedTeams = [];
+    const insertedTeams: Array<typeof teams.$inferSelect> = [];
     for (const t of seedTeams) {
       const rows = await db
         .insert(teams)
@@ -892,7 +1268,19 @@ export async function POST() {
       }
     }
 
-    return Response.json({ ok: true, message: "Seeded successfully" });
+    // Leagues 🏆 — the tournament layer, seeded after every squad and pitch it
+    // refers to exists.
+    const leagueReport = await seedLeagues({
+      userId: (email: string) => insertedUsers.find((u) => u.email === email)?.id ?? null,
+      venueId: (name: string) => insertedVenues.find((v) => v.name === name)?.id ?? null,
+      courtId: (venueName: string) => {
+        const venue = insertedVenues.find((v) => v.name === venueName);
+        return insertedCourts.find((c) => c.venueId === venue?.id)?.id ?? null;
+      },
+      teamId: (code: string) => insertedTeams.find((t) => t.teamCode === code)?.id ?? null,
+    });
+
+    return Response.json({ ok: true, message: "Seeded successfully", leagues: leagueReport });
   } catch (e) {
     console.error(`[/api/seed POST] failed:`, e);
     return Response.json({ error: String(e) }, { status: 500 });

@@ -1,9 +1,11 @@
 import { db } from "@/db";
-import { bookings, openMatches, courts, venues, vouchers, users } from "@/db/schema";
+import { bookings, openMatches, courts, teams, venues, vouchers, users } from "@/db/schema";
 import { prettyDate, formatTime12, formatNPR } from "@/lib/futsal";
 import { monthKey, hoursUntilGame, CANCEL_CUTOFF_HOURS, LOYALTY_TARGET, TRUST_START, TRUST_COMPLETE_BOOST, TRUST_CANCEL_PENALTY, trustAfterComplete, trustAfterCancel, trustLabel } from "@/lib/loyalty";
 import { sendNotification } from "@/lib/notify";
-import { eq, and } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
+import { recordFor } from "@/lib/league";
+import { validateScore } from "@/lib/validation";
 
 export const dynamic = "force-dynamic";
 
@@ -114,6 +116,11 @@ export async function PATCH(
     const prev = current[0];
     if (!prev) return Response.json({ error: "Booking not found" }, { status: 404 });
 
+    // Scoring a competition game is handled first and returns on its own: it
+    // changes nothing else about the booking.
+    const scoreResponse = await applyCompetitionScore(prev, body);
+    if (scoreResponse) return scoreResponse;
+
     // Fair-play: players can't cancel within 6h of the game.
     const actor = body.actor === "owner" ? "owner" : "player";
     if (body.status === "cancelled" && prev.status !== "cancelled" && actor === "player") {
@@ -128,19 +135,21 @@ export async function PATCH(
       }
     }
 
-    const updated = await db
-      .update(bookings)
-      .set({
-        ...(body.status ? { status: body.status } : {}),
-        ...(body.paymentStatus ? { paymentStatus: body.paymentStatus } : {}),
-        ...(body.paymentMethod ? { paymentMethod: body.paymentMethod } : {}),
-        ...(body.depositStatus ? { depositStatus: body.depositStatus } : {}),
-        ...(body.receiptUrl !== undefined
-          ? { receiptUrl: String(body.receiptUrl).slice(0, 2000000) }
-          : {}),
-      })
-      .where(eq(bookings.id, bookingId))
-      .returning();
+    // A request that only carries a score (competition games) has nothing to
+    // set here — and drizzle refuses an empty `set()`, so the write is skipped
+    // rather than faked with a no-op column.
+    const changes = {
+      ...(body.status ? { status: body.status } : {}),
+      ...(body.paymentStatus ? { paymentStatus: body.paymentStatus } : {}),
+      ...(body.paymentMethod ? { paymentMethod: body.paymentMethod } : {}),
+      ...(body.depositStatus ? { depositStatus: body.depositStatus } : {}),
+      ...(body.receiptUrl !== undefined
+        ? { receiptUrl: String(body.receiptUrl).slice(0, 2000000) }
+        : {}),
+    };
+    const updated = Object.keys(changes).length
+      ? await db.update(bookings).set(changes).where(eq(bookings.id, bookingId)).returning()
+      : [prev];
     const next = updated[0];
     const { court, venue } = await venueOf(next);
     const when = `${prettyDate(next.date)} at ${formatTime12(next.startTime)}`;
@@ -263,6 +272,7 @@ export async function PATCH(
       });
     }
 
+
     return Response.json({ booking: next });
   } catch (e) {
     console.error(`[/api/bookings/[id] PATCH] failed:`, e);
@@ -289,4 +299,111 @@ export async function DELETE(
     console.error(`[/api/bookings/[id] DELETE] failed:`, e);
     return Response.json({ error: String(e) }, { status: 500 });
   }
+}
+
+/**
+ * Scoring a competition game 🏆
+ *
+ * A competition booking is the third kind of game: two squads, one court, and a
+ * result that belongs on both their records. The booker can't score their own
+ * game — that's the point of a competition — so the **venue owner** enters the
+ * final score, because they're the one standing at the ground when the whistle
+ * goes. The league host can also score it from the league's own console, which
+ * writes to the same numbers.
+ *
+ * Returns a Response when this request is about scoring, or `null` when the
+ * request is a normal status update and the caller should carry on.
+ */
+async function applyCompetitionScore(
+  prev: typeof bookings.$inferSelect,
+  body: Record<string, unknown>
+): Promise<Response | null> {
+  if (body.homeScore === undefined && body.awayScore === undefined) return null;
+  if (prev.visibility !== "competition")
+    return Response.json(
+      { error: "Only competition games carry a score — this is a regular booking 🙂" },
+      { status: 400 }
+    );
+
+  const { venue } = await venueOf(prev);
+  const actorId = Number(body.actorId ?? 0);
+  if (!venue || actorId !== venue.ownerId)
+    return Response.json(
+      {
+        error: venue
+          ? `Only ${venue.name}'s owner can record this result 👑`
+          : "Only the venue owner can record this result 👑",
+      },
+      { status: 403 }
+    );
+
+  const scoreErr =
+    validateScore(body.homeScore, "Your squad's score") ??
+    validateScore(body.awayScore, "Opponent's score");
+  if (scoreErr) return Response.json({ error: scoreErr }, { status: 400 });
+  // "" is how the UI clears a box; null is how JSON says the same thing. Both
+  // mean "no result yet", so neither may sneak through as a 0.
+  const blank = (v: unknown) => v === "" || v === null || v === undefined;
+  const home = blank(body.homeScore) ? null : Number(body.homeScore);
+  const away = blank(body.awayScore) ? null : Number(body.awayScore);
+  if ((home === null) !== (away === null))
+    return Response.json(
+      { error: "Both scores or neither — a 1–? result isn't a result ⚽" },
+      { status: 400 }
+    );
+
+  const scored = home !== null && away !== null;
+  const updated = await db
+    .update(bookings)
+    .set({
+      homeScore: home,
+      awayScore: away,
+      scoreStatus: scored ? "recorded" : "awaiting",
+      scoreUpdatedBy: actorId,
+      scoreUpdatedAt: new Date(),
+    })
+    .where(eq(bookings.id, prev.id))
+    .returning();
+  const withScore = updated[0];
+
+  if (scored) {
+    const allBookings = await db.select().from(bookings);
+    const squads = [] as Array<typeof teams.$inferSelect>;
+    for (const id of [withScore.teamId, withScore.opponentTeamId]) {
+      if (!id) continue;
+      const row = (await db.select().from(teams).where(eq(teams.id, id)))[0];
+      if (row) squads.push(row);
+    }
+    const line = `${squads[0]?.name ?? "Home"} ${home}–${away} ${squads[1]?.name ?? "Away"}`;
+
+    for (const team of squads) {
+      // Each squad's competitive record: league fixtures its host scored, plus
+      // every competition booking that already has a result.
+      const history = allBookings
+        .filter(
+          (b) =>
+            b.visibility === "competition" &&
+            (b.teamId === team.id || b.opponentTeamId === team.id) &&
+            b.homeScore !== null &&
+            b.awayScore !== null
+        )
+        .map((b) => ({
+          homeTeamId: b.teamId ?? 0,
+          awayTeamId: b.opponentTeamId ?? 0,
+          homeScore: b.homeScore,
+          awayScore: b.awayScore,
+          status: "played",
+        }));
+      const rec = recordFor(team.id, history);
+      await sendNotification({
+        userId: team.captainId,
+        type: "competition",
+        title: `⚽ Result in — ${line}`,
+        message: `${venue.name} recorded the final score. ${team.name} is now ${rec.won}W • ${rec.drawn}D • ${rec.lost}L (${rec.points} pts) in competition games — the record shows on your team profile. Send the host your photos for the album 📸`,
+        link: `/teams/${team.id}`,
+      });
+    }
+  }
+
+  return Response.json({ booking: withScore, scored });
 }

@@ -17,6 +17,15 @@ import {
   TEAM_DESCRIPTION_MAX,
   normalizeTeamCode,
 } from "./teams";
+import {
+  LEAGUE_MAX_ENTRY_FEE,
+  LEAGUE_MAX_PRIZE_POOL,
+  LEAGUE_MAX_TEAMS,
+  LEAGUE_MIN_TEAMS,
+  LEAGUE_NAME_MAX,
+  LEAGUE_PRIZE_BREAKDOWN_MAX,
+  LEAGUE_MATCH_DAYS_MAX,
+} from "./league";
 
 export type FieldError = string | null;
 
@@ -462,6 +471,135 @@ export function validateTeamId(value: unknown): FieldError {
   const n = Number(value);
   if (!Number.isInteger(n) || n <= 0)
     return "Pick one of your teams, or book individually 🛡️";
+  return null;
+}
+
+/* ---------------------------------------------------------------- leagues 🏆 */
+
+/** League name: 3–70 characters, and it has to say something. */
+export function validateLeagueName(name: unknown): FieldError {
+  const t = String(name ?? "").trim();
+  if (!t) return "Give the league a name — captains need something to share 📣";
+  if (t.length < 3) return "League name needs at least 3 characters 📣";
+  if (t.length > LEAGUE_NAME_MAX)
+    return `League name is too long (max ${LEAGUE_NAME_MAX} characters) 📣`;
+  return null;
+}
+
+export function validateMaxTeams(value: unknown): FieldError {
+  const n = Number(value);
+  if (!Number.isInteger(n)) return "How many teams? Pick a whole number 👥";
+  if (n < LEAGUE_MIN_TEAMS)
+    return `A league needs at least ${LEAGUE_MIN_TEAMS} squads to be worth a table 👥`;
+  if (n > LEAGUE_MAX_TEAMS) return `Max ${LEAGUE_MAX_TEAMS} squads — split it into two leagues! 👥`;
+  return null;
+}
+
+export function validateEntryFee(value: unknown): FieldError {
+  if (isBlank(value)) return "Entry fee is required — put 0 for a free league 💰";
+  const n = Number(value);
+  if (!Number.isInteger(n) || n < 0) return "Entry fee must be a whole number of rupees 💰";
+  if (n > LEAGUE_MAX_ENTRY_FEE)
+    return `Entry fee is too high (max Rs. ${LEAGUE_MAX_ENTRY_FEE.toLocaleString()}) 💰`;
+  return null;
+}
+
+export function validatePrizePool(value: unknown): FieldError {
+  if (isBlank(value)) return null;
+  const n = Number(value);
+  if (!Number.isInteger(n) || n < 0) return "Prize pool must be a whole number of rupees 🏆";
+  if (n > LEAGUE_MAX_PRIZE_POOL)
+    return `Prize pool is too high (max Rs. ${LEAGUE_MAX_PRIZE_POOL.toLocaleString()}) 🏆`;
+  return null;
+}
+
+/**
+ * The prize split, one line per place. Optional (a league can hand out a
+ * trophy and bragging rights), but when it is there it should read as a list.
+ */
+export function validatePrizeBreakdown(text: unknown): FieldError {
+  const t = String(text ?? "").trim();
+  if (!t) return null;
+  if (t.length > LEAGUE_PRIZE_BREAKDOWN_MAX)
+    return `Prize list is too long (max ${LEAGUE_PRIZE_BREAKDOWN_MAX} characters) 🏆`;
+  const lines = t.split("\n").map((l) => l.trim()).filter(Boolean);
+  if (lines.length > 12) return "Keep the prize list to 12 lines — a table, not a novel 🏆";
+  if (lines.some((l) => l.length < 3)) return "Each prize line needs a little more detail 🏆";
+  return null;
+}
+
+export function validateMatchDays(text: unknown): FieldError {
+  const t = String(text ?? "").trim();
+  if (!t) return null;
+  if (t.length > LEAGUE_MATCH_DAYS_MAX)
+    return `Match days are too long (max ${LEAGUE_MATCH_DAYS_MAX} characters) 🗓️`;
+  return null;
+}
+
+/**
+ * Start date is required (a league with no start date can't be planned for);
+ * end and closing dates are optional, but if they exist they have to be in
+ * order. The error names the pair, so the host knows which box to fix.
+ */
+export function validateLeagueDates(
+  startsAt: unknown,
+  endsAt: unknown,
+  closesAt: unknown
+): FieldError {
+  const start = String(startsAt ?? "").trim();
+  const end = String(endsAt ?? "").trim();
+  const close = String(closesAt ?? "").trim();
+  const startErr = validateDateISO(start, { label: "Start date", allowPast: true });
+  if (startErr) return startErr;
+  if (end) {
+    const endErr = validateDateISO(end, { label: "Final date", allowPast: true });
+    if (endErr) return endErr;
+    if (end < start) return "The final date can't be before the start date 🗓️";
+  }
+  if (close) {
+    const closeErr = validateDateISO(close, { label: "Entry deadline", allowPast: true });
+    if (closeErr) return closeErr;
+    if (end && close > end) return "Entry deadline can't be after the final date 🗓️";
+  }
+  return null;
+}
+
+/** League blurb / rules — both optional, both capped. */
+export function validateLeagueText(
+  text: unknown,
+  opts: { label: string; max: number }
+): FieldError {
+  const t = String(text ?? "").trim();
+  if (!t) return null;
+  if (t.length > opts.max) return `${opts.label} is too long (max ${opts.max} characters) 📝`;
+  return null;
+}
+
+/** A fixture score. Blank/undefined means "not entered", which is allowed. */
+export function validateScore(value: unknown, label = "Score"): FieldError {
+  if (value === "" || value === undefined || value === null) return null;
+  const n = Number(value);
+  if (!Number.isFinite(n) || !Number.isInteger(n)) return `${label} must be a whole number ⚽`;
+  if (n < 0) return `${label} can't be negative ⚽`;
+  if (n > 99) return `${label} looks wrong — max 99 ⚽`;
+  return null;
+}
+
+/** Round label on a fixture ("League", "Semi-final", a friendly...). */
+export function validateRound(value: unknown): FieldError {
+  const t = String(value ?? "").trim();
+  if (!t) return null;
+  if (t.length > 30) return "Round name is too long (max 30 characters) 🏷️";
+  return null;
+}
+
+/** An https:// link to an album on another platform. */
+export function validateExternalUrl(url: unknown): FieldError {
+  const t = String(url ?? "").trim();
+  if (!t) return "Paste the album link — e.g. a Google Drive or Facebook folder 🔗";
+  if (t.length > 500) return "That link is too long (max 500 characters) 🔗";
+  if (!/^https?:\/\/[^\s]+\.[^\s]+/i.test(t))
+    return "Links must start with http:// or https:// and point at a real site 🔗";
   return null;
 }
 
