@@ -217,6 +217,19 @@ One wrinkle worth knowing: a squad that backs out, takes its refund and then re-
 old `refundedAmount` on its entry row, so `paymentState()` takes the entry `status` and only reads
 **Backed out — part refunded** when the squad really is withdrawn.
 
+**Adding a fixture.** The host's "Add a fixture" form lists the approved squads twice — home and
+away — and each list hides whoever is already picked on the other side, so a squad can't be
+selected against itself. The server refuses that anyway (`400 A squad can't play itself 🙂`), but
+the option shouldn't have been there to click.
+
+**Match photos.** Album photos are stored as data URLs on the league row, so there is no file on a
+server to link to — the bytes are already in the browser, and `src/lib/download.ts` does the rest.
+Each photo has its own download button (on the tile and in the preview), and **Download all**
+builds a single `.zip` in the browser: photos are already-compressed JPEGs, so the ZIP is *stored*
+rather than deflated, which loses nothing and needs no dependency — and one file beats firing
+twenty anchors at once, which Chrome blocks after the first couple. Album links can't be zipped,
+so they go in as `album-links.txt`.
+
 ---
 
 ## One review per player per venue — and a played game is locked

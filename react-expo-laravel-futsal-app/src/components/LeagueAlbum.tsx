@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 import {
   Camera,
+  Download,
   ExternalLink,
   ImagePlus,
   Link as LinkIcon,
@@ -14,6 +15,7 @@ import {
 import type { LeagueDetail, LeagueMediaRow } from "@/lib/league-store";
 import { MAX_IMAGE_BYTES } from "./ImagePicker";
 import { validateExternalUrl } from "@/lib/validation";
+import { photoFile, savePhoto, saveZip, type ZipEntry } from "@/lib/download";
 import { timeAgo } from "./NotificationBell";
 
 /**
@@ -51,11 +53,50 @@ export function LeagueAlbum({
   const [caption, setCaption] = useState("");
   const [matchId, setMatchId] = useState<string>(focusMatchId ? String(focusMatchId) : "");
   const [preview, setPreview] = useState<LeagueMediaRow | null>(null);
+  const [zipping, setZipping] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const photos = league.media.filter((m) => m.kind === "file");
   const links = league.media.filter((m) => m.kind === "link");
   const playedMatches = league.matches.filter((m) => m.status === "played");
+
+  /**
+   * The whole album as one .zip 📦
+   *
+   * One file per photo, named after its caption, plus a text file of the album
+   * links when the host pasted any — those live on Drive, so the most this can
+   * do is write the addresses down.
+   */
+  function downloadAll() {
+    const entries: ZipEntry[] = [];
+    photos.forEach((p, i) => {
+      const file = photoFile(p.url, { caption: p.caption, fallbackName: "match-photo", index: i });
+      if (file) entries.push(file);
+    });
+    if (links.length > 0) {
+      const text = links
+        .map((l) => `${l.caption ? `${l.caption} — ` : ""}${l.url}`)
+        .join("\n");
+      entries.push({
+        name: "album-links.txt",
+        bytes: new TextEncoder().encode(`${text}\n`),
+      });
+    }
+    if (entries.length === 0) {
+      setErr("There's nothing here to save yet 📭");
+      return;
+    }
+    setZipping(true);
+    setErr("");
+    try {
+      const count = saveZip(`${league.name} — album`, entries);
+      setMsg(`Saved ${count} file${count === 1 ? "" : "s"} to your downloads 📦`);
+    } catch {
+      setErr("That album wouldn't save — try the photos one at a time 🙏");
+    } finally {
+      setZipping(false);
+    }
+  }
 
   function pickFile(file: File | undefined) {
     setErr("");
@@ -107,9 +148,21 @@ export function LeagueAlbum({
             {league.media.length}
           </span>
         </h2>
-        <p className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider text-stone-400 dark:text-stone-500">
-          <Lock className="h-3 w-3" /> Host + the squads involved only
-        </p>
+        <div className="flex flex-wrap items-center gap-2">
+          {photos.length + links.length > 0 && (
+            <button
+              onClick={downloadAll}
+              disabled={zipping}
+              className="flex items-center gap-1.5 rounded-xl border border-emerald-300 px-3 py-1.5 text-[11px] font-black text-emerald-700 transition hover:bg-emerald-50 disabled:opacity-50 dark:border-emerald-500/40 dark:text-emerald-300 dark:hover:bg-emerald-500/10"
+            >
+              {zipping ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
+              Download all{photos.length > 0 ? ` (${photos.length})` : ""}
+            </button>
+          )}
+          <p className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider text-stone-400 dark:text-stone-500">
+            <Lock className="h-3 w-3" /> Host + the squads involved only
+          </p>
+        </div>
       </div>
 
       {(msg || err) && (
@@ -225,21 +278,31 @@ export function LeagueAlbum({
         <>
           {photos.length > 0 && (
             <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
-              {photos.map((p) => (
-                <button
-                  key={p.id}
-                  onClick={() => setPreview(p)}
-                  className="group relative overflow-hidden rounded-2xl border border-[#F0E3CC] dark:border-white/10"
-                >
-                  {/* eslint-disable-next-line @next/next/no-img-element -- data URLs from the host's device */}
-                  <img src={p.url} alt={p.caption || "Match photo"} className="h-32 w-full object-cover transition group-hover:scale-105" />
-                  <span className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent px-2 pb-1.5 pt-6 text-left">
-                    <span className="block truncate text-[10px] font-black text-white">
-                      {p.caption || "Match photo"}
+              {photos.map((p, i) => (
+                <div key={p.id} className="group relative">
+                  <button
+                    onClick={() => setPreview(p)}
+                    className="relative block w-full overflow-hidden rounded-2xl border border-[#F0E3CC] dark:border-white/10"
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element -- data URLs from the host's device */}
+                    <img src={p.url} alt={p.caption || "Match photo"} className="h-32 w-full object-cover transition group-hover:scale-105" />
+                    <span className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent px-2 pb-1.5 pt-6 text-left">
+                      <span className="block truncate text-[10px] font-black text-white">
+                        {p.caption || "Match photo"}
+                      </span>
+                      <span className="block truncate text-[9px] font-bold text-white/70">{p.scope}</span>
                     </span>
-                    <span className="block truncate text-[9px] font-bold text-white/70">{p.scope}</span>
-                  </span>
-                </button>
+                  </button>
+                  {/* Sits over the tile rather than inside it — a button inside a
+                      button is invalid, and this one has to save, not preview. */}
+                  <button
+                    onClick={() => void savePhoto(p.url, { caption: p.caption, fallbackName: "match-photo", index: i })}
+                    title="Download this photo"
+                    className="absolute right-1.5 top-1.5 grid h-7 w-7 place-items-center rounded-full bg-black/60 text-white opacity-0 backdrop-blur transition hover:bg-emerald-600 focus:opacity-100 group-hover:opacity-100"
+                  >
+                    <Download className="h-3.5 w-3.5" />
+                  </button>
+                </div>
               ))}
             </div>
           )}
@@ -310,8 +373,22 @@ export function LeagueAlbum({
             </div>
             {/* eslint-disable-next-line @next/next/no-img-element -- data URL */}
             <img src={preview.url} alt={preview.caption} className="max-h-[70vh] w-full bg-stone-100 object-contain dark:bg-black" />
-            {isHost && (
-              <div className="flex justify-end px-4 py-3">
+            <div className="flex flex-wrap items-center justify-end gap-2 px-4 py-3">
+              {/* Anyone who can see the album can keep a copy — that's the point
+                  of posting match photos. */}
+              <button
+                onClick={() =>
+                  void savePhoto(preview.url, {
+                    caption: preview.caption,
+                    fallbackName: "match-photo",
+                    index: photos.indexOf(preview),
+                  })
+                }
+                className="flex items-center gap-1.5 rounded-xl bg-emerald-600 px-3.5 py-2 text-[11px] font-black text-white transition hover:bg-emerald-700"
+              >
+                <Download className="h-3.5 w-3.5" /> Download photo
+              </button>
+              {isHost && (
                 <button
                   onClick={() => {
                     void post({ action: "delete", mediaId: preview.id }, `del-${preview.id}`);
@@ -321,8 +398,8 @@ export function LeagueAlbum({
                 >
                   <Trash2 className="h-3.5 w-3.5" /> Remove photo
                 </button>
-              </div>
-            )}
+              )}
+            </div>
           </div>
         </div>
       )}

@@ -147,17 +147,22 @@ export function LeagueFixtures({
 
       {isHost && showAdd && (
         <div className="mt-3 grid gap-2 rounded-2xl border border-[#F0E3CC] bg-[#FFF6E9] p-3 dark:border-white/10 dark:bg-white/5 sm:grid-cols-2">
+          {/* A squad can't play itself, so each list hides whoever is already
+              picked on the other side — the server refuses it too, but the
+              option shouldn't have been there to click. */}
           <select
             value={homeTeamId}
             onChange={(e) => setHomeTeamId(e.target.value)}
             className="rounded-xl border border-[#F0E3CC] bg-white px-3 py-2 text-xs font-bold dark:border-white/10 dark:bg-stone-950 dark:text-stone-100"
           >
             <option value="">Home squad…</option>
-            {squads.map((s) => (
-              <option key={s.teamId} value={s.teamId}>
-                {s.name}
-              </option>
-            ))}
+            {squads
+              .filter((s) => String(s.teamId) !== awayTeamId)
+              .map((s) => (
+                <option key={s.teamId} value={s.teamId}>
+                  {s.name}
+                </option>
+              ))}
           </select>
           <select
             value={awayTeamId}
@@ -165,11 +170,13 @@ export function LeagueFixtures({
             className="rounded-xl border border-[#F0E3CC] bg-white px-3 py-2 text-xs font-bold dark:border-white/10 dark:bg-stone-950 dark:text-stone-100"
           >
             <option value="">Away squad…</option>
-            {squads.map((s) => (
-              <option key={s.teamId} value={s.teamId}>
-                {s.name}
-              </option>
-            ))}
+            {squads
+              .filter((s) => String(s.teamId) !== homeTeamId)
+              .map((s) => (
+                <option key={s.teamId} value={s.teamId}>
+                  {s.name}
+                </option>
+              ))}
           </select>
           <select
             value={round}
@@ -210,10 +217,14 @@ export function LeagueFixtures({
                 "create"
               )
             }
-            disabled={busy !== "" || !homeTeamId || !awayTeamId}
+            disabled={busy !== "" || !homeTeamId || !awayTeamId || homeTeamId === awayTeamId}
             className="rounded-xl bg-stone-900 px-4 py-2.5 text-xs font-black text-white transition hover:bg-stone-800 disabled:opacity-50 dark:bg-white dark:text-stone-900 sm:col-span-2"
           >
-            {busy === "create" ? "Adding…" : "Add fixture 📅"}
+            {busy === "create"
+              ? "Adding…"
+              : homeTeamId && homeTeamId === awayTeamId
+                ? "Pick two different squads 🙂"
+                : "Add fixture 📅"}
           </button>
         </div>
       )}
