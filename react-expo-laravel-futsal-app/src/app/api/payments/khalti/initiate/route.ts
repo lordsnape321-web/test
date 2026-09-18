@@ -1,6 +1,7 @@
 import { db } from "@/db";
 import { bookings, courts, venues, users } from "@/db/schema";
 import { eq } from "drizzle-orm";
+import { gamePlayed } from "@/lib/futsal";
 import { getKhaltiConfig, getAppOrigin, makeKhaltiOrderId, khaltiInitiate } from "@/lib/payments";
 
 export const dynamic = "force-dynamic";
@@ -17,6 +18,15 @@ export async function POST(req: Request) {
     if (!booking) return Response.json({ error: "Booking not found" }, { status: 404 });
     if (booking.paymentMethod !== "Khalti") {
       return Response.json({ error: "This booking is not a Khalti payment 💳" }, { status: 400 });
+    }
+    if (gamePlayed(booking)) {
+      return Response.json(
+        {
+          error:
+            "That game is already played 🔒 — the booking is locked, so payment can't be started for it now.",
+        },
+        { status: 409 }
+      );
     }
     if (booking.paymentStatus === "paid" || booking.paymentStatus === "deposit_paid") {
       return Response.json({ error: "Already paid ✅", booking }, { status: 400 });

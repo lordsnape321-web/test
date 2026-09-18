@@ -2,12 +2,12 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { CalendarCheck, MapPin, Clock, XCircle, QrCode, Wallet, LogIn, Lock, Globe, ArrowRight, Hourglass, PartyPopper, ReceiptText, Star, Gift, Ticket, Shield, Swords } from "lucide-react";
+import { CalendarCheck, MapPin, Clock, XCircle, QrCode, Wallet, LogIn, Lock, Globe, Hourglass, PartyPopper, ReceiptText, Star, Gift, Ticket, Shield, Swords } from "lucide-react";
 import { useUser } from "@/components/UserProvider";
 import { ReceiptUploader, ReceiptViewer, isOnlineMethod } from "@/components/ReceiptUploader";
 import { StarInput } from "@/components/Reviews";
 import { PlayerRatingBadge } from "@/components/PlayerRating";
-import { formatNPR, formatTime12, prettyDate } from "@/lib/futsal";
+import { formatNPR, formatTime12, prettyDate, gamePlayed } from "@/lib/futsal";
 import { hoursUntilGame, type PlayerStats } from "@/lib/loyalty";
 import { validateMessage } from "@/lib/validation";
 
@@ -49,20 +49,31 @@ type Booking = {
     awayScore: number | null;
     scoreStatus: string;
   } | null;
-  linkedMatch: {
-    id: number;
-    title: string;
-    status: string;
-    joinedCount: number;
-    otherJoined: number;
-    crewSize: number;
-    maxPlayers: number;
-    spotsLeft: number;
-  } | null;
   court?: { name: string; format: string };
   venue?: { id: number; name: string; address: string; imageUrl: string };
   playerStats?: PlayerStats;
 };
+
+/** My one review at a venue (POST /api/reviews keeps it to a single row). */
+type MyReview = {
+  id: number;
+  venueId: number;
+  bookingId: number | null;
+  rating: number;
+  message: string;
+};
+
+/**
+ * Did this game actually happen? Completed, or confirmed with the end time
+ * behind us — never a pending or rejected request. A played game is locked:
+ * nothing on its card can be changed any more.
+ */
+const played = (b: {
+  status: string;
+  date: string;
+  startTime: string;
+  endTime: string;
+}) => b.status !== "cancelled" && b.status !== "rejected" && gamePlayed(b);
 
 export default function BookingsPage() {
   const { user, loading: authLoading } = useUser();
@@ -78,7 +89,9 @@ export default function BookingsPage() {
   const [reviewMsg, setReviewMsg] = useState("");
   const [reviewSaving, setReviewSaving] = useState(false);
   const [reviewError, setReviewError] = useState("");
-  const [reviewedIds, setReviewedIds] = useState<Set<number>>(new Set());
+  // My reviews, one per venue — POST /api/reviews updates a row in place, so
+  // this is what each venue's card edits rather than adds to.
+  const [myReviews, setMyReviews] = useState<MyReview[]>([]);
   const [cancelError, setCancelError] = useState("");
   const [paying, setPaying] = useState<number | null>(null);
   const [payError, setPayError] = useState("");
@@ -90,7 +103,7 @@ export default function BookingsPage() {
     try {
       const rRes = await fetch(`/api/reviews?userId=${uid}`);
       const rData = await rRes.json();
-      setReviewedIds(new Set(((rData.reviews ?? []) as Array<{ bookingId: number | null }>).map((r) => r.bookingId).filter(Boolean) as number[]));
+      setMyReviews((rData.reviews ?? []) as MyReview[]);
     } catch {}
   };
 
@@ -108,12 +121,16 @@ export default function BookingsPage() {
 
   const today = new Date().toISOString().slice(0, 10);
   const gone = (s: string) => s === "cancelled" || s === "rejected";
+  /** My one review at a venue, if I've written one. */
+  const myReviewAt = (venueId?: number) =>
+    myReviews.find((r) => r.venueId === venueId) ?? null;
 
   const filtered = useMemo(() => {
     if (tab === "cancelled") return bookings.filter((b) => gone(b.status));
-    if (tab === "past")
-      return bookings.filter((b) => !gone(b.status) && b.date < today);
-    return bookings.filter((b) => !gone(b.status) && b.date >= today);
+    // "Played" lists only games that actually happened. A request that was
+    // never confirmed was never a game, however far back its date is.
+    if (tab === "past") return bookings.filter(played);
+    return bookings.filter((b) => !gone(b.status) && !played(b) && b.date >= today);
   }, [bookings, tab, today]);
 
   const pendingCount = bookings.filter((b) => b.status === "pending" && b.date >= today).length;
@@ -182,6 +199,8 @@ export default function BookingsPage() {
 
   function needsOnlinePay(b: Booking) {
     if (gone(b.status)) return false;
+    // Played games are locked — the money is settled at the venue, not here.
+    if (played(b)) return false;
     if (b.isFreePlay && b.totalPrice === 0) return false;
     if (b.paymentMethod !== "eSewa" && b.paymentMethod !== "Khalti") return false;
     return b.paymentStatus === "pending" || (b.depositRequired && b.depositStatus === "pending");
@@ -232,20 +251,16 @@ export default function BookingsPage() {
     }
   }
 
+  /**
+   * Can this card open the review box? The game has to be played, and a player
+   * keeps one review per venue: an unreviewed venue starts it, and any *other*
+   * played game here updates the one that's already there.
+   */
   function reviewable(b: Booking) {
-    if (gone(b.status)) return false;
-    if (reviewedIds.has(b.id)) return false;
-    if (b.status === "completed") return true;
-    if (b.status !== "confirmed") return false;
-    if (b.date < today) return true;
-    if (b.date === today) {
-      try {
-        return new Date() > new Date(`${b.date}T${b.endTime || b.startTime}:00`);
-      } catch {
-        return false;
-      }
-    }
-    return false;
+    if (gone(b.status) || !played(b)) return false;
+    const mine = myReviewAt(b.venue?.id);
+    if (!mine) return true;
+    return mine.bookingId !== b.id;
   }
 
   async function cancel(b: Booking) {
@@ -343,8 +358,8 @@ export default function BookingsPage() {
 
         <div className="mt-5 grid grid-cols-3 gap-2 sm:gap-3">
           {[
-            { l: "Coming up", v: bookings.filter((b) => !gone(b.status) && b.date >= today).length },
-            { l: "Memories made", v: bookings.filter((b) => !gone(b.status) && b.date < today).length },
+            { l: "Coming up", v: bookings.filter((b) => !gone(b.status) && !played(b) && b.date >= today).length },
+            { l: "Memories made", v: bookings.filter(played).length },
             { l: "Invested in fun", v: formatNPR(totalSpent) },
           ].map((s) => (
             <div key={s.l} className="rounded-2xl border border-[#F0E3CC] bg-white px-3 py-3.5 text-center shadow-sm dark:border-white/10 dark:bg-stone-900">
@@ -398,6 +413,8 @@ export default function BookingsPage() {
             {filtered.map((b) => {
               const isPublic = b.visibility === "public";
               const isPending = b.status === "pending";
+              const isPlayed = played(b);
+              const mine = myReviewAt(b.venue?.id);
               return (
               <div
                 key={b.id}
@@ -413,7 +430,13 @@ export default function BookingsPage() {
                     <span
                       className={`absolute left-3 top-3 rounded-full px-2.5 py-1 text-[10px] font-black uppercase shadow ${statusBadge(b.status)}`}
                     >
-                      {b.status === "pending" ? "⏳ Waiting for venue" : b.status === "confirmed" ? "✓ You're in!" : b.status}
+                      {isPlayed
+                        ? "🔒 Played"
+                        : b.status === "pending"
+                          ? "⏳ Waiting for venue"
+                          : b.status === "confirmed"
+                            ? "✓ Confirmed"
+                            : b.status}
                     </span>
                   </div>
                   <div className="flex-1 p-4 sm:p-5">
@@ -500,43 +523,19 @@ export default function BookingsPage() {
                         </p>
                       </div>
                     )}
-                    {isPublic && b.linkedMatch && !gone(b.status) && (
-                      <div className="mt-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 dark:border-emerald-500/25 dark:bg-emerald-500/10">
-                        <div className="flex items-center justify-between text-[11px] font-bold">
-                          <span className="flex items-center gap-1.5 text-emerald-800 dark:text-emerald-200">
-                            <Globe className="h-3.5 w-3.5" />
-                            {b.linkedMatch.status === "open" ? (
-                              <>👥 {b.linkedMatch.crewSize} crew • 🙋 {b.linkedMatch.otherJoined} joined • {b.linkedMatch.spotsLeft} open 🎉</>
-                            ) : (
-                              <>Invite for 👥 {b.ourCrew} + 🙋 {b.openSpots} goes out once confirmed ⌛</>
-                            )}
-                          </span>
-                          {b.linkedMatch.status === "open" && (
-                            <Link
-                              href="/matches"
-                              className="flex items-center gap-1 font-black text-emerald-700 hover:text-emerald-800 dark:text-emerald-300"
-                            >
-                              See who&apos;s coming <ArrowRight className="h-3.5 w-3.5" />
-                            </Link>
-                          )}
-                        </div>
-                        <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white dark:bg-white/10">
-                          <div
-                            className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-orange-400"
-                            style={{
-                              width: `${Math.round((b.linkedMatch.joinedCount / Math.max(1, b.linkedMatch.maxPlayers)) * 100)}%`,
-                            }}
-                          />
-                        </div>
-                      </div>
-                    )}
+                    {/*
+                      Who's coming lives on the competition screen (/matches),
+                      not here: a booking card is the player's own diary entry,
+                      and once the game is played "who's coming" is a question
+                      with no answer left.
+                    */}
                     <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-stone-100 pt-3 dark:border-white/5">
                       <span className="rounded-full bg-stone-100 px-3 py-1.5 font-mono text-[11px] font-bold text-stone-500 dark:bg-white/10 dark:text-stone-400">
                         #FN-{b.id}
                       </span>
                       {isPublic ? (
                         <span className="flex items-center gap-1.5 rounded-full bg-orange-100 px-3 py-1.5 text-[11px] font-black text-orange-700 dark:bg-orange-500/15 dark:text-orange-300">
-                          <Globe className="h-3.5 w-3.5" /> Open • 👥{b.ourCrew ?? 0}+🙋{b.openSpots ?? 0}
+                          <Globe className="h-3.5 w-3.5" /> Open game
                         </span>
                       ) : b.competition ? (
                         <span className="flex items-center gap-1.5 rounded-full bg-indigo-500/15 px-3 py-1.5 text-[11px] font-black text-indigo-700 dark:text-indigo-300">
@@ -547,9 +546,18 @@ export default function BookingsPage() {
                           <Lock className="h-3.5 w-3.5" /> Just us
                         </span>
                       )}
-                      <span className="flex items-center gap-1.5 rounded-full bg-stone-100 px-3 py-1.5 text-[11px] font-bold text-stone-500 dark:bg-white/10 dark:text-stone-400">
-                        <QrCode className="h-3.5 w-3.5" /> Show at court
-                      </span>
+                      {isPlayed ? (
+                        <span
+                          title="The game is over — this booking can't be changed any more"
+                          className="flex items-center gap-1.5 rounded-full bg-stone-200 px-3 py-1.5 text-[11px] font-black text-stone-600 dark:bg-white/15 dark:text-stone-300"
+                        >
+                          <Lock className="h-3.5 w-3.5" /> Game played • locked
+                        </span>
+                      ) : (
+                        <span className="flex items-center gap-1.5 rounded-full bg-stone-100 px-3 py-1.5 text-[11px] font-bold text-stone-500 dark:bg-white/10 dark:text-stone-400">
+                          <QrCode className="h-3.5 w-3.5" /> Show at court
+                        </span>
+                      )}
                       {b.teamName && (
                         <span className="flex items-center gap-1.5 rounded-full bg-sky-500/15 px-3 py-1.5 text-[11px] font-black text-sky-700 dark:text-sky-300">
                           <Shield className="h-3.5 w-3.5" /> {b.teamName}
@@ -565,7 +573,7 @@ export default function BookingsPage() {
                           <Ticket className="h-3.5 w-3.5" /> {b.promoCode} saved {formatNPR(b.discountAmount)}
                         </span>
                       )}
-                      {reviewedIds.has(b.id) && (
+                      {mine?.bookingId === b.id && (
                         <span className="flex items-center gap-1.5 rounded-full bg-amber-500/15 px-3 py-1.5 text-[11px] font-black text-amber-700 dark:text-amber-300">
                           <Star className="h-3.5 w-3.5 fill-current" /> Reviewed
                         </span>
@@ -609,15 +617,17 @@ export default function BookingsPage() {
                             <ReceiptText className="h-3.5 w-3.5" /> Receipt ✓
                           </button>
                         ) : (
+                          !isPlayed && (
                           <button
                             onClick={() => setUploadFor(uploadFor === b.id ? null : b.id)}
                             className="flex items-center gap-1.5 rounded-full bg-orange-100 px-3 py-1.5 text-[11px] font-black text-orange-700 transition hover:bg-orange-200 dark:bg-orange-500/15 dark:text-orange-300"
                           >
                             <ReceiptText className="h-3.5 w-3.5" /> Add receipt 🧾
                           </button>
+                          )
                         )
                       )}
-                      {tab === "upcoming" && (
+                      {tab === "upcoming" && !isPlayed && (
                         <button
                           onClick={() => cancel(b)}
                           disabled={cancelling === b.id}
@@ -631,20 +641,30 @@ export default function BookingsPage() {
                       {reviewable(b) && (
                         <button
                           onClick={() => {
-                            setReviewFor(reviewFor === b.id ? null : b.id);
+                            if (reviewFor === b.id) {
+                              setReviewFor(null);
+                              return;
+                            }
+                            // Updating starts from what I already wrote at this
+                            // venue, so the old text isn't lost by accident.
+                            setReviewStars(mine?.rating ?? 5);
+                            setReviewMsg(mine?.message ?? "");
+                            setReviewFor(b.id);
                             setReviewError("");
                           }}
                           className="flex items-center gap-1.5 rounded-full bg-amber-400 px-4 py-1.5 text-[11px] font-black text-amber-950 transition hover:bg-amber-300"
                         >
                           <Star className="h-3.5 w-3.5 fill-current" />
-                          {reviewFor === b.id ? "Close" : "Review ⭐"}
+                          {reviewFor === b.id ? "Close" : mine ? "Update review ⭐" : "Review ⭐"}
                         </button>
                       )}
                     </div>
                     {reviewFor === b.id && (
                       <div className="mt-3 space-y-2.5 rounded-2xl border border-amber-200 bg-amber-50/60 p-4 dark:border-amber-500/25 dark:bg-amber-500/5">
                         <p className="text-xs font-black text-stone-700 dark:text-stone-200">
-                          How was {b.venue?.name}? ⭐
+                          {mine
+                            ? `Update your review of ${b.venue?.name} — it replaces the old one, you keep just the one ⭐`
+                            : `How was ${b.venue?.name}? ⭐`}
                         </p>
                         <StarInput value={reviewStars} onChange={setReviewStars} />
                         <textarea
@@ -667,7 +687,7 @@ export default function BookingsPage() {
                           disabled={reviewSaving}
                           className="w-full rounded-2xl bg-amber-400 py-2.5 text-sm font-black text-amber-950 transition hover:bg-amber-300 disabled:opacity-50"
                         >
-                          {reviewSaving ? "Posting…" : "Post review 💛"}
+                          {reviewSaving ? "Saving…" : mine ? "Update review 💛" : "Post review 💛"}
                         </button>
                       </div>
                     )}

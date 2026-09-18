@@ -475,14 +475,19 @@ export const promos = pgTable("promos", {
 });
 
 // Player reviews: rating + message after playing. Visible to everyone + owner.
+// One review per player per venue — a player's review is updated in place when
+// they play again there (see POST /api/reviews), never duplicated.
 export const reviews = pgTable("reviews", {
   id: serial("id").primaryKey(),
   venueId: integer("venue_id").notNull(),
   userId: integer("user_id").notNull(),
+  /** The game this review was last written from; null = a general visit. */
   bookingId: integer("booking_id"),
   rating: integer("rating").notNull().default(5),
   message: text("message").notNull().default(""),
   createdAt: timestamp("created_at").defaultNow(),
+  /** Set when the player updates their review; null while it's still the original. */
+  updatedAt: timestamp("updated_at"),
 });
 
 export type User = typeof users.$inferSelect;

@@ -1,6 +1,6 @@
 import { db } from "@/db";
 import { bookings, openMatches, courts, teams, venues, vouchers, users } from "@/db/schema";
-import { prettyDate, formatTime12, formatNPR } from "@/lib/futsal";
+import { prettyDate, formatTime12, formatNPR, gamePlayed } from "@/lib/futsal";
 import { monthKey, hoursUntilGame, CANCEL_CUTOFF_HOURS, LOYALTY_TARGET, TRUST_START, TRUST_COMPLETE_BOOST, TRUST_CANCEL_PENALTY, trustAfterComplete, trustAfterCancel, trustLabel } from "@/lib/loyalty";
 import { sendNotification } from "@/lib/notify";
 import { and, eq } from "drizzle-orm";
@@ -121,8 +121,39 @@ export async function PATCH(
     const scoreResponse = await applyCompetitionScore(prev, body);
     if (scoreResponse) return scoreResponse;
 
-    // Fair-play: players can't cancel within 6h of the game.
     const actor = body.actor === "owner" ? "owner" : "player";
+
+    /*
+     * A played game is locked 🔒
+     *
+     * Once the whistle has gone the booking is history: a player can't cancel
+     * it, re-price it, change how it was paid, or attach a receipt to it. The
+     * UI hides those controls; this is the same rule enforced where it counts,
+     * so a replayed request gets the same answer. The venue owner is exempt —
+     * marking a game completed, settling a payment and recording a competition
+     * score all happen *after* kickoff and are the owner's job.
+     */
+    if (actor === "player" && gamePlayed(prev)) {
+      const PLAYER_EDITABLE = [
+        "status",
+        "paymentStatus",
+        "paymentMethod",
+        "depositStatus",
+        "receiptUrl",
+      ];
+      const touching = PLAYER_EDITABLE.filter((k) => body[k] !== undefined);
+      if (touching.length > 0) {
+        return Response.json(
+          {
+            error:
+              "That game is already played 🔒 — the booking is locked, so nothing on it can be changed now.",
+          },
+          { status: 409 }
+        );
+      }
+    }
+
+    // Fair-play: players can't cancel within 6h of the game.
     if (body.status === "cancelled" && prev.status !== "cancelled" && actor === "player") {
       const hrsLeft = hoursUntilGame(prev.date, prev.startTime);
       if (hrsLeft < CANCEL_CUTOFF_HOURS && hrsLeft > -48) {
@@ -286,6 +317,18 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params;
+    const rows = await db.select().from(bookings).where(eq(bookings.id, Number(id)));
+    const prev = rows[0];
+    if (!prev) return Response.json({ error: "Booking not found" }, { status: 404 });
+    if (gamePlayed(prev)) {
+      return Response.json(
+        {
+          error:
+            "That game is already played 🔒 — the booking is locked and can't be cancelled.",
+        },
+        { status: 409 }
+      );
+    }
     await db
       .update(bookings)
       .set({ status: "cancelled" })

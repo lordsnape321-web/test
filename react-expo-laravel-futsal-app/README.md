@@ -173,6 +173,35 @@ whatever balance remains. When free play covers the whole booking, promos are bl
 
 ---
 
+## One review per player per venue — and a played game is locked
+
+**Reviews.** A player gets a single review at each venue, however many games they play there.
+The first one inserts a row; every later one *updates that same row* — rating, message and the
+game it was written from — so a venue page never shows an old and a new review from the same
+person (`POST /api/reviews` returns `200 { updated: true }` instead of `201`). Writing one still
+requires having actually played there. Once written it is **locked**: `DELETE /api/reviews`
+answers `403`, and the card shows a padlock instead of a bin. Playing another game at that venue
+reopens it for an update, which is why the bookings card says **Update review ⭐** rather than
+**Review ⭐** once you have reviewed that venue.
+
+**Played games.** "Played" has one definition, shared by the API and the UI as `gamePlayed()` in
+`src/lib/futsal.ts`: `completed`, or `confirmed` with the end time behind us. A `pending` or
+`rejected` request never counts — that game never happened, so it does not appear in the
+**Played** tab of *My games* either.
+
+A played booking is **locked**: the card drops the cancel / pay / add-receipt controls and shows
+**Game played • locked**, and the same rule is enforced server-side — `PATCH /api/bookings/{id}`
+and `DELETE /api/bookings/{id}` answer `409` for a player touching `status`, `paymentStatus`,
+`paymentMethod`, `depositStatus` or `receiptUrl`, and both gateway `initiate` routes refuse to
+start a payment. The **venue owner is exempt**, because marking a game completed, settling a
+payment and recording a competition score all happen *after* kickoff.
+
+The green "who's coming" panel (crew / joined / open spots, progress bar, link) no longer renders
+on booking cards — a finished game has nobody left to come. That live headcount belongs to the
+competition screen at `/matches`.
+
+---
+
 ## Booking for a squad ("Just our gang")
 
 Step 4 of the booking flow asks whether the game is **Just our gang** (private) or **Invite

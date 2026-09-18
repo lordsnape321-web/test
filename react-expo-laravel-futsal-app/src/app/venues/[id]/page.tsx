@@ -40,6 +40,7 @@ import {
   formatTime12,
   prettyDate,
   rangeSlots,
+  gamePlayed,
 } from "@/lib/futsal";
 
 type Court = {
@@ -214,15 +215,13 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
   const loadLoyalty = useCallback(
     async (uid: number) => {
       try {
-        const [vRes, bRes, rRes, sRes] = await Promise.all([
+        const [vRes, bRes, sRes] = await Promise.all([
           fetch(`/api/vouchers?userId=${uid}`),
           fetch(`/api/bookings?userId=${uid}`),
-          fetch(`/api/reviews?userId=${uid}`),
           fetch(`/api/users/${uid}`),
         ]);
         const vData = await vRes.json();
         const bData = await bRes.json();
-        const rData = await rRes.json();
         const sData = await sRes.json().catch(() => ({}));
         if (sData?.stats) setMyStats(sData.stats as PlayerStats);
         if (sData?.user && typeof sData.user.trustScore === "number") setMyTrust(sData.user.trustScore);
@@ -236,7 +235,9 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
           (p) => p.venueId === Number(id)
         );
         setLoyalty(prog ? { count: prog.count, target: prog.target, remaining: prog.remaining } : { count: 0, target: 7, remaining: 7 });
-        // Reviewable past games at this venue.
+        // Every game already played here. A player keeps one review per venue
+        // and updates it after a new game, so an already-reviewed game is still
+        // listed — that's the game the review gets rewritten from.
         const myBookings = (bData.bookings ?? []) as Array<{
           id: number;
           date: string;
@@ -246,28 +247,11 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
           court?: { name: string };
           venue?: { id: number };
         }>;
-        const reviewed = new Set(
-          ((rData.reviews ?? []) as Array<{ bookingId: number | null }>).map((r) => r.bookingId).filter(Boolean)
-        );
-        const today = new Date().toISOString().slice(0, 10);
         const eligible = myBookings
-          .filter((b) => {
-            if (!b.venue || b.venue.id !== Number(id)) return false;
-            if (reviewed.has(b.id)) return false;
-            if (b.status === "completed") return true;
-            if (b.status === "confirmed" && b.date < today) return true;
-            if (b.status === "confirmed" && b.date === today) {
-              try {
-                return new Date() > new Date(`${b.date}T${b.endTime || b.startTime}:00`);
-              } catch {
-                return false;
-              }
-            }
-            return false;
-          })
+          .filter((b) => b.venue?.id === Number(id) && gamePlayed(b))
           .map((b) => ({
             id: b.id,
-            label: `${b.date} • ${b.court?.name ?? ""} • ${b.startTime}`,
+            label: `${prettyDate(b.date)} • ${b.court?.name ?? ""} • ${formatTime12(b.startTime)}`,
           }));
         setMyVenueBookings(eligible);
       } catch {}

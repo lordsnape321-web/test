@@ -111,6 +111,42 @@ export function initials(name: string) {
     .toUpperCase();
 }
 
+/** The few booking fields `gamePlayed` needs, so any caller can pass a row or a card. */
+export type GameSlot = {
+  status: string;
+  date: string;
+  startTime: string;
+  endTime: string;
+};
+
+/**
+ * Has this booking's game already been played? 🏁
+ *
+ * One rule, shared by every "played" gate in the app — the bookings page tabs,
+ * the lock on a finished booking, and review eligibility:
+ *
+ * - `completed` → played (the venue marked it so).
+ * - `confirmed` → played once the end time has passed.
+ * - `pending` / `rejected` → never played; that game never happened, however
+ *   far in the past the date is.
+ *
+ * Both the API and the client import this so a card can't disagree with the
+ * server about whether a game is over.
+ */
+export function gamePlayed(b: GameSlot, now: Date = new Date()) {
+  if (b.status === "completed") return true;
+  if (b.status !== "confirmed") return false;
+  const end = b.endTime || b.startTime;
+  if (!b.date || !end) return false;
+  try {
+    // Parsed without a zone on purpose: booking times are the venue's wall
+    // clock, and this matches how the rest of the app compares them.
+    return now > new Date(`${b.date}T${end}:00`);
+  } catch {
+    return false;
+  }
+}
+
 export const CITY_OPTIONS = [
   "All Cities",
   "Kathmandu",
