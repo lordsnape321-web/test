@@ -13,7 +13,12 @@ import {
   Users,
 } from "lucide-react";
 import type { LeagueSummary } from "@/lib/league-store";
-import { leagueStatusLabel, leagueVisibilityLabel, paymentState } from "@/lib/league";
+import {
+  leagueModeLabel,
+  leagueStatusLabel,
+  leagueVisibilityLabel,
+  paymentState,
+} from "@/lib/league";
 import { formatNPR, initials, prettyDate } from "@/lib/futsal";
 
 /**
@@ -28,6 +33,7 @@ import { formatNPR, initials, prettyDate } from "@/lib/futsal";
 export function LeagueCard({ league, compact = false }: { league: LeagueSummary; compact?: boolean }) {
   const status = leagueStatusLabel(league.status);
   const visibility = leagueVisibilityLabel(league.visibility);
+  const mode = leagueModeLabel(league.mode);
   const spotsLeft = Math.max(0, league.maxTeams - league.approvedTeams);
   const mine = league.viewer?.myTeams ?? [];
   const leading = mine.find((m) => m.status === "approved") ?? mine[0];
@@ -50,6 +56,11 @@ export function LeagueCard({ league, compact = false }: { league: LeagueSummary;
         <div className="absolute left-3 top-3 flex flex-wrap gap-1.5">
           <span className="rounded-full bg-white/90 px-2.5 py-1 text-[10px] font-black text-stone-800 backdrop-blur dark:bg-stone-900/90 dark:text-stone-100">
             {status.emoji} {status.label}
+          </span>
+          {/* How a winner gets decided, before the price does — a knockout
+              reads completely differently to a captain than a round robin. */}
+          <span className="rounded-full bg-orange-400/95 px-2.5 py-1 text-[10px] font-black text-orange-950 backdrop-blur">
+            {mode.emoji} {mode.label}
           </span>
           {league.visibility === "private" && (
             <span className="flex items-center gap-1 rounded-full bg-stone-900/85 px-2.5 py-1 text-[10px] font-black text-amber-200 backdrop-blur">
@@ -222,12 +233,15 @@ export function PaymentLine({
   refundedAmount,
   depositPercent,
   refundPercent,
+  locked,
 }: {
   entryFee: number;
   paidAmount: number;
   refundedAmount?: number;
   depositPercent?: number;
   refundPercent?: number;
+  /** Set once the squad has played — their money is the league's from here on. */
+  locked?: boolean;
 }) {
   const state = paymentState({ entryFee, paidAmount, refundedAmount, depositPercent, refundPercent });
   return (
@@ -237,6 +251,7 @@ export function PaymentLine({
         ? ` • deposit ${formatNPR(state.deposit)}`
         : ""}
       {entryFee > 0 && state.due > 0 && state.depositMet ? ` • ${formatNPR(state.due)} to settle` : ""}
+      {locked ? " • 🔒 locked in" : ""}
     </span>
   );
 }

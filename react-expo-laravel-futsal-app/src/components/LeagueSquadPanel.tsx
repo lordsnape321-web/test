@@ -264,7 +264,15 @@ export function LeagueSquadPanel({
                     </>
                   )}
 
-                  {entry && entry.status !== "withdrawn" && (
+                  {entry && entry.status !== "withdrawn" && entry.payment.locked && (
+                    <span
+                      title={entry.payment.lockReason}
+                      className="flex items-center gap-1.5 rounded-xl bg-stone-200 px-4 py-2 text-xs font-black text-stone-600 dark:bg-white/10 dark:text-stone-300"
+                    >
+                      <Lock className="h-3.5 w-3.5" /> Entry locked — you&apos;ve played
+                    </span>
+                  )}
+                  {entry && entry.status !== "withdrawn" && !entry.payment.locked && (
                     <button
                       onClick={() =>
                         void act(`withdraw-${team.id}`, { action: "withdraw", userId: viewerId, teamId: team.id })
@@ -286,10 +294,19 @@ export function LeagueSquadPanel({
                 </div>
               )}
 
-              {entry && entry.payment.paid > 0 && (
+              {entry && entry.payment.locked && entry.payment.paid > 0 && (
+                <p className="mt-2 flex items-start gap-1.5 rounded-xl bg-stone-100 px-3 py-2 text-[11px] font-bold text-stone-500 dark:bg-white/5 dark:text-stone-400">
+                  <Lock className="mt-0.5 h-3 w-3 shrink-0" />
+                  {entry.payment.lockReason} The {league.refundPercent}% refund closed when your
+                  first match kicked off — the host has a pitch booked and a fixture list built
+                  around you.
+                </p>
+              )}
+              {entry && !entry.payment.locked && entry.payment.paid > 0 && (
                 <p className="mt-2 text-[11px] font-semibold text-stone-400 dark:text-stone-500">
-                  Backing out returns {formatNPR(entry.payment.refundable)} ({league.refundPercent}% of
-                  what you paid) — the rest stays with the league.
+                  Backing out returns {formatNPR(entry.payment.refundable)} ({league.refundPercent}%
+                  of what you paid) — the rest stays with the league. That closes once your first
+                  match kicks off 🔒
                 </p>
               )}
             </li>

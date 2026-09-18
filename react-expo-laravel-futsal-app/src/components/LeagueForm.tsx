@@ -12,6 +12,7 @@ import {
   Crown,
   CalendarDays,
   ImagePlus,
+  Check,
 } from "lucide-react";
 import { ImagePicker } from "@/components/ImagePicker";
 import { formatNPR, todayISO } from "@/lib/futsal";
@@ -20,10 +21,19 @@ import {
   LEAGUE_FORMATS,
   LEAGUE_MAX_TEAMS,
   LEAGUE_MIN_TEAMS,
+  LEAGUE_MODES,
   LEAGUE_NAME_MAX,
   LEAGUE_PRIZE_BREAKDOWN_MAX,
+  MAX_GROUP_SIZE,
+  MIN_GROUP_SIZE,
   WITHDRAW_REFUND_PERCENT,
+  bracketSizeFor,
   depositFor,
+  groupSetupError,
+  leagueModeLabel,
+  modeHasBracket,
+  modeHasGroups,
+  type LeagueMode,
 } from "@/lib/league";
 import {
   firstError,
@@ -49,6 +59,9 @@ export type LeagueFormInitial = {
   venueId: number | null;
   courtId: number | null;
   format: string;
+  mode: string;
+  thirdPlace: boolean;
+  groupSize: number;
   maxTeams: number;
   entryFee: number;
   depositPercent: number;
@@ -102,6 +115,11 @@ export function LeagueForm({
   const [venueId, setVenueId] = useState("");
   const [courtId, setCourtId] = useState("");
   const [format, setFormat] = useState<string>(LEAGUE_FORMATS[0]);
+  // How the competition decides a winner. Round robin is the default because
+  // that's what "a league" has always meant here.
+  const [mode, setMode] = useState<LeagueMode>("round_robin");
+  const [thirdPlace, setThirdPlace] = useState(false);
+  const [groupSize, setGroupSize] = useState(4);
   const [maxTeams, setMaxTeams] = useState(8);
   const [entryFee, setEntryFee] = useState("3000");
   const [depositPercent, setDepositPercent] = useState(ENTRY_DEPOSIT_PERCENT);
@@ -153,6 +171,9 @@ export function LeagueForm({
       setVenueId(String(initial.venueId ?? ""));
       setCourtId(String(initial.courtId ?? ""));
       setFormat(initial.format);
+      setMode((LEAGUE_MODES as readonly string[]).includes(initial.mode) ? (initial.mode as LeagueMode) : "round_robin");
+      setThirdPlace(!!initial.thirdPlace);
+      setGroupSize(initial.groupSize || 4);
       setMaxTeams(initial.maxTeams);
       setEntryFee(String(initial.entryFee));
       setDepositPercent(initial.depositPercent);
@@ -188,6 +209,7 @@ export function LeagueForm({
       validateLeagueName(name),
       venueId ? null : "Pick the ground this league plays on 🏟️",
       validateMaxTeams(maxTeams),
+      groupSetupError({ mode, groupSize, maxTeams }),
       validateEntryFee(feeNum),
       validatePrizePool(poolNum),
       validatePrizeBreakdown(prizeBreakdown),
@@ -207,6 +229,9 @@ export function LeagueForm({
         venueId: Number(venueId),
         courtId: courtId ? Number(courtId) : 0,
         format,
+        mode,
+        thirdPlace: modeHasBracket(mode) ? thirdPlace : false,
+        groupSize,
         maxTeams,
         entryFee: feeNum,
         depositPercent,
@@ -237,6 +262,29 @@ export function LeagueForm({
     } finally {
       setBusy(false);
     }
+  }
+
+  /**
+   * What the draw will actually look like, before the host commits to it — the
+   * same arithmetic the server runs when it draws, so the promise on the form
+   * and the fixture list can't disagree.
+   */
+  function drawHint(m: LeagueMode, squadCount: number, perGroup: number, bronze: boolean) {
+    const n = Math.max(0, Math.trunc(squadCount) || 0);
+    if (n < 2) return "Pick how many squads can enter and the shape of the draw shows here.";
+    if (m === "round_robin")
+      return `🔄 ${n} squads = ${(n * (n - 1)) / 2} fixtures — everyone plays everyone once, and the table decides.`;
+    if (m === "group_knockout") {
+      const size = Math.min(Math.max(MIN_GROUP_SIZE, perGroup), MAX_GROUP_SIZE);
+      let groups = Math.max(2, Math.ceil(n / size));
+      while (groups > 2 && Math.floor(n / groups) < 2) groups -= 1;
+      const through = groups * 2;
+      const bracket = bracketSizeFor(through);
+      return `🎯 ${groups} groups (${n < groups * size ? "sizes balanced from " : ""}${n} squads) — top two of each go to a ${bracket}-squad bracket${bronze ? " plus a third-place game" : ""}.`;
+    }
+    const size = bracketSizeFor(n);
+    const byes = size - n;
+    return `🥊 A bracket of ${size}: ${n} squads, ${byes > 0 ? `${byes} bye${byes === 1 ? "" : "s"} for the top seeds` : "no byes needed"}, one loss and you're out${bronze ? " — plus a third-place game for the losing semi-finalists" : ""}.`;
   }
 
   const field =
@@ -276,6 +324,78 @@ export function LeagueForm({
                 className={field}
               />
             </label>
+
+            {/* ------------------------------------------- how a winner is decided */}
+            <div className="rounded-2xl border border-[#F0E3CC] bg-white p-4 sm:col-span-2 dark:border-white/10 dark:bg-stone-900">
+              <span className={label}>How does it decide a winner?</span>
+              <div className="grid gap-2 sm:grid-cols-3">
+                {LEAGUE_MODES.map((m) => {
+                  const info = leagueModeLabel(m);
+                  const on = mode === m;
+                  return (
+                    <button
+                      key={m}
+                      type="button"
+                      onClick={() => setMode(m)}
+                      className={`rounded-2xl border-2 p-3 text-left transition ${
+                        on
+                          ? "border-emerald-500 bg-emerald-50 dark:bg-emerald-500/10"
+                          : "border-[#F0E3CC] hover:border-emerald-300 dark:border-white/10"
+                      }`}
+                    >
+                      <p className="flex items-center gap-1.5 text-sm font-black text-stone-900 dark:text-stone-100">
+                        <span>{info.emoji}</span> {info.label}
+                        {on && <Check className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />}
+                      </p>
+                      <p className="mt-1 text-[11px] font-semibold leading-relaxed text-stone-500 dark:text-stone-400">
+                        {info.blurb}
+                      </p>
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div className="mt-3 flex flex-wrap items-center gap-3">
+                {modeHasGroups(mode) && (
+                  <label className="flex items-center gap-2">
+                    <span className="text-[11px] font-black uppercase tracking-wider text-stone-400 dark:text-stone-500">
+                      Squads per group
+                    </span>
+                    <input
+                      type="number"
+                      min={MIN_GROUP_SIZE}
+                      max={MAX_GROUP_SIZE}
+                      value={groupSize}
+                      onChange={(e) => setGroupSize(Number(e.target.value))}
+                      className="w-20 rounded-xl border border-[#F0E3CC] bg-white px-2.5 py-1.5 text-xs font-black dark:border-white/10 dark:bg-stone-950 dark:text-stone-100"
+                    />
+                  </label>
+                )}
+                {modeHasBracket(mode) && (
+                  <label className="flex cursor-pointer items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={thirdPlace}
+                      onChange={(e) => setThirdPlace(e.target.checked)}
+                      className="h-4 w-4 accent-emerald-600"
+                    />
+                    <span className="text-[11px] font-black uppercase tracking-wider text-stone-400 dark:text-stone-500">
+                      🥉 Third-place game
+                    </span>
+                  </label>
+                )}
+              </div>
+
+              <p className="mt-2.5 rounded-xl bg-stone-50 px-3 py-2 text-[11px] font-bold leading-relaxed text-stone-500 dark:bg-white/5 dark:text-stone-400">
+                {drawHint(mode, spots, groupSize, thirdPlace)}
+              </p>
+              {editing && (
+                <p className="mt-1.5 text-[11px] font-semibold text-amber-600 dark:text-amber-400">
+                  Once fixtures are drawn the competition type can&apos;t change — the server will
+                  say so.
+                </p>
+              )}
+            </div>
             <label className="block">
               <span className={label}>Ground</span>
               <select value={venueId} onChange={(e) => {

@@ -71,6 +71,7 @@ export async function GET(
           refundedAmount: m.refundedAmount,
           depositPercent: league.depositPercent,
           refundPercent: league.refundPercent,
+          status: m.status,
         }),
       }));
 

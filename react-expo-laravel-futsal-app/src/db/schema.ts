@@ -284,6 +284,19 @@ export const tournaments = pgTable("tournaments", {
   /** Optional: the specific pitch the league runs on. */
   courtId: integer("court_id"),
   format: text("format").notNull().default("5v5"),
+  /**
+   * How a winner is decided 🏆 — "round_robin" (the league: everyone plays
+   * everyone, the table decides), "knockout" (a bracket, one loss and you're
+   * out) or "group_knockout" (groups first, then the top two of each group go
+   * to a bracket). The host picks it when the league is created and it can't
+   * change once fixtures exist, because a bracket and a league table are not
+   * the same shape of competition.
+   */
+  mode: text("mode").notNull().default("round_robin"),
+  /** Knockout modes only: play a third-place game between the losing semi-finalists. */
+  thirdPlace: boolean("third_place").notNull().default(false),
+  /** Groups + knockout only: how many squads per group (4 is the usual). */
+  groupSize: integer("group_size").notNull().default(4),
   /** How many squads can be in it — the "tournament size" on the listing. */
   maxTeams: integer("max_teams").notNull().default(8),
   /** Entry fee per squad, in NPR. 0 means a free-to-enter league. */
@@ -385,10 +398,29 @@ export const tournamentPayments = pgTable("tournament_payments", {
 export const tournamentMatches = pgTable("tournament_matches", {
   id: serial("id").primaryKey(),
   tournamentId: integer("tournament_id").notNull(),
-  /** "League" for the round robin, or "Semi-final", "Final", "Friendly"... */
+  /** "League" for the round robin, "Group A" for a group game, or "Semi-final", "Final", "Third place", "Friendly"... */
   round: text("round").notNull().default("League"),
-  homeTeamId: integer("home_team_id").notNull(),
-  awayTeamId: integer("away_team_id").notNull(),
+  /**
+   * Bracket wiring 🥊 — 0 for a league or group game. `bracketRound` counts the
+   * knockout rounds from 1 and `slot` is the game's position inside that round,
+   * so a round is a set of games and a bracket is a set of rounds.
+   *
+   * `homeFrom` / `awayFrom` say where an empty slot gets its squad from: "W1-0"
+   * is the winner of round 1 slot 0, "L2-1" the loser of round 2 slot 1 (that's
+   * how a third-place game fills) and "G2W" / "G2R" the winner / runner-up of
+   * group 2. Recording a result is what swaps the ref for a real team id, so a
+   * bracket fills itself in as the tournament is played.
+   */
+  bracketRound: integer("bracket_round").notNull().default(0),
+  slot: integer("slot").notNull().default(0),
+  homeFrom: text("home_from").notNull().default(""),
+  awayFrom: text("away_from").notNull().default(""),
+  /** What an empty slot reads as on the card: "Winner Group A", "Bye 🎟️". */
+  homeLabel: text("home_label").notNull().default(""),
+  awayLabel: text("away_label").notNull().default(""),
+  /** 0 when a bracket slot is still waiting on the game before it. */
+  homeTeamId: integer("home_team_id").notNull().default(0),
+  awayTeamId: integer("away_team_id").notNull().default(0),
   /** Blank until the host schedules it ("TBD" on the fixture card). */
   date: text("date").notNull().default(""),
   startTime: text("start_time").notNull().default(""),

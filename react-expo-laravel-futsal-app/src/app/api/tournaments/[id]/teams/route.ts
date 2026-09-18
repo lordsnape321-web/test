@@ -20,8 +20,10 @@ import {
   TEAM_WITHDRAWN,
   approvalCheck,
   depositFor,
+  moneyLockedFor,
   paymentState,
   refundFor,
+  withdrawCheck,
 } from "@/lib/league";
 import { canBeInvitedToTeam } from "@/lib/teams";
 import { leagueAccess, recalcTeamTotals } from "@/lib/league-store";
@@ -56,6 +58,12 @@ export async function GET(
     const allTeams = await db.select().from(teams);
     const allUsers = await db.select().from(users);
     const members = await db.select().from(teamMembers);
+    // Fixtures decide whose money is locked, so the panel can say it up front
+    // instead of letting a captain discover it by being refused.
+    const fixtures = await db
+      .select()
+      .from(tournamentMatches)
+      .where(eq(tournamentMatches.tournamentId, leagueId));
 
     const rows = access.rows
       .filter((r) => access.isHost || r.status === TEAM_APPROVED)
@@ -81,6 +89,8 @@ export async function GET(
             refundedAmount: r.refundedAmount,
             depositPercent: access.tournament.depositPercent,
             refundPercent: access.tournament.refundPercent,
+            lock: moneyLockedFor(r.teamId, fixtures),
+            status: r.status,
           }),
           createdAt: r.createdAt,
         };
@@ -320,7 +330,10 @@ export async function POST(
 
     /* --------------------------------------------------------- withdraw */
     if (action === "withdraw") {
-      const userId = Number(body.userId);
+      // The captain's panel sends `userId`, the host console sends `hostId` —
+      // both are "who is asking", and only one of them used to be read, which
+      // meant a host pressing "Remove & refund" was always told no.
+      const userId = Number(body.userId) || Number(body.hostId) || 0;
       const isHost = league.hostId === userId;
       const isCaptain = team.captainId === userId;
       if (!isHost && !isCaptain)
@@ -332,7 +345,27 @@ export async function POST(
       if (row.status === TEAM_WITHDRAWN)
         return Response.json({ error: `${team.name} already withdrew 🏳️` }, { status: 409 });
 
-      const refund = refundFor(row.paidAmount, league.refundPercent);
+      /*
+       * The money lock 🔒
+       *
+       * "A tenth back if you walk" is the deal — until the first kick-off. From
+       * the moment this squad's game starts, the entry fee is the league's: the
+       * host has paid for a pitch and built a fixture list around them, and in a
+       * bracket an opponent would be left with nobody to play. So a captain
+       * can't withdraw at all once they've taken the field, whether they are
+       * still in it or already knocked out. The host may still take a squad out
+       * — somebody has to be able to — but nothing is refunded on the way.
+       */
+      const fixtures = await db
+        .select()
+        .from(tournamentMatches)
+        .where(eq(tournamentMatches.tournamentId, leagueId));
+      const lock = moneyLockedFor(teamId, fixtures);
+      const gate = withdrawCheck({ isHost, lock, teamName: team.name });
+      if (!gate.ok)
+        return Response.json({ error: gate.reason }, { status: 409 });
+
+      const refund = gate.refundBlocked ? 0 : refundFor(row.paidAmount, league.refundPercent);
       if (refund > 0) {
         await db.insert(tournamentPayments).values({
           tournamentId: leagueId,
@@ -380,16 +413,25 @@ export async function POST(
         userId: league.hostId,
         type: "league",
         title: `🏳️ ${team.name} withdrew — ${league.name}`,
-        message: `${isHost ? "You" : captain?.name ?? "The captain"} pulled ${team.name} out.${row.paidAmount > 0 ? ` ${formatNPR(refund)} returned (${league.refundPercent}% of ${formatNPR(row.paidAmount)}); ${formatNPR(kept)} stays with the league.` : ""} Their unplayed fixtures are voided.`,
+        message: `${isHost ? "You" : captain?.name ?? "The captain"} pulled ${team.name} out.${
+          row.paidAmount > 0
+            ? gate.refundBlocked
+              ? ` No refund — their money was locked once the game kicked off, so ${formatNPR(kept)} stays with the league 🔒`
+              : ` ${formatNPR(refund)} returned (${league.refundPercent}% of ${formatNPR(row.paidAmount)}); ${formatNPR(kept)} stays with the league.`
+            : ""
+        } Their unplayed fixtures are voided.`,
         link: hostLink,
       });
       await sendNotification({
         userId: team.captainId,
         type: "league",
         title: `🏳️ ${team.name} is out of ${league.name}`,
-        message: row.paidAmount > 0
-          ? `${formatNPR(refund)} of the ${formatNPR(row.paidAmount)} you paid comes back — the rest is the league's, per the terms you agreed to when joining.`
-          : "You're out of the league. Nothing to refund.",
+        message:
+          row.paidAmount > 0
+            ? gate.refundBlocked
+              ? `Nothing comes back — ${formatNPR(row.paidAmount)} was locked in once your game kicked off, per the terms you agreed to when joining 🔒`
+              : `${formatNPR(refund)} of the ${formatNPR(row.paidAmount)} you paid comes back — the rest is the league's, per the terms you agreed to when joining.`
+            : "You're out of the league. Nothing to refund.",
         link: hostLink,
       });
 
@@ -399,7 +441,9 @@ export async function POST(
         message:
           refund > 0
             ? `Withdrawn — ${formatNPR(refund)} refunded (${league.refundPercent}% of what was paid) ↩️`
-            : "Withdrawn from the league 🏳️",
+            : row.paidAmount > 0 && gate.refundBlocked
+              ? "Withdrawn — no refund, the entry fee was locked once the game kicked off 🔒"
+              : "Withdrawn from the league 🏳️",
       });
     }
 

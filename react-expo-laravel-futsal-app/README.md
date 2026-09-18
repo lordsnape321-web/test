@@ -173,6 +173,52 @@ whatever balance remains. When free play covers the whole booking, promos are bl
 
 ---
 
+## Leagues: three ways to decide a winner — and the money locks at kick-off
+
+**Picking the shape.** Hosting a league starts with one question: *how does this decide a
+winner?* (`mode` on `tournaments`, `LEAGUE_MODES` in `src/lib/league.ts`).
+
+| Mode | What the host gets | How the draw is built |
+| --- | --- | --- |
+| `round_robin` 🔄 | One table, everyone plays everyone once | Every pairing once, `round: "League"`, re-drawing skips pairs already on the book |
+| `knockout` 🥊 | A bracket: quarter-finals, semis, final (+ optional 🥉 third place) | `bracketSizeFor()` rounds the field up to 8/16/32, `seedOrder()` seeds 1-v-8 / 4-v-5 style, the surplus slots are **byes** for the top seeds |
+| `group_knockout` 🎯 | Groups first, then a bracket for the qualifiers | `makeGroups()` snake-drafts the squads into groups of `groupSize` (never a group of one); the top two of each group feed `knockoutFromGroups()` |
+
+The hosting form shows a live hint of what the draw will be — "a bracket of 8: 5 squads, 3 byes" —
+using the same arithmetic the server runs, so the promise and the fixture list cannot disagree.
+`groupSize` is bounded by `MIN_GROUP_SIZE`/`MAX_GROUP_SIZE` and checked by `groupSetupError()` on
+both sides.
+
+**The bracket is data, not decoration.** Each fixture carries `bracketRound`, `slot` and a
+*ref* per side — `W2-0` (winner of round 2 slot 0), `L2-1` (loser, for the bronze game), `G1W` /
+`G2R` (group 1 winner / group 2 runner-up). `advanceBracket()` walks those refs after every score
+and fills the downstream slots, so scoring the last group game promotes two squads into the
+semi-finals without anyone touching the fixture book. Refs are round-relative on purpose: the
+semi-final is round 1 in a 4-team bracket and round 2 in an 8-team one, so nothing is hardcoded.
+A knockout game cannot be drawn level (`400` — count the penalties), and `winnerOf()` returns 0
+for a level or voided game so a slot never fills with a guess. The host can also nudge it by hand
+with `action: "advance"`, set kick-offs with `action: "schedule"` (works on empty slots too, so
+"final, Saturday 7:30 PM" can be on the card before the finalists exist), and cannot delete a
+bracket game at all. `PATCH /api/tournaments/{id}` answers `409` if the host tries to change
+`mode` once fixtures are drawn.
+
+**The money lock 🔒.** The refund promise — "back out and a tenth of your entry fee comes back"
+— is true right up until the squad's **first kick-off**, and then it is over. `moneyLockedFor()`
+in `src/lib/league.ts` says a squad has played when it has a result on the board *or* one of its
+fixtures has a kick-off time behind it (a voided fixture does not count — nobody played it).
+That covers every way a season ends for a squad: knocked out in the quarter-final, last in the
+group, or champion. From that moment `withdraw` answers `409` with the reason spelled out,
+`refundable` is 0, and the captain's panel swaps the red **Withdraw** button for **Entry locked —
+you've played**. The host can still remove a squad, but with `refund: 0`, and the chip says so
+before they click. A fixture still in the future locks nothing — walking away before the first
+game works exactly as advertised.
+
+One wrinkle worth knowing: a squad that backs out, takes its refund and then re-enters keeps the
+old `refundedAmount` on its entry row, so `paymentState()` takes the entry `status` and only reads
+**Backed out — part refunded** when the squad really is withdrawn.
+
+---
+
 ## One review per player per venue — and a played game is locked
 
 **Reviews.** A player gets a single review at each venue, however many games they play there.

@@ -20,11 +20,12 @@ import { useUser } from "@/components/UserProvider";
 import { LeagueForm } from "@/components/LeagueForm";
 import { LeagueTable, PrizeBreakdown } from "@/components/LeagueTable";
 import { LeagueFixtures } from "@/components/LeagueFixtures";
+import { LeagueBracket } from "@/components/LeagueBracket";
 import { LeagueAlbum } from "@/components/LeagueAlbum";
 import { LeagueHostPanel } from "@/components/LeagueHostPanel";
 import { LeagueSquadPanel } from "@/components/LeagueSquadPanel";
 import type { LeagueDetail } from "@/lib/league-store";
-import { leagueStatusLabel, leagueVisibilityLabel } from "@/lib/league";
+import { leagueModeLabel, leagueStatusLabel, leagueVisibilityLabel, modeHasBracket } from "@/lib/league";
 import { formatNPR, prettyDate } from "@/lib/futsal";
 
 /**
@@ -104,6 +105,7 @@ export default function LeagueDetailPage({ params }: { params: Promise<{ id: str
 
   const status = leagueStatusLabel(league.status);
   const visibility = leagueVisibilityLabel(league.visibility);
+  const mode = leagueModeLabel(league.mode);
   const isHost = league.viewer?.isHost ?? false;
   const myTeamIds = league.viewer?.myTeams.map((t) => t.teamId) ?? [];
   const spotsLeft = Math.max(0, league.maxTeams - league.approvedTeams);
@@ -132,6 +134,9 @@ export default function LeagueDetailPage({ params }: { params: Promise<{ id: str
           <div className="flex flex-wrap items-center gap-2">
             <span className="rounded-full bg-white/90 px-2.5 py-1 text-[11px] font-black text-stone-800 shadow backdrop-blur dark:bg-stone-900/90 dark:text-stone-100">
               {status.emoji} {status.label}
+            </span>
+            <span className="rounded-full bg-white/90 px-2.5 py-1 text-[11px] font-black text-orange-700 shadow backdrop-blur dark:bg-stone-900/90 dark:text-orange-300">
+              {mode.emoji} {mode.label}
             </span>
             <span className="rounded-full bg-white/90 px-2.5 py-1 text-[11px] font-bold text-stone-700 shadow backdrop-blur dark:bg-stone-900/90 dark:text-stone-200">
               {league.format} • {league.approvedTeams}/{league.maxTeams} squads
@@ -249,22 +254,35 @@ export default function LeagueDetailPage({ params }: { params: Promise<{ id: str
             )}
           </section>
 
-          {/* Table */}
-          <section className="rounded-3xl border border-[#F0E3CC] bg-white p-5 shadow-sm dark:border-white/10 dark:bg-stone-900">
-            <h2 className="flex items-center gap-2 text-xs font-black uppercase tracking-widest text-emerald-700 dark:text-emerald-400">
-              <Trophy className="h-3.5 w-3.5" /> League table
-            </h2>
-            <div className="mt-3">
-              {league.viewer?.canSeeInside || league.visibility === "public" ? (
-                <LeagueTable standings={league.standings} highlightTeamIds={myTeamIds} />
-              ) : (
-                <p className="flex items-center gap-2 rounded-2xl border border-dashed border-amber-300 px-4 py-6 text-xs font-bold text-amber-700 dark:border-amber-500/30 dark:text-amber-300">
-                  <Lock className="h-3.5 w-3.5" /> The table is inside the league — ask the host for an
-                  invitation.
-                </p>
-              )}
-            </div>
-          </section>
+          {/* The bracket, when that's the shape of the competition 🥊 */}
+          {modeHasBracket(league.mode) &&
+            (league.viewer?.canSeeInside || league.visibility === "public") && (
+              <LeagueBracket
+                league={league}
+                hostId={user?.id ?? 0}
+                isHost={isHost}
+                onChanged={load}
+              />
+            )}
+
+          {/* Table — a round robin has one; a knockout's standings *are* the bracket */}
+          {!modeHasBracket(league.mode) && (
+            <section className="rounded-3xl border border-[#F0E3CC] bg-white p-5 shadow-sm dark:border-white/10 dark:bg-stone-900">
+              <h2 className="flex items-center gap-2 text-xs font-black uppercase tracking-widest text-emerald-700 dark:text-emerald-400">
+                <Trophy className="h-3.5 w-3.5" /> League table
+              </h2>
+              <div className="mt-3">
+                {league.viewer?.canSeeInside || league.visibility === "public" ? (
+                  <LeagueTable standings={league.standings} highlightTeamIds={myTeamIds} />
+                ) : (
+                  <p className="flex items-center gap-2 rounded-2xl border border-dashed border-amber-300 px-4 py-6 text-xs font-bold text-amber-700 dark:border-amber-500/30 dark:text-amber-300">
+                    <Lock className="h-3.5 w-3.5" /> The table is inside the league — ask the host for
+                    an invitation.
+                  </p>
+                )}
+              </div>
+            </section>
+          )}
 
           {/* Fixtures */}
           {league.viewer?.canSeeInside || league.visibility === "public" ? (

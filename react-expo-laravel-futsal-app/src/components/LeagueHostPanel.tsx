@@ -391,18 +391,33 @@ export function LeagueHostPanel({
                     refundedAmount={e.refundedAmount}
                     depositPercent={league.depositPercent}
                     refundPercent={league.refundPercent}
+                    locked={e.payment.locked}
                   />
+                  {e.payment.locked && (
+                    <span className="mt-0.5 block text-[10px] font-semibold text-stone-400 dark:text-stone-500">
+                      🔒 They&apos;ve played — nothing is refundable on the way out.
+                    </span>
+                  )}
                 </div>
                 <div className="flex items-center gap-1.5">
                   {e.status === TEAM_APPROVED && (
                     <button
                       onClick={() =>
-                        void act(`withdraw-${e.teamId}`, { action: "withdraw", teamId: e.teamId })
+                        void act(`withdraw-${e.teamId}`, {
+                          action: "withdraw",
+                          hostId,
+                          teamId: e.teamId,
+                        })
                       }
                       disabled={busy !== ""}
                       className="flex items-center gap-1 rounded-xl border border-stone-200 px-3 py-1.5 text-[10px] font-black text-stone-500 transition hover:bg-stone-100 dark:border-white/10 dark:text-stone-400"
                     >
-                      <UserX className="h-3 w-3" /> Remove &amp; refund {league.refundPercent}%
+                      <UserX className="h-3 w-3" />
+                      {/* A squad that has played can be taken out, but their money
+                          stays — the refund died at the first kick-off. */}
+                      {e.payment.locked
+                        ? "Remove (no refund)"
+                        : `Remove & refund ${league.refundPercent}%`}
                     </button>
                   )}
                 </div>

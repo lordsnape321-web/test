@@ -13,7 +13,7 @@ import {
   Trophy,
 } from "lucide-react";
 import type { LeagueDetail, LeagueMatchRow } from "@/lib/league-store";
-import { LEAGUE_ROUNDS, leagueDateLabel } from "@/lib/league";
+import { LEAGUE_ROUNDS, leagueDateLabel, leagueModeLabel, modeHasBracket } from "@/lib/league";
 import { formatTime12, initials } from "@/lib/futsal";
 
 /**
@@ -49,6 +49,12 @@ export function LeagueFixtures({
   const [scores, setScores] = useState<Record<number, { home: string; away: string }>>({});
 
   const squads = league.teams;
+  const modeInfo = leagueModeLabel(league.mode);
+  const drawLabel = modeHasBracket(league.mode)
+    ? league.mode === "group_knockout"
+      ? "Draw groups + bracket"
+      : "Draw the bracket"
+    : "Draw the round robin";
   const { upcoming, results } = useMemo(() => {
     const played = league.matches.filter((m) => m.homeScore !== null && m.awayScore !== null);
     const rest = league.matches.filter((m) => m.homeScore === null || m.awayScore === null);
@@ -96,6 +102,9 @@ export function LeagueFixtures({
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="flex items-center gap-2 text-xs font-black uppercase tracking-widest text-emerald-700 dark:text-emerald-400">
           <Trophy className="h-3.5 w-3.5" /> Fixtures &amp; results
+          <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[10px] font-black text-orange-700 dark:bg-orange-500/15 dark:text-orange-300">
+            {modeInfo.emoji} {modeInfo.label}
+          </span>
           <span className="rounded-full bg-stone-100 px-2 py-0.5 text-[10px] font-black text-stone-500 dark:bg-white/10 dark:text-stone-300">
             {league.playedMatches}/{league.totalMatches || 0} played
           </span>
@@ -112,7 +121,7 @@ export function LeagueFixtures({
               ) : (
                 <Shuffle className="h-3.5 w-3.5" />
               )}
-              Draw the round robin
+              {drawLabel}
             </button>
             <button
               onClick={() => setShowAdd((v) => !v)}
@@ -213,7 +222,11 @@ export function LeagueFixtures({
         <p className="mt-3 rounded-2xl border border-dashed border-stone-300 px-4 py-6 text-center text-xs font-bold text-stone-400 dark:border-white/10 dark:text-stone-500">
           No fixtures yet.{" "}
           {isHost
-            ? "Draw the round robin and every squad plays every other once."
+            ? league.mode === "knockout"
+              ? "Draw the bracket and every round appears, byes included."
+              : league.mode === "group_knockout"
+                ? "Draw the groups and the bracket — the knockout fills itself as the groups finish."
+                : "Draw the round robin and every squad plays every other once."
             : "The host will publish the calendar soon."}
         </p>
       )}
@@ -261,7 +274,23 @@ export function LeagueFixtures({
               )}
             </div>
 
-            {isHost && (
+            {isHost && m.bracketRound > 0 && (m.homeTeamId === 0 || m.awayTeamId === 0) && (
+              <p className="mt-2 rounded-xl bg-stone-50 px-3 py-2 text-[11px] font-bold text-stone-400 dark:bg-white/5 dark:text-stone-500">
+                ⏳ Waiting on the game before it — the squad lands here as soon as that result is in.
+              </p>
+            )}
+
+            {isHost && m.bracketRound > 0 && m.homeTeamId > 0 && m.awayTeamId > 0 && (
+              <ScheduleRow
+                match={m}
+                busy={busy === `schedule-${m.id}`}
+                onSave={(date, startTime) =>
+                  void post({ action: "schedule", matchId: m.id, date, startTime }, `schedule-${m.id}`)
+                }
+              />
+            )}
+
+            {isHost && m.homeTeamId > 0 && m.awayTeamId > 0 && (
               <div className="mt-2 flex flex-wrap items-center gap-2">
                 <input
                   type="number"
@@ -403,6 +432,52 @@ export function LeagueFixtures({
           {league.matchDays ? ` • ${league.matchDays}` : ""}
         </p>
       )}
+    </div>
+  );
+}
+
+/**
+ * A kick-off time for one bracket game ⏰
+ *
+ * A drawn bracket arrives with the shape but no clock — the host decides which
+ * round plays on which Saturday, and can do it before the slots are full, so
+ * "Semi-final 2, Sunday 9 AM" can be on the fixture list while it still reads
+ * "Winner Group A".
+ */
+function ScheduleRow({
+  match,
+  busy,
+  onSave,
+}: {
+  match: LeagueMatchRow;
+  busy: boolean;
+  onSave: (date: string, startTime: string) => void;
+}) {
+  const [date, setDate] = useState(match.date);
+  const [startTime, setStartTime] = useState(match.startTime);
+  const changed = date !== match.date || startTime !== match.startTime;
+
+  return (
+    <div className="mt-2 flex flex-wrap items-center gap-1.5">
+      <input
+        type="date"
+        value={date}
+        onChange={(e) => setDate(e.target.value)}
+        className="rounded-xl border border-[#F0E3CC] px-2 py-1 text-[11px] font-bold dark:border-white/10 dark:bg-stone-950 dark:text-stone-100"
+      />
+      <input
+        type="time"
+        value={startTime}
+        onChange={(e) => setStartTime(e.target.value)}
+        className="rounded-xl border border-[#F0E3CC] px-2 py-1 text-[11px] font-bold dark:border-white/10 dark:bg-stone-950 dark:text-stone-100"
+      />
+      <button
+        onClick={() => onSave(date, startTime)}
+        disabled={busy || !changed || (!date && !startTime)}
+        className="rounded-xl border border-stone-200 px-3 py-1 text-[11px] font-black text-stone-600 transition hover:bg-stone-100 disabled:opacity-40 dark:border-white/10 dark:text-stone-300 dark:hover:bg-white/5"
+      >
+        {busy ? "Saving…" : changed ? "Set kick-off 📅" : "Kick-off set ✓"}
+      </button>
     </div>
   );
 }
