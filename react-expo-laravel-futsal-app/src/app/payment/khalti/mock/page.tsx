@@ -11,8 +11,13 @@ function Inner() {
   const router = useRouter();
   const pidx = params.get("pidx") ?? "";
   const bookingId = params.get("bookingId") ?? "";
+  // League entries check out here too, carrying league + squad instead of a
+  // booking.
+  const leagueId = params.get("leagueId") ?? "";
+  const teamId = params.get("teamId") ?? "";
   const amount = Number(params.get("amount") ?? 0);
   const fallback = params.get("fallback") ?? "";
+  const isLeague = !!leagueId && !!teamId;
   const [busy, setBusy] = useState<"pay" | "cancel" | null>(null);
   const [error, setError] = useState("");
 
@@ -20,13 +25,31 @@ function Inner() {
     setBusy("pay");
     setError("");
     try {
-      const res = await fetch("/api/payments/khalti/verify", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ pidx, bookingId: Number(bookingId), mockApprove: true }),
-      });
+      const res = await fetch(
+        isLeague ? `/api/tournaments/${leagueId}/payments` : "/api/payments/khalti/verify",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(
+            isLeague
+              ? {
+                  action: "verify",
+                  mockApprove: true,
+                  userId: Number(params.get("userId") ?? 0),
+                  teamId: Number(teamId),
+                  amount,
+                  method: "Khalti",
+                }
+              : { pidx, bookingId: Number(bookingId), mockApprove: true }
+          ),
+        }
+      );
       const j = await res.json();
       if (!res.ok || !j.ok) throw new Error(j.error || "Mock payment failed");
+      if (isLeague) {
+        router.push(`/leagues/${leagueId}?paid=1`);
+        return;
+      }
       router.push(`/payment/khalti/callback?pidx=${encodeURIComponent(pidx)}&bookingId=${bookingId}&status=Completed&mock=1`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed");

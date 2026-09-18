@@ -10,9 +10,14 @@ function Inner() {
   const params = useSearchParams();
   const router = useRouter();
   const bookingId = params.get("bookingId") ?? "";
+  // A league entry pays through the same checkout — it just carries league and
+  // squad ids instead of a booking id, and settles on the league page.
+  const leagueId = params.get("leagueId") ?? "";
+  const teamId = params.get("teamId") ?? "";
   const amount = Number(params.get("amount") ?? 0);
   const uuid = params.get("uuid") ?? "";
   const reason = params.get("reason") ?? "";
+  const isLeague = !!leagueId && !!teamId;
   const [busy, setBusy] = useState<"pay" | null>(null);
   const [error, setError] = useState("");
 
@@ -20,13 +25,31 @@ function Inner() {
     setBusy("pay");
     setError("");
     try {
-      const res = await fetch("/api/payments/esewa/verify", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mockApprove: true, bookingId: Number(bookingId) }),
-      });
+      const res = await fetch(
+        isLeague ? `/api/tournaments/${leagueId}/payments` : "/api/payments/esewa/verify",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(
+            isLeague
+              ? {
+                  action: "verify",
+                  mockApprove: true,
+                  userId: Number(params.get("userId") ?? 0),
+                  teamId: Number(teamId),
+                  amount,
+                  method: "eSewa",
+                }
+              : { mockApprove: true, bookingId: Number(bookingId) }
+          ),
+        }
+      );
       const j = await res.json();
       if (!res.ok || !j.ok) throw new Error(j.error || "Mock payment failed");
+      if (isLeague) {
+        router.push(`/leagues/${leagueId}?paid=1`);
+        return;
+      }
       router.push(`/payment/esewa/success?mock=1&bookingId=${bookingId}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed");
@@ -54,7 +77,8 @@ function Inner() {
               {formatNPR(Number.isFinite(amount) ? amount : 0)}
             </p>
             <p className="mt-1 font-mono text-[11px] text-emerald-500">
-              {uuid ? `uuid: ${uuid.slice(0, 26)}… • ` : ""}booking #{bookingId}
+              {uuid ? `uuid: ${uuid.slice(0, 26)}… • ` : ""}
+            {isLeague ? `league #${leagueId} • squad #${teamId}` : `booking #${bookingId}`}
             </p>
           </div>
           {reason && (
@@ -78,7 +102,9 @@ function Inner() {
             {busy === "pay" ? "Processing…" : `Pay ${formatNPR(Number.isFinite(amount) ? amount : 0)}`}
           </button>
           <button
-            onClick={() => router.push(`/payment/esewa/failure?bookingId=${bookingId}`)}
+            onClick={() =>
+              router.push(isLeague ? `/leagues/${leagueId}` : `/payment/esewa/failure?bookingId=${bookingId}`)
+            }
             disabled={busy !== null}
             className="flex w-full items-center justify-center gap-2 rounded-2xl border border-stone-200 py-3 text-sm font-black text-stone-500"
           >

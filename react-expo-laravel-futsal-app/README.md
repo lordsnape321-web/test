@@ -217,6 +217,23 @@ One wrinkle worth knowing: a squad that backs out, takes its refund and then re-
 old `refundedAmount` on its entry row, so `paymentState()` takes the entry `status` and only reads
 **Backed out — part refunded** when the squad really is withdrawn.
 
+**Paying the entry fee.** A squad entering a league picks a medium the same way a player booking a
+pitch does — 💚 eSewa, 💜 Khalti or 💵 Cash at venue (`payMethod` on `tournament_teams`). Online
+picks go out to a checkout: `action: "initiate"` on the payments route returns eSewa's signed
+form-post fields or Khalti's `payment_url`, with a league-aware reference (`LG-{league}-{team}-…`
+from `makeLeagueEsewaUuid`/`makeLeagueKhaltiOrder`, so a callback can never be confused with a
+booking's) and the same local-simulator fallback the booking gateways have. When the checkout comes
+back, `action: "verify"` writes the ledger row, stores the gateway txn, and — because paying the
+deposit *is* accepting an invitation — flips an invited squad to approved. Cash moves nothing here:
+the host records it, and the captain can attach a screenshot (`action: "receipt"`) that the host
+opens from the entry desk before approving.
+
+**No amount may exceed what is owed.** The entry fee is a ceiling in three places, because the
+ledger, the deposit gate and the 10% refund maths all believe whatever lands in `paidAmount`:
+`clampAmountInput()` in `src/lib/league.ts` keeps the host's "Record cash" box inside the remaining
+balance as you type, `action: "record"` refuses more than the squad owes (`400`), and
+`action: "pay"` has always refused it too. An entry that is settled has nothing left to record.
+
 **Adding a fixture.** The host's "Add a fixture" form lists the approved squads twice — home and
 away — and each list hides whoever is already picked on the other side, so a squad can't be
 selected against itself. The server refuses that anyway (`400 A squad can't play itself 🙂`), but

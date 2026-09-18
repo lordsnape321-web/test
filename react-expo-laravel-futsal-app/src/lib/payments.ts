@@ -151,6 +151,34 @@ export function parseBookingIdFromKhaltiOrder(orderId: string): number | null {
   return Number.isInteger(id) && id > 0 ? id : null;
 }
 
+/* ------------------------------------------------- league entry references */
+
+/**
+ * A league entry is paid by a *squad in a league*, not by a booking, so its
+ * gateway reference carries both ids — and a different prefix, so a league
+ * callback can never be mistaken for a booking one.
+ */
+export function makeLeagueEsewaUuid(leagueId: number, teamId: number) {
+  const rand = randomUUID().replace(/-/g, "").slice(0, 8);
+  return `LG-${leagueId}-${teamId}-${Date.now().toString(36)}-${rand}`;
+}
+
+export function makeLeagueKhaltiOrder(leagueId: number, teamId: number) {
+  const rand = randomUUID().replace(/-/g, "").slice(0, 6);
+  return `LG-${leagueId}-${teamId}-${Date.now().toString(36)}-${rand}`;
+}
+
+/** `LG-4-2-…` -> `{ leagueId: 4, teamId: 2 }`, or null for anything else. */
+export function parseLeagueRef(ref: string): { leagueId: number; teamId: number } | null {
+  const m = /^LG-(\d+)-(\d+)-/.exec(ref || "");
+  if (!m) return null;
+  const leagueId = Number(m[1]);
+  const teamId = Number(m[2]);
+  return Number.isInteger(leagueId) && leagueId > 0 && Number.isInteger(teamId) && teamId > 0
+    ? { leagueId, teamId }
+    : null;
+}
+
 export async function khaltiInitiate(opts: {
   secretKey: string;
   initiateUrl: string;

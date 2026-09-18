@@ -8,6 +8,7 @@ import {
   Check,
   Coins,
   Crown,
+  Eye,
   Loader2,
   Send,
   Settings,
@@ -21,11 +22,13 @@ import {
   TEAM_APPROVED,
   TEAM_INVITED,
   TEAM_REQUESTED,
+  clampAmountInput,
   entryStatusLabel,
 } from "@/lib/league";
 import { formatNPR } from "@/lib/futsal";
 import { timeAgo } from "./NotificationBell";
 import { PaymentLine } from "./LeagueCard";
+import { ReceiptViewer } from "./ReceiptUploader";
 
 type TeamOption = { id: number; name: string; teamCode: string; captainName: string };
 
@@ -54,6 +57,7 @@ export function LeagueHostPanel({
   const [inviteNote, setInviteNote] = useState("");
   const [inviteMatches, setInviteMatches] = useState<TeamOption[]>([]);
   const [recordFor, setRecordFor] = useState<number | null>(null);
+  const [viewReceipt, setViewReceipt] = useState("");
   const [cashAmount, setCashAmount] = useState("");
 
   const entries = league.allTeams;
@@ -203,9 +207,31 @@ export function LeagueHostPanel({
                         <PaymentLine
                           entryFee={league.entryFee}
                           paidAmount={e.paidAmount}
+                          refundedAmount={e.refundedAmount}
                           depositPercent={league.depositPercent}
+                          refundPercent={league.refundPercent}
+                          locked={e.payment.locked}
                         />
                       </p>
+                      {/* How they're paying, and the proof if they attached any —
+                          which is what a host looks at before tapping Approve. */}
+                      {(e.payMethod || e.receiptUrl) && (
+                        <p className="mt-1 flex flex-wrap items-center gap-2 text-[11px] font-bold text-stone-500 dark:text-stone-400">
+                          {e.payMethod && (
+                            <span className="rounded-lg bg-stone-100 px-2 py-0.5 font-black text-stone-600 dark:bg-white/10 dark:text-stone-300">
+                              {e.payMethod === "eSewa" ? "💚" : e.payMethod === "Khalti" ? "💜" : "💵"} {e.payMethod}
+                            </span>
+                          )}
+                          {e.receiptUrl && (
+                            <button
+                              onClick={() => setViewReceipt(e.receiptUrl)}
+                              className="flex items-center gap-1 rounded-lg border border-emerald-300 px-2 py-0.5 font-black text-emerald-700 transition hover:bg-emerald-50 dark:border-emerald-500/40 dark:text-emerald-300"
+                            >
+                              <Eye className="h-3 w-3" /> Payment screenshot
+                            </button>
+                          )}
+                        </p>
+                      )}
                     </div>
                     <div className="flex flex-wrap items-center gap-1.5">
                       <button
@@ -247,14 +273,22 @@ export function LeagueHostPanel({
 
                   {recordFor === e.teamId && (
                     <div className="mt-2 flex flex-wrap items-center gap-2 rounded-xl bg-[#FFF6E9] p-2.5 dark:bg-white/5">
+                      {/* Capped at what this squad still owes: a host counting
+                          cash shouldn't be able to key in more than the entry
+                          fee, because the ledger and the refund maths both
+                          believe this number. */}
                       <input
                         type="number"
                         min={1}
+                        max={Math.max(0, e.payment.due)}
                         value={cashAmount}
-                        onChange={(ev) => setCashAmount(ev.target.value)}
-                        placeholder={`Amount (deposit ${formatNPR(e.payment.deposit)})`}
+                        onChange={(ev) => setCashAmount(clampAmountInput(ev.target.value, e.payment.due))}
+                        placeholder={`Up to ${formatNPR(Math.max(0, e.payment.due))} owed`}
                         className="min-w-[10rem] flex-1 rounded-xl border border-[#F0E3CC] bg-white px-3 py-2 text-xs font-semibold dark:border-white/10 dark:bg-stone-950 dark:text-stone-100"
                       />
+                      <span className="text-[10px] font-black uppercase tracking-wider text-stone-400 dark:text-stone-500">
+                        {formatNPR(Math.max(0, e.payment.due))} owed of {formatNPR(league.entryFee)}
+                      </span>
                       <button
                         onClick={() =>
                           void act(
@@ -262,7 +296,8 @@ export function LeagueHostPanel({
                             {
                               action: "record",
                               teamId: e.teamId,
-                              amount: Number(cashAmount) || e.payment.deposit,
+                              amount:
+                                Number(clampAmountInput(cashAmount, e.payment.due)) || e.payment.deposit,
                               method: "Cash at Venue",
                             },
                             `/api/tournaments/${league.id}/payments`
@@ -468,6 +503,8 @@ export function LeagueHostPanel({
           </ul>
         )}
       </div>
+
+      {viewReceipt && <ReceiptViewer url={viewReceipt} onClose={() => setViewReceipt("")} />}
     </div>
   );
 }

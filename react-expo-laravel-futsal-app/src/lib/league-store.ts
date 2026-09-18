@@ -110,6 +110,9 @@ export type LeagueTeamRow = {
   requestedBy: number;
   paidAmount: number;
   refundedAmount: number;
+  /** The medium the captain picked to pay by, and any proof they attached. */
+  payMethod: string;
+  receiptUrl: string;
   payment: PaymentState;
   createdAt: string | null;
   decidedAt: string | null;
@@ -485,6 +488,8 @@ export async function leagueDetail(
       requestedBy: e.requestedBy,
       paidAmount: e.paidAmount,
       refundedAmount: e.refundedAmount,
+      payMethod: e.payMethod,
+      receiptUrl: e.receiptUrl,
       payment: paymentState({
         entryFee: t.entryFee,
         paidAmount: e.paidAmount,

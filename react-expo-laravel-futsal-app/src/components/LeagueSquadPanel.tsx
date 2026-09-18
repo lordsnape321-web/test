@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import {
+  Banknote,
   Check,
   Coins,
   Loader2,
@@ -10,12 +11,17 @@ import {
   Send,
   ShieldCheck,
   Trophy,
+  Wallet,
   X,
 } from "lucide-react";
 import type { LeagueDetail } from "@/lib/league-store";
 import { TEAM_APPROVED, TEAM_INVITED, TEAM_REQUESTED, entryStatusLabel } from "@/lib/league";
 import { formatNPR } from "@/lib/futsal";
 import { PaymentLine } from "./LeagueCard";
+import { ReceiptUploader, isOnlineMethod } from "./ReceiptUploader";
+
+/** The three media a booking offers — a league entry is the same money. */
+const LEAGUE_PAY_METHODS = ["eSewa", "Khalti", "Cash at Venue"];
 
 type CaptainTeam = { id: number; name: string; logoColor: string; role: string };
 
@@ -38,6 +44,10 @@ export function LeagueSquadPanel({
 }) {
   const [myTeams, setMyTeams] = useState<CaptainTeam[]>([]);
   const [busy, setBusy] = useState("");
+  // Which wallet the captain reaches for, per squad — the same choice a
+  // booking asks for, and it sticks while they're on the page.
+  const [methodByTeam, setMethodByTeam] = useState<Record<number, string>>({});
+  const [receiptByTeam, setReceiptByTeam] = useState<Record<number, string>>({});
   const [note, setNote] = useState("");
   const [msg, setMsg] = useState("");
   const [err, setErr] = useState("");
@@ -92,14 +102,63 @@ export function LeagueSquadPanel({
     }
   }
 
+  const methodFor = (teamId: number) => methodByTeam[teamId] ?? "eSewa";
+  const receiptFor = (teamId: number) => receiptByTeam[teamId] ?? "";
+
+  /**
+   * Pay through the medium the captain picked 💳
+   *
+   * eSewa comes back as a form to post, Khalti as a URL to follow — exactly
+   * what a booking does. Cash at venue moves no money here: the host records
+   * it when they take it, and the screenshot is what bridges the gap.
+   */
   async function pay(teamId: number, amount: number, settleAll: boolean) {
-    await act(`pay-${teamId}`, {
-      action: "pay",
+    const method = methodFor(teamId);
+    if (!isOnlineMethod(method)) {
+      setMsg("Hand the cash to the host at the ground and they'll mark it on your entry 💵");
+      setErr("");
+      return;
+    }
+    setBusy(`pay-${teamId}`);
+    setMsg("");
+    setErr("");
+    try {
+      const res = await fetch(`/api/tournaments/${league.id}/payments`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "initiate",
+          userId: viewerId,
+          teamId,
+          amount,
+          method,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(String(data.error ?? "That didn't work 🙏"));
+
+      if (method === "eSewa") {
+        // The simulator is the one that works in a sandbox with no route to
+        // rc-epay.esewa.com.np; the real checkout is a form-post away.
+        window.location.href = String(data.mockUrl ?? data.url);
+        return;
+      }
+      window.location.href = String(data.payment_url);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "That didn't work 🙏");
+      setBusy("");
+    }
+  }
+
+  /** Save the screenshot on its own, for cash payers and early transfers. */
+  async function saveReceipt(teamId: number, dataUrl: string) {
+    setReceiptByTeam((m) => ({ ...m, [teamId]: dataUrl }));
+    await act(`receipt-${teamId}`, {
+      action: "receipt",
       userId: viewerId,
       teamId,
-      amount,
-      method: "eSewa",
-      reference: settleAll ? "Full settlement" : "Deposit",
+      receiptUrl: dataUrl,
+      payMethod: methodFor(teamId),
     }, `/api/tournaments/${league.id}/payments`);
   }
 
@@ -172,6 +231,58 @@ export function LeagueSquadPanel({
                   />
                 )}
               </div>
+
+              {/* ------------------------------------------------ pay your way */}
+              {/* A squad joining a league picks a medium exactly like a player
+                  booking a pitch does — same three, same wording. */}
+              {isCaptain && !closed && league.entryFee > 0 && entry && entry.status !== "withdrawn" && (
+                <div className="mt-3 rounded-2xl border border-[#F0E3CC] bg-[#FFFDF7] p-3 dark:border-white/10 dark:bg-white/5">
+                  <p className="text-[10px] font-black uppercase tracking-wider text-stone-400 dark:text-stone-500">
+                    Pay your way — {league.entryFee > 0 ? `${formatNPR(league.entryFee)} entry` : ""}
+                    {entry.payment.due > 0 ? ` • ${formatNPR(entry.payment.due)} left` : " • settled"}
+                  </p>
+                  <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-3">
+                    {LEAGUE_PAY_METHODS.map((m) => {
+                      const on = methodFor(team.id) === m;
+                      return (
+                        <button
+                          key={m}
+                          onClick={() => setMethodByTeam((map) => ({ ...map, [team.id]: m }))}
+                          className={`flex items-center gap-1.5 rounded-xl border px-3 py-2.5 text-xs font-extrabold transition ${
+                            on
+                              ? "border-emerald-500 bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300"
+                              : "border-stone-200 bg-stone-50 text-stone-500 dark:border-white/10 dark:bg-white/5 dark:text-stone-400"
+                          }`}
+                        >
+                          <Wallet className="h-3.5 w-3.5" /> {m}
+                          {m === "eSewa" ? " 💚" : m === "Khalti" ? " 💜" : " 💵"}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <p className="mt-1.5 text-[11px] font-semibold text-stone-400 dark:text-stone-500">
+                    {isOnlineMethod(methodFor(team.id))
+                      ? `You'll be taken to the ${methodFor(team.id)} checkout — nothing is charged until you confirm there.`
+                      : "Cash goes to the host at the ground. They mark it on your entry, so bring the exact amount."}
+                  </p>
+                  {entry.payment.due > 0 && (
+                    <details className="mt-2 rounded-xl border border-stone-200 p-2.5 dark:border-white/10">
+                      <summary className="cursor-pointer text-[11px] font-black text-stone-500 dark:text-stone-400">
+                        {entry.payment.paid > 0 || receiptFor(team.id)
+                          ? "Replace the payment screenshot 🧾"
+                          : "Already paid? Attach a screenshot instead (optional) 🧾"}
+                      </summary>
+                      <div className="mt-2">
+                        <ReceiptUploader
+                          value={receiptFor(team.id)}
+                          onChange={(dataUrl) => void saveReceipt(team.id, dataUrl)}
+                          compact
+                        />
+                      </div>
+                    </details>
+                  )}
+                </div>
+              )}
 
               {isCaptain && !closed && (
                 <div className="mt-3 flex flex-wrap items-center gap-2">

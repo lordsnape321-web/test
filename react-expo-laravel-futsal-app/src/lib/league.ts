@@ -1015,3 +1015,30 @@ export function daysUntil(iso: string, now: Date = new Date()): number | null {
   today.setHours(0, 0, 0, 0);
   return Math.round((d.getTime() - today.getTime()) / 86400000);
 }
+
+/* ----------------------------------------------------- what may be typed in */
+
+/**
+ * Keep a payment box inside what the squad actually owes 💰
+ *
+ * Both the host's "Record cash" field and a captain's amount field run through
+ * this: an entry fee is a ceiling, not a suggestion, and the ledger, the
+ * deposit gate and the 10% refund maths all believe whatever lands in
+ * `paidAmount`. Typing four thousand on a two thousand entry would quietly
+ * make all three of them wrong, so the box won't hold it — and the API refuses
+ * it again on the way in, because a browser can be talked into anything.
+ *
+ * Returns `""` for an empty box so a half-typed field stays editable.
+ */
+export function clampAmountInput(value: string, owed: number): string {
+  const ceiling = Math.max(0, Math.trunc(Number(owed) || 0));
+  const trimmed = String(value ?? "").trim();
+  if (trimmed === "") return "";
+  const n = Math.floor(Number(trimmed));
+  if (!Number.isFinite(n) || n <= 0) return "";
+  const clamped = Math.min(n, ceiling);
+  // Nothing owed means there is nothing to type — clear the box rather than
+  // parking a meaningless 0 in it.
+  if (clamped <= 0) return "";
+  return String(clamped);
+}

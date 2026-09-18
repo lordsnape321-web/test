@@ -356,6 +356,16 @@ export const tournamentTeams = pgTable("tournament_teams", {
   message: text("message").notNull().default(""),
   paidAmount: integer("paid_amount").notNull().default(0),
   refundedAmount: integer("refunded_amount").notNull().default(0),
+  /**
+   * How the captain wants to pay the entry fee — the same three media a booking
+   * offers, because a squad joining a league and a player booking a pitch are
+   * reaching for the same wallet. Empty until they pick one.
+   */
+  payMethod: text("pay_method").notNull().default(""),
+  /** Screenshot of an eSewa/Khalti transfer, so the host can see proof. */
+  receiptUrl: text("receipt_url").notNull().default(""),
+  /** What the gateway called the transfer, once there is one. */
+  gatewayTxnId: text("gateway_txn_id").notNull().default(""),
   decidedBy: integer("decided_by"),
   decidedAt: timestamp("decided_at"),
   createdAt: timestamp("created_at").defaultNow(),
