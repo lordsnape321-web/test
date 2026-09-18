@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { Bell } from "lucide-react";
+import { Bell, Check, CheckCheck, Loader2 } from "lucide-react";
 import { useUser } from "./UserProvider";
 
 type N = {
@@ -34,6 +34,8 @@ export function NotificationBell({ variant }: { variant: "dark" | "light" }) {
   const [items, setItems] = useState<N[]>([]);
   const [unread, setUnread] = useState(0);
   const [open, setOpen] = useState(false);
+  /** Which row is being ticked off — 0 for none, -1 for "all of them". */
+  const [marking, setMarking] = useState(0);
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
   const dark = variant === "dark";
 
@@ -59,6 +61,40 @@ export function NotificationBell({ variant }: { variant: "dark" | "light" }) {
   if (!user) return null;
 
   const allLink = isOwner ? "/admin/notifications" : "/notifications";
+
+  /** Tick one off without leaving the page — the dot goes, the bell count drops. */
+  async function markRead(id: number) {
+    setMarking(id);
+    setItems((list) => list.map((n) => (n.id === id ? { ...n, isRead: true } : n)));
+    setUnread((c) => Math.max(0, c - 1));
+    try {
+      await fetch(`/api/notifications/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isRead: true }),
+      });
+      await load();
+    } catch {}
+    setMarking(0);
+  }
+
+  /** The whole lot at once — what you want after a week away. */
+  async function markAllRead() {
+    const uid = user?.id ?? 0;
+    if (!uid) return;
+    setMarking(-1);
+    setItems((list) => list.map((n) => ({ ...n, isRead: true })));
+    setUnread(0);
+    try {
+      await fetch(`/api/notifications/read-all`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: uid }),
+      });
+      await load();
+    } catch {}
+    setMarking(0);
+  }
 
   return (
     <div className="relative">
@@ -91,13 +127,24 @@ export function NotificationBell({ variant }: { variant: "dark" | "light" }) {
                   </span>
                 )}
               </p>
-              <Link
-                href={allLink}
-                onClick={() => setOpen(false)}
-                className={`text-xs font-black ${dark ? "text-emerald-600 dark:text-emerald-400" : "text-orange-600 dark:text-orange-400"}`}
-              >
-                View all
-              </Link>
+              <span className="flex items-center gap-2.5">
+                {unread > 0 && (
+                  <button
+                    onClick={() => void markAllRead()}
+                    disabled={marking !== 0}
+                    className="flex items-center gap-1 text-xs font-black text-stone-500 transition hover:text-emerald-600 disabled:opacity-50 dark:text-stone-400 dark:hover:text-emerald-400"
+                  >
+                    <CheckCheck className="h-3.5 w-3.5" /> Mark all read
+                  </button>
+                )}
+                <Link
+                  href={allLink}
+                  onClick={() => setOpen(false)}
+                  className={`text-xs font-black ${dark ? "text-emerald-600 dark:text-emerald-400" : "text-orange-600 dark:text-orange-400"}`}
+                >
+                  View all
+                </Link>
+              </span>
             </div>
             <div className="max-h-[55vh] overflow-y-auto sm:max-h-[340px]">
               {items.length === 0 && (
@@ -106,36 +153,55 @@ export function NotificationBell({ variant }: { variant: "dark" | "light" }) {
                 </p>
               )}
               {items.map((n) => (
-                <button
-                  key={n.id}
-                  onClick={async () => {
-                    try {
-                      await fetch(`/api/notifications/${n.id}`, {
-                        method: "PATCH",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ isRead: true }),
-                      });
-                    } catch {}
-                    setOpen(false);
-                    window.location.href = n.link || allLink;
-                  }}
-                  className={`block w-full border-b border-stone-50 px-4 py-3 text-left transition last:border-0 hover:bg-orange-50/60 dark:border-white/5 dark:hover:bg-orange-500/10 ${
-                    n.isRead ? "" : "bg-orange-50/50 dark:bg-orange-500/10"
-                  }`}
-                >
-                  <p className="text-[13px] font-bold leading-snug text-stone-900 dark:text-stone-100">
-                    {!n.isRead && <span className="mr-1.5 inline-block h-2 w-2 rounded-full bg-red-500" />}
-                    {n.title}
-                  </p>
-                  {n.message && (
-                    <p className="mt-0.5 line-clamp-2 text-xs leading-relaxed text-stone-500 dark:text-stone-400">
-                      {n.message}
+                // A row holds two actions — open it, or just tick it off — and a
+                // button inside a button is invalid HTML, so the tick sits beside
+                // the row rather than within it.
+                <div key={n.id} className="relative border-b border-stone-50 last:border-0 dark:border-white/5">
+                  <button
+                    onClick={async () => {
+                      try {
+                        await fetch(`/api/notifications/${n.id}`, {
+                          method: "PATCH",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ isRead: true }),
+                        });
+                      } catch {}
+                      setOpen(false);
+                      window.location.href = n.link || allLink;
+                    }}
+                    className={`block w-full py-3 pl-4 pr-11 text-left transition hover:bg-orange-50/60 dark:hover:bg-orange-500/10 ${
+                      n.isRead ? "" : "bg-orange-50/50 dark:bg-orange-500/10"
+                    }`}
+                  >
+                    <p className="text-[13px] font-bold leading-snug text-stone-900 dark:text-stone-100">
+                      {!n.isRead && <span className="mr-1.5 inline-block h-2 w-2 rounded-full bg-red-500" />}
+                      {n.title}
                     </p>
+                    {n.message && (
+                      <p className="mt-0.5 line-clamp-2 text-xs leading-relaxed text-stone-500 dark:text-stone-400">
+                        {n.message}
+                      </p>
+                    )}
+                    <p className="mt-1 text-[11px] font-semibold text-stone-400 dark:text-stone-500">
+                      {timeAgo(n.createdAt)}
+                    </p>
+                  </button>
+                  {!n.isRead && (
+                    <button
+                      onClick={() => void markRead(n.id)}
+                      disabled={marking !== 0}
+                      title="Mark as read"
+                      aria-label={`Mark "${n.title}" as read`}
+                      className="absolute right-2.5 top-3 grid h-7 w-7 place-items-center rounded-lg text-stone-400 transition hover:bg-emerald-100 hover:text-emerald-700 disabled:opacity-50 dark:text-stone-500 dark:hover:bg-emerald-500/15 dark:hover:text-emerald-300"
+                    >
+                      {marking === n.id ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <Check className="h-4 w-4" />
+                      )}
+                    </button>
                   )}
-                  <p className="mt-1 text-[11px] font-semibold text-stone-400 dark:text-stone-500">
-                    {timeAgo(n.createdAt)}
-                  </p>
-                </button>
+                </div>
               ))}
             </div>
           </div>

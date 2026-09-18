@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Building2, Plus, Power, Star, MapPin, Pencil, MessageCircleHeart, Wallet, ShieldCheck } from "lucide-react";
+import { Building2, Plus, Power, Star, MapPin, Pencil, MessageCircleHeart, Wallet, ShieldCheck, Trash2, Loader2 } from "lucide-react";
 import { useUser } from "@/components/UserProvider";
 import { OwnerGuard } from "@/components/OwnerGuard";
 import { ImagePicker } from "@/components/ImagePicker";
@@ -144,6 +144,12 @@ export default function OwnerVenuesPage() {
   const [savingVenue, setSavingVenue] = useState(false);
   const [editError, setEditError] = useState("");
 
+  // Retiring a venue is one-way from the studio, so it asks for the name back.
+  const [deleteTarget, setDeleteTarget] = useState<Venue | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState("");
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
+
   // Add / edit court (full details)
   const [showCourt, setShowCourt] = useState(false);
   const [editingCourt, setEditingCourt] = useState<Court | null>(null);
@@ -164,6 +170,29 @@ export default function OwnerVenuesPage() {
     const data = await res.json();
     setVenues(data.venues ?? []);
   };
+
+  /** Retire the venue — soft delete, so the history stays. */
+  async function confirmDeleteVenue() {
+    if (!deleteTarget || !user) return;
+    setDeleting(true);
+    setDeleteError("");
+    try {
+      const res = await fetch(`/api/venues/${deleteTarget.id}`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ownerId: user.id }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(String(data.error ?? "Couldn't retire the venue 🙏"));
+      setDeleteTarget(null);
+      setDeleteConfirm("");
+      await load();
+    } catch (e) {
+      setDeleteError(e instanceof Error ? e.message : "Couldn't retire the venue 🙏");
+    } finally {
+      setDeleting(false);
+    }
+  }
 
   const loadReviews = async (venueId: number) => {
     try {
@@ -526,6 +555,17 @@ export default function OwnerVenuesPage() {
                         className="flex items-center gap-1.5 rounded-xl bg-white px-4 py-2.5 text-xs font-black text-slate-900 transition hover:bg-slate-100 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700"
                       >
                         <Plus className="h-3.5 w-3.5" strokeWidth={3} /> Add court
+                      </button>
+                      <button
+                        onClick={() => {
+                          setDeleteTarget(active);
+                          setDeleteConfirm("");
+                          setDeleteError("");
+                        }}
+                        title="Retire this venue"
+                        className="flex items-center gap-1.5 rounded-xl border border-red-300 px-4 py-2.5 text-xs font-black text-red-600 transition hover:bg-red-50 dark:border-red-500/40 dark:text-red-400 dark:hover:bg-red-500/10"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" /> Delete
                       </button>
                     </div>
                   </div>
@@ -939,6 +979,62 @@ export default function OwnerVenuesPage() {
                   {savingCourt ? "Saving…" : editingCourt ? "Save court ✨" : "Add court ⚽"}
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* -------------------------------------------------- retire a venue */}
+      {deleteTarget && (
+        <div className="fixed inset-0 z-[70] grid place-items-center overflow-y-auto bg-slate-900/60 p-4 backdrop-blur-sm">
+          <div className="my-6 w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl dark:bg-slate-900">
+            <h3 className="flex items-center gap-2 text-lg font-black text-red-600 dark:text-red-400">
+              <Trash2 className="h-5 w-5" /> Retire {deleteTarget.name}?
+            </h3>
+            <p className="mt-2 text-xs leading-relaxed text-slate-500 dark:text-slate-400">
+              The venue leaves every listing and its courts stop taking bookings. Past bookings,
+              payments and reviews stay exactly where they are — nothing is erased.
+            </p>
+            <p className="mt-3 rounded-2xl bg-red-50 px-3.5 py-2.5 text-[11px] font-bold leading-relaxed text-red-700 dark:bg-red-500/10 dark:text-red-300">
+              This can&apos;t be undone from the studio. If any player still has a game to come,
+              you&apos;ll be asked to cancel or play those first.
+            </p>
+            <div className="mt-4">
+              <span className={labelCls}>
+                Type <b className="text-slate-700 dark:text-slate-200">{deleteTarget.name}</b> to
+                confirm
+              </span>
+              <input
+                value={deleteConfirm}
+                onChange={(e) => setDeleteConfirm(e.target.value)}
+                placeholder={deleteTarget.name}
+                className={inputCls}
+              />
+            </div>
+            {deleteError && (
+              <p className="mt-3 rounded-2xl bg-red-50 px-3.5 py-2.5 text-xs font-bold text-red-600 dark:bg-red-500/10 dark:text-red-400">
+                {deleteError}
+              </p>
+            )}
+            <div className="mt-4 grid grid-cols-2 gap-2">
+              <button
+                onClick={() => {
+                  setDeleteTarget(null);
+                  setDeleteConfirm("");
+                  setDeleteError("");
+                }}
+                disabled={deleting}
+                className="rounded-xl border border-slate-200 py-3 text-sm font-black text-slate-600 transition hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+              >
+                Keep it
+              </button>
+              <button
+                onClick={() => void confirmDeleteVenue()}
+                disabled={deleting || deleteConfirm.trim() !== deleteTarget.name}
+                className="flex items-center justify-center gap-1.5 rounded-xl bg-red-600 py-3 text-sm font-black text-white transition hover:bg-red-700 disabled:opacity-40"
+              >
+                {deleting && <Loader2 className="h-4 w-4 animate-spin" />}
+                {deleting ? "Retiring…" : "Delete venue"}
+              </button>
             </div>
           </div>
         </div>

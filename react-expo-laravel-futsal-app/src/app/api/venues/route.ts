@@ -18,6 +18,10 @@ export async function GET(req: Request) {
       return Response.json({ venues: [], error: "Pick a valid city 📍" }, { status: 400 });
 
     let list = await db.select().from(venues);
+    // A retired venue is out of the shop window — the owner's booking history
+    // stays intact, it just stops showing up anywhere.
+    const includeDeleted = searchParams.get("includeDeleted") === "1";
+    if (!includeDeleted) list = list.filter((v) => !v.deletedAt);
     if (q) {
       const ql = q.toLowerCase();
       list = list.filter(

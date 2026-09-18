@@ -42,6 +42,15 @@ export const venues = pgTable("venues", {
   acceptedPayments: text("accepted_payments").notNull().default("eSewa,Khalti,Cash at Venue"),
   depositPercent: integer("deposit_percent").notNull().default(30),
   ownerId: integer("owner_id"),
+  /**
+   * Set when the owner retires the venue 🪦
+   *
+   * A soft delete, because a venue has bookings, payments, reviews and leagues
+   * hanging off it — wiping the row would orphan all of them and erase the
+   * owner's own money history. A deleted venue simply stops appearing in
+   * listings, searches and the studio.
+   */
+  deletedAt: timestamp("deleted_at"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 

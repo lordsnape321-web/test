@@ -249,6 +249,28 @@ so they go in as `album-links.txt`.
 
 ---
 
+## The bell, and retiring a venue
+
+**Notifications.** The dropdown has two ways to clear it: a tick on each unread row, which marks
+just that one read without leaving the page, and **Mark all read** in the header for the
+after-a-week-away case. Both were already on the server (`PATCH /api/notifications/[id]` and
+`POST /api/notifications/read-all`) — the bell simply never offered them. The count on the icon
+drops optimistically and is re-read from the server afterwards, and the "Mark all read" button
+disappears once there is nothing left unread.
+
+**Retiring a venue.** The Owner Studio has always had an Edit button and no way out, so
+`DELETE /api/venues/[id]` exists now. It is the owner's call and nobody else's (`403`), and it is
+a **soft** delete: `deletedAt` is stamped, the venue leaves every listing, and its courts are set
+inactive so nothing new can be booked. The row itself stays, because bookings, payments, reviews
+and leagues all point at it — wiping it would erase the owner's own money history.
+
+It refuses while players still have a game to come (`409`, with the count), because someone who
+paid a deposit for Saturday shouldn't find the ground has quietly ceased to exist. Cancel or play
+those first. The studio asks for the venue name to be typed back before it will send the request,
+and retiring twice is a no-op.
+
+---
+
 ## One review per player per venue — and a played game is locked
 
 **Reviews.** A player gets a single review at each venue, however many games they play there.
