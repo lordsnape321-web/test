@@ -6,6 +6,7 @@ import { sendNotification } from "@/lib/notify";
 import { and, eq } from "drizzle-orm";
 import { recordFor } from "@/lib/league";
 import { validateScore } from "@/lib/validation";
+import { settleWindow, SETTLE_EDIT_WINDOW_MS } from "@/lib/booking-ledger";
 
 export const dynamic = "force-dynamic";
 
@@ -151,6 +152,32 @@ export async function PATCH(
           { status: 409 }
         );
       }
+    }
+
+    /*
+     * A settled booking is final 🔒
+     *
+     * The payment ledger refuses changes once the five-minute correction window
+     * closes — but it isn't the only door onto these columns. Without this, an
+     * owner could flip `paymentStatus` back to "pending" or rewrite the medium
+     * through this route and quietly undo a settlement the ledger had locked,
+     * which is exactly the trust the lock exists to give the day's takings.
+     *
+     * Inside the window these stay editable, so the correction path still works.
+     */
+    const win = settleWindow(prev.settledAt);
+    if (win.settled && !win.editable) {
+      const MONEY_FIELDS = ["paymentStatus", "paymentMethod", "depositStatus", "receiptUrl"];
+      const touching = MONEY_FIELDS.filter((k) => body[k] !== undefined);
+      if (touching.length > 0)
+        return Response.json(
+          {
+            error: `This booking was settled more than ${SETTLE_EDIT_WINDOW_MS / 60000} minutes ago — its payment details are locked so the day's takings stay trustworthy 🔒`,
+            reason: "ledger_locked",
+            settledAt: prev.settledAt,
+          },
+          { status: 409 }
+        );
     }
 
     // Fair-play: players can't cancel within 6h of the game.

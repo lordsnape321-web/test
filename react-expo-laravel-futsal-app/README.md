@@ -280,6 +280,13 @@ owner who typed 300 instead of 3,000. After it lapses every mutation is refused 
 ledger_locked`, including reopening, because a settled book is what the venue reconciles its
 takings against. Settling with nothing recorded is refused outright.
 
+The lock is enforced on `PATCH /api/bookings/[id]` too, not just the ledger route. That route writes
+`paymentStatus`, `paymentMethod`, `depositStatus` and `receiptUrl` — the same columns — so without
+the same check an owner could flip a locked booking back to "pending" through the side door and
+quietly undo a settlement. It now refuses those four fields with `409 ledger_locked` once the window
+closes. Inside the window they stay editable, unsettled bookings are never blocked, and the lock
+covers money only: marking the game itself completed still works.
+
 Everything is owner-only: a player pays through the gateway or hands cash over, and the owner is
 the one who writes it down (`403` otherwise). Settling pings the player, and mentions the change if
 they overpaid.
