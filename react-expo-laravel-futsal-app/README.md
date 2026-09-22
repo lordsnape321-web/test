@@ -284,6 +284,15 @@ Everything is owner-only: a player pays through the gateway or hands cash over, 
 the one who writes it down (`403` otherwise). Settling pings the player, and mentions the change if
 they overpaid.
 
+**Players can see it too.** A booking card on `/bookings` has a **Payment details** expander that
+reads the same ledger, so a player isn't left with a bare "paid" badge when their Rs 1,700 game was
+actually 700 eSewa + 500 Khalti + 500 cash plus Rs 300 of water — and if they overpaid, it says the
+venue owes them the change. It fetches on first open and caches, because a bookings list is long and
+most cards never get opened.
+
+**The default add-on lives on the venue**, settable when you list it and changeable afterwards, so
+the desk prefills the right thing for that ground rather than a global guess.
+
 **Online money lands in the same ledger.** eSewa and Khalti already set `paidAmount` on the
 booking, but that says nothing about which medium it came by — so a booking paid in full online
 would have shown the desk "nothing received", which is the exact confusion the ledger exists to

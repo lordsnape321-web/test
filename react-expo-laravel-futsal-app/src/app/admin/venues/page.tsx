@@ -124,6 +124,8 @@ export default function OwnerVenuesPage() {
   const [fPrice, setFPrice] = useState(1500);
   const [fPay, setFPay] = useState<string[]>([...PAYMENT_OPTIONS]);
   const [fDeposit, setFDeposit] = useState(30);
+  const [fExtraFee, setFExtraFee] = useState(0);
+  const [fExtraNote, setFExtraNote] = useState("");
   const [saving, setSaving] = useState(false);
   const [addError, setAddError] = useState("");
 
@@ -271,6 +273,7 @@ export default function OwnerVenuesPage() {
     setFDesc(""); setFImage(""); setFOpen(6); setFClose(22);
     setFAmen(["Parking", "Changing Room", "Shower", "WiFi"]); setFPrice(1500);
     setFPay([...PAYMENT_OPTIONS]); setFDeposit(30);
+    setFExtraFee(0); setFExtraNote("");
   }
 
   async function addVenue() {
@@ -308,6 +311,8 @@ export default function OwnerVenuesPage() {
           amenities: fAmen.join(","),
           acceptedPayments: fPay.join(","),
           depositPercent: fDeposit,
+          defaultExtraFee: fExtraFee,
+          defaultExtraFeeNote: fExtraNote,
           ownerId: user.id,
           courts: [
             { name: "Court 1", format: "5v5", pricePerHour: fPrice, priceMorning: Math.round(fPrice * 0.75) },
@@ -866,6 +871,34 @@ export default function OwnerVenuesPage() {
                       : `Players with low stars / repeat cancels pay ${fDeposit}% upfront (non-refundable). They get it back in trust when they show up! 💪`}
                   </p>
                 </div>
+
+                <div>
+                  <span className={labelCls}>Usual extra fee 🧾 (Rs.)</span>
+                  <input
+                    type="number"
+                    min={0}
+                    max={20000}
+                    step={10}
+                    value={fExtraFee}
+                    onChange={(e) => setFExtraFee(Number(e.target.value))}
+                    className={inputCls}
+                  />
+                </div>
+                <div>
+                  <span className={labelCls}>What it&apos;s for</span>
+                  <input
+                    value={fExtraNote}
+                    onChange={(e) => setFExtraNote(e.target.value)}
+                    placeholder="Water and refreshments"
+                    maxLength={120}
+                    className={inputCls}
+                  />
+                </div>
+                <p className="col-span-2 -mt-1 text-[11px] text-slate-400">
+                  Prefills the extra-charge line on the payment desk — the water and spare balls
+                  bought during a match, added on top of the court fee. Leave it at 0 if you don&apos;t
+                  usually add anything.
+                </p>
                 <div className="col-span-2">
                   <span className={labelCls}>Starting price per hour (Rs.)</span>
                   <input type="number" min={100} max={20000} step={50} value={fPrice} onChange={(e) => setFPrice(Number(e.target.value))} className={inputCls} />

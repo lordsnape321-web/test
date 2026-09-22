@@ -70,6 +70,8 @@ export async function POST(req: Request) {
       ? String(body.acceptedPayments).split(",").map((s: string) => s.trim()).filter(Boolean)
       : ["eSewa", "Khalti", "Cash at Venue"];
     const depositPercent = body.depositPercent === undefined ? 30 : Number(body.depositPercent);
+    const defaultExtraFee =
+      body.defaultExtraFee === undefined ? 0 : Number(body.defaultExtraFee);
     const err = firstError(
       validateVenueName(name),
       validateAddress(address),
@@ -78,7 +80,8 @@ export async function POST(req: Request) {
       validateDescription(description, { required: false, max: 1000 }),
       validateHoursRange(openingHour, closingHour),
       validatePaymentMethods(acceptedRaw),
-      validateDepositPercent(depositPercent)
+      validateDepositPercent(depositPercent),
+      validateMoney(defaultExtraFee, { min: 0, max: 20000, label: "Default extra fee" })
     );
     if (err) return Response.json({ error: err }, { status: 400 });
 
@@ -107,6 +110,8 @@ export async function POST(req: Request) {
         amenities: String(body.amenities ?? "Parking,Changing Room,Shower").slice(0, 500),
         acceptedPayments: acceptedRaw.join(","),
         depositPercent,
+        defaultExtraFee,
+        defaultExtraFeeNote: String(body.defaultExtraFeeNote ?? "").slice(0, 120),
         isFeatured: false,
         ownerId: body.ownerId ? Number(body.ownerId) : null,
       })

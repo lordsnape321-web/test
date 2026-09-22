@@ -7,6 +7,7 @@ import { useUser } from "@/components/UserProvider";
 import { ReceiptUploader, ReceiptViewer, isOnlineMethod } from "@/components/ReceiptUploader";
 import { StarInput } from "@/components/Reviews";
 import { PlayerRatingBadge } from "@/components/PlayerRating";
+import { BookingPaymentSummary } from "@/components/BookingPaymentSummary";
 import { formatNPR, formatTime12, prettyDate, gamePlayed } from "@/lib/futsal";
 import { hoursUntilGame, type PlayerStats } from "@/lib/loyalty";
 import { validateMessage } from "@/lib/validation";
@@ -461,6 +462,10 @@ export default function BookingsPage() {
                         </span>
                       </span>
                     </div>
+                    {/* The badge above only says "paid" — this shows how it was
+                        actually paid, since a game is often part eSewa, part
+                        Khalti, part cash, with the water added on afterwards. */}
+                    {b.totalPrice > 0 && <BookingPaymentSummary bookingId={b.id} />}
                     {isPending && (
                       <p className="mt-2.5 rounded-xl bg-amber-50 px-3.5 py-2 text-xs font-bold leading-relaxed text-amber-700 dark:bg-amber-500/10 dark:text-amber-300">
                         Your request is with the venue — lovely humans are reviewing it
