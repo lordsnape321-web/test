@@ -269,6 +269,20 @@ paid a deposit for Saturday shouldn't find the ground has quietly ceased to exis
 those first. The studio asks for the venue name to be typed back before it will send the request,
 and retiring twice is a no-op.
 
+**Retiring a single court.** Same thing one level down, for the far more common case: you're
+resurfacing one pitch, not closing the ground. Each court row in the studio carries its own
+**Delete**, and `DELETE /api/courts/[id]` follows exactly the venue's rules — owner-only (`403`,
+ownership is read from the parent venue), soft (`deletedAt` stamped and the court deactivated),
+refused with `409` while a non-cancelled booking on that court is still ahead, and a typed-name
+confirmation before the studio will send it.
+
+A retired court drops out of the venue's `courts` array, its `courtCount`, and the `minPrice` the
+listings advertise — otherwise a venue would show off a pitch nobody can book. `POST /api/bookings`
+also rejects a retired court (`409`) even from a client holding a stale id. Pass
+`?includeDeletedCourts=1` to `GET /api/venues` to see them again; the history behind them is
+untouched either way. Retiring the last court shows an empty state rather than a blank panel, and
+the venue can still be retired afterwards.
+
 ---
 
 ## One review per player per venue — and a played game is locked

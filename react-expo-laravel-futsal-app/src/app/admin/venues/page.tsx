@@ -150,6 +150,13 @@ export default function OwnerVenuesPage() {
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState("");
 
+  // Same treatment for a single court — a pitch is easier to retire by accident
+  // than a whole venue, so it asks for the court name back too.
+  const [courtDeleteTarget, setCourtDeleteTarget] = useState<Court | null>(null);
+  const [courtDeleteConfirm, setCourtDeleteConfirm] = useState("");
+  const [deletingCourt, setDeletingCourt] = useState(false);
+  const [courtDeleteError, setCourtDeleteError] = useState("");
+
   // Add / edit court (full details)
   const [showCourt, setShowCourt] = useState(false);
   const [editingCourt, setEditingCourt] = useState<Court | null>(null);
@@ -191,6 +198,29 @@ export default function OwnerVenuesPage() {
       setDeleteError(e instanceof Error ? e.message : "Couldn't retire the venue 🙏");
     } finally {
       setDeleting(false);
+    }
+  }
+
+  /** Retire one court — soft delete, so the bookings against it stay readable. */
+  async function confirmDeleteCourt() {
+    if (!courtDeleteTarget || !user) return;
+    setDeletingCourt(true);
+    setCourtDeleteError("");
+    try {
+      const res = await fetch(`/api/courts/${courtDeleteTarget.id}`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ownerId: user.id }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(String(data.error ?? "Couldn't retire that court 🙏"));
+      setCourtDeleteTarget(null);
+      setCourtDeleteConfirm("");
+      await load();
+    } catch (e) {
+      setCourtDeleteError(e instanceof Error ? e.message : "Couldn't retire that court 🙏");
+    } finally {
+      setDeletingCourt(false);
     }
   }
 
@@ -599,6 +629,17 @@ export default function OwnerVenuesPage() {
 
                 {tab === "courts" ? (
                   <div className="space-y-2.5 p-4">
+                    {active.courts.length === 0 && (
+                      <div className="rounded-xl bg-slate-50 px-4 py-8 text-center dark:bg-slate-800/60">
+                        <p className="text-sm font-bold text-slate-500 dark:text-slate-400">
+                          No courts are live right now.
+                        </p>
+                        <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
+                          Retired courts drop off this list — their past bookings are untouched.
+                          Add a court to start taking bookings again. ⚽
+                        </p>
+                      </div>
+                    )}
                     {active.courts.map((c) => (
                       <div
                         key={c.id}
@@ -659,6 +700,17 @@ export default function OwnerVenuesPage() {
                           >
                             <Power className="h-3.5 w-3.5" />
                             {c.isActive ? "Live" : "Off"}
+                          </button>
+                          <button
+                            onClick={() => {
+                              setCourtDeleteTarget(c);
+                              setCourtDeleteConfirm("");
+                              setCourtDeleteError("");
+                            }}
+                            title="Retire this court"
+                            className="flex items-center gap-1.5 rounded-lg border border-red-300 px-3.5 py-2 text-xs font-black text-red-600 transition hover:bg-red-50 dark:border-red-500/40 dark:text-red-400 dark:hover:bg-red-500/10"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" /> Delete
                           </button>
                         </div>
                       </div>
@@ -1034,6 +1086,64 @@ export default function OwnerVenuesPage() {
               >
                 {deleting && <Loader2 className="h-4 w-4 animate-spin" />}
                 {deleting ? "Retiring…" : "Delete venue"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* -------------------------------------------------- retire one court */}
+      {courtDeleteTarget && (
+        <div className="fixed inset-0 z-[70] grid place-items-center overflow-y-auto bg-slate-900/60 p-4 backdrop-blur-sm">
+          <div className="my-6 w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl dark:bg-slate-900">
+            <h3 className="flex items-center gap-2 text-lg font-black text-red-600 dark:text-red-400">
+              <Trash2 className="h-5 w-5" /> Retire {courtDeleteTarget.name}?
+            </h3>
+            <p className="mt-2 text-xs leading-relaxed text-slate-500 dark:text-slate-400">
+              The court comes off the booking page and stops counting towards this venue. Past
+              bookings, payments and reviews against it stay exactly where they are — nothing is
+              erased.
+            </p>
+            <p className="mt-3 rounded-2xl bg-red-50 px-3.5 py-2.5 text-[11px] font-bold leading-relaxed text-red-700 dark:bg-red-500/10 dark:text-red-300">
+              This can&apos;t be undone from the studio. If a player still has a game booked on this
+              pitch, you&apos;ll be asked to cancel or play it first.
+            </p>
+            <div className="mt-4">
+              <span className={labelCls}>
+                Type <b className="text-slate-700 dark:text-slate-200">{courtDeleteTarget.name}</b> to
+                confirm
+              </span>
+              <input
+                value={courtDeleteConfirm}
+                onChange={(e) => setCourtDeleteConfirm(e.target.value)}
+                placeholder={courtDeleteTarget.name}
+                className={inputCls}
+              />
+            </div>
+            {courtDeleteError && (
+              <p className="mt-3 rounded-2xl bg-red-50 px-3.5 py-2.5 text-xs font-bold text-red-600 dark:bg-red-500/10 dark:text-red-400">
+                {courtDeleteError}
+              </p>
+            )}
+            <div className="mt-4 grid grid-cols-2 gap-2">
+              <button
+                onClick={() => {
+                  setCourtDeleteTarget(null);
+                  setCourtDeleteConfirm("");
+                  setCourtDeleteError("");
+                }}
+                disabled={deletingCourt}
+                className="rounded-xl border border-slate-200 py-3 text-sm font-black text-slate-600 transition hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+              >
+                Keep it
+              </button>
+              <button
+                onClick={() => void confirmDeleteCourt()}
+                disabled={deletingCourt || courtDeleteConfirm.trim() !== courtDeleteTarget.name}
+                className="flex items-center justify-center gap-1.5 rounded-xl bg-red-600 py-3 text-sm font-black text-white transition hover:bg-red-700 disabled:opacity-40"
+              >
+                {deletingCourt && <Loader2 className="h-4 w-4 animate-spin" />}
+                {deletingCourt ? "Retiring…" : "Delete court"}
               </button>
             </div>
           </div>

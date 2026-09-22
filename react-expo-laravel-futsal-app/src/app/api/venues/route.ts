@@ -35,8 +35,14 @@ export async function GET(req: Request) {
     }
 
     const allCourts = await db.select().from(courts);
+    // A retired court is out of the count and out of the price, or a venue would
+    // advertise a pitch nobody can book. Pass includeDeletedCourts=1 to see them.
+    const includeDeletedCourts = searchParams.get("includeDeletedCourts") === "1";
+    const liveCourts = includeDeletedCourts
+      ? allCourts
+      : allCourts.filter((c) => !c.deletedAt);
     const enriched = list.map((v) => {
-      const vc = allCourts.filter((c) => c.venueId === v.id);
+      const vc = liveCourts.filter((c) => c.venueId === v.id);
       const minPrice =
         vc.length > 0 ? Math.min(...vc.map((c) => c.pricePerHour)) : 0;
       return { ...v, courts: vc, courtCount: vc.length, minPrice };

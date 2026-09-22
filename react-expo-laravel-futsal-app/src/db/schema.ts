@@ -65,6 +65,9 @@ export const courts = pgTable("courts", {
   imageUrl: text("image_url").notNull().default(""),
   isActive: boolean("is_active").notNull().default(true),
   features: text("features").notNull().default("Floodlights,FIFA Turf,Nets Provided"),
+  // A retired court keeps its row: past bookings point at it and have to stay
+  // readable. It just stops being offered.
+  deletedAt: timestamp("deleted_at"),
 });
 
 export const bookings = pgTable("bookings", {

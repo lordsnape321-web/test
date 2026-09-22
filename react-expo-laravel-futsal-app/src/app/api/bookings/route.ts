@@ -271,6 +271,13 @@ export async function POST(req: Request) {
       .where(eq(courts.id, Number(courtId)));
     const court = courtRows[0];
     if (!court) return Response.json({ error: "Court not found ⚽" }, { status: 404 });
+    // A retired court is off the books — its row stays for history, but nobody
+    // can put a new game on it.
+    if (court.deletedAt)
+      return Response.json(
+        { error: "That court has been retired and isn't taking bookings any more 🪦" },
+        { status: 409 }
+      );
     const hourNum = parseInt(String(startTime).split(":")[0], 10);
     const isMorning = hourNum < 12;
     const rate = isMorning ? court.priceMorning : court.pricePerHour;
