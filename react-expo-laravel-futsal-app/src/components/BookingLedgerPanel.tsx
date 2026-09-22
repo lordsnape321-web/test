@@ -19,6 +19,8 @@ type PaymentLine = {
   method: string;
   note: string;
   source: string;
+  /** Gateway transaction id, present when the money came in online. */
+  reference: string;
   voidedAt: string | null;
   createdAt: string | null;
 };
@@ -274,7 +276,13 @@ export function BookingLedgerPanel({
                 >
                   <span className="min-w-0 flex-1 truncate">
                     {p.method}
-                    {p.note ? <span className="text-slate-400"> — {p.note}</span> : ""}
+                    {p.reference ? (
+                      <span className="text-slate-400"> • {p.reference.slice(0, 18)}</span>
+                    ) : p.note ? (
+                      <span className="text-slate-400"> — {p.note}</span>
+                    ) : (
+                      ""
+                    )}
                   </span>
                   <span className="shrink-0 font-black">{formatNPR(p.amount)}</span>
                   {!p.voidedAt && !locked && (

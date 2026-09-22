@@ -71,6 +71,9 @@ async function payload(booking: typeof bookings.$inferSelect) {
       method: p.method,
       note: p.note,
       source: p.source,
+      // The gateway's transaction id, so an online instalment can be tied back
+      // to eSewa/Khalti when the day is reconciled.
+      reference: p.reference,
       recordedBy: p.recordedBy,
       voidedAt: p.voidedAt,
       createdAt: p.createdAt,

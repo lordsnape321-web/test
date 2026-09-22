@@ -164,6 +164,12 @@ export const bookingPayments = pgTable("booking_payments", {
   note: text("note").notNull().default(""),
   /** "owner" (entered at the desk) | "player" (paid online) | "gateway". */
   source: text("source").notNull().default("owner"),
+  /**
+   * The gateway's transaction id when the money came in online. It is what makes
+   * a replayed verify call idempotent — the same txn can only ever produce one
+   * ledger row — and it ties the row back to eSewa/Khalti when reconciling.
+   */
+  reference: text("reference").notNull().default(""),
   recordedBy: integer("recorded_by").notNull().default(0),
   voidedAt: timestamp("voided_at"),
   voidedBy: integer("voided_by"),

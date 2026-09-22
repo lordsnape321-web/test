@@ -9,6 +9,7 @@ import {
   esewaStatusCheck,
 } from "@/lib/payments";
 import { sendNotification } from "@/lib/notify";
+import { recordGatewayPayment } from "@/lib/ledger-record";
 import { formatNPR } from "@/lib/futsal";
 
 export const dynamic = "force-dynamic";
@@ -30,7 +31,10 @@ export async function POST(req: Request) {
       const paidAmount = mBooking.depositRequired
         ? Number(mBooking.depositAmount || 0)
         : Number(mBooking.totalPrice || 0);
-      const mockTxn = `MOCK-ESEWA-${mBooking.id}-${Date.now().toString(36)}`.slice(0, 100);
+      // Deterministic on purpose: this id is also the ledger's idempotency key,
+      // so a replayed verify callback can't turn one payment into two
+      // instalments. Deposit and balance stay distinguishable.
+      const mockTxn = `MOCK-ESEWA-${mBooking.id}${mBooking.depositRequired ? "-DEP" : ""}`.slice(0, 100);
       const patch: Partial<typeof bookings.$inferInsert> = {
         gatewayTxnId: mockTxn,
         paidAmount,
@@ -42,6 +46,16 @@ export async function POST(req: Request) {
         patch.paymentStatus = "paid";
       }
       const updated = await db.update(bookings).set(patch).where(eq(bookings.id, mBooking.id)).returning();
+      // The ledger is the source of truth for which medium paid what, so an
+      // online payment has to land there too — not just in `paidAmount`.
+      await recordGatewayPayment({
+        bookingId: mBooking.id,
+        amount: paidAmount,
+        method: "eSewa",
+        reference: mockTxn,
+        userId: mBooking.userId,
+        note: "eSewa simulator",
+      });
       try {
         const courtRows = await db.select().from(courts).where(eq(courts.id, mBooking.courtId));
         const venueRows = courtRows[0]
@@ -136,6 +150,14 @@ export async function POST(req: Request) {
       patch.paymentStatus = "paid";
     }
     const updated = await db.update(bookings).set(patch).where(eq(bookings.id, bookingId)).returning();
+    await recordGatewayPayment({
+      bookingId,
+      amount: Number(patch.paidAmount || 0),
+      method: "eSewa",
+      reference: String(patch.gatewayTxnId || txnCode),
+      userId: booking.userId,
+      note: "eSewa",
+    });
 
     // Notify owner.
     try {

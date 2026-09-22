@@ -284,6 +284,15 @@ Everything is owner-only: a player pays through the gateway or hands cash over, 
 the one who writes it down (`403` otherwise). Settling pings the player, and mentions the change if
 they overpaid.
 
+**Online money lands in the same ledger.** eSewa and Khalti already set `paidAmount` on the
+booking, but that says nothing about which medium it came by — so a booking paid in full online
+would have shown the desk "nothing received", which is the exact confusion the ledger exists to
+prevent. All four gateway paths (eSewa and Khalti, simulator and real) now write an instalment row
+too, `source: "gateway"`, carrying the gateway's transaction id in `reference`. That id is the
+idempotency key: a replayed verify callback — and they do get replayed — cannot turn one payment
+into two instalments. A gateway payment plus a cash top-up for the water is then just a normal
+split, and both mediums show side by side.
+
 ---
 
 ## The bell, and retiring a venue
