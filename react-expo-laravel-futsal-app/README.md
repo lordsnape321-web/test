@@ -99,6 +99,45 @@ genuinely want the rows gone. A fresh clone never sees the prompt, because its t
 | `npm run db:push`       | Push `src/db/schema.ts` to the database (drizzle-kit)         |
 | `npm run typecheck`     | `tsc --noEmit`                                                |
 | `npm run lint`          | ESLint                                                        |
+| `npm test`              | Unit + rendered-component suites (no server needed)           |
+| `npm run test:api`      | Live API suites — needs `npm run dev` and a database          |
+| `npm run test:all`      | Both of the above                                             |
+
+---
+
+## Tests
+
+There is no test framework here. `tests/run.mjs` is about a hundred lines and
+does two things: it bundles the `.tsx` suites against `src/` with the esbuild
+that Next.js already ships, and it runs the `tests/api/*.mjs` suites as plain
+node scripts against a live dev server.
+
+```bash
+npm test          # 104 assertions — pure logic + components rendered in jsdom
+npm run test:api  # 161 assertions — real HTTP against a running server + Postgres
+npm run test:all  # all 9 suites
+```
+
+| Suite                      | Covers                                                        |
+| -------------------------- | ------------------------------------------------------------- |
+| `ledger.unit.tsx`          | The money maths: splits, part payment, overpayment, voids, and the 5-minute settle window |
+| `paypanel.dom.tsx`         | The owner's payment panel, rendered: venue default prefill, walking a balance down, undo, settle |
+| `paysummary.dom.tsx`       | The player's read-only breakdown: lazy fetch, itemised mediums, voided rows excluded |
+| `api/ledger.mjs`           | Every ledger action over HTTP, including who is refused and what the database ends up holding |
+| `api/gateway.mjs`          | eSewa/Khalti verify landing in the ledger, and replays not double-counting |
+| `api/venue-defaults.mjs`   | The per-venue default extra fee on create and edit            |
+| `api/settlement-lock.mjs`  | The 5-minute window, and `PATCH /api/bookings/[id]` being locked once it closes |
+| `api/deposit-split.mjs`    | A deposit paid online, the balance collected at the desk      |
+| `api/court-delete.mjs`     | Retiring a single court                                       |
+
+The API suites need players, and the app caps a player at three cancellations a
+month. Rather than hard-code user ids — which made a later suite trip *"Whoa,
+slow down! 🛑"* and fail for reasons that had nothing to do with the code under
+test — the runner registers a fresh account per slot through the real signup
+route. A brand-new player also has no booking history, so `depositDecision`
+never surprises a suite by demanding a deposit mid-test.
+
+Set `VERBOSE=1` to see every assertion instead of only the failures.
 
 ---
 
