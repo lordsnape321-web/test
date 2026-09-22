@@ -113,14 +113,15 @@ that Next.js already ships, and it runs the `tests/api/*.mjs` suites as plain
 node scripts against a live dev server.
 
 ```bash
-npm test          # 104 assertions — pure logic + components rendered in jsdom
+npm test          # 114 assertions — pure logic + components rendered in jsdom
 npm run test:api  # 161 assertions — real HTTP against a running server + Postgres
-npm run test:all  # all 9 suites
+npm run test:all  # all 10 suites
 ```
 
 | Suite                      | Covers                                                        |
 | -------------------------- | ------------------------------------------------------------- |
 | `ledger.unit.tsx`          | The money maths: splits, part payment, overpayment, voids, and the 5-minute settle window |
+| `amendrow.dom.tsx`         | The Amend button in the bookings row: countdown while the window is open, Locked after it closes |
 | `paypanel.dom.tsx`         | The owner's payment panel, rendered: venue default prefill, walking a balance down, undo, settle |
 | `paysummary.dom.tsx`       | The player's read-only breakdown: lazy fetch, itemised mediums, voided rows excluded |
 | `api/ledger.mjs`           | Every ledger action over HTTP, including who is refused and what the database ends up holding |
@@ -318,6 +319,14 @@ editable for `SETTLE_EDIT_WINDOW_MS` — five minutes — with the panel countin
 owner who typed 300 instead of 3,000. After it lapses every mutation is refused with `409
 ledger_locked`, including reopening, because a settled book is what the venue reconciles its
 takings against. Settling with nothing recorded is refused outright.
+
+**Amending is offered in the row, not only in the desk.** While that window is open, the All
+bookings table shows an **Amend 4:32** button on the settled row, counting down on a one-second
+clock, and it opens the payment desk. Once the window closes the row shows **Locked** instead, so
+the owner can see from the list which games are still fixable without opening each one. The row
+reads the same `settledAt` the server locks on, so the button and the API can never disagree about
+what is still editable. Undoing a settlement refreshes the list, or the row would keep showing a
+countdown for a state that no longer exists.
 
 The lock is enforced on `PATCH /api/bookings/[id]` too, not just the ledger route. That route writes
 `paymentStatus`, `paymentMethod`, `depositStatus` and `receiptUrl` — the same columns — so without

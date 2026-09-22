@@ -141,7 +141,11 @@ export function BookingLedgerPanel({
       }
       if (data.ledger) setLedger(data.ledger as Ledger);
       if (data.message) setNotice(String(data.message));
-      if (body.action === "settle") onSettled?.();
+      // Both directions change what the bookings list renders: settling opens
+      // the correction window (and the row's Amend button), and undoing it
+      // closes it again and puts the payment status back. Refresh on both, or
+      // the row keeps showing a countdown for a state that no longer exists.
+      if (body.action === "settle" || body.action === "unsettle") onSettled?.();
     } catch (e) {
       setError(e instanceof Error ? e.message : "That didn't work 🙏");
     } finally {
