@@ -8,6 +8,7 @@ import { ReceiptViewer } from "@/components/ReceiptUploader";
 import { PlayerRatingBadge } from "@/components/PlayerRating";
 import type { PlayerStats } from "@/lib/loyalty";
 import { formatNPR, formatTime12, prettyDate } from "@/lib/futsal";
+import { BookingLedgerPanel } from "@/components/BookingLedgerPanel";
 
 type Booking = {
   id: number;
@@ -67,6 +68,8 @@ export default function OwnerBookingsPage() {
   const [awayInput, setAwayInput] = useState("");
   const [savingScore, setSavingScore] = useState(false);
   const [scoreError, setScoreError] = useState("");
+  /** Which booking's payment desk is open — see `BookingLedgerPanel`. */
+  const [ledgerFor, setLedgerFor] = useState<Booking | null>(null);
 
   const load = async () => {
     const [bRes, vRes] = await Promise.all([
@@ -109,15 +112,6 @@ export default function OwnerBookingsPage() {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ status, actor }),
-    });
-    load();
-  }
-
-  async function markPaid(id: number) {
-    await fetch(`/api/bookings/${id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ paymentStatus: "paid" }),
     });
     load();
   }
@@ -303,11 +297,16 @@ export default function OwnerBookingsPage() {
                           🛡️ DEPOSIT {formatNPR(b.depositAmount)} ✓
                         </span>
                       ) : (
+                        // Not a one-click "paid" any more: a game is usually
+                        // settled in parts (some eSewa, some Khalti, some cash)
+                        // and the extras land during the match, so this opens
+                        // the ledger where each instalment is recorded.
                         <button
-                          onClick={() => markPaid(b.id)}
+                          onClick={() => setLedgerFor(b)}
+                          title="Record payments and extra charges"
                           className="rounded-full bg-amber-100 px-2.5 py-1 text-[11px] font-black text-amber-700 transition hover:bg-amber-200 dark:bg-amber-500/15 dark:text-amber-300 dark:hover:bg-amber-500/25"
                         >
-                          PENDING — collect
+                          💰 Collect
                         </button>
                       )}
                       {b.depositRequired && (
@@ -464,6 +463,18 @@ export default function OwnerBookingsPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {ledgerFor && (
+        <BookingLedgerPanel
+          bookingId={ledgerFor.id}
+          bookingLabel={`${prettyDate(ledgerFor.date)} • ${formatTime12(ledgerFor.startTime)} • ${
+            ledgerFor.venue?.name ?? "Venue"
+          } • ${formatNPR(ledgerFor.totalPrice)}`}
+          ownerId={user?.id ?? 0}
+          onClose={() => setLedgerFor(null)}
+          onSettled={load}
+        />
       )}
     </OwnerGuard>
   );

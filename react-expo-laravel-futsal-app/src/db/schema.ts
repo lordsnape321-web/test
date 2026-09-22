@@ -41,6 +41,12 @@ export const venues = pgTable("venues", {
   isFeatured: boolean("is_featured").notNull().default(false),
   acceptedPayments: text("accepted_payments").notNull().default("eSewa,Khalti,Cash at Venue"),
   depositPercent: integer("deposit_percent").notNull().default(30),
+  /**
+   * What this venue usually adds on top of the court fee — prefills the extra
+   * charge line so the owner isn't retyping "Water" every Saturday.
+   */
+  defaultExtraFee: integer("default_extra_fee").notNull().default(0),
+  defaultExtraFeeNote: text("default_extra_fee_note").notNull().default(""),
   ownerId: integer("owner_id"),
   /**
    * Set when the owner retires the venue 🪦
@@ -129,6 +135,56 @@ export const bookings = pgTable("bookings", {
   khaltiPidx: text("khalti_pidx").notNull().default(""),
   gatewayTxnId: text("gateway_txn_id").notNull().default(""),
   paidAmount: integer("paid_amount").notNull().default(0),
+  /**
+   * When the owner marked this booking settled. It starts a short correction
+   * window (`SETTLE_EDIT_WINDOW_MS`) so a mistyped amount can be fixed; after
+   * that the ledger is locked and the API refuses changes.
+   */
+  settledAt: timestamp("settled_at"),
+  settledBy: integer("settled_by"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+/**
+ * One row per instalment on a booking 💸 — so a Rs 1,700 game paid as
+ * 700 eSewa + 500 Khalti + 500 cash is three traceable rows, not one "paid"
+ * flag. Owed and paid are *derived* from these rows, never trusted from the
+ * booking alone, so the venue owner can always see which medium paid how much.
+ *
+ * The table is append-only. A mistake corrected inside the settle window voids
+ * the row (`voidedAt`/`voidedBy`) instead of deleting it, so the history of who
+ * entered what survives.
+ */
+export const bookingPayments = pgTable("booking_payments", {
+  id: serial("id").primaryKey(),
+  bookingId: integer("booking_id").notNull(),
+  amount: integer("amount").notNull().default(0),
+  /** "eSewa" | "Khalti" | "Cash at Venue" — the mediums the venue accepts. */
+  method: text("method").notNull().default("Cash at Venue"),
+  note: text("note").notNull().default(""),
+  /** "owner" (entered at the desk) | "player" (paid online) | "gateway". */
+  source: text("source").notNull().default("owner"),
+  recordedBy: integer("recorded_by").notNull().default(0),
+  voidedAt: timestamp("voided_at"),
+  voidedBy: integer("voided_by"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+/**
+ * Charges added *after* the court fee ⚽ — the water and extra balls bought
+ * during the match. The court price is taken in advance; these land later, so
+ * they are line items with their own description rather than one lump sum.
+ * Voided rather than deleted, for the same reason as `bookingPayments`.
+ */
+export const bookingExtras = pgTable("booking_extras", {
+  id: serial("id").primaryKey(),
+  bookingId: integer("booking_id").notNull(),
+  /** "Water x10", "Extra ball", "First aid kit" — free text. */
+  label: text("label").notNull().default(""),
+  amount: integer("amount").notNull().default(0),
+  recordedBy: integer("recorded_by").notNull().default(0),
+  voidedAt: timestamp("voided_at"),
+  voidedBy: integer("voided_by"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 

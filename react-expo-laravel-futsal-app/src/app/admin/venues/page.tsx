@@ -141,6 +141,10 @@ export default function OwnerVenuesPage() {
   const [eAmen, setEAmen] = useState<string[]>([]);
   const [ePay, setEPay] = useState<string[]>([...PAYMENT_OPTIONS]);
   const [eDeposit, setEDeposit] = useState(30);
+  // What the venue usually adds on top of the court fee (water, spare balls) —
+  // prefills the extra-charge line on the payment desk.
+  const [eExtraFee, setEExtraFee] = useState(0);
+  const [eExtraNote, setEExtraNote] = useState("");
   const [savingVenue, setSavingVenue] = useState(false);
   const [editError, setEditError] = useState("");
 
@@ -337,6 +341,9 @@ export default function OwnerVenuesPage() {
     const pays = String(v.acceptedPayments ?? "").split(",").map((s) => s.trim()).filter((s) => PAYMENT_OPTIONS.includes(s));
     setEPay(pays.length > 0 ? pays : [...PAYMENT_OPTIONS]);
     setEDeposit(Number.isFinite(Number(v.depositPercent)) ? Number(v.depositPercent) : 30);
+    const vv = v as typeof v & { defaultExtraFee?: number; defaultExtraFeeNote?: string };
+    setEExtraFee(Number.isFinite(Number(vv.defaultExtraFee)) ? Number(vv.defaultExtraFee) : 0);
+    setEExtraNote(String(vv.defaultExtraFeeNote ?? ""));
     setEditError("");
     setShowEditVenue(true);
   }
@@ -375,6 +382,8 @@ export default function OwnerVenuesPage() {
           amenities: eAmen.join(","),
           acceptedPayments: ePay.join(","),
           depositPercent: eDeposit,
+          defaultExtraFee: eExtraFee,
+          defaultExtraFeeNote: eExtraNote,
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -945,6 +954,36 @@ export default function OwnerVenuesPage() {
                       : `Low-trust players pay ${eDeposit}% upfront, non-refundable if they cancel. Honest players earn trust back fast! 💪`}
                   </p>
                 </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <span className={labelCls}>Usual extra fee 🧾</span>
+                    <input
+                      type="number"
+                      min={0}
+                      max={20000}
+                      step={10}
+                      value={eExtraFee}
+                      onChange={(e) => setEExtraFee(Number(e.target.value))}
+                      className={inputCls}
+                    />
+                  </div>
+                  <div>
+                    <span className={labelCls}>What it&apos;s for</span>
+                    <input
+                      value={eExtraNote}
+                      onChange={(e) => setEExtraNote(e.target.value)}
+                      placeholder="Water and refreshments"
+                      maxLength={120}
+                      className={inputCls}
+                    />
+                  </div>
+                </div>
+                <p className="-mt-1 text-[11px] text-slate-400">
+                  {eExtraFee > 0
+                    ? `The payment desk prefills ${formatNPR(eExtraFee)}${eExtraNote ? ` for "${eExtraNote}"` : ""} — still editable per booking.`
+                    : "No default add-on — the payment desk starts the extra-charge line blank."}
+                </p>
               </div>
               {editError && (
                 <p className="mt-3 rounded-xl bg-red-500/10 px-4 py-3 text-xs font-bold text-red-600 dark:text-red-400">

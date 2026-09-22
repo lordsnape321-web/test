@@ -1,6 +1,6 @@
 import { db } from "@/db";
 import { venues, courts, bookings } from "@/db/schema";
-import { validateVenueName, validateAddress, validatePhone, validateDescription, validateHoursRange, validatePaymentMethods, validateDepositPercent, firstError } from "@/lib/validation";
+import { validateVenueName, validateAddress, validatePhone, validateDescription, validateHoursRange, validatePaymentMethods, validateDepositPercent, validateMoney, firstError } from "@/lib/validation";
 import { eq } from "drizzle-orm";
 
 export const dynamic = "force-dynamic";
@@ -75,7 +75,10 @@ export async function PATCH(
       body.acceptedPayments !== undefined
         ? validatePaymentMethods(String(body.acceptedPayments).split(",").map((s: string) => s.trim()).filter(Boolean))
         : null,
-      body.depositPercent !== undefined ? validateDepositPercent(body.depositPercent) : null
+      body.depositPercent !== undefined ? validateDepositPercent(body.depositPercent) : null,
+      body.defaultExtraFee !== undefined
+        ? validateMoney(body.defaultExtraFee, { min: 0, max: 20000, label: "Default extra fee" })
+        : null
     );
     if (err) return Response.json({ error: err }, { status: 400 });
 
@@ -96,6 +99,11 @@ export async function PATCH(
       patch.acceptedPayments = clean.join(",");
     }
     if (body.depositPercent !== undefined) patch.depositPercent = Number(body.depositPercent);
+    // What this venue usually adds on top of the court fee — prefills the
+    // extra-charge line on the payment desk.
+    if (body.defaultExtraFee !== undefined) patch.defaultExtraFee = Number(body.defaultExtraFee);
+    if (body.defaultExtraFeeNote !== undefined)
+      patch.defaultExtraFeeNote = String(body.defaultExtraFeeNote).slice(0, 120);
     if (body.imageUrl !== undefined) patch.imageUrl = String(body.imageUrl).slice(0, 2000000);
 
     const updated = await db

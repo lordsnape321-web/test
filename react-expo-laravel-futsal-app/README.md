@@ -249,6 +249,43 @@ so they go in as `album-links.txt`.
 
 ---
 
+## A booking's money, instalment by instalment
+
+**Why the one-click "paid" went away.** Marking a booking paid was a single button, and it lied
+about how money actually arrives at a futsal ground. A Rs 1,700 court is often settled as 700 from
+eSewa, 500 from Khalti and 500 in cash at the counter — and the final figure isn't even known
+until the players have bought their water. So **💰 Collect** on `/admin/bookings` now opens a
+payment desk instead of flipping a flag.
+
+**The ledger.** Two append-only tables, `booking_payments` and `booking_extras`. Every instalment
+is its own row — amount, medium, an optional note, who recorded it and when — so "how much did
+they owe, what did they pay it with, and how much of each" is a query rather than a memory. Owed,
+paid, balance and surplus are all *derived* from those rows; nothing trusts `booking.paidAmount`
+on its own. Paying over the total is allowed and reported as change due, because somebody handing
+over a Rs 2,000 note for a Rs 1,700 game is a Tuesday, not an error.
+
+**Extra charges.** The court fee is taken in advance; the water and spare balls aren't. Those are
+line items with their own description and amount, added as the game goes, and the total owed
+follows. Each venue can set a usual add-on (amount + what it's for) in the Owner Studio, which
+prefills the line — still editable per booking. An extra charge without a description is refused:
+an unnamed Rs 3,000 on somebody's bill is worse than no charge at all.
+
+**Corrections are voids, not deletions.** A mistake inside the window strikes the row through
+(`voidedAt`, `voidedBy`) and it drops out of the totals, but it stays in the history. Nothing is
+ever deleted, so the day can be reconciled against what was actually keyed in.
+
+**The five-minute window.** Marking a booking settled stamps `settledAt` and the ledger stays
+editable for `SETTLE_EDIT_WINDOW_MS` — five minutes — with the panel counting down. That covers the
+owner who typed 300 instead of 3,000. After it lapses every mutation is refused with `409
+ledger_locked`, including reopening, because a settled book is what the venue reconciles its
+takings against. Settling with nothing recorded is refused outright.
+
+Everything is owner-only: a player pays through the gateway or hands cash over, and the owner is
+the one who writes it down (`403` otherwise). Settling pings the player, and mentions the change if
+they overpaid.
+
+---
+
 ## The bell, and retiring a venue
 
 **Notifications.** The dropdown has two ways to clear it: a tick on each unread row, which marks
