@@ -28,7 +28,7 @@ export function PlayerRatingBadge({ stats, size = "md" }: { stats: PlayerStats; 
 export function PlayerRatingCard({ stats }: { stats: PlayerStats }) {
   const pct = Math.round((stats.rating / 5) * 100);
   return (
-    <div className="rounded-3xl border border-[#F0E3CC] bg-white p-5 shadow-sm dark:border-white/10 dark:bg-stone-900">
+    <div className="rounded-3xl border border-[#F0E3CC] bg-white p-5 shadow-sm dark:border-white/10 dark:bg-slate-900">
       <h2 className="text-sm font-black uppercase tracking-widest text-amber-600 dark:text-amber-400">
         My reliability {stats.emoji}
       </h2>
@@ -54,7 +54,7 @@ export function PlayerRatingCard({ stats }: { stats: PlayerStats }) {
         </div>
         <div className="min-w-0 flex-1">
           <p className="text-base font-black">{stats.label}</p>
-          <p className="mt-0.5 text-xs leading-relaxed text-stone-500 dark:text-stone-400">
+          <p className="mt-0.5 text-xs leading-relaxed text-stone-500 dark:text-slate-400">
             {stats.total === 0
               ? "Play your first game to earn stars! Every completed game builds trust. 🌱"
               : `${stats.completed} played • ${stats.cancelled} cancelled. Venues see this — keep it shiny! ✨`}

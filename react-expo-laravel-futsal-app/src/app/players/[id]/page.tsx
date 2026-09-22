@@ -119,9 +119,9 @@ type MatchRow = {
 };
 
 const card =
-  "rounded-3xl border border-[#F0E3CC] bg-white p-5 shadow-[0_10px_30px_rgba(180,120,60,0.08)] dark:border-white/10 dark:bg-stone-900";
+  "rounded-3xl border border-[#F0E3CC] bg-white p-5 shadow-[0_10px_30px_rgba(180,120,60,0.08)] dark:border-white/10 dark:bg-slate-900";
 const label =
-  "text-[10px] font-black uppercase tracking-widest text-stone-400 dark:text-stone-500";
+  "text-[10px] font-black uppercase tracking-widest text-stone-400 dark:text-slate-500";
 
 /**
  * The full dossier of one player 👤
@@ -252,7 +252,7 @@ export default function PlayerDossierPage({
       <main className="turf-pattern min-h-screen">
         <div className="mx-auto max-w-4xl space-y-4 px-4 py-8">
           {[0, 1, 2].map((i) => (
-            <div key={i} className="h-28 animate-pulse rounded-3xl bg-white dark:bg-stone-900" />
+            <div key={i} className="h-28 animate-pulse rounded-3xl bg-white dark:bg-slate-900" />
           ))}
         </div>
       </main>
@@ -263,7 +263,7 @@ export default function PlayerDossierPage({
     return (
       <main className="turf-pattern min-h-screen">
         <div className="mx-auto max-w-md px-4 py-20 text-center">
-          <p className="text-sm font-black text-stone-700 dark:text-stone-200">
+          <p className="text-sm font-black text-stone-700 dark:text-slate-200">
             {error || "No such player 👤"}
           </p>
           <Link
@@ -305,7 +305,7 @@ export default function PlayerDossierPage({
       <div className="mx-auto max-w-4xl px-4 py-8 sm:px-6">
         <Link
           href="/teams"
-          className="inline-flex items-center gap-1.5 text-xs font-black uppercase tracking-widest text-stone-500 transition hover:text-emerald-600 dark:text-stone-400"
+          className="inline-flex items-center gap-1.5 text-xs font-black uppercase tracking-widest text-stone-500 transition hover:text-emerald-600 dark:text-slate-400"
         >
           <ArrowLeft className="h-3.5 w-3.5" /> All teams
         </Link>
@@ -330,8 +330,8 @@ export default function PlayerDossierPage({
               className="h-20 w-20 text-xl"
             />
             <div className="min-w-0 flex-1">
-              <h1 className="text-2xl font-black text-stone-900 dark:text-stone-100">{player.name}</h1>
-              <p className="mt-1 flex flex-wrap items-center gap-1.5 text-xs font-bold text-stone-500 dark:text-stone-400">
+              <h1 className="text-2xl font-black text-stone-900 dark:text-slate-100">{player.name}</h1>
+              <p className="mt-1 flex flex-wrap items-center gap-1.5 text-xs font-bold text-stone-500 dark:text-slate-400">
                 <span className="rounded-full bg-stone-100 px-2.5 py-1 dark:bg-white/10">{player.level}</span>
                 <span className="rounded-full bg-stone-100 px-2.5 py-1 dark:bg-white/10">{player.position}</span>
                 <span className="flex items-center gap-1 rounded-full bg-stone-100 px-2.5 py-1 dark:bg-white/10">
@@ -343,12 +343,12 @@ export default function PlayerDossierPage({
                   </span>
                 )}
               </p>
-              <p className="mt-2 flex flex-wrap items-center gap-2 text-xs text-stone-500 dark:text-stone-400">
+              <p className="mt-2 flex flex-wrap items-center gap-2 text-xs text-stone-500 dark:text-slate-400">
                 <PlayerRatingBadge stats={stats} />
                 <span className="rounded-full bg-stone-100 px-2.5 py-0.5 text-[11px] font-bold dark:bg-white/10">
                   {stats.trustEmoji} {stats.trustScore} trust — {stats.trustLabel}
                 </span>
-                <span className="text-[11px] font-semibold text-stone-400 dark:text-stone-500">
+                <span className="text-[11px] font-semibold text-stone-400 dark:text-slate-500">
                   on FutsalNepal since{" "}
                   {player.memberSince ? new Date(player.memberSince).toLocaleDateString() : "—"}
                 </span>
@@ -364,7 +364,7 @@ export default function PlayerDossierPage({
               { l: "Reliability", v: `${stats.rating.toFixed(1)} ${stats.emoji}` },
             ].map((s) => (
               <div key={s.l} className="rounded-2xl bg-[#FFF6E9] py-3 text-center dark:bg-white/5">
-                <p className="text-lg font-black text-stone-900 dark:text-stone-100">{s.v}</p>
+                <p className="text-lg font-black text-stone-900 dark:text-slate-100">{s.v}</p>
                 <p className={label}>{s.l}</p>
               </div>
             ))}
@@ -384,14 +384,14 @@ export default function PlayerDossierPage({
             <h2 className="flex items-center gap-2 text-xs font-black uppercase tracking-widest text-amber-700 dark:text-amber-400">
               <MessageSquare className="h-3.5 w-3.5" /> Between you two
             </h2>
-            <p className="mt-1 text-[11px] font-semibold text-stone-500 dark:text-stone-400">
+            <p className="mt-1 text-[11px] font-semibold text-stone-500 dark:text-slate-400">
               Only your own squads can see this — nobody else&apos;s requests or invitations.
             </p>
             <ul className="mt-3 space-y-2">
               {[...pending, ...history].map((row) => (
                 <li
                   key={`${row.kind}-${row.id}`}
-                  className="rounded-2xl border border-stone-200 bg-white p-3 dark:border-white/10 dark:bg-stone-900"
+                  className="rounded-2xl border border-stone-200 bg-white p-3 dark:border-white/10 dark:bg-slate-900"
                 >
                   <div className="flex flex-wrap items-center gap-2">
                     <span
@@ -401,14 +401,14 @@ export default function PlayerDossierPage({
                       {initials(row.teamName)}
                     </span>
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-black text-stone-900 dark:text-stone-100">
+                      <p className="truncate text-sm font-black text-stone-900 dark:text-slate-100">
                         {row.kind === "request"
                           ? `${player.name} asked to join ${row.teamName}`
                           : row.status === "pending"
                             ? `You invited them to ${row.teamName}`
                             : `Your ${row.teamName} invite was ${row.status}`}
                       </p>
-                      <p className="text-[11px] font-semibold text-stone-400 dark:text-stone-500">
+                      <p className="text-[11px] font-semibold text-stone-400 dark:text-slate-500">
                         {timeAgo(row.createdAt)}
                         {row.status !== "pending" ? ` • ${row.status}` : ""}
                       </p>
@@ -430,7 +430,7 @@ export default function PlayerDossierPage({
                         <button
                           onClick={() => void decide(row, "decline")}
                           disabled={busy === `request-${row.id}-decline`}
-                          className="flex items-center gap-1 rounded-xl border border-stone-200 px-3 py-2 text-[11px] font-black text-stone-600 hover:bg-stone-100 disabled:opacity-40 dark:border-white/10 dark:text-stone-300 dark:hover:bg-white/10"
+                          className="flex items-center gap-1 rounded-xl border border-stone-200 px-3 py-2 text-[11px] font-black text-stone-600 hover:bg-stone-100 disabled:opacity-40 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/10"
                         >
                           <X className="h-3.5 w-3.5" /> Decline
                         </button>
@@ -440,14 +440,14 @@ export default function PlayerDossierPage({
                       <button
                         onClick={() => void withdraw(row)}
                         disabled={busy === `withdraw-${row.id}`}
-                        className="rounded-xl border border-stone-200 px-3 py-2 text-[11px] font-black text-stone-600 hover:bg-stone-100 disabled:opacity-40 dark:border-white/10 dark:text-stone-300 dark:hover:bg-white/10"
+                        className="rounded-xl border border-stone-200 px-3 py-2 text-[11px] font-black text-stone-600 hover:bg-stone-100 disabled:opacity-40 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/10"
                       >
                         Withdraw invite
                       </button>
                     )}
                   </div>
                   {row.message && (
-                    <p className="mt-2 rounded-xl bg-stone-50 px-3 py-2 text-[11px] italic leading-relaxed text-stone-600 dark:bg-white/5 dark:text-stone-300">
+                    <p className="mt-2 rounded-xl bg-stone-50 px-3 py-2 text-[11px] italic leading-relaxed text-stone-600 dark:bg-white/5 dark:text-slate-300">
                       &ldquo;{row.message}&rdquo;
                     </p>
                   )}
@@ -463,14 +463,14 @@ export default function PlayerDossierPage({
             <h2 className="flex items-center gap-2 text-xs font-black uppercase tracking-widest text-emerald-700 dark:text-emerald-400">
               <UserPlus className="h-3.5 w-3.5" /> Bring them into your squad
             </h2>
-            <p className="mt-1 text-[11px] font-semibold leading-relaxed text-stone-500 dark:text-stone-400">
+            <p className="mt-1 text-[11px] font-semibold leading-relaxed text-stone-500 dark:text-slate-400">
               An invitation is a question, not an add: {player.name} accepts or declines it themselves.
             </p>
             <div className="mt-3 flex flex-wrap gap-2">
               <select
                 value={inviteTeam}
                 onChange={(e) => setInviteTeam(e.target.value)}
-                className="min-w-[13rem] flex-1 rounded-xl border border-stone-200 bg-[#FFF6E9] px-3.5 py-2.5 text-sm font-semibold text-stone-900 focus:border-emerald-500 focus:outline-none dark:border-white/10 dark:bg-white/5 dark:text-stone-100 [&>option]:bg-white [&>option]:text-stone-900 dark:[&>option]:bg-stone-900 dark:[&>option]:text-stone-100"
+                className="min-w-[13rem] flex-1 rounded-xl border border-stone-200 bg-[#FFF6E9] px-3.5 py-2.5 text-sm font-semibold text-stone-900 focus:border-emerald-500 focus:outline-none dark:border-white/10 dark:bg-white/5 dark:text-slate-100 [&>option]:bg-white [&>option]:text-stone-900 dark:[&>option]:bg-slate-900 dark:[&>option]:text-slate-100"
               >
                 {data.captainOptions.map((t) => (
                   <option key={t.teamId} value={t.teamId}>
@@ -515,18 +515,18 @@ export default function PlayerDossierPage({
               onChange={(e) => setInviteNote(e.target.value)}
               maxLength={200}
               placeholder={'Why them? Optional note they\'ll see — e.g. "we need a keeper on Tuesdays"'}
-              className="mt-2 w-full rounded-xl border border-stone-200 bg-[#FFF6E9] px-3.5 py-2.5 text-sm font-semibold text-stone-900 placeholder:text-stone-400 focus:border-emerald-500 focus:outline-none dark:border-white/10 dark:bg-white/5 dark:text-stone-100 dark:placeholder:text-stone-500"
+              className="mt-2 w-full rounded-xl border border-stone-200 bg-[#FFF6E9] px-3.5 py-2.5 text-sm font-semibold text-stone-900 placeholder:text-stone-400 focus:border-emerald-500 focus:outline-none dark:border-white/10 dark:bg-white/5 dark:text-slate-100 dark:placeholder:text-slate-500"
             />
           </section>
         )}
 
         {/* ------------------------------------------------------- their squads */}
         <section className={`${card} mt-4`}>
-          <h2 className="flex items-center gap-2 text-xs font-black uppercase tracking-widest text-stone-500 dark:text-stone-400">
+          <h2 className="flex items-center gap-2 text-xs font-black uppercase tracking-widest text-stone-500 dark:text-slate-400">
             <Shield className="h-3.5 w-3.5" /> Squads they play for • {data.teams.length}
           </h2>
           {data.teams.length === 0 ? (
-            <p className="mt-2 text-xs font-semibold text-stone-400 dark:text-stone-500">
+            <p className="mt-2 text-xs font-semibold text-stone-400 dark:text-slate-500">
               Not in a squad yet — a free agent anyone&apos;s team could invite ⚽
             </p>
           ) : (
@@ -544,7 +544,7 @@ export default function PlayerDossierPage({
                       {initials(t.name)}
                     </span>
                     <div className="min-w-0 flex-1">
-                      <p className="flex items-center gap-1.5 truncate text-sm font-black text-stone-900 dark:text-stone-100">
+                      <p className="flex items-center gap-1.5 truncate text-sm font-black text-stone-900 dark:text-slate-100">
                         {t.name}
                         {t.role === "captain" && (
                           <span className="flex items-center gap-0.5 rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] font-black text-amber-700 dark:bg-amber-500/15 dark:text-amber-300">
@@ -552,18 +552,18 @@ export default function PlayerDossierPage({
                           </span>
                         )}
                       </p>
-                      <p className="truncate text-[11px] font-semibold text-stone-500 dark:text-stone-400">
+                      <p className="truncate text-[11px] font-semibold text-stone-500 dark:text-slate-400">
                         {t.level} • {t.wins}W {t.draws}D {t.losses}L • {t.memberCount}/{t.maxPlayers} mates
                         {t.homeGround ? ` • ${t.homeGround}` : ""}
                       </p>
                       {(t.description || t.motto) && (
-                        <p className="mt-1 line-clamp-2 text-[11px] italic text-stone-400 dark:text-stone-500">
+                        <p className="mt-1 line-clamp-2 text-[11px] italic text-stone-400 dark:text-slate-500">
                           {t.description || t.motto}
                         </p>
                       )}
                     </div>
                     {t.teamCode && (
-                      <span className="flex items-center gap-1 rounded-full bg-white px-2 py-0.5 font-mono text-[10px] font-black text-stone-600 dark:bg-white/10 dark:text-stone-300">
+                      <span className="flex items-center gap-1 rounded-full bg-white px-2 py-0.5 font-mono text-[10px] font-black text-stone-600 dark:bg-white/10 dark:text-slate-300">
                         <Hash className="h-2.5 w-2.5" /> {t.teamCode}
                       </span>
                     )}
@@ -577,13 +577,13 @@ export default function PlayerDossierPage({
         {/* ------------------------------------------------------- games */}
         <div className="mt-4 grid gap-4 md:grid-cols-2">
           <section className={card}>
-            <h2 className="flex items-center gap-2 text-xs font-black uppercase tracking-widest text-stone-500 dark:text-stone-400">
+            <h2 className="flex items-center gap-2 text-xs font-black uppercase tracking-widest text-stone-500 dark:text-slate-400">
               <Trophy className="h-3.5 w-3.5" /> Games they organise
             </h2>
             <MatchList rows={data.matches.organized} empty="No open match up right now." />
           </section>
           <section className={card}>
-            <h2 className="flex items-center gap-2 text-xs font-black uppercase tracking-widest text-stone-500 dark:text-stone-400">
+            <h2 className="flex items-center gap-2 text-xs font-black uppercase tracking-widest text-stone-500 dark:text-slate-400">
               <CalendarDays className="h-3.5 w-3.5" /> Games they&apos;ve joined
             </h2>
             <MatchList rows={data.matches.joined} empty="Nothing on the calendar yet." />
@@ -592,26 +592,26 @@ export default function PlayerDossierPage({
 
         {/* ------------------------------------------------------- reviews */}
         <section className={`${card} mt-4`}>
-          <h2 className="flex items-center gap-2 text-xs font-black uppercase tracking-widest text-stone-500 dark:text-stone-400">
+          <h2 className="flex items-center gap-2 text-xs font-black uppercase tracking-widest text-stone-500 dark:text-slate-400">
             <Star className="h-3.5 w-3.5" /> What they say about venues • {data.reviews.length}
           </h2>
           {data.reviews.length === 0 ? (
-            <p className="mt-2 text-xs font-semibold text-stone-400 dark:text-stone-500">
+            <p className="mt-2 text-xs font-semibold text-stone-400 dark:text-slate-500">
               No reviews written yet — playing first, talking later 😄
             </p>
           ) : (
             <ul className="mt-3 space-y-2">
               {data.reviews.map((r) => (
                 <li key={r.id} className="rounded-2xl bg-stone-50 px-3.5 py-3 dark:bg-white/5">
-                  <p className="flex items-center gap-1.5 text-xs font-black text-stone-900 dark:text-stone-100">
+                  <p className="flex items-center gap-1.5 text-xs font-black text-stone-900 dark:text-slate-100">
                     <span className="text-amber-500">
                       {"★".repeat(r.rating)}
-                      <span className="text-stone-300 dark:text-stone-600">{"★".repeat(5 - r.rating)}</span>
+                      <span className="text-stone-300 dark:text-slate-600">{"★".repeat(5 - r.rating)}</span>
                     </span>
                     {r.venueName}
                   </p>
                   {r.message && (
-                    <p className="mt-1 text-[11px] leading-relaxed text-stone-500 dark:text-stone-400">
+                    <p className="mt-1 text-[11px] leading-relaxed text-stone-500 dark:text-slate-400">
                       {r.message}
                     </p>
                   )}
@@ -627,7 +627,7 @@ export default function PlayerDossierPage({
 
 function MatchList({ rows, empty }: { rows: MatchRow[]; empty: string }) {
   if (rows.length === 0)
-    return <p className="mt-2 text-xs font-semibold text-stone-400 dark:text-stone-500">{empty}</p>;
+    return <p className="mt-2 text-xs font-semibold text-stone-400 dark:text-slate-500">{empty}</p>;
   return (
     <ul className="mt-3 space-y-1.5">
       {rows.map((m) => (
@@ -635,12 +635,12 @@ function MatchList({ rows, empty }: { rows: MatchRow[]; empty: string }) {
           key={m.id}
           className="flex items-center gap-2 rounded-xl bg-stone-50 px-3 py-2 text-xs dark:bg-white/5"
         >
-          <span className="grid h-8 w-10 shrink-0 place-items-center rounded-lg bg-white text-[10px] font-black text-stone-600 dark:bg-stone-900 dark:text-stone-300">
+          <span className="grid h-8 w-10 shrink-0 place-items-center rounded-lg bg-white text-[10px] font-black text-stone-600 dark:bg-slate-900 dark:text-slate-300">
             {m.date.slice(5)}
           </span>
           <span className="min-w-0 flex-1">
-            <span className="block truncate font-black text-stone-900 dark:text-stone-100">{m.title}</span>
-            <span className="block truncate text-[10px] font-semibold text-stone-400 dark:text-stone-500">
+            <span className="block truncate font-black text-stone-900 dark:text-slate-100">{m.title}</span>
+            <span className="block truncate text-[10px] font-semibold text-stone-400 dark:text-slate-500">
               {m.startTime}–{m.endTime}
               {m.venueName ? ` • ${m.venueName}` : ""} • Rs. {m.pricePerPlayer}
             </span>

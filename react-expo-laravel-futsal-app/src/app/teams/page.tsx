@@ -378,8 +378,8 @@ export default function TeamsPage() {
             <p className="flex items-center gap-1.5 text-xs font-black uppercase tracking-[0.2em] text-orange-500 dark:text-orange-400">
               <Users className="h-3.5 w-3.5" /> Find your people
             </p>
-            <h1 className="mt-1 text-3xl font-black text-stone-900 dark:text-stone-100">Teams & friendly leagues</h1>
-            <p className="mt-1 text-sm text-stone-500 dark:text-stone-400">
+            <h1 className="mt-1 text-3xl font-black text-stone-900 dark:text-slate-100">Teams & friendly leagues</h1>
+            <p className="mt-1 text-sm text-stone-500 dark:text-slate-400">
               {q
                 ? `${teams.length} squad${teams.length === 1 ? "" : "s"} matching "${q}"`
                 : `${teams.length} welcoming squads • every skill level has a home here`}
@@ -390,12 +390,12 @@ export default function TeamsPage() {
               which is why "Request to join" is a request and not a force.
             */}
             {user && quota && (
-              <p className="mt-1 flex flex-wrap items-center gap-1.5 text-xs font-bold text-stone-500 dark:text-stone-400">
+              <p className="mt-1 flex flex-wrap items-center gap-1.5 text-xs font-bold text-stone-500 dark:text-slate-400">
                 <Hourglass className="h-3 w-3" />
                 {quota.left > 0 ? (
                   <>
                     {quota.left} of {quota.limit} join requests left today
-                    <span className="text-stone-400 dark:text-stone-500">
+                    <span className="text-stone-400 dark:text-slate-500">
                       • and a squad can send {quota.limit} invites a day
                     </span>
                   </>
@@ -431,12 +431,12 @@ export default function TeamsPage() {
               }}
               placeholder="Search a team code — e.g. CHARGERS-4X7K"
               aria-label="Search teams by code or name"
-              className="w-full rounded-2xl border border-[#F0E3CC] bg-white py-3 pl-10 pr-3 text-sm font-semibold text-stone-900 placeholder:text-stone-400 focus:border-emerald-500 focus:outline-none dark:border-white/10 dark:bg-stone-900 dark:text-stone-100 dark:placeholder:text-stone-500"
+              className="w-full rounded-2xl border border-[#F0E3CC] bg-white py-3 pl-10 pr-3 text-sm font-semibold text-stone-900 placeholder:text-stone-400 focus:border-emerald-500 focus:outline-none dark:border-white/10 dark:bg-slate-900 dark:text-slate-100 dark:placeholder:text-slate-500"
             />
           </div>
           <button
             onClick={() => setQ(find)}
-            className="rounded-2xl bg-stone-900 px-5 py-3 text-sm font-black text-white transition hover:bg-stone-800 dark:bg-white dark:text-stone-900 dark:hover:bg-stone-200"
+            className="rounded-2xl bg-stone-900 px-5 py-3 text-sm font-black text-white transition hover:bg-stone-800 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-200"
           >
             Search
           </button>
@@ -446,7 +446,7 @@ export default function TeamsPage() {
                 setQ("");
                 setFind("");
               }}
-              className="flex items-center gap-1.5 rounded-2xl border border-stone-200 px-4 py-3 text-sm font-black text-stone-600 transition hover:bg-stone-100 dark:border-white/10 dark:text-stone-300 dark:hover:bg-white/10"
+              className="flex items-center gap-1.5 rounded-2xl border border-stone-200 px-4 py-3 text-sm font-black text-stone-600 transition hover:bg-stone-100 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/10"
             >
               <X className="h-4 w-4" /> Clear
             </button>
@@ -478,14 +478,14 @@ export default function TeamsPage() {
                 {invites.length}
               </span>
             </h2>
-            <p className="mt-1 text-[11px] font-semibold text-stone-500 dark:text-stone-400">
+            <p className="mt-1 text-[11px] font-semibold text-stone-500 dark:text-slate-400">
               Nothing changes until you answer — accept to join, or decline and they&apos;ll know.
             </p>
             <ul className="mt-3 space-y-2">
               {invites.map((i) => (
                 <li
                   key={i.id}
-                  className="flex flex-wrap items-center gap-3 rounded-2xl border border-stone-200 bg-white p-3 dark:border-white/10 dark:bg-stone-900"
+                  className="flex flex-wrap items-center gap-3 rounded-2xl border border-stone-200 bg-white p-3 dark:border-white/10 dark:bg-slate-900"
                 >
                   <span
                     className="grid h-10 w-10 shrink-0 place-items-center rounded-xl text-xs font-black text-white shadow"
@@ -494,22 +494,22 @@ export default function TeamsPage() {
                     {initials(i.teamName)}
                   </span>
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-black text-stone-900 dark:text-stone-100">
+                    <p className="truncate text-sm font-black text-stone-900 dark:text-slate-100">
                       <Link href={`/teams/${i.teamId}`} className="hover:underline" title="Read the full squad before you answer">
                         {i.teamName}
                       </Link>
                       {i.teamCode && (
-                        <span className="ml-2 rounded-full bg-stone-100 px-2 py-0.5 font-mono text-[10px] font-black text-stone-600 dark:bg-white/10 dark:text-stone-300">
+                        <span className="ml-2 rounded-full bg-stone-100 px-2 py-0.5 font-mono text-[10px] font-black text-stone-600 dark:bg-white/10 dark:text-slate-300">
                           {i.teamCode}
                         </span>
                       )}
                     </p>
-                    <p className="truncate text-[11px] font-semibold text-stone-500 dark:text-stone-400">
+                    <p className="truncate text-[11px] font-semibold text-stone-500 dark:text-slate-400">
                       {i.captainName} invited you • {i.memberCount}/{i.maxPlayers} in squad •{" "}
                       {i.teamLevel}
                     </p>
                     {i.message && (
-                      <p className="mt-1 line-clamp-2 text-[11px] italic text-stone-500 dark:text-stone-400">
+                      <p className="mt-1 line-clamp-2 text-[11px] italic text-stone-500 dark:text-slate-400">
                         &ldquo;{i.message}&rdquo;
                       </p>
                     )}
@@ -541,7 +541,7 @@ export default function TeamsPage() {
                     <button
                       onClick={() => void answerInvite(i.id, i.teamName, "decline")}
                       disabled={answering === i.id}
-                      className="flex items-center gap-1 rounded-xl border border-stone-200 px-3 py-2 text-[11px] font-black text-stone-600 transition hover:bg-stone-100 disabled:opacity-40 dark:border-white/10 dark:text-stone-300 dark:hover:bg-white/10"
+                      className="flex items-center gap-1 rounded-xl border border-stone-200 px-3 py-2 text-[11px] font-black text-stone-600 transition hover:bg-stone-100 disabled:opacity-40 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/10"
                     >
                       <X className="h-3.5 w-3.5" /> Decline
                     </button>
@@ -555,12 +555,12 @@ export default function TeamsPage() {
         {loading ? (
           <div className="mt-6 grid gap-4 md:grid-cols-2">
             {[0, 1, 2, 3].map((i) => (
-              <div key={i} className="h-56 animate-pulse rounded-3xl bg-white dark:bg-stone-900" />
+              <div key={i} className="h-56 animate-pulse rounded-3xl bg-white dark:bg-slate-900" />
             ))}
           </div>
         ) : (
           <>
-            <div className="mt-6 overflow-hidden rounded-3xl border border-[#F0E3CC] bg-white p-5 shadow-sm dark:border-white/10 dark:bg-stone-900">
+            <div className="mt-6 overflow-hidden rounded-3xl border border-[#F0E3CC] bg-white p-5 shadow-sm dark:border-white/10 dark:bg-slate-900">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <p className="flex items-center gap-2 text-xs font-black uppercase tracking-widest text-emerald-700 dark:text-emerald-400">
                   <Trophy className="h-4 w-4" /> League tables
@@ -574,10 +574,10 @@ export default function TeamsPage() {
               </div>
               {leagues.length === 0 ? (
                 <div className="mt-3 rounded-2xl border border-dashed border-stone-300 px-4 py-6 text-center dark:border-white/10">
-                  <p className="text-sm font-black text-stone-700 dark:text-stone-200">
+                  <p className="text-sm font-black text-stone-700 dark:text-slate-200">
                     No league is running right now 🏆
                   </p>
-                  <p className="mt-1 text-xs font-semibold text-stone-400 dark:text-stone-500">
+                  <p className="mt-1 text-xs font-semibold text-stone-400 dark:text-slate-500">
                     Anyone can host one — a player, a captain, or a ground owner. Pick a format,
                     set the entry fee and prize pool, then invite the squads.
                   </p>
@@ -605,11 +605,11 @@ export default function TeamsPage() {
                         <div className="flex flex-wrap items-center gap-2">
                           <Link
                             href={`/leagues/${l.id}`}
-                            className="truncate text-sm font-black text-stone-900 hover:text-emerald-700 dark:text-stone-100 dark:hover:text-emerald-400"
+                            className="truncate text-sm font-black text-stone-900 hover:text-emerald-700 dark:text-slate-100 dark:hover:text-emerald-400"
                           >
                             {l.name}
                           </Link>
-                          <span className="rounded-full bg-stone-100 px-2 py-0.5 text-[10px] font-black text-stone-600 dark:bg-white/10 dark:text-stone-300">
+                          <span className="rounded-full bg-stone-100 px-2 py-0.5 text-[10px] font-black text-stone-600 dark:bg-white/10 dark:text-slate-300">
                             {status.emoji} {status.label}
                           </span>
                           {l.visibility === "private" && (
@@ -617,7 +617,7 @@ export default function TeamsPage() {
                               🔒 Private
                             </span>
                           )}
-                          <span className="text-[11px] font-bold text-stone-400 dark:text-stone-500">
+                          <span className="text-[11px] font-bold text-stone-400 dark:text-slate-500">
                             {l.format} • {l.approvedTeams}/{l.maxTeams} squads
                             {l.venueName ? ` • ${l.venueName}` : ""}
                           </span>
@@ -645,11 +645,11 @@ export default function TeamsPage() {
             </div>
 
             {teams.length === 0 && (
-              <div className="mt-6 rounded-3xl border border-dashed border-stone-300 bg-white p-10 text-center dark:border-white/10 dark:bg-stone-900">
-                <p className="text-sm font-black text-stone-700 dark:text-stone-200">
+              <div className="mt-6 rounded-3xl border border-dashed border-stone-300 bg-white p-10 text-center dark:border-white/10 dark:bg-slate-900">
+                <p className="text-sm font-black text-stone-700 dark:text-slate-200">
                   {q ? `No squad matches "${q}" yet` : "No squads on the platform yet"}
                 </p>
-                <p className="mt-1 text-xs font-semibold text-stone-400 dark:text-stone-500">
+                <p className="mt-1 text-xs font-semibold text-stone-400 dark:text-slate-500">
                   {q
                     ? "Check the code for typos — no spaces, and dashes count."
                     : "Be the first to start one 🎉"}
@@ -675,7 +675,7 @@ export default function TeamsPage() {
                 return (
                   <div
                     key={t.id}
-                    className="rounded-3xl border border-[#F0E3CC] bg-white p-5 shadow-[0_10px_30px_rgba(180,120,60,0.08)] transition hover:border-emerald-300 dark:border-white/10 dark:bg-stone-900 dark:hover:border-emerald-500/50"
+                    className="rounded-3xl border border-[#F0E3CC] bg-white p-5 shadow-[0_10px_30px_rgba(180,120,60,0.08)] transition hover:border-emerald-300 dark:border-white/10 dark:bg-slate-900 dark:hover:border-emerald-500/50"
                   >
                     <div className="flex items-start gap-3.5">
                       <span
@@ -686,7 +686,7 @@ export default function TeamsPage() {
                       </span>
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2">
-                          <h3 className="truncate text-base font-extrabold text-stone-900 dark:text-stone-100">
+                          <h3 className="truncate text-base font-extrabold text-stone-900 dark:text-slate-100">
                             <Link href={`/teams/${t.id}`} className="hover:underline" title="Full squad page">
                               {t.name}
                             </Link>
@@ -698,13 +698,13 @@ export default function TeamsPage() {
                             </span>
                           )}
                         </div>
-                        <p className="truncate text-xs italic text-stone-400 dark:text-stone-500">
+                        <p className="truncate text-xs italic text-stone-400 dark:text-slate-500">
                           &quot;{t.motto || "Come play with us!"}&quot;
                         </p>
                         {/* What the captain wants a stranger to know before asking. */}
                         {t.description && (
                           <>
-                            <p className="mt-1.5 line-clamp-3 text-xs leading-relaxed text-stone-500 dark:text-stone-400">
+                            <p className="mt-1.5 line-clamp-3 text-xs leading-relaxed text-stone-500 dark:text-slate-400">
                               {t.description}
                             </p>
                             <Link
@@ -715,14 +715,14 @@ export default function TeamsPage() {
                             </Link>
                           </>
                         )}
-                        <p className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-stone-500 dark:text-stone-400">
+                        <p className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-stone-500 dark:text-slate-400">
                           <span className="flex items-center gap-1">
                             <Crown className="h-3 w-3 text-amber-500" /> {t.captainName} • {t.level}
                           </span>
                           {t.teamCode && (
                             <span
                               title="Search this code to find the squad again"
-                              className="flex items-center gap-1 rounded-full bg-stone-100 px-2 py-0.5 font-mono text-[10px] font-black text-stone-600 dark:bg-white/10 dark:text-stone-300"
+                              className="flex items-center gap-1 rounded-full bg-stone-100 px-2 py-0.5 font-mono text-[10px] font-black text-stone-600 dark:bg-white/10 dark:text-slate-300"
                             >
                               <Hash className="h-2.5 w-2.5" /> {t.teamCode}
                             </span>
@@ -739,8 +739,8 @@ export default function TeamsPage() {
                         { l: "Win %", v: `${winRate}%` },
                       ].map((s) => (
                         <div key={s.l} className="rounded-xl bg-[#FFF6E9] py-2 dark:bg-white/5">
-                          <p className="text-base font-black text-stone-900 dark:text-stone-100">{s.v}</p>
-                          <p className="text-[10px] font-bold uppercase tracking-wider text-stone-400 dark:text-stone-500">
+                          <p className="text-base font-black text-stone-900 dark:text-slate-100">{s.v}</p>
+                          <p className="text-[10px] font-bold uppercase tracking-wider text-stone-400 dark:text-slate-500">
                             {s.l}
                           </p>
                         </div>
@@ -748,7 +748,7 @@ export default function TeamsPage() {
                     </div>
 
                     {t.homeGround && (
-                      <p className="mt-3 flex items-center gap-1.5 text-xs text-stone-500 dark:text-stone-400">
+                      <p className="mt-3 flex items-center gap-1.5 text-xs text-stone-500 dark:text-slate-400">
                         <MapPin className="h-3.5 w-3.5" /> Home turf: {t.homeGround}
                       </p>
                     )}
@@ -761,25 +761,25 @@ export default function TeamsPage() {
                               <Avatar
                                 user={{ name: p.name, avatarColor: p.avatarColor, avatarUrl: p.avatarUrl }}
                                 className="h-8 w-8 text-[10px]"
-                                ring="border-2 border-white shadow dark:border-stone-900"
+                                ring="border-2 border-white shadow dark:border-slate-900"
                               />
                             </Link>
                           </span>
                         ))}
                         {t.memberCount > 6 && (
-                          <span className="grid h-8 w-8 place-items-center rounded-full border-2 border-white bg-stone-200 text-[10px] font-black text-stone-600 dark:border-stone-900 dark:bg-white/10 dark:text-stone-300">
+                          <span className="grid h-8 w-8 place-items-center rounded-full border-2 border-white bg-stone-200 text-[10px] font-black text-stone-600 dark:border-slate-900 dark:bg-white/10 dark:text-slate-300">
                             +{t.memberCount - 6}
                           </span>
                         )}
                       </div>
                       <div className="flex items-center gap-2">
-                        <span className="flex items-center gap-1 text-xs font-bold text-stone-500 dark:text-stone-400">
+                        <span className="flex items-center gap-1 text-xs font-bold text-stone-500 dark:text-slate-400">
                           <Shield className="h-3.5 w-3.5" /> {t.memberCount}/{t.maxPlayers} mates
                         </span>
                         <Link
                           href={`/teams/${t.id}`}
                           title="Full page: description, record, roster and how to join"
-                          className="flex items-center gap-1 rounded-full border border-stone-200 px-2 py-1 text-[10px] font-black text-stone-500 transition hover:bg-stone-100 dark:border-white/10 dark:text-stone-300 dark:hover:bg-white/10"
+                          className="flex items-center gap-1 rounded-full border border-stone-200 px-2 py-1 text-[10px] font-black text-stone-500 transition hover:bg-stone-100 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/10"
                         >
                           <ArrowUpRight className="h-3 w-3" /> Full page
                         </Link>
@@ -804,11 +804,11 @@ export default function TeamsPage() {
                             </span>
                           )}
                         </button>
-                        <p className="mt-1.5 text-center text-[10px] font-bold leading-relaxed text-stone-400 dark:text-stone-500">
+                        <p className="mt-1.5 text-center text-[10px] font-bold leading-relaxed text-stone-400 dark:text-slate-500">
                           👑 You captain this squad — a team always has exactly one captain, so hand
                           over the armband in Manage before stepping away
                         </p>
-                        <p className="text-center text-[10px] font-bold leading-relaxed text-stone-400 dark:text-stone-500">
+                        <p className="text-center text-[10px] font-bold leading-relaxed text-stone-400 dark:text-slate-500">
                           <Send className="mr-1 inline h-2.5 w-2.5" />
                           {t.invitesLeftToday > 0
                             ? `Invite ${t.invitesLeftToday} more player${
@@ -827,7 +827,7 @@ export default function TeamsPage() {
                         <p className="flex items-center gap-1.5 text-[11px] font-black text-emerald-700 dark:text-emerald-300">
                           <Send className="h-3 w-3" /> {t.captainName} invited you 🎉
                         </p>
-                        <p className="mt-0.5 text-[10px] font-semibold leading-relaxed text-stone-500 dark:text-stone-400">
+                        <p className="mt-0.5 text-[10px] font-semibold leading-relaxed text-stone-500 dark:text-slate-400">
                           Nothing changes until you answer. Accept to join the squad, or decline and
                           they&apos;ll know.
                         </p>
@@ -847,7 +847,7 @@ export default function TeamsPage() {
                           <button
                             onClick={() => t.viewer?.inviteId && void answerInvite(t.viewer.inviteId, t.name, "decline")}
                             disabled={acting === t.id}
-                            className="rounded-xl border border-stone-200 px-3 py-2.5 text-xs font-black text-stone-600 transition hover:bg-stone-100 disabled:opacity-40 dark:border-white/10 dark:text-stone-300 dark:hover:bg-white/10"
+                            className="rounded-xl border border-stone-200 px-3 py-2.5 text-xs font-black text-stone-600 transition hover:bg-stone-100 disabled:opacity-40 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/10"
                           >
                             <X className="h-3.5 w-3.5" /> Decline
                           </button>
@@ -861,7 +861,7 @@ export default function TeamsPage() {
                           pending
                             ? "border border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-300"
                             : member
-                              ? "border border-stone-200 bg-stone-50 text-stone-600 hover:bg-stone-100 dark:border-white/10 dark:bg-white/5 dark:text-stone-300 dark:hover:bg-white/10"
+                              ? "border border-stone-200 bg-stone-50 text-stone-600 hover:bg-stone-100 dark:border-white/10 dark:bg-white/5 dark:text-slate-300 dark:hover:bg-white/10"
                               : "bg-emerald-600 text-white shadow-md hover:bg-emerald-700"
                         }`}
                       >
@@ -886,22 +886,22 @@ export default function TeamsPage() {
 
       {showCreate && (
         <div className="fixed inset-0 z-[60] grid place-items-center bg-stone-900/50 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-md rounded-[2rem] border border-stone-200 bg-white p-6 shadow-2xl dark:border-white/10 dark:bg-stone-900">
+          <div className="w-full max-w-md rounded-[2rem] border border-stone-200 bg-white p-6 shadow-2xl dark:border-white/10 dark:bg-slate-900">
             <div className="flex items-center justify-between">
               <div>
-                <h3 className="text-lg font-black text-stone-900 dark:text-stone-100">Start your own crew 🎉</h3>
-                <p className="text-xs text-stone-500 dark:text-stone-400">Every great team starts with one friend.</p>
+                <h3 className="text-lg font-black text-stone-900 dark:text-slate-100">Start your own crew 🎉</h3>
+                <p className="text-xs text-stone-500 dark:text-slate-400">Every great team starts with one friend.</p>
               </div>
               <button
                 onClick={() => setShowCreate(false)}
-                className="grid h-9 w-9 place-items-center rounded-full bg-stone-100 text-stone-600 dark:bg-white/10 dark:text-stone-300"
+                className="grid h-9 w-9 place-items-center rounded-full bg-stone-100 text-stone-600 dark:bg-white/10 dark:text-slate-300"
               >
                 <X className="h-4 w-4" />
               </button>
             </div>
             <div className="mt-4 space-y-3">
               <label className="block">
-                <span className="mb-1 block text-xs font-black uppercase tracking-wider text-stone-400 dark:text-stone-500">Team name</span>
+                <span className="mb-1 block text-xs font-black uppercase tracking-wider text-stone-400 dark:text-slate-500">Team name</span>
                 <input
                   value={name}
                   onChange={(e) => {
@@ -910,7 +910,7 @@ export default function TeamsPage() {
                   }}
                   placeholder="e.g. Sunday Smiles FC"
                   maxLength={50}
-                  className={`w-full rounded-xl border bg-[#FFF6E9] px-3.5 py-2.5 text-sm font-semibold text-stone-900 placeholder:text-stone-400 focus:outline-none dark:bg-white/5 dark:text-stone-100 dark:placeholder:text-stone-500 ${
+                  className={`w-full rounded-xl border bg-[#FFF6E9] px-3.5 py-2.5 text-sm font-semibold text-stone-900 placeholder:text-stone-400 focus:outline-none dark:bg-white/5 dark:text-slate-100 dark:placeholder:text-slate-500 ${
                     fieldErrors.name ? "border-red-400" : "border-stone-200 focus:border-emerald-500 dark:border-white/10"
                   }`}
                 />
@@ -921,7 +921,7 @@ export default function TeamsPage() {
                 )}
               </label>
               <label className="block">
-                <span className="mb-1 block text-xs font-black uppercase tracking-wider text-stone-400 dark:text-stone-500">Team motto</span>
+                <span className="mb-1 block text-xs font-black uppercase tracking-wider text-stone-400 dark:text-slate-500">Team motto</span>
                 <input
                   value={motto}
                   onChange={(e) => {
@@ -930,14 +930,14 @@ export default function TeamsPage() {
                   }}
                   placeholder="e.g. Play happy, win happy"
                   maxLength={120}
-                  className={`w-full rounded-xl border bg-[#FFF6E9] px-3.5 py-2.5 text-sm font-semibold text-stone-900 placeholder:text-stone-400 focus:outline-none dark:bg-white/5 dark:text-stone-100 dark:placeholder:text-stone-500 ${
+                  className={`w-full rounded-xl border bg-[#FFF6E9] px-3.5 py-2.5 text-sm font-semibold text-stone-900 placeholder:text-stone-400 focus:outline-none dark:bg-white/5 dark:text-slate-100 dark:placeholder:text-slate-500 ${
                     fieldErrors.motto ? "border-red-400" : "border-stone-200 focus:border-emerald-500 dark:border-white/10"
                   }`}
                 />
                 {fieldErrors.motto && <span className="mt-1 block text-[11px] font-bold text-red-500">{fieldErrors.motto}</span>}
               </label>
               <label className="block">
-                <span className="mb-1 block text-xs font-black uppercase tracking-wider text-stone-400 dark:text-stone-500">
+                <span className="mb-1 block text-xs font-black uppercase tracking-wider text-stone-400 dark:text-slate-500">
                   About your squad — optional
                 </span>
                 <textarea
@@ -949,7 +949,7 @@ export default function TeamsPage() {
                   rows={3}
                   maxLength={TEAM_DESCRIPTION_MAX}
                   placeholder="Training nights, who pays for the court, whether beginners get game time…"
-                  className={`w-full resize-y rounded-xl border bg-[#FFF6E9] px-3.5 py-2.5 text-sm font-semibold leading-relaxed text-stone-900 placeholder:text-stone-400 focus:outline-none dark:bg-white/5 dark:text-stone-100 dark:placeholder:text-stone-500 ${
+                  className={`w-full resize-y rounded-xl border bg-[#FFF6E9] px-3.5 py-2.5 text-sm font-semibold leading-relaxed text-stone-900 placeholder:text-stone-400 focus:outline-none dark:bg-white/5 dark:text-slate-100 dark:placeholder:text-slate-500 ${
                     fieldErrors.description ? "border-red-400" : "border-stone-200 focus:border-emerald-500 dark:border-white/10"
                   }`}
                 />
@@ -963,7 +963,7 @@ export default function TeamsPage() {
                 )}
               </label>
               <label className="block">
-                <span className="mb-1 flex items-center gap-1 text-xs font-black uppercase tracking-wider text-stone-400 dark:text-stone-500">
+                <span className="mb-1 flex items-center gap-1 text-xs font-black uppercase tracking-wider text-stone-400 dark:text-slate-500">
                   <Hash className="h-3 w-3" /> Team code — unique
                 </span>
                 <div className="flex gap-2">
@@ -976,7 +976,7 @@ export default function TeamsPage() {
                     placeholder="CHARGERS-4X7K"
                     maxLength={24}
                     aria-label="Team code"
-                    className={`w-full rounded-xl border bg-[#FFF6E9] px-3.5 py-2.5 font-mono text-sm font-black tracking-wider text-stone-900 placeholder:font-sans placeholder:font-semibold placeholder:tracking-normal placeholder:text-stone-400 focus:outline-none dark:bg-white/5 dark:text-stone-100 dark:placeholder:text-stone-500 ${
+                    className={`w-full rounded-xl border bg-[#FFF6E9] px-3.5 py-2.5 font-mono text-sm font-black tracking-wider text-stone-900 placeholder:font-sans placeholder:font-semibold placeholder:tracking-normal placeholder:text-stone-400 focus:outline-none dark:bg-white/5 dark:text-slate-100 dark:placeholder:text-slate-500 ${
                       fieldErrors.teamCode || fieldErrors.code
                         ? "border-red-400"
                         : "border-stone-200 focus:border-emerald-500 dark:border-white/10"
@@ -987,7 +987,7 @@ export default function TeamsPage() {
                     onClick={() => setCode(suggestTeamCode(name))}
                     title="Generate a code from the team name"
                     aria-label="Generate a team code"
-                    className="shrink-0 rounded-xl border border-stone-200 bg-white px-3 text-stone-500 transition hover:bg-stone-100 dark:border-white/10 dark:bg-white/5 dark:text-stone-300 dark:hover:bg-white/10"
+                    className="shrink-0 rounded-xl border border-stone-200 bg-white px-3 text-stone-500 transition hover:bg-stone-100 dark:border-white/10 dark:bg-white/5 dark:text-slate-300 dark:hover:bg-white/10"
                   >
                     <Dice5 className="h-4 w-4" />
                   </button>
@@ -1005,11 +1005,11 @@ export default function TeamsPage() {
               </label>
               <div className="grid grid-cols-2 gap-3">
                 <label className="block">
-                  <span className="mb-1 block text-xs font-black uppercase tracking-wider text-stone-400 dark:text-stone-500">Level</span>
+                  <span className="mb-1 block text-xs font-black uppercase tracking-wider text-stone-400 dark:text-slate-500">Level</span>
                   <select
                     value={level}
                     onChange={(e) => setLevel(e.target.value)}
-                    className="w-full rounded-xl border border-stone-200 bg-[#FFF6E9] px-3.5 py-2.5 text-sm font-semibold text-stone-900 focus:border-emerald-500 focus:outline-none dark:border-white/10 dark:bg-white/5 dark:text-stone-100 [&>option]:bg-white [&>option]:text-stone-900 dark:[&>option]:bg-stone-900 dark:[&>option]:text-stone-100"
+                    className="w-full rounded-xl border border-stone-200 bg-[#FFF6E9] px-3.5 py-2.5 text-sm font-semibold text-stone-900 focus:border-emerald-500 focus:outline-none dark:border-white/10 dark:bg-white/5 dark:text-slate-100 [&>option]:bg-white [&>option]:text-stone-900 dark:[&>option]:bg-slate-900 dark:[&>option]:text-slate-100"
                   >
                     {["Beginner", "Intermediate", "Advanced"].map((l) => (
                       <option key={l}>{l}</option>
@@ -1017,13 +1017,13 @@ export default function TeamsPage() {
                   </select>
                 </label>
                 <label className="block">
-                  <span className="mb-1 flex items-center gap-1 text-xs font-black uppercase tracking-wider text-stone-400 dark:text-stone-500">
+                  <span className="mb-1 flex items-center gap-1 text-xs font-black uppercase tracking-wider text-stone-400 dark:text-slate-500">
                     <MapPin className="h-3 w-3" /> Home turf
                   </span>
                   <select
                     value={homeVenueId}
                     onChange={(e) => setHomeVenueId(e.target.value)}
-                    className="w-full rounded-xl border border-stone-200 bg-[#FFF6E9] px-3.5 py-2.5 text-sm font-semibold text-stone-900 focus:border-emerald-500 focus:outline-none dark:border-white/10 dark:bg-white/5 dark:text-stone-100 [&>option]:bg-white [&>option]:text-stone-900 dark:[&>option]:bg-stone-900 dark:[&>option]:text-stone-100"
+                    className="w-full rounded-xl border border-stone-200 bg-[#FFF6E9] px-3.5 py-2.5 text-sm font-semibold text-stone-900 focus:border-emerald-500 focus:outline-none dark:border-white/10 dark:bg-white/5 dark:text-slate-100 [&>option]:bg-white [&>option]:text-stone-900 dark:[&>option]:bg-slate-900 dark:[&>option]:text-slate-100"
                   >
                     <option value="0">No home turf yet</option>
                     {venues.map((v) => (
@@ -1040,13 +1040,13 @@ export default function TeamsPage() {
                 </label>
               </div>
               <div>
-                <span className="mb-1.5 block text-xs font-black uppercase tracking-wider text-stone-400 dark:text-stone-500">Pick your colours</span>
+                <span className="mb-1.5 block text-xs font-black uppercase tracking-wider text-stone-400 dark:text-slate-500">Pick your colours</span>
                 <div className="flex gap-2">
                   {COLORS.map((c) => (
                     <button
                       key={c}
                       onClick={() => setColor(c)}
-                      className={`h-9 w-9 rounded-full transition ${color === c ? "ring-2 ring-emerald-500 ring-offset-2 ring-offset-white dark:ring-offset-stone-900" : ""}`}
+                      className={`h-9 w-9 rounded-full transition ${color === c ? "ring-2 ring-emerald-500 ring-offset-2 ring-offset-white dark:ring-offset-slate-900" : ""}`}
                       style={{ background: c }}
                       aria-label={c}
                     />

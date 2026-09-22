@@ -68,7 +68,7 @@ export function BookingPaymentSummary({ bookingId }: { bookingId: number }) {
     <div className="mt-2.5 rounded-xl border border-stone-200 dark:border-white/10">
       <button
         onClick={() => void toggle()}
-        className="flex w-full items-center justify-between gap-2 px-3.5 py-2.5 text-left text-xs font-black text-stone-600 transition hover:bg-stone-50 dark:text-stone-300 dark:hover:bg-white/5"
+        className="flex w-full items-center justify-between gap-2 px-3.5 py-2.5 text-left text-xs font-black text-stone-600 transition hover:bg-stone-50 dark:text-slate-300 dark:hover:bg-white/5"
       >
         <span className="flex items-center gap-1.5">
           <Wallet className="h-3.5 w-3.5" /> Payment details
@@ -90,7 +90,7 @@ export function BookingPaymentSummary({ bookingId }: { bookingId: number }) {
           {error && <p className="text-xs font-bold text-red-600 dark:text-red-400">{error}</p>}
           {data && (
             <>
-              <dl className="space-y-1 text-xs font-bold text-stone-500 dark:text-stone-400">
+              <dl className="space-y-1 text-xs font-bold text-stone-500 dark:text-slate-400">
                 <div className="flex justify-between">
                   <dt>Court fee</dt>
                   <dd>{formatNPR(data.totals.courtPrice)}</dd>
@@ -101,7 +101,7 @@ export function BookingPaymentSummary({ bookingId }: { bookingId: number }) {
                     <dd>+ {formatNPR(data.totals.extrasTotal)}</dd>
                   </div>
                 )}
-                <div className="flex justify-between border-t border-stone-100 pt-1 text-stone-900 dark:border-white/10 dark:text-stone-100">
+                <div className="flex justify-between border-t border-stone-100 pt-1 text-stone-900 dark:border-white/10 dark:text-slate-100">
                   <dt>Total</dt>
                   <dd className="font-black">{formatNPR(data.totals.owed)}</dd>
                 </div>
@@ -130,7 +130,7 @@ export function BookingPaymentSummary({ bookingId }: { bookingId: number }) {
                     .map((p) => (
                       <li
                         key={p.id}
-                        className="flex items-center justify-between gap-2 text-[11px] font-bold text-stone-500 dark:text-stone-400"
+                        className="flex items-center justify-between gap-2 text-[11px] font-bold text-stone-500 dark:text-slate-400"
                       >
                         <span className="min-w-0 truncate">
                           {p.method}
@@ -142,7 +142,7 @@ export function BookingPaymentSummary({ bookingId }: { bookingId: number }) {
                             ""
                           )}
                         </span>
-                        <span className="shrink-0 font-black text-stone-700 dark:text-stone-200">
+                        <span className="shrink-0 font-black text-stone-700 dark:text-slate-200">
                           {formatNPR(p.amount)}
                         </span>
                       </li>
@@ -157,10 +157,10 @@ export function BookingPaymentSummary({ bookingId }: { bookingId: number }) {
                     .map((x) => (
                       <li
                         key={x.id}
-                        className="flex items-center justify-between gap-2 text-[11px] font-bold text-stone-500 dark:text-stone-400"
+                        className="flex items-center justify-between gap-2 text-[11px] font-bold text-stone-500 dark:text-slate-400"
                       >
                         <span className="min-w-0 truncate">{x.label}</span>
-                        <span className="shrink-0 font-black text-stone-700 dark:text-stone-200">
+                        <span className="shrink-0 font-black text-stone-700 dark:text-slate-200">
                           {formatNPR(x.amount)}
                         </span>
                       </li>

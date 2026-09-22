@@ -105,7 +105,7 @@ export function LeagueBracket({
 
   if (bracketMatches.length === 0 && groups.length === 0) {
     return (
-      <p className="mt-3 rounded-2xl border border-dashed border-stone-300 px-4 py-6 text-center text-xs font-bold text-stone-400 dark:border-white/10 dark:text-stone-500">
+      <p className="mt-3 rounded-2xl border border-dashed border-stone-300 px-4 py-6 text-center text-xs font-bold text-stone-400 dark:border-white/10 dark:text-slate-500">
         {isHost
           ? "No bracket yet — draw it and the shape of the tournament appears here."
           : "The host hasn't drawn the bracket yet."}
@@ -114,7 +114,7 @@ export function LeagueBracket({
   }
 
   return (
-    <section className="rounded-3xl border border-[#F0E3CC] bg-white p-5 shadow-sm dark:border-white/10 dark:bg-stone-900">
+    <section className="rounded-3xl border border-[#F0E3CC] bg-white p-5 shadow-sm dark:border-white/10 dark:bg-slate-900">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="flex items-center gap-2 text-xs font-black uppercase tracking-widest text-orange-600 dark:text-orange-400">
           <Swords className="h-3.5 w-3.5" /> The bracket
@@ -130,7 +130,7 @@ export function LeagueBracket({
           </button>
         )}
       </div>
-      <p className="mt-1 text-[11px] font-semibold text-stone-400 dark:text-stone-500">
+      <p className="mt-1 text-[11px] font-semibold text-stone-400 dark:text-slate-500">
         Win and you move right. A slot with no squad in it yet says where that squad will come
         from — it fills the moment the game before it is decided.
       </p>
@@ -167,7 +167,7 @@ export function LeagueBracket({
                       >
                         {i + 1}
                       </span>
-                      <span className="truncate text-stone-800 dark:text-stone-200">{row.name}</span>
+                      <span className="truncate text-stone-800 dark:text-slate-200">{row.name}</span>
                     </span>
                     <span className="shrink-0 text-stone-400">
                       {row.played}p • {row.points}pts
@@ -187,7 +187,7 @@ export function LeagueBracket({
         <div className="mt-4 flex gap-3 overflow-x-auto pb-2">
           {rounds.map((round) => (
             <div key={round.roundIndex} className="min-w-[13rem] flex-1">
-              <p className="mb-2 text-[10px] font-black uppercase tracking-widest text-stone-400 dark:text-stone-500">
+              <p className="mb-2 text-[10px] font-black uppercase tracking-widest text-stone-400 dark:text-slate-500">
                 {round.label}
               </p>
               <ul className="space-y-2">
@@ -199,7 +199,7 @@ export function LeagueBracket({
           ))}
         </div>
       ) : (
-        <p className="mt-4 rounded-2xl bg-stone-50 px-4 py-6 text-center text-xs font-bold text-stone-400 dark:bg-white/5 dark:text-stone-500">
+        <p className="mt-4 rounded-2xl bg-stone-50 px-4 py-6 text-center text-xs font-bold text-stone-400 dark:bg-white/5 dark:text-slate-500">
           The knockout stage appears once the groups are drawn.
         </p>
       )}
@@ -239,7 +239,7 @@ function Slot({ match, isFinal }: { match: LeagueMatchRow; isFinal: boolean }) {
         won={homeWon}
         waiting={match.homeTeamId === 0}
       />
-      <p className="my-0.5 flex items-center gap-1 text-[9px] font-black uppercase text-stone-300 dark:text-stone-600">
+      <p className="my-0.5 flex items-center gap-1 text-[9px] font-black uppercase text-stone-300 dark:text-slate-600">
         <ArrowRight className="h-2.5 w-2.5" /> vs
       </p>
       <Line
@@ -271,10 +271,10 @@ function Line({
       <span
         className={`min-w-0 truncate text-xs ${
           waiting
-            ? "italic text-stone-400 dark:text-stone-500"
+            ? "italic text-stone-400 dark:text-slate-500"
             : won
-              ? "font-black text-stone-900 dark:text-stone-100"
-              : "font-bold text-stone-600 dark:text-stone-400"
+              ? "font-black text-stone-900 dark:text-slate-100"
+              : "font-bold text-stone-600 dark:text-slate-400"
         }`}
       >
         {waiting ? label || "TBD" : name}

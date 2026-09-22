@@ -172,7 +172,7 @@ export function ReviewsSection({
   }
 
   return (
-    <div className={compact ? "" : "rounded-3xl border border-[#F0E3CC] bg-white p-5 shadow-sm dark:border-white/10 dark:bg-stone-900"}>
+    <div className={compact ? "" : "rounded-3xl border border-[#F0E3CC] bg-white p-5 shadow-sm dark:border-white/10 dark:bg-slate-900"}>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="flex items-center gap-2 text-sm font-black uppercase tracking-widest text-orange-500 dark:text-orange-400">
           <MessageCircleHeart className="h-4 w-4" />
@@ -181,7 +181,7 @@ export function ReviewsSection({
         {reviews.length > 0 && (
           <span className="flex items-center gap-2 rounded-full bg-amber-50 px-3 py-1.5 dark:bg-amber-500/10">
             <Stars value={avg} />
-            <span className="text-xs font-black text-stone-800 dark:text-stone-100">
+            <span className="text-xs font-black text-stone-800 dark:text-slate-100">
               {avg} • {reviews.length} review{reviews.length !== 1 ? "s" : ""}
             </span>
           </span>
@@ -197,7 +197,7 @@ export function ReviewsSection({
         </button>
       )}
       {canReview && mine && !showForm && (
-        <p className="mt-1.5 text-center text-[11px] font-bold text-stone-400 dark:text-stone-500">
+        <p className="mt-1.5 text-center text-[11px] font-bold text-stone-400 dark:text-slate-500">
           One review per venue — posting again updates yours, it won&apos;t add a second 🔒
         </p>
       )}
@@ -216,7 +216,7 @@ export function ReviewsSection({
               <select
                 value={bookingId}
                 onChange={(e) => setBookingId(e.target.value)}
-                className="w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm font-semibold dark:border-white/10 dark:bg-stone-950 [&>option]:bg-white [&>option]:text-stone-900 dark:[&>option]:bg-stone-900 dark:[&>option]:text-stone-100"
+                className="w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm font-semibold dark:border-white/10 dark:bg-slate-950 [&>option]:bg-white [&>option]:text-stone-900 dark:[&>option]:bg-slate-900 dark:[&>option]:text-slate-100"
               >
                 <option value="">General visit</option>
                 {eligibleBookings.map((b) => (
@@ -229,7 +229,7 @@ export function ReviewsSection({
           )}
           <div className="flex items-center gap-3">
             <StarInput value={rating} onChange={setRating} />
-            <span className="text-sm font-black text-stone-700 dark:text-stone-200">
+            <span className="text-sm font-black text-stone-700 dark:text-slate-200">
               {RATING_WORDS[rating]}
             </span>
           </div>
@@ -242,7 +242,7 @@ export function ReviewsSection({
             rows={3}
             maxLength={1000}
             placeholder={`How was ${venueName}? Turf, vibe, staff… tell future players! ⚽`}
-            className="w-full resize-none rounded-xl border border-stone-200 bg-white px-3.5 py-2.5 text-sm font-semibold placeholder:text-stone-400 focus:border-orange-400 focus:outline-none dark:border-white/10 dark:bg-stone-950 dark:placeholder:text-stone-500"
+            className="w-full resize-none rounded-xl border border-stone-200 bg-white px-3.5 py-2.5 text-sm font-semibold placeholder:text-stone-400 focus:border-orange-400 focus:outline-none dark:border-white/10 dark:bg-slate-950 dark:placeholder:text-slate-500"
           />
           <p className="text-[11px] text-stone-400">{message.trim().length}/1000 • min 3 characters 💬</p>
           {error && <p className="text-xs font-bold text-red-500">{error}</p>}
@@ -252,7 +252,7 @@ export function ReviewsSection({
                 setShowForm(false);
                 setError("");
               }}
-              className="flex-1 rounded-2xl border border-stone-200 py-3 text-sm font-black text-stone-600 dark:border-white/10 dark:text-stone-300"
+              className="flex-1 rounded-2xl border border-stone-200 py-3 text-sm font-black text-stone-600 dark:border-white/10 dark:text-slate-300"
             >
               Later
             </button>
@@ -275,7 +275,7 @@ export function ReviewsSection({
           ))}
         </div>
       ) : reviews.length === 0 ? (
-        <p className="mt-3 rounded-2xl bg-stone-50 px-4 py-6 text-center text-sm text-stone-400 dark:bg-white/5 dark:text-stone-500">
+        <p className="mt-3 rounded-2xl bg-stone-50 px-4 py-6 text-center text-sm text-stone-400 dark:bg-white/5 dark:text-slate-500">
           No reviews yet — be the first to play here and tell the story! 🌟
         </p>
       ) : (
@@ -288,7 +288,7 @@ export function ReviewsSection({
               <div className="flex items-center gap-2.5">
                 <Avatar user={{ name: r.userName, avatarColor: r.avatarColor, avatarUrl: r.avatarUrl }} className="h-9 w-9 text-xs" />
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-extrabold text-stone-900 dark:text-stone-100">
+                  <p className="truncate text-sm font-extrabold text-stone-900 dark:text-slate-100">
                     {r.userName}
                     {r.userId === user?.id && (
                       <span className="ml-1.5 rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-black text-emerald-700 dark:text-emerald-300">
@@ -305,13 +305,13 @@ export function ReviewsSection({
                 {r.userId === user?.id && (
                   <span
                     title="Reviews are locked — you can update yours, not delete it"
-                    className="grid h-7 w-7 place-items-center rounded-lg text-stone-300 dark:text-stone-600"
+                    className="grid h-7 w-7 place-items-center rounded-lg text-stone-300 dark:text-slate-600"
                   >
                     🔒
                   </span>
                 )}
               </div>
-              <p className="mt-2 text-[13px] leading-relaxed text-stone-600 dark:text-stone-300">
+              <p className="mt-2 text-[13px] leading-relaxed text-stone-600 dark:text-slate-300">
                 “{r.message}”
               </p>
             </div>

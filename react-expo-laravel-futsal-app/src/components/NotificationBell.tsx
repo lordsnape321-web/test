@@ -104,11 +104,11 @@ export function NotificationBell({ variant }: { variant: "dark" | "light" }) {
           load();
         }}
         aria-label="Notifications"
-        className="relative grid h-10 w-10 place-items-center rounded-xl border border-stone-200 bg-white text-stone-600 shadow-sm transition hover:bg-stone-50 dark:border-white/10 dark:bg-stone-900 dark:text-stone-300 dark:hover:bg-white/5"
+        className="relative grid h-10 w-10 place-items-center rounded-xl border border-stone-200 bg-white text-stone-600 shadow-sm transition hover:bg-stone-50 dark:border-white/10 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-white/5"
       >
         <Bell className="h-5 w-5" />
         {unread > 0 && (
-          <span className="absolute -right-1.5 -top-1.5 grid h-5 min-w-5 place-items-center rounded-full bg-red-500 px-1 text-[10px] font-black text-white ring-2 ring-white dark:ring-stone-950">
+          <span className="absolute -right-1.5 -top-1.5 grid h-5 min-w-5 place-items-center rounded-full bg-red-500 px-1 text-[10px] font-black text-white ring-2 ring-white dark:ring-slate-950">
             {unread > 9 ? "9+" : unread}
           </span>
         )}
@@ -117,9 +117,9 @@ export function NotificationBell({ variant }: { variant: "dark" | "light" }) {
       {open && (
         <>
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-          <div className="fixed left-4 right-4 top-[64px] z-50 overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-2xl sm:absolute sm:left-auto sm:right-0 sm:top-auto sm:mt-2 sm:w-[330px] dark:border-white/10 dark:bg-stone-900">
+          <div className="fixed left-4 right-4 top-[64px] z-50 overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-2xl sm:absolute sm:left-auto sm:right-0 sm:top-auto sm:mt-2 sm:w-[330px] dark:border-white/10 dark:bg-slate-900">
             <div className="flex items-center justify-between border-b border-stone-100 bg-orange-50/50 px-4 py-3 dark:border-white/5 dark:bg-orange-500/10">
-              <p className="text-sm font-black text-stone-900 dark:text-stone-100">
+              <p className="text-sm font-black text-stone-900 dark:text-slate-100">
                 Notifications
                 {unread > 0 && (
                   <span className="ml-2 rounded-full bg-red-100 px-2 py-0.5 text-[11px] font-black text-red-600 dark:bg-red-500/15 dark:text-red-400">
@@ -132,7 +132,7 @@ export function NotificationBell({ variant }: { variant: "dark" | "light" }) {
                   <button
                     onClick={() => void markAllRead()}
                     disabled={marking !== 0}
-                    className="flex items-center gap-1 text-xs font-black text-stone-500 transition hover:text-emerald-600 disabled:opacity-50 dark:text-stone-400 dark:hover:text-emerald-400"
+                    className="flex items-center gap-1 text-xs font-black text-stone-500 transition hover:text-emerald-600 disabled:opacity-50 dark:text-slate-400 dark:hover:text-emerald-400"
                   >
                     <CheckCheck className="h-3.5 w-3.5" /> Mark all read
                   </button>
@@ -148,7 +148,7 @@ export function NotificationBell({ variant }: { variant: "dark" | "light" }) {
             </div>
             <div className="max-h-[55vh] overflow-y-auto sm:max-h-[340px]">
               {items.length === 0 && (
-                <p className="px-4 py-8 text-center text-sm text-stone-400 dark:text-stone-500">
+                <p className="px-4 py-8 text-center text-sm text-stone-400 dark:text-slate-500">
                   All quiet here. Time to book a game! ⚽
                 </p>
               )}
@@ -173,16 +173,16 @@ export function NotificationBell({ variant }: { variant: "dark" | "light" }) {
                       n.isRead ? "" : "bg-orange-50/50 dark:bg-orange-500/10"
                     }`}
                   >
-                    <p className="text-[13px] font-bold leading-snug text-stone-900 dark:text-stone-100">
+                    <p className="text-[13px] font-bold leading-snug text-stone-900 dark:text-slate-100">
                       {!n.isRead && <span className="mr-1.5 inline-block h-2 w-2 rounded-full bg-red-500" />}
                       {n.title}
                     </p>
                     {n.message && (
-                      <p className="mt-0.5 line-clamp-2 text-xs leading-relaxed text-stone-500 dark:text-stone-400">
+                      <p className="mt-0.5 line-clamp-2 text-xs leading-relaxed text-stone-500 dark:text-slate-400">
                         {n.message}
                       </p>
                     )}
-                    <p className="mt-1 text-[11px] font-semibold text-stone-400 dark:text-stone-500">
+                    <p className="mt-1 text-[11px] font-semibold text-stone-400 dark:text-slate-500">
                       {timeAgo(n.createdAt)}
                     </p>
                   </button>
@@ -192,7 +192,7 @@ export function NotificationBell({ variant }: { variant: "dark" | "light" }) {
                       disabled={marking !== 0}
                       title="Mark as read"
                       aria-label={`Mark "${n.title}" as read`}
-                      className="absolute right-2.5 top-3 grid h-7 w-7 place-items-center rounded-lg text-stone-400 transition hover:bg-emerald-100 hover:text-emerald-700 disabled:opacity-50 dark:text-stone-500 dark:hover:bg-emerald-500/15 dark:hover:text-emerald-300"
+                      className="absolute right-2.5 top-3 grid h-7 w-7 place-items-center rounded-lg text-stone-400 transition hover:bg-emerald-100 hover:text-emerald-700 disabled:opacity-50 dark:text-slate-500 dark:hover:bg-emerald-500/15 dark:hover:text-emerald-300"
                     >
                       {marking === n.id ? (
                         <Loader2 className="h-3.5 w-3.5 animate-spin" />

@@ -168,7 +168,7 @@ export function LeagueSquadPanel({
 
   if (rows.length === 0) {
     return (
-      <div className="rounded-3xl border border-[#F0E3CC] bg-white p-5 text-sm text-stone-500 shadow-sm dark:border-white/10 dark:bg-stone-900 dark:text-stone-400">
+      <div className="rounded-3xl border border-[#F0E3CC] bg-white p-5 text-sm text-stone-500 shadow-sm dark:border-white/10 dark:bg-slate-900 dark:text-slate-400">
         You need to captain a squad to enter a league.{" "}
         <a href="/teams" className="font-black text-emerald-700 underline dark:text-emerald-400">
           Start or find a team
@@ -179,7 +179,7 @@ export function LeagueSquadPanel({
   }
 
   return (
-    <div className="rounded-3xl border border-[#F0E3CC] bg-white p-5 shadow-sm dark:border-white/10 dark:bg-stone-900">
+    <div className="rounded-3xl border border-[#F0E3CC] bg-white p-5 shadow-sm dark:border-white/10 dark:bg-slate-900">
       <h2 className="flex items-center gap-2 text-xs font-black uppercase tracking-widest text-emerald-700 dark:text-emerald-400">
         <Trophy className="h-3.5 w-3.5" /> Your squads in this league
       </h2>
@@ -215,8 +215,8 @@ export function LeagueSquadPanel({
                     {team.name.slice(0, 2).toUpperCase()}
                   </span>
                   <div>
-                    <p className="text-sm font-black text-stone-900 dark:text-stone-100">{team.name}</p>
-                    <p className="text-[11px] font-bold text-stone-500 dark:text-stone-400">
+                    <p className="text-sm font-black text-stone-900 dark:text-slate-100">{team.name}</p>
+                    <p className="text-[11px] font-bold text-stone-500 dark:text-slate-400">
                       {label ? `${label.emoji} ${label.label}` : "Not entered yet"}
                       {isCaptain ? "" : " • you're not the captain"}
                     </p>
@@ -237,7 +237,7 @@ export function LeagueSquadPanel({
                   booking a pitch does — same three, same wording. */}
               {isCaptain && !closed && league.entryFee > 0 && entry && entry.status !== "withdrawn" && (
                 <div className="mt-3 rounded-2xl border border-[#F0E3CC] bg-[#FFFDF7] p-3 dark:border-white/10 dark:bg-white/5">
-                  <p className="text-[10px] font-black uppercase tracking-wider text-stone-400 dark:text-stone-500">
+                  <p className="text-[10px] font-black uppercase tracking-wider text-stone-400 dark:text-slate-500">
                     Pay your way — {league.entryFee > 0 ? `${formatNPR(league.entryFee)} entry` : ""}
                     {entry.payment.due > 0 ? ` • ${formatNPR(entry.payment.due)} left` : " • settled"}
                   </p>
@@ -251,7 +251,7 @@ export function LeagueSquadPanel({
                           className={`flex items-center gap-1.5 rounded-xl border px-3 py-2.5 text-xs font-extrabold transition ${
                             on
                               ? "border-emerald-500 bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300"
-                              : "border-stone-200 bg-stone-50 text-stone-500 dark:border-white/10 dark:bg-white/5 dark:text-stone-400"
+                              : "border-stone-200 bg-stone-50 text-stone-500 dark:border-white/10 dark:bg-white/5 dark:text-slate-400"
                           }`}
                         >
                           <Wallet className="h-3.5 w-3.5" /> {m}
@@ -260,14 +260,14 @@ export function LeagueSquadPanel({
                       );
                     })}
                   </div>
-                  <p className="mt-1.5 text-[11px] font-semibold text-stone-400 dark:text-stone-500">
+                  <p className="mt-1.5 text-[11px] font-semibold text-stone-400 dark:text-slate-500">
                     {isOnlineMethod(methodFor(team.id))
                       ? `You'll be taken to the ${methodFor(team.id)} checkout — nothing is charged until you confirm there.`
                       : "Cash goes to the host at the ground. They mark it on your entry, so bring the exact amount."}
                   </p>
                   {entry.payment.due > 0 && (
                     <details className="mt-2 rounded-xl border border-stone-200 p-2.5 dark:border-white/10">
-                      <summary className="cursor-pointer text-[11px] font-black text-stone-500 dark:text-stone-400">
+                      <summary className="cursor-pointer text-[11px] font-black text-stone-500 dark:text-slate-400">
                         {entry.payment.paid > 0 || receiptFor(team.id)
                           ? "Replace the payment screenshot 🧾"
                           : "Already paid? Attach a screenshot instead (optional) 🧾"}
@@ -299,7 +299,7 @@ export function LeagueSquadPanel({
                         onChange={(e) => setNote(e.target.value)}
                         placeholder="Note to the host (optional)"
                         maxLength={200}
-                        className="min-w-[12rem] flex-1 rounded-xl border border-[#F0E3CC] bg-[#FFFDF7] px-3 py-2 text-xs font-semibold text-stone-800 focus:border-emerald-500 focus:outline-none dark:border-white/10 dark:bg-stone-950 dark:text-stone-100"
+                        className="min-w-[12rem] flex-1 rounded-xl border border-[#F0E3CC] bg-[#FFFDF7] px-3 py-2 text-xs font-semibold text-stone-800 focus:border-emerald-500 focus:outline-none dark:border-white/10 dark:bg-slate-950 dark:text-slate-100"
                       />
                       <button
                         onClick={() => void act(`request-${team.id}`, { action: "request", userId: viewerId, teamId: team.id, message: note })}
@@ -336,7 +336,7 @@ export function LeagueSquadPanel({
                       <button
                         onClick={() => void act(`answer-${team.id}`, { action: "reject", hostId: viewerId, teamId: team.id }, `/api/tournaments/${league.id}/teams`)}
                         disabled={busy !== ""}
-                        className="flex items-center gap-1.5 rounded-xl border border-stone-200 px-4 py-2 text-xs font-black text-stone-600 transition hover:bg-stone-100 dark:border-white/10 dark:text-stone-300"
+                        className="flex items-center gap-1.5 rounded-xl border border-stone-200 px-4 py-2 text-xs font-black text-stone-600 transition hover:bg-stone-100 dark:border-white/10 dark:text-slate-300"
                       >
                         <X className="h-3.5 w-3.5" /> Decline
                       </button>
@@ -368,7 +368,7 @@ export function LeagueSquadPanel({
                       <button
                         onClick={() => void pay(team.id, Math.min(due, Math.max(entry.payment.deposit, 500)), false)}
                         disabled={busy !== ""}
-                        className="rounded-xl border border-stone-200 px-4 py-2 text-xs font-black text-stone-600 transition hover:bg-stone-100 dark:border-white/10 dark:text-stone-300"
+                        className="rounded-xl border border-stone-200 px-4 py-2 text-xs font-black text-stone-600 transition hover:bg-stone-100 dark:border-white/10 dark:text-slate-300"
                       >
                         Pay {formatNPR(Math.min(due, Math.max(entry.payment.deposit, 500)))}
                       </button>
@@ -378,7 +378,7 @@ export function LeagueSquadPanel({
                   {entry && entry.status !== "withdrawn" && entry.payment.locked && (
                     <span
                       title={entry.payment.lockReason}
-                      className="flex items-center gap-1.5 rounded-xl bg-stone-200 px-4 py-2 text-xs font-black text-stone-600 dark:bg-white/10 dark:text-stone-300"
+                      className="flex items-center gap-1.5 rounded-xl bg-stone-200 px-4 py-2 text-xs font-black text-stone-600 dark:bg-white/10 dark:text-slate-300"
                     >
                       <Lock className="h-3.5 w-3.5" /> Entry locked — you&apos;ve played
                     </span>
@@ -406,7 +406,7 @@ export function LeagueSquadPanel({
               )}
 
               {entry && entry.payment.locked && entry.payment.paid > 0 && (
-                <p className="mt-2 flex items-start gap-1.5 rounded-xl bg-stone-100 px-3 py-2 text-[11px] font-bold text-stone-500 dark:bg-white/5 dark:text-stone-400">
+                <p className="mt-2 flex items-start gap-1.5 rounded-xl bg-stone-100 px-3 py-2 text-[11px] font-bold text-stone-500 dark:bg-white/5 dark:text-slate-400">
                   <Lock className="mt-0.5 h-3 w-3 shrink-0" />
                   {entry.payment.lockReason} The {league.refundPercent}% refund closed when your
                   first match kicked off — the host has a pitch booked and a fixture list built
@@ -414,7 +414,7 @@ export function LeagueSquadPanel({
                 </p>
               )}
               {entry && !entry.payment.locked && entry.payment.paid > 0 && (
-                <p className="mt-2 text-[11px] font-semibold text-stone-400 dark:text-stone-500">
+                <p className="mt-2 text-[11px] font-semibold text-stone-400 dark:text-slate-500">
                   Backing out returns {formatNPR(entry.payment.refundable)} ({league.refundPercent}%
                   of what you paid) — the rest stays with the league. That closes once your first
                   match kicks off 🔒

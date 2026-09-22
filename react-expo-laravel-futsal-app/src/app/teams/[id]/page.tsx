@@ -154,9 +154,9 @@ type Detail = {
 };
 
 const card =
-  "rounded-3xl border border-[#F0E3CC] bg-white p-5 shadow-[0_10px_30px_rgba(180,120,60,0.08)] dark:border-white/10 dark:bg-stone-900";
+  "rounded-3xl border border-[#F0E3CC] bg-white p-5 shadow-[0_10px_30px_rgba(180,120,60,0.08)] dark:border-white/10 dark:bg-slate-900";
 const head =
-  "text-xs font-black uppercase tracking-widest text-stone-500 dark:text-stone-400";
+  "text-xs font-black uppercase tracking-widest text-stone-500 dark:text-slate-400";
 
 /**
  * One squad, in full 🛡️
@@ -229,7 +229,7 @@ export default function TeamDetailPage({
       <main className="turf-pattern min-h-screen">
         <div className="mx-auto max-w-4xl space-y-4 px-4 py-8">
           {[0, 1, 2].map((i) => (
-            <div key={i} className="h-28 animate-pulse rounded-3xl bg-white dark:bg-stone-900" />
+            <div key={i} className="h-28 animate-pulse rounded-3xl bg-white dark:bg-slate-900" />
           ))}
         </div>
       </main>
@@ -240,7 +240,7 @@ export default function TeamDetailPage({
     return (
       <main className="turf-pattern grid min-h-screen place-items-center px-4">
         <div className="text-center">
-          <p className="text-sm font-black text-stone-700 dark:text-stone-200">
+          <p className="text-sm font-black text-stone-700 dark:text-slate-200">
             {error || "No such squad 🛡️"}
           </p>
           <Link
@@ -270,7 +270,7 @@ export default function TeamDetailPage({
       <div className="mx-auto max-w-4xl px-4 py-8 sm:px-6">
         <Link
           href="/teams"
-          className="inline-flex items-center gap-1.5 text-xs font-black uppercase tracking-widest text-stone-500 transition hover:text-emerald-600 dark:text-stone-400"
+          className="inline-flex items-center gap-1.5 text-xs font-black uppercase tracking-widest text-stone-500 transition hover:text-emerald-600 dark:text-slate-400"
         >
           <ArrowLeft className="h-3.5 w-3.5" /> All teams
         </Link>
@@ -298,7 +298,7 @@ export default function TeamDetailPage({
             </span>
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-2">
-                <h1 className="text-2xl font-black text-stone-900 dark:text-stone-100">{team.name}</h1>
+                <h1 className="text-2xl font-black text-stone-900 dark:text-slate-100">{team.name}</h1>
                 {team.lookingForPlayers && (
                   <span className="flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-black text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300">
                     <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-500" />
@@ -306,10 +306,10 @@ export default function TeamDetailPage({
                   </span>
                 )}
               </div>
-              <p className="mt-0.5 text-xs italic text-stone-400 dark:text-stone-500">
+              <p className="mt-0.5 text-xs italic text-stone-400 dark:text-slate-500">
                 &quot;{team.motto || "Come play with us!"}&quot;
               </p>
-              <p className="mt-2 flex flex-wrap items-center gap-1.5 text-xs font-bold text-stone-500 dark:text-stone-400">
+              <p className="mt-2 flex flex-wrap items-center gap-1.5 text-xs font-bold text-stone-500 dark:text-slate-400">
                 <span className="rounded-full bg-stone-100 px-2.5 py-1 dark:bg-white/10">{team.level}</span>
                 {team.teamCode && (
                   <span className="flex items-center gap-1 rounded-full bg-stone-100 px-2.5 py-1 font-mono dark:bg-white/10">
@@ -341,11 +341,11 @@ export default function TeamDetailPage({
 
           {/* The whole thing — no clamping, no tooltip, no "read more". */}
           {team.description ? (
-            <p className="mt-4 whitespace-pre-line rounded-2xl bg-[#FFF6E9] px-4 py-3 text-sm leading-relaxed text-stone-700 dark:bg-white/5 dark:text-stone-200">
+            <p className="mt-4 whitespace-pre-line rounded-2xl bg-[#FFF6E9] px-4 py-3 text-sm leading-relaxed text-stone-700 dark:bg-white/5 dark:text-slate-200">
               {team.description}
             </p>
           ) : (
-            <p className="mt-4 rounded-2xl border border-dashed border-stone-200 px-4 py-3 text-xs font-semibold text-stone-400 dark:border-white/10 dark:text-stone-500">
+            <p className="mt-4 rounded-2xl border border-dashed border-stone-200 px-4 py-3 text-xs font-semibold text-stone-400 dark:border-white/10 dark:text-slate-500">
               {viewer?.isCaptain
                 ? "You haven't written a description yet — players read this before asking to join, so a couple of lines about training nights and how you split the bill goes a long way ✍️"
                 : "This squad hasn't written a description yet — ask the captain what to expect 🤝"}
@@ -360,8 +360,8 @@ export default function TeamDetailPage({
               { l: "Squad size", v: `${roster.length}/${team.maxPlayers}` },
             ].map((s) => (
               <div key={s.l} className="rounded-2xl bg-[#FFF6E9] py-3 text-center dark:bg-white/5">
-                <p className="text-base font-black text-stone-900 dark:text-stone-100">{s.v}</p>
-                <p className="text-[10px] font-bold uppercase tracking-wider text-stone-400 dark:text-stone-500">
+                <p className="text-base font-black text-stone-900 dark:text-slate-100">{s.v}</p>
+                <p className="text-[10px] font-bold uppercase tracking-wider text-stone-400 dark:text-slate-500">
                   {s.l}
                 </p>
               </div>
@@ -373,7 +373,7 @@ export default function TeamDetailPage({
             {!user ? (
               <Link
                 href="/login"
-                className="flex w-full items-center justify-center gap-2 rounded-2xl bg-stone-900 py-3 text-sm font-black text-white hover:bg-stone-800 dark:bg-white dark:text-stone-900"
+                className="flex w-full items-center justify-center gap-2 rounded-2xl bg-stone-900 py-3 text-sm font-black text-white hover:bg-stone-800 dark:bg-white dark:text-slate-900"
               >
                 <LogIn className="h-4 w-4" /> Log in to see your standing with this squad
               </Link>
@@ -385,7 +385,7 @@ export default function TeamDetailPage({
                 >
                   <Settings className="h-4 w-4" /> Manage your squad
                 </Link>
-                <span className="text-[11px] font-bold text-stone-400 dark:text-stone-500">
+                <span className="text-[11px] font-bold text-stone-400 dark:text-slate-500">
                   <Send className="mr-1 inline h-3 w-3" />
                   {captain?.quota.left ?? 0} of {captain?.quota.limit ?? 5} invites left today
                 </span>
@@ -395,7 +395,7 @@ export default function TeamDetailPage({
                 <p className="flex items-center gap-1.5 text-sm font-black text-emerald-700 dark:text-emerald-300">
                   <Send className="h-4 w-4" /> {team.captainName} invited you to join 🎉
                 </p>
-                <p className="mt-1 text-[11px] font-semibold leading-relaxed text-stone-500 dark:text-stone-400">
+                <p className="mt-1 text-[11px] font-semibold leading-relaxed text-stone-500 dark:text-slate-400">
                   Nothing changes until you answer. Read the roster and the description above — that is
                   who you would be playing with.
                 </p>
@@ -441,7 +441,7 @@ export default function TeamDetailPage({
                       )
                     }
                     disabled={busy === "decline"}
-                    className="rounded-xl border border-stone-200 px-4 py-2.5 text-sm font-black text-stone-600 hover:bg-stone-100 disabled:opacity-40 dark:border-white/10 dark:text-stone-300 dark:hover:bg-white/10"
+                    className="rounded-xl border border-stone-200 px-4 py-2.5 text-sm font-black text-stone-600 hover:bg-stone-100 disabled:opacity-40 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/10"
                   >
                     <X className="h-4 w-4" /> Decline
                   </button>
@@ -455,7 +455,7 @@ export default function TeamDetailPage({
                   rows={2}
                   maxLength={200}
                   placeholder="Optional note for the captain — a line about how you play goes a long way"
-                  className="w-full resize-y rounded-xl border border-stone-200 bg-[#FFF6E9] px-3.5 py-2.5 text-sm font-semibold text-stone-900 placeholder:text-stone-400 focus:border-emerald-500 focus:outline-none dark:border-white/10 dark:bg-white/5 dark:text-stone-100 dark:placeholder:text-stone-500"
+                  className="w-full resize-y rounded-xl border border-stone-200 bg-[#FFF6E9] px-3.5 py-2.5 text-sm font-semibold text-stone-900 placeholder:text-stone-400 focus:border-emerald-500 focus:outline-none dark:border-white/10 dark:bg-white/5 dark:text-slate-100 dark:placeholder:text-slate-500"
                 />
                 <div className="mt-2 flex flex-wrap gap-2">
                   {requested ? (
@@ -484,7 +484,7 @@ export default function TeamDetailPage({
                         )
                       }
                       disabled={busy === "leave"}
-                      className="flex-1 rounded-2xl border border-stone-200 bg-stone-50 py-3 text-sm font-black text-stone-600 hover:bg-stone-100 disabled:opacity-40 dark:border-white/10 dark:bg-white/5 dark:text-stone-300 dark:hover:bg-white/10"
+                      className="flex-1 rounded-2xl border border-stone-200 bg-stone-50 py-3 text-sm font-black text-stone-600 hover:bg-stone-100 disabled:opacity-40 dark:border-white/10 dark:bg-white/5 dark:text-slate-300 dark:hover:bg-white/10"
                     >
                       Take a break from the team
                     </button>
@@ -510,7 +510,7 @@ export default function TeamDetailPage({
                     </button>
                   )}
                 </div>
-                <p className="mt-1.5 text-[10px] font-bold text-stone-400 dark:text-stone-500">
+                <p className="mt-1.5 text-[10px] font-bold text-stone-400 dark:text-slate-500">
                   A captain accepts or declines you — five asks a day each way keeps it fair for both
                   sides 🌙
                 </p>
@@ -526,7 +526,7 @@ export default function TeamDetailPage({
               <Users className="h-3.5 w-3.5" /> Players waiting on you • {captain.pendingRequests.length}
             </h2>
             {captain.pendingRequests.length === 0 ? (
-              <p className="mt-2 text-xs font-semibold text-stone-500 dark:text-stone-400">
+              <p className="mt-2 text-xs font-semibold text-stone-500 dark:text-slate-400">
                 Nobody waiting right now 🎉 Share the code {team.teamCode || "—"} so players can find you.
               </p>
             ) : (
@@ -534,7 +534,7 @@ export default function TeamDetailPage({
                 {captain.pendingRequests.map((r) => (
                   <li
                     key={r.id}
-                    className="flex flex-wrap items-center gap-2.5 rounded-2xl border border-stone-200 bg-white p-3 dark:border-white/10 dark:bg-stone-900"
+                    className="flex flex-wrap items-center gap-2.5 rounded-2xl border border-stone-200 bg-white p-3 dark:border-white/10 dark:bg-slate-900"
                   >
                     <Link href={`/players/${r.userId}`} title="See their full details">
                       <Avatar
@@ -543,16 +543,16 @@ export default function TeamDetailPage({
                       />
                     </Link>
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-black text-stone-900 dark:text-stone-100">
+                      <p className="truncate text-sm font-black text-stone-900 dark:text-slate-100">
                         <Link href={`/players/${r.userId}`} className="hover:underline">
                           {r.name}
                         </Link>
                       </p>
-                      <p className="truncate text-[11px] font-semibold text-stone-400 dark:text-stone-500">
+                      <p className="truncate text-[11px] font-semibold text-stone-400 dark:text-slate-500">
                         {r.level} • {r.position} • asked {timeAgo(r.createdAt)}
                       </p>
                       {r.message && (
-                        <p className="mt-1 text-[11px] italic text-stone-500 dark:text-stone-400">
+                        <p className="mt-1 text-[11px] italic text-stone-500 dark:text-slate-400">
                           &ldquo;{r.message}&rdquo;
                         </p>
                       )}
@@ -590,7 +590,7 @@ export default function TeamDetailPage({
                           )
                         }
                         disabled={busy === `req-${r.id}-decline`}
-                        className="flex items-center gap-1 rounded-xl border border-stone-200 px-3 py-2 text-[11px] font-black text-stone-600 hover:bg-stone-100 disabled:opacity-40 dark:border-white/10 dark:text-stone-300 dark:hover:bg-white/10"
+                        className="flex items-center gap-1 rounded-xl border border-stone-200 px-3 py-2 text-[11px] font-black text-stone-600 hover:bg-stone-100 disabled:opacity-40 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/10"
                       >
                         <X className="h-3.5 w-3.5" /> Decline
                       </button>
@@ -601,8 +601,8 @@ export default function TeamDetailPage({
             )}
 
             {captain.invites.filter((i) => i.status === "pending").length > 0 && (
-              <div className="mt-3 rounded-2xl bg-white/70 p-3 dark:bg-stone-950/60">
-                <p className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-stone-500 dark:text-stone-400">
+              <div className="mt-3 rounded-2xl bg-white/70 p-3 dark:bg-slate-950/60">
+                <p className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-stone-500 dark:text-slate-400">
                   <MailQuestion className="h-3 w-3" /> Invitations awaiting an answer
                 </p>
                 <ul className="mt-2 space-y-1.5">
@@ -612,7 +612,7 @@ export default function TeamDetailPage({
                       <li key={i.id} className="flex items-center gap-2 text-xs">
                         <Link
                           href={`/players/${i.userId}`}
-                          className="min-w-0 flex-1 truncate font-bold text-stone-700 hover:underline dark:text-stone-200"
+                          className="min-w-0 flex-1 truncate font-bold text-stone-700 hover:underline dark:text-slate-200"
                         >
                           {i.name} — {i.level} • {i.position}
                         </Link>
@@ -632,7 +632,7 @@ export default function TeamDetailPage({
                             )
                           }
                           disabled={busy === `wd-${i.id}`}
-                          className="shrink-0 rounded-lg border border-stone-200 px-2 py-1 text-[10px] font-black text-stone-500 hover:bg-stone-100 disabled:opacity-40 dark:border-white/10 dark:text-stone-300 dark:hover:bg-white/10"
+                          className="shrink-0 rounded-lg border border-stone-200 px-2 py-1 text-[10px] font-black text-stone-500 hover:bg-stone-100 disabled:opacity-40 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/10"
                         >
                           Withdraw
                         </button>
@@ -658,8 +658,8 @@ export default function TeamDetailPage({
                 { l: "Competition pts", v: comp.record.points },
               ].map((s) => (
                 <div key={s.l} className="rounded-2xl bg-[#FFF6E9] py-3 text-center dark:bg-white/5">
-                  <p className="text-base font-black text-stone-900 dark:text-stone-100">{s.v}</p>
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-stone-400 dark:text-stone-500">
+                  <p className="text-base font-black text-stone-900 dark:text-slate-100">{s.v}</p>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-stone-400 dark:text-slate-500">
                     {s.l}
                   </p>
                 </div>
@@ -674,8 +674,8 @@ export default function TeamDetailPage({
                       href={`/leagues/${l.tournamentId}`}
                       className="flex flex-wrap items-center gap-2 rounded-2xl bg-stone-50 px-3.5 py-2.5 transition hover:bg-emerald-50 dark:bg-white/5 dark:hover:bg-emerald-500/10"
                     >
-                      <span className="text-sm font-bold text-stone-900 dark:text-stone-100">{l.name}</span>
-                      <span className="rounded-full bg-stone-100 px-2 py-0.5 text-[10px] font-black text-stone-600 dark:bg-white/10 dark:text-stone-300">
+                      <span className="text-sm font-bold text-stone-900 dark:text-slate-100">{l.name}</span>
+                      <span className="rounded-full bg-stone-100 px-2 py-0.5 text-[10px] font-black text-stone-600 dark:bg-white/10 dark:text-slate-300">
                         {l.status === "ongoing" ? "⚽ In progress" : l.status === "completed" ? "🏁 Finished" : l.status === "registration" ? "📝 Entries open" : "🚫 Cancelled"}
                       </span>
                       {l.standing && (
@@ -684,7 +684,7 @@ export default function TeamDetailPage({
                           {l.standing === 1 ? "st" : l.standing === 2 ? "nd" : l.standing === 3 ? "rd" : "th"} of {l.tableSize}
                         </span>
                       )}
-                      <span className="ml-auto text-[11px] font-bold text-stone-400 dark:text-stone-500">
+                      <span className="ml-auto text-[11px] font-bold text-stone-400 dark:text-slate-500">
                         {l.format} • {l.record.played}P {l.record.points}pts
                       </span>
                     </Link>
@@ -695,7 +695,7 @@ export default function TeamDetailPage({
 
             {comp.results.length > 0 && (
               <div className="mt-3">
-                <p className="text-[11px] font-black uppercase tracking-wider text-stone-400 dark:text-stone-500">
+                <p className="text-[11px] font-black uppercase tracking-wider text-stone-400 dark:text-slate-500">
                   Recent results
                 </p>
                 <ul className="mt-2 divide-y divide-stone-100 dark:divide-white/5">
@@ -709,20 +709,20 @@ export default function TeamDetailPage({
                         {r.outcome}
                       </span>
                       <span className="min-w-0 flex-1">
-                        <span className="block truncate text-[13px] font-bold text-stone-900 dark:text-stone-100">
+                        <span className="block truncate text-[13px] font-bold text-stone-900 dark:text-slate-100">
                           {r.home ? "vs" : "at"} {r.opponent}
                         </span>
-                        <span className="block truncate text-[11px] text-stone-400 dark:text-stone-500">
+                        <span className="block truncate text-[11px] text-stone-400 dark:text-slate-500">
                           {r.leagueName}
                           {r.source === "booking" ? " • venue-scored" : ` • ${r.round}`} • {r.date}
                         </span>
                       </span>
-                      <span className="shrink-0 text-sm font-black text-stone-900 dark:text-stone-100">
+                      <span className="shrink-0 text-sm font-black text-stone-900 dark:text-slate-100">
                         {r.scored}–{r.conceded}
                       </span>
                       <Link
                         href={r.link}
-                        className="shrink-0 rounded-lg border border-stone-200 px-2 py-1 text-[10px] font-black text-stone-500 hover:bg-stone-100 dark:border-white/10 dark:text-stone-300 dark:hover:bg-white/10"
+                        className="shrink-0 rounded-lg border border-stone-200 px-2 py-1 text-[10px] font-black text-stone-500 hover:bg-stone-100 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/10"
                       >
                         {r.source === "booking" ? "Booking" : "Table"}
                       </Link>
@@ -731,7 +731,7 @@ export default function TeamDetailPage({
                 </ul>
               </div>
             )}
-            <p className="mt-3 text-[11px] font-semibold text-stone-400 dark:text-stone-500">
+            <p className="mt-3 text-[11px] font-semibold text-stone-400 dark:text-slate-500">
               🏆 League fixtures are scored by the host; competition bookings by the venue owner.
               Both count on this record.
             </p>
@@ -756,7 +756,7 @@ export default function TeamDetailPage({
                     className="h-9 w-9 text-[11px]"
                   />
                   <span className="min-w-0 flex-1">
-                    <span className="flex items-center gap-1.5 truncate text-sm font-bold text-stone-900 dark:text-stone-100">
+                    <span className="flex items-center gap-1.5 truncate text-sm font-bold text-stone-900 dark:text-slate-100">
                       {m.name}
                       {m.isCaptain && (
                         <span className="flex items-center gap-0.5 rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] font-black text-amber-700 dark:bg-amber-500/15 dark:text-amber-300">
@@ -764,7 +764,7 @@ export default function TeamDetailPage({
                         </span>
                       )}
                     </span>
-                    <span className="block truncate text-[11px] text-stone-400 dark:text-stone-500">
+                    <span className="block truncate text-[11px] text-stone-400 dark:text-slate-500">
                       {m.level} • {m.position}
                       {m.email ? ` • ${m.email}` : ""}
                     </span>
@@ -773,7 +773,7 @@ export default function TeamDetailPage({
               </li>
             ))}
           </ul>
-          <p className="mt-3 flex items-center gap-1.5 text-[11px] font-semibold text-stone-400 dark:text-stone-500">
+          <p className="mt-3 flex items-center gap-1.5 text-[11px] font-semibold text-stone-400 dark:text-slate-500">
             <Trophy className="h-3 w-3" /> Tap any name for that player&apos;s full details — level,
             reliability, and the other squads they play for.
           </p>

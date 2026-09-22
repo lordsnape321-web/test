@@ -288,25 +288,25 @@ export function LeagueForm({
   }
 
   const field =
-    "w-full rounded-2xl border border-[#F0E3CC] bg-white px-3.5 py-2.5 text-sm font-semibold text-stone-900 placeholder:text-stone-400 focus:border-emerald-500 focus:outline-none dark:border-white/10 dark:bg-stone-900 dark:text-stone-100";
-  const label = "mb-1.5 block text-xs font-black uppercase tracking-wider text-stone-400 dark:text-stone-500";
+    "w-full rounded-2xl border border-[#F0E3CC] bg-white px-3.5 py-2.5 text-sm font-semibold text-stone-900 placeholder:text-stone-400 focus:border-emerald-500 focus:outline-none dark:border-white/10 dark:bg-slate-900 dark:text-slate-100";
+  const label = "mb-1.5 block text-xs font-black uppercase tracking-wider text-stone-400 dark:text-slate-500";
 
   return (
     <div className="fixed inset-0 z-[70] grid place-items-center bg-black/70 p-3 backdrop-blur-sm">
-      <div className="max-h-[92vh] w-full max-w-3xl overflow-y-auto rounded-3xl border border-[#F0E3CC] bg-[#FFFDF7] shadow-2xl dark:border-white/10 dark:bg-stone-950">
-        <div className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-[#F0E3CC] bg-white/95 px-5 py-4 backdrop-blur dark:border-white/10 dark:bg-stone-900/95">
+      <div className="max-h-[92vh] w-full max-w-3xl overflow-y-auto rounded-3xl border border-[#F0E3CC] bg-[#FFFDF7] shadow-2xl dark:border-white/10 dark:bg-slate-950">
+        <div className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-[#F0E3CC] bg-white/95 px-5 py-4 backdrop-blur dark:border-white/10 dark:bg-slate-900/95">
           <div>
-            <p className="flex items-center gap-2 text-base font-black text-stone-900 dark:text-stone-100">
+            <p className="flex items-center gap-2 text-base font-black text-stone-900 dark:text-slate-100">
               <Trophy className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
               {editing ? "Edit your league" : "Host a league"}
             </p>
-            <p className="text-[11px] font-semibold text-stone-500 dark:text-stone-400">
+            <p className="text-[11px] font-semibold text-stone-500 dark:text-slate-400">
               One ground, many squads, real results — players and venue owners both host here.
             </p>
           </div>
           <button
             onClick={onClose}
-            className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-stone-100 text-stone-600 transition hover:bg-stone-200 dark:bg-white/10 dark:text-stone-300"
+            className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-stone-100 text-stone-600 transition hover:bg-stone-200 dark:bg-white/10 dark:text-slate-300"
           >
             <X className="h-4 w-4" />
           </button>
@@ -326,7 +326,7 @@ export function LeagueForm({
             </label>
 
             {/* ------------------------------------------- how a winner is decided */}
-            <div className="rounded-2xl border border-[#F0E3CC] bg-white p-4 sm:col-span-2 dark:border-white/10 dark:bg-stone-900">
+            <div className="rounded-2xl border border-[#F0E3CC] bg-white p-4 sm:col-span-2 dark:border-white/10 dark:bg-slate-900">
               <span className={label}>How does it decide a winner?</span>
               <div className="grid gap-2 sm:grid-cols-3">
                 {LEAGUE_MODES.map((m) => {
@@ -343,11 +343,11 @@ export function LeagueForm({
                           : "border-[#F0E3CC] hover:border-emerald-300 dark:border-white/10"
                       }`}
                     >
-                      <p className="flex items-center gap-1.5 text-sm font-black text-stone-900 dark:text-stone-100">
+                      <p className="flex items-center gap-1.5 text-sm font-black text-stone-900 dark:text-slate-100">
                         <span>{info.emoji}</span> {info.label}
                         {on && <Check className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />}
                       </p>
-                      <p className="mt-1 text-[11px] font-semibold leading-relaxed text-stone-500 dark:text-stone-400">
+                      <p className="mt-1 text-[11px] font-semibold leading-relaxed text-stone-500 dark:text-slate-400">
                         {info.blurb}
                       </p>
                     </button>
@@ -358,7 +358,7 @@ export function LeagueForm({
               <div className="mt-3 flex flex-wrap items-center gap-3">
                 {modeHasGroups(mode) && (
                   <label className="flex items-center gap-2">
-                    <span className="text-[11px] font-black uppercase tracking-wider text-stone-400 dark:text-stone-500">
+                    <span className="text-[11px] font-black uppercase tracking-wider text-stone-400 dark:text-slate-500">
                       Squads per group
                     </span>
                     <input
@@ -367,7 +367,7 @@ export function LeagueForm({
                       max={MAX_GROUP_SIZE}
                       value={groupSize}
                       onChange={(e) => setGroupSize(Number(e.target.value))}
-                      className="w-20 rounded-xl border border-[#F0E3CC] bg-white px-2.5 py-1.5 text-xs font-black dark:border-white/10 dark:bg-stone-950 dark:text-stone-100"
+                      className="w-20 rounded-xl border border-[#F0E3CC] bg-white px-2.5 py-1.5 text-xs font-black dark:border-white/10 dark:bg-slate-950 dark:text-slate-100"
                     />
                   </label>
                 )}
@@ -379,14 +379,14 @@ export function LeagueForm({
                       onChange={(e) => setThirdPlace(e.target.checked)}
                       className="h-4 w-4 accent-emerald-600"
                     />
-                    <span className="text-[11px] font-black uppercase tracking-wider text-stone-400 dark:text-stone-500">
+                    <span className="text-[11px] font-black uppercase tracking-wider text-stone-400 dark:text-slate-500">
                       🥉 Third-place game
                     </span>
                   </label>
                 )}
               </div>
 
-              <p className="mt-2.5 rounded-xl bg-stone-50 px-3 py-2 text-[11px] font-bold leading-relaxed text-stone-500 dark:bg-white/5 dark:text-stone-400">
+              <p className="mt-2.5 rounded-xl bg-stone-50 px-3 py-2 text-[11px] font-bold leading-relaxed text-stone-500 dark:bg-white/5 dark:text-slate-400">
                 {drawHint(mode, spots, groupSize, thirdPlace)}
               </p>
               {editing && (
@@ -498,7 +498,7 @@ export function LeagueForm({
                   onChange={(e) => setRefundPercent(Number(e.target.value))}
                   className={field}
                 />
-                <span className="mt-1 block text-[11px] font-semibold text-stone-500 dark:text-stone-400">
+                <span className="mt-1 block text-[11px] font-semibold text-stone-500 dark:text-slate-400">
                   Paid {formatNPR(Number(entryFee) || 0)}, back{" "}
                   {formatNPR(Math.floor(((Number(entryFee) || 0) * refundPercent) / 100))} if they walk
                   away
@@ -555,13 +555,13 @@ export function LeagueForm({
                 className={`rounded-2xl border p-3.5 text-left transition ${
                   visibility === "public"
                     ? "border-emerald-500 bg-emerald-50 dark:bg-emerald-500/10"
-                    : "border-stone-200 bg-white hover:border-stone-300 dark:border-white/10 dark:bg-stone-900"
+                    : "border-stone-200 bg-white hover:border-stone-300 dark:border-white/10 dark:bg-slate-900"
                 }`}
               >
-                <span className="flex items-center gap-2 text-sm font-black text-stone-900 dark:text-stone-100">
+                <span className="flex items-center gap-2 text-sm font-black text-stone-900 dark:text-slate-100">
                   <Globe className="h-4 w-4 text-emerald-600 dark:text-emerald-400" /> Open listing
                 </span>
-                <span className="mt-1 block text-[11px] leading-relaxed text-stone-500 dark:text-stone-400">
+                <span className="mt-1 block text-[11px] leading-relaxed text-stone-500 dark:text-slate-400">
                   Anyone can find it, read the terms and ask for a spot. Best for growing a league.
                 </span>
               </button>
@@ -571,13 +571,13 @@ export function LeagueForm({
                 className={`rounded-2xl border p-3.5 text-left transition ${
                   visibility === "private"
                     ? "border-amber-400 bg-amber-50 dark:bg-amber-500/10"
-                    : "border-stone-200 bg-white hover:border-stone-300 dark:border-white/10 dark:bg-stone-900"
+                    : "border-stone-200 bg-white hover:border-stone-300 dark:border-white/10 dark:bg-slate-900"
                 }`}
               >
-                <span className="flex items-center gap-2 text-sm font-black text-stone-900 dark:text-stone-100">
+                <span className="flex items-center gap-2 text-sm font-black text-stone-900 dark:text-slate-100">
                   <Lock className="h-4 w-4 text-amber-600 dark:text-amber-400" /> Private
                 </span>
-                <span className="mt-1 block text-[11px] leading-relaxed text-stone-500 dark:text-stone-400">
+                <span className="mt-1 block text-[11px] leading-relaxed text-stone-500 dark:text-slate-400">
                   Hidden from everyone except the squads you invite. Requests are switched off.
                 </span>
               </button>
@@ -647,7 +647,7 @@ export function LeagueForm({
           <div className="flex flex-wrap items-center justify-end gap-2">
             <button
               onClick={onClose}
-              className="rounded-2xl border border-stone-200 px-5 py-3 text-sm font-black text-stone-600 transition hover:bg-stone-100 dark:border-white/10 dark:text-stone-300 dark:hover:bg-white/5"
+              className="rounded-2xl border border-stone-200 px-5 py-3 text-sm font-black text-stone-600 transition hover:bg-stone-100 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/5"
             >
               Cancel
             </button>

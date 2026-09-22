@@ -63,7 +63,7 @@ export function ReceiptUploader({
             <p className="flex items-center gap-1.5 text-xs font-black text-emerald-700 dark:text-emerald-300">
               <ReceiptText className="h-3.5 w-3.5" /> Receipt attached ✓
             </p>
-            <p className="text-[11px] text-stone-500 dark:text-stone-400">
+            <p className="text-[11px] text-stone-500 dark:text-slate-400">
               The venue can see this for fast approval.
             </p>
           </div>
@@ -71,7 +71,7 @@ export function ReceiptUploader({
             type="button"
             onClick={() => setPreview(true)}
             title="View"
-            className="grid h-9 w-9 place-items-center rounded-xl bg-white text-stone-600 shadow-sm dark:bg-white/10 dark:text-stone-300"
+            className="grid h-9 w-9 place-items-center rounded-xl bg-white text-stone-600 shadow-sm dark:bg-white/10 dark:text-slate-300"
           >
             <Eye className="h-4 w-4" />
           </button>
@@ -119,7 +119,7 @@ export function ReceiptUploader({
         <p className="mt-1.5 text-[11px] font-bold text-red-500">{error}</p>
       )}
       {!compact && (
-        <p className="mt-1.5 text-[11px] leading-relaxed text-stone-400 dark:text-stone-500">
+        <p className="mt-1.5 text-[11px] leading-relaxed text-stone-400 dark:text-slate-500">
           Paid online? Snap your eSewa / Khalti confirmation — venues
           approve receipt-backed requests way faster. ⚡
         </p>
@@ -135,16 +135,16 @@ export function ReceiptViewer({ url, onClose }: { url: string; onClose: () => vo
       onClick={onClose}
     >
       <div
-        className="w-full max-w-sm overflow-hidden rounded-3xl bg-white shadow-2xl dark:bg-stone-900"
+        className="w-full max-w-sm overflow-hidden rounded-3xl bg-white shadow-2xl dark:bg-slate-900"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between px-5 py-3.5">
-          <p className="flex items-center gap-2 text-sm font-black text-stone-900 dark:text-stone-100">
+          <p className="flex items-center gap-2 text-sm font-black text-stone-900 dark:text-slate-100">
             <ReceiptText className="h-4 w-4 text-emerald-600" /> Payment receipt
           </p>
           <button
             onClick={onClose}
-            className="grid h-8 w-8 place-items-center rounded-full bg-stone-100 text-stone-600 dark:bg-white/10 dark:text-stone-300"
+            className="grid h-8 w-8 place-items-center rounded-full bg-stone-100 text-stone-600 dark:bg-white/10 dark:text-slate-300"
           >
             <X className="h-4 w-4" />
           </button>

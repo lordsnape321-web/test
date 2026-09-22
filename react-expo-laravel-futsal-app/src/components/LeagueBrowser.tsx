@@ -159,18 +159,18 @@ export function LeagueBrowser() {
             }}
             placeholder="Search leagues, grounds or hosts…"
             aria-label="Search leagues"
-            className="w-full rounded-2xl border border-[#F0E3CC] bg-white py-3 pl-10 pr-3 text-sm font-semibold text-stone-900 placeholder:text-stone-400 focus:border-emerald-500 focus:outline-none dark:border-white/10 dark:bg-stone-900 dark:text-stone-100"
+            className="w-full rounded-2xl border border-[#F0E3CC] bg-white py-3 pl-10 pr-3 text-sm font-semibold text-stone-900 placeholder:text-stone-400 focus:border-emerald-500 focus:outline-none dark:border-white/10 dark:bg-slate-900 dark:text-slate-100"
           />
         </div>
         <button
           onClick={runSearch}
-          className="w-full rounded-2xl bg-stone-900 px-5 py-3 text-sm font-black text-white transition hover:bg-stone-800 dark:bg-white dark:text-stone-900 lg:w-auto"
+          className="w-full rounded-2xl bg-stone-900 px-5 py-3 text-sm font-black text-white transition hover:bg-stone-800 dark:bg-white dark:text-slate-900 lg:w-auto"
         >
           Search
         </button>
         {/* The four filters used to be a rigid row that overflowed a 360px screen;
             they scroll sideways now instead of pushing the layout wide. */}
-        <div className="no-scrollbar -mx-1 flex items-center gap-1 overflow-x-auto rounded-2xl border border-[#F0E3CC] bg-white p-1 px-1 dark:border-white/10 dark:bg-stone-900 lg:mx-0">
+        <div className="no-scrollbar -mx-1 flex items-center gap-1 overflow-x-auto rounded-2xl border border-[#F0E3CC] bg-white p-1 px-1 dark:border-white/10 dark:bg-slate-900 lg:mx-0">
           <Filter className="ml-1.5 h-3.5 w-3.5 shrink-0 text-stone-400" />
           {FILTERS.map((f) => (
             <button
@@ -180,7 +180,7 @@ export function LeagueBrowser() {
               className={`shrink-0 rounded-xl px-3 py-2 text-[11px] font-black whitespace-nowrap transition ${
                 filter === f.id
                   ? "bg-emerald-600 text-white"
-                  : "text-stone-600 hover:bg-stone-100 dark:text-stone-300 dark:hover:bg-white/5"
+                  : "text-stone-600 hover:bg-stone-100 dark:text-slate-300 dark:hover:bg-white/5"
               }`}
             >
               {f.label}
@@ -204,15 +204,15 @@ export function LeagueBrowser() {
       {loading ? (
         <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {[0, 1, 2].map((i) => (
-            <div key={i} className="h-80 animate-pulse rounded-3xl bg-white dark:bg-stone-900" />
+            <div key={i} className="h-80 animate-pulse rounded-3xl bg-white dark:bg-slate-900" />
           ))}
         </div>
       ) : shown.length === 0 ? (
-        <div className="mt-6 rounded-3xl border border-dashed border-stone-300 bg-white p-8 text-center dark:border-white/10 dark:bg-stone-900 sm:p-10">
-          <p className="text-sm font-black text-stone-700 dark:text-stone-200">
+        <div className="mt-6 rounded-3xl border border-dashed border-stone-300 bg-white p-8 text-center dark:border-white/10 dark:bg-slate-900 sm:p-10">
+          <p className="text-sm font-black text-stone-700 dark:text-slate-200">
             {q ? `No leagues match “${q}”` : "No leagues here yet"}
           </p>
-          <p className="mt-1 text-xs font-semibold text-stone-400 dark:text-stone-500">
+          <p className="mt-1 text-xs font-semibold text-stone-400 dark:text-slate-500">
             {q
               ? "Try the ground's name, or clear the search."
               : "Be the first to host one — it takes about two minutes. 🏆"}
@@ -224,7 +224,7 @@ export function LeagueBrowser() {
                 setQ("");
                 setNotice("");
               }}
-              className="mt-4 inline-flex items-center gap-2 rounded-2xl border border-stone-200 px-5 py-3 text-sm font-black text-stone-700 transition hover:bg-stone-50 dark:border-white/10 dark:text-stone-200 dark:hover:bg-white/5"
+              className="mt-4 inline-flex items-center gap-2 rounded-2xl border border-stone-200 px-5 py-3 text-sm font-black text-stone-700 transition hover:bg-stone-50 dark:border-white/10 dark:text-slate-200 dark:hover:bg-white/5"
             >
               Clear search
             </button>
@@ -272,18 +272,18 @@ export function LeagueBrowser() {
         ].map((s) => (
           <div
             key={s.title}
-            className="rounded-3xl border border-[#F0E3CC] bg-white p-5 shadow-sm dark:border-white/10 dark:bg-stone-900"
+            className="rounded-3xl border border-[#F0E3CC] bg-white p-5 shadow-sm dark:border-white/10 dark:bg-slate-900"
           >
             <span className="grid h-10 w-10 place-items-center rounded-2xl bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300">
               <s.icon className="h-5 w-5" />
             </span>
-            <p className="mt-3 text-sm font-black text-stone-900 dark:text-stone-100">{s.title}</p>
-            <p className="mt-1 text-xs leading-relaxed text-stone-500 dark:text-stone-400">{s.text}</p>
+            <p className="mt-3 text-sm font-black text-stone-900 dark:text-slate-100">{s.title}</p>
+            <p className="mt-1 text-xs leading-relaxed text-stone-500 dark:text-slate-400">{s.text}</p>
           </div>
         ))}
       </div>
 
-      <p className="mt-6 flex flex-wrap items-center justify-center gap-1.5 text-center text-[11px] font-bold text-stone-400 dark:text-stone-500">
+      <p className="mt-6 flex flex-wrap items-center justify-center gap-1.5 text-center text-[11px] font-bold text-stone-400 dark:text-slate-500">
         <Globe className="h-3.5 w-3.5 shrink-0" /> Public leagues are listed for everyone •{" "}
         <Sparkles className="h-3.5 w-3.5 shrink-0" /> private ones only for the squads invited
       </p>

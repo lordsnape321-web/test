@@ -291,18 +291,18 @@ export default function BookingsPage() {
       : s === "cancelled" || s === "rejected"
         ? "bg-red-500 text-white"
         : s === "completed"
-          ? "bg-white text-stone-700 dark:bg-white/10 dark:text-stone-200"
+          ? "bg-white text-stone-700 dark:bg-white/10 dark:text-slate-200"
           : "bg-emerald-500 text-white";
 
   if (!authLoading && !user) {
     return (
       <main className="turf-pattern grid min-h-screen place-items-center px-4 py-12">
-        <div className="w-full max-w-md rounded-[2rem] border border-[#F0E3CC] bg-white p-8 text-center shadow-lg dark:border-white/10 dark:bg-stone-900">
+        <div className="w-full max-w-md rounded-[2rem] border border-[#F0E3CC] bg-white p-8 text-center shadow-lg dark:border-white/10 dark:bg-slate-900">
           <span className="mx-auto grid h-16 w-16 place-items-center rounded-2xl bg-emerald-600 shadow-md">
             <CalendarCheck className="h-8 w-8 text-white" />
           </span>
-          <h1 className="mt-4 text-2xl font-black text-stone-900 dark:text-stone-100">Your games live here ⚽</h1>
-          <p className="mt-2 text-sm leading-relaxed text-stone-500 dark:text-stone-400">
+          <h1 className="mt-4 text-2xl font-black text-stone-900 dark:text-slate-100">Your games live here ⚽</h1>
+          <p className="mt-2 text-sm leading-relaxed text-stone-500 dark:text-slate-400">
             Log in to see upcoming kickabouts, receipts and venue passes. Takes
             10 seconds — promise!
           </p>
@@ -315,7 +315,7 @@ export default function BookingsPage() {
             </Link>
             <Link
               href="/signup"
-              className="rounded-2xl border border-stone-200 py-3 text-sm font-black text-stone-700 dark:border-white/10 dark:text-stone-200"
+              className="rounded-2xl border border-stone-200 py-3 text-sm font-black text-stone-700 dark:border-white/10 dark:text-slate-200"
             >
               Join free
             </Link>
@@ -332,7 +332,7 @@ export default function BookingsPage() {
           <PartyPopper className="h-3.5 w-3.5" /> {user?.name?.split(" ")[0]}&apos;s game diary
         </p>
         <div className="mt-1 flex flex-wrap items-center gap-3">
-          <h1 className="text-3xl font-black text-stone-900 dark:text-stone-100">My games</h1>
+          <h1 className="text-3xl font-black text-stone-900 dark:text-slate-100">My games</h1>
           {bookings[0]?.playerStats && <PlayerRatingBadge stats={bookings[0].playerStats} />}
         </div>
 
@@ -363,12 +363,12 @@ export default function BookingsPage() {
             { l: "Memories made", v: bookings.filter(played).length },
             { l: "Invested in fun", v: formatNPR(totalSpent) },
           ].map((s) => (
-            <div key={s.l} className="rounded-2xl border border-[#F0E3CC] bg-white px-3 py-3.5 text-center shadow-sm dark:border-white/10 dark:bg-stone-900">
-              <p className="truncate text-lg font-black text-stone-900 sm:text-xl dark:text-stone-100">{s.v}</p>
+            <div key={s.l} className="rounded-2xl border border-[#F0E3CC] bg-white px-3 py-3.5 text-center shadow-sm dark:border-white/10 dark:bg-slate-900">
+              <p className="truncate text-lg font-black text-stone-900 sm:text-xl dark:text-slate-100">{s.v}</p>
               {/* `tracking-widest` here needed ~100px for "INVESTED IN FUN" inside a
                   ~66px cell on a 320px phone; `tracking-wide` + `leading-tight` lets
                   it wrap to two tidy lines instead of overflowing the card. */}
-              <p className="text-[10px] font-bold uppercase leading-tight tracking-wide text-stone-400 dark:text-stone-500">{s.l}</p>
+              <p className="text-[10px] font-bold uppercase leading-tight tracking-wide text-stone-400 dark:text-slate-500">{s.l}</p>
             </div>
           ))}
         </div>
@@ -379,7 +379,7 @@ export default function BookingsPage() {
               key={t}
               onClick={() => setTab(t)}
               className={`flex-1 rounded-2xl py-2.5 text-xs font-black uppercase tracking-wider transition sm:flex-none sm:px-6 ${
-                tab === t ? "bg-emerald-600 text-white shadow-md" : "border border-stone-200 bg-white text-stone-600 shadow-sm dark:border-white/10 dark:bg-stone-900 dark:text-stone-300"
+                tab === t ? "bg-emerald-600 text-white shadow-md" : "border border-stone-200 bg-white text-stone-600 shadow-sm dark:border-white/10 dark:bg-slate-900 dark:text-slate-300"
               }`}
             >
               {t === "upcoming" ? "Coming up" : t === "past" ? "Played" : "Cancelled"}
@@ -390,16 +390,16 @@ export default function BookingsPage() {
         {loading ? (
           <div className="mt-5 space-y-3">
             {[0, 1].map((i) => (
-              <div key={i} className="h-40 animate-pulse rounded-3xl bg-white dark:bg-stone-900" />
+              <div key={i} className="h-40 animate-pulse rounded-3xl bg-white dark:bg-slate-900" />
             ))}
           </div>
         ) : filtered.length === 0 ? (
-          <div className="mt-6 rounded-3xl border border-dashed border-stone-300 bg-white p-12 text-center dark:border-white/20 dark:bg-stone-900">
-            <CalendarCheck className="mx-auto h-10 w-10 text-stone-300 dark:text-stone-600" />
-            <h3 className="mt-3 text-lg font-extrabold text-stone-900 dark:text-stone-100">
+          <div className="mt-6 rounded-3xl border border-dashed border-stone-300 bg-white p-12 text-center dark:border-white/20 dark:bg-slate-900">
+            <CalendarCheck className="mx-auto h-10 w-10 text-stone-300 dark:text-slate-600" />
+            <h3 className="mt-3 text-lg font-extrabold text-stone-900 dark:text-slate-100">
               {tab === "upcoming" ? "No games yet — let's fix that! ⚽" : "Nothing here yet"}
             </h3>
-            <p className="mt-1 text-sm text-stone-500 dark:text-stone-400">
+            <p className="mt-1 text-sm text-stone-500 dark:text-slate-400">
               {tab === "upcoming" ? "Your next great memory is one tap away." : "Your history will show up here."}
             </p>
             <Link
@@ -419,7 +419,7 @@ export default function BookingsPage() {
               return (
               <div
                 key={b.id}
-                className="overflow-hidden rounded-3xl border border-[#F0E3CC] bg-white shadow-[0_10px_30px_rgba(180,120,60,0.08)] dark:border-white/10 dark:bg-stone-900"
+                className="overflow-hidden rounded-3xl border border-[#F0E3CC] bg-white shadow-[0_10px_30px_rgba(180,120,60,0.08)] dark:border-white/10 dark:bg-slate-900"
               >
                 <div className="flex flex-col sm:flex-row">
                   <div className="relative h-36 sm:h-auto sm:w-52 sm:shrink-0">
@@ -443,21 +443,21 @@ export default function BookingsPage() {
                   <div className="flex-1 p-4 sm:p-5">
                     <div className="flex flex-wrap items-start justify-between gap-2">
                       <div>
-                        <h3 className="text-base font-extrabold text-stone-900 dark:text-stone-100">{b.venue?.name}</h3>
-                        <p className="mt-0.5 text-xs text-stone-500 dark:text-stone-400">
+                        <h3 className="text-base font-extrabold text-stone-900 dark:text-slate-100">{b.venue?.name}</h3>
+                        <p className="mt-0.5 text-xs text-stone-500 dark:text-slate-400">
                           {b.court?.name} • {b.court?.format}
                         </p>
                       </div>
                       <span className="text-right">
                         {b.discountAmount > 0 && b.priceBeforeDiscount > b.totalPrice && (
-                          <span className="block text-xs font-bold text-stone-400 line-through dark:text-stone-500">
+                          <span className="block text-xs font-bold text-stone-400 line-through dark:text-slate-500">
                             {formatNPR(b.priceBeforeDiscount)}
                           </span>
                         )}
                         <span className="block text-lg font-black text-emerald-700 dark:text-emerald-300">
                           {b.totalPrice === 0 ? "FREE 🎁" : formatNPR(b.totalPrice)}
                         </span>
-                        <span className="flex items-center gap-1 text-[11px] font-bold text-stone-400 dark:text-stone-500">
+                        <span className="flex items-center gap-1 text-[11px] font-bold text-stone-400 dark:text-slate-500">
                           <Wallet className="h-3 w-3" /> {b.paymentMethod} • {b.paymentStatus}
                         </span>
                       </span>
@@ -478,7 +478,7 @@ export default function BookingsPage() {
                         time, we believe in you! 🙏
                       </p>
                     )}
-                    <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1.5 text-[13px] font-semibold text-stone-600 dark:text-stone-300">
+                    <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1.5 text-[13px] font-semibold text-stone-600 dark:text-slate-300">
                       <span className="flex items-center gap-1.5">
                         <CalendarCheck className="h-4 w-4 text-emerald-600 dark:text-emerald-400" /> {prettyDate(b.date)}
                       </span>
@@ -535,7 +535,7 @@ export default function BookingsPage() {
                       with no answer left.
                     */}
                     <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-stone-100 pt-3 dark:border-white/5">
-                      <span className="rounded-full bg-stone-100 px-3 py-1.5 font-mono text-[11px] font-bold text-stone-500 dark:bg-white/10 dark:text-stone-400">
+                      <span className="rounded-full bg-stone-100 px-3 py-1.5 font-mono text-[11px] font-bold text-stone-500 dark:bg-white/10 dark:text-slate-400">
                         #FN-{b.id}
                       </span>
                       {isPublic ? (
@@ -547,19 +547,19 @@ export default function BookingsPage() {
                           <Swords className="h-3.5 w-3.5" /> Competition
                         </span>
                       ) : (
-                        <span className="flex items-center gap-1.5 rounded-full bg-stone-100 px-3 py-1.5 text-[11px] font-bold text-stone-500 dark:bg-white/10 dark:text-stone-400">
+                        <span className="flex items-center gap-1.5 rounded-full bg-stone-100 px-3 py-1.5 text-[11px] font-bold text-stone-500 dark:bg-white/10 dark:text-slate-400">
                           <Lock className="h-3.5 w-3.5" /> Just us
                         </span>
                       )}
                       {isPlayed ? (
                         <span
                           title="The game is over — this booking can't be changed any more"
-                          className="flex items-center gap-1.5 rounded-full bg-stone-200 px-3 py-1.5 text-[11px] font-black text-stone-600 dark:bg-white/15 dark:text-stone-300"
+                          className="flex items-center gap-1.5 rounded-full bg-stone-200 px-3 py-1.5 text-[11px] font-black text-stone-600 dark:bg-white/15 dark:text-slate-300"
                         >
                           <Lock className="h-3.5 w-3.5" /> Game played • locked
                         </span>
                       ) : (
-                        <span className="flex items-center gap-1.5 rounded-full bg-stone-100 px-3 py-1.5 text-[11px] font-bold text-stone-500 dark:bg-white/10 dark:text-stone-400">
+                        <span className="flex items-center gap-1.5 rounded-full bg-stone-100 px-3 py-1.5 text-[11px] font-bold text-stone-500 dark:bg-white/10 dark:text-slate-400">
                           <QrCode className="h-3.5 w-3.5" /> Show at court
                         </span>
                       )}
@@ -666,7 +666,7 @@ export default function BookingsPage() {
                     </div>
                     {reviewFor === b.id && (
                       <div className="mt-3 space-y-2.5 rounded-2xl border border-amber-200 bg-amber-50/60 p-4 dark:border-amber-500/25 dark:bg-amber-500/5">
-                        <p className="text-xs font-black text-stone-700 dark:text-stone-200">
+                        <p className="text-xs font-black text-stone-700 dark:text-slate-200">
                           {mine
                             ? `Update your review of ${b.venue?.name} — it replaces the old one, you keep just the one ⭐`
                             : `How was ${b.venue?.name}? ⭐`}
@@ -681,7 +681,7 @@ export default function BookingsPage() {
                           rows={2}
                           maxLength={1000}
                           placeholder="Turf, vibe, staff… help future players! ⚽"
-                          className="w-full resize-none rounded-xl border border-stone-200 bg-white px-3.5 py-2.5 text-sm font-semibold placeholder:text-stone-400 focus:border-amber-400 focus:outline-none dark:border-white/10 dark:bg-stone-950 dark:placeholder:text-stone-500"
+                          className="w-full resize-none rounded-xl border border-stone-200 bg-white px-3.5 py-2.5 text-sm font-semibold placeholder:text-stone-400 focus:border-amber-400 focus:outline-none dark:border-white/10 dark:bg-slate-950 dark:placeholder:text-slate-500"
                         />
                         <p className="text-[11px] text-stone-400">{reviewMsg.trim().length}/1000 • min 3 characters 💬</p>
                         {reviewError && (
@@ -698,7 +698,7 @@ export default function BookingsPage() {
                     )}
                     {uploadFor === b.id && (
                       <div className="mt-3 rounded-2xl border border-orange-200 bg-orange-50/60 p-3 dark:border-orange-500/25 dark:bg-orange-500/5">
-                        <p className="mb-2 text-[11px] font-bold text-stone-500 dark:text-stone-400">
+                        <p className="mb-2 text-[11px] font-bold text-stone-500 dark:text-slate-400">
                           Paid via {b.paymentMethod}? Attach your screenshot — it speeds up approval! ⚡
                         </p>
                         <ReceiptUploader

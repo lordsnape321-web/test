@@ -47,7 +47,7 @@ function Inner() {
 
   return (
     <main className="turf-pattern grid min-h-screen place-items-center px-4 py-12">
-      <div className="w-full max-w-md rounded-[2rem] border border-[#F0E3CC] bg-white p-8 text-center shadow-lg dark:border-white/10 dark:bg-stone-900">
+      <div className="w-full max-w-md rounded-[2rem] border border-[#F0E3CC] bg-white p-8 text-center shadow-lg dark:border-white/10 dark:bg-slate-900">
         {state === "verifying" && (
           <>
             <Loader2 className="mx-auto h-12 w-12 animate-spin text-purple-600" />

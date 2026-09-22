@@ -128,12 +128,12 @@ export function LeagueHostPanel({
         ].map((s) => (
           <div
             key={s.l}
-            className="rounded-2xl border border-[#F0E3CC] bg-white p-3.5 shadow-sm dark:border-white/10 dark:bg-stone-900"
+            className="rounded-2xl border border-[#F0E3CC] bg-white p-3.5 shadow-sm dark:border-white/10 dark:bg-slate-900"
           >
-            <p className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-stone-400 dark:text-stone-500">
+            <p className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-stone-400 dark:text-slate-500">
               <s.i className="h-3 w-3" /> {s.l}
             </p>
-            <p className="mt-1 text-lg font-black text-stone-900 dark:text-stone-100">{s.v}</p>
+            <p className="mt-1 text-lg font-black text-stone-900 dark:text-slate-100">{s.v}</p>
           </div>
         ))}
       </div>
@@ -151,7 +151,7 @@ export function LeagueHostPanel({
       )}
 
       {/* ------------------------------------------------------- entry desk */}
-      <div className="rounded-3xl border border-[#F0E3CC] bg-white p-5 shadow-sm dark:border-white/10 dark:bg-stone-900">
+      <div className="rounded-3xl border border-[#F0E3CC] bg-white p-5 shadow-sm dark:border-white/10 dark:bg-slate-900">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 className="flex items-center gap-2 text-xs font-black uppercase tracking-widest text-emerald-700 dark:text-emerald-400">
             <Crown className="h-3.5 w-3.5" /> Entry desk
@@ -163,14 +163,14 @@ export function LeagueHostPanel({
           </h2>
           <button
             onClick={onEdit}
-            className="flex items-center gap-1.5 rounded-xl border border-stone-200 px-3.5 py-2 text-[11px] font-black text-stone-600 transition hover:bg-stone-100 dark:border-white/10 dark:text-stone-300 dark:hover:bg-white/5"
+            className="flex items-center gap-1.5 rounded-xl border border-stone-200 px-3.5 py-2 text-[11px] font-black text-stone-600 transition hover:bg-stone-100 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/5"
           >
             <Settings className="h-3.5 w-3.5" /> League settings
           </button>
         </div>
 
         {pending.length === 0 ? (
-          <p className="mt-3 text-xs font-semibold text-stone-400 dark:text-stone-500">
+          <p className="mt-3 text-xs font-semibold text-stone-400 dark:text-slate-500">
             No squad is waiting. Requests land here the moment a captain asks, and invitations land in
             their notifications the moment you send one.
           </p>
@@ -186,7 +186,7 @@ export function LeagueHostPanel({
                 >
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div className="min-w-0">
-                      <p className="truncate text-sm font-black text-stone-900 dark:text-stone-100">
+                      <p className="truncate text-sm font-black text-stone-900 dark:text-slate-100">
                         <Link href={`/teams/${e.teamId}`} className="hover:underline">
                           {e.name}
                         </Link>{" "}
@@ -194,12 +194,12 @@ export function LeagueHostPanel({
                           {e.teamCode}
                         </span>
                       </p>
-                      <p className="text-[11px] font-bold text-stone-500 dark:text-stone-400">
+                      <p className="text-[11px] font-bold text-stone-500 dark:text-slate-400">
                         {label.emoji} {label.label} • {e.captainName} • {e.memberCount} players •{" "}
                         {e.createdAt ? timeAgo(e.createdAt) : ""}
                       </p>
                       {e.message && (
-                        <p className="mt-1 line-clamp-2 text-[11px] italic text-stone-500 dark:text-stone-400">
+                        <p className="mt-1 line-clamp-2 text-[11px] italic text-stone-500 dark:text-slate-400">
                           “{e.message}”
                         </p>
                       )}
@@ -216,9 +216,9 @@ export function LeagueHostPanel({
                       {/* How they're paying, and the proof if they attached any —
                           which is what a host looks at before tapping Approve. */}
                       {(e.payMethod || e.receiptUrl) && (
-                        <p className="mt-1 flex flex-wrap items-center gap-2 text-[11px] font-bold text-stone-500 dark:text-stone-400">
+                        <p className="mt-1 flex flex-wrap items-center gap-2 text-[11px] font-bold text-stone-500 dark:text-slate-400">
                           {e.payMethod && (
-                            <span className="rounded-lg bg-stone-100 px-2 py-0.5 font-black text-stone-600 dark:bg-white/10 dark:text-stone-300">
+                            <span className="rounded-lg bg-stone-100 px-2 py-0.5 font-black text-stone-600 dark:bg-white/10 dark:text-slate-300">
                               {e.payMethod === "eSewa" ? "💚" : e.payMethod === "Khalti" ? "💜" : "💵"} {e.payMethod}
                             </span>
                           )}
@@ -257,7 +257,7 @@ export function LeagueHostPanel({
                         onClick={() =>
                           setRecordFor(recordFor === e.teamId ? null : e.teamId)
                         }
-                        className="flex items-center gap-1 rounded-xl border border-stone-200 px-3.5 py-2 text-[11px] font-black text-stone-600 transition hover:bg-stone-100 dark:border-white/10 dark:text-stone-300 dark:hover:bg-white/5"
+                        className="flex items-center gap-1 rounded-xl border border-stone-200 px-3.5 py-2 text-[11px] font-black text-stone-600 transition hover:bg-stone-100 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/5"
                       >
                         <Banknote className="h-3.5 w-3.5" /> Record cash
                       </button>
@@ -284,9 +284,9 @@ export function LeagueHostPanel({
                         value={cashAmount}
                         onChange={(ev) => setCashAmount(clampAmountInput(ev.target.value, e.payment.due))}
                         placeholder={`Up to ${formatNPR(Math.max(0, e.payment.due))} owed`}
-                        className="min-w-[10rem] flex-1 rounded-xl border border-[#F0E3CC] bg-white px-3 py-2 text-xs font-semibold dark:border-white/10 dark:bg-stone-950 dark:text-stone-100"
+                        className="min-w-[10rem] flex-1 rounded-xl border border-[#F0E3CC] bg-white px-3 py-2 text-xs font-semibold dark:border-white/10 dark:bg-slate-950 dark:text-slate-100"
                       />
-                      <span className="text-[10px] font-black uppercase tracking-wider text-stone-400 dark:text-stone-500">
+                      <span className="text-[10px] font-black uppercase tracking-wider text-stone-400 dark:text-slate-500">
                         {formatNPR(Math.max(0, e.payment.due))} owed of {formatNPR(league.entryFee)}
                       </span>
                       <button
@@ -304,7 +304,7 @@ export function LeagueHostPanel({
                           )
                         }
                         disabled={busy !== ""}
-                        className="rounded-xl bg-stone-900 px-4 py-2 text-[11px] font-black text-white transition hover:bg-stone-800 dark:bg-white dark:text-stone-900"
+                        className="rounded-xl bg-stone-900 px-4 py-2 text-[11px] font-black text-white transition hover:bg-stone-800 dark:bg-white dark:text-slate-900"
                       >
                         {busy === `record-${e.teamId}` ? "Saving…" : "Record it"}
                       </button>
@@ -322,7 +322,7 @@ export function LeagueHostPanel({
                           )
                         }
                         disabled={busy !== ""}
-                        className="rounded-xl border border-stone-200 px-3.5 py-2 text-[11px] font-black text-stone-600 dark:border-white/10 dark:text-stone-300"
+                        className="rounded-xl border border-stone-200 px-3.5 py-2 text-[11px] font-black text-stone-600 dark:border-white/10 dark:text-slate-300"
                       >
                         Full {formatNPR(e.payment.due || e.payment.deposit)}
                       </button>
@@ -339,7 +339,7 @@ export function LeagueHostPanel({
           <p className="flex items-center gap-1.5 text-[11px] font-black uppercase tracking-widest text-emerald-700 dark:text-emerald-300">
             <Send className="h-3.5 w-3.5" /> Invite a squad
           </p>
-          <p className="mt-1 text-[11px] font-semibold text-stone-500 dark:text-stone-400">
+          <p className="mt-1 text-[11px] font-semibold text-stone-500 dark:text-slate-400">
             Search by the squad's code or name. A private league can only be entered this way — and
             paying the deposit is how the invited captain accepts.
           </p>
@@ -354,11 +354,11 @@ export function LeagueHostPanel({
                 }
               }}
               placeholder="CHARGERS-4X7K"
-              className="min-w-[12rem] flex-1 rounded-xl border border-[#F0E3CC] bg-[#FFFDF7] px-3 py-2 font-mono text-xs font-bold uppercase tracking-wider dark:border-white/10 dark:bg-stone-950 dark:text-stone-100"
+              className="min-w-[12rem] flex-1 rounded-xl border border-[#F0E3CC] bg-[#FFFDF7] px-3 py-2 font-mono text-xs font-bold uppercase tracking-wider dark:border-white/10 dark:bg-slate-950 dark:text-slate-100"
             />
             <button
               onClick={() => void searchTeams()}
-              className="rounded-xl bg-stone-900 px-4 py-2 text-[11px] font-black text-white transition hover:bg-stone-800 dark:bg-white dark:text-stone-900"
+              className="rounded-xl bg-stone-900 px-4 py-2 text-[11px] font-black text-white transition hover:bg-stone-800 dark:bg-white dark:text-slate-900"
             >
               Find
             </button>
@@ -368,9 +368,9 @@ export function LeagueHostPanel({
               {inviteMatches.map((t) => (
                 <li
                   key={t.id}
-                  className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-white px-3 py-2 dark:bg-stone-950"
+                  className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-white px-3 py-2 dark:bg-slate-950"
                 >
-                  <span className="text-xs font-bold text-stone-800 dark:text-stone-100">
+                  <span className="text-xs font-bold text-stone-800 dark:text-slate-100">
                     {t.name} <span className="font-mono text-[10px] text-stone-400">{t.teamCode}</span>
                     <span className="ml-1 text-[10px] font-semibold text-stone-400">
                       captain {t.captainName}
@@ -381,7 +381,7 @@ export function LeagueHostPanel({
                       value={inviteNote}
                       onChange={(e) => setInviteNote(e.target.value)}
                       placeholder="Note (optional)"
-                      className="w-32 rounded-lg border border-[#F0E3CC] px-2 py-1 text-[10px] dark:border-white/10 dark:bg-stone-900 dark:text-stone-100"
+                      className="w-32 rounded-lg border border-[#F0E3CC] px-2 py-1 text-[10px] dark:border-white/10 dark:bg-slate-900 dark:text-slate-100"
                     />
                     <button
                       onClick={() =>
@@ -401,7 +401,7 @@ export function LeagueHostPanel({
       </div>
 
       {/* ------------------------------------------------------- squad ledger */}
-      <div className="rounded-3xl border border-[#F0E3CC] bg-white p-5 shadow-sm dark:border-white/10 dark:bg-stone-900">
+      <div className="rounded-3xl border border-[#F0E3CC] bg-white p-5 shadow-sm dark:border-white/10 dark:bg-slate-900">
         <h2 className="flex items-center gap-2 text-xs font-black uppercase tracking-widest text-emerald-700 dark:text-emerald-400">
           <ShieldCheck className="h-3.5 w-3.5" /> Squads &amp; payments
         </h2>
@@ -414,7 +414,7 @@ export function LeagueHostPanel({
                 className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-[#F0E3CC] px-3.5 py-2.5 dark:border-white/10"
               >
                 <div className="min-w-0">
-                  <p className="truncate text-sm font-bold text-stone-900 dark:text-stone-100">
+                  <p className="truncate text-sm font-bold text-stone-900 dark:text-slate-100">
                     {e.name}
                     <span className="ml-2 text-[11px] font-black text-stone-400">
                       {label.emoji} {label.label}
@@ -429,7 +429,7 @@ export function LeagueHostPanel({
                     locked={e.payment.locked}
                   />
                   {e.payment.locked && (
-                    <span className="mt-0.5 block text-[10px] font-semibold text-stone-400 dark:text-stone-500">
+                    <span className="mt-0.5 block text-[10px] font-semibold text-stone-400 dark:text-slate-500">
                       🔒 They&apos;ve played — nothing is refundable on the way out.
                     </span>
                   )}
@@ -445,7 +445,7 @@ export function LeagueHostPanel({
                         })
                       }
                       disabled={busy !== ""}
-                      className="flex items-center gap-1 rounded-xl border border-stone-200 px-3 py-1.5 text-[10px] font-black text-stone-500 transition hover:bg-stone-100 dark:border-white/10 dark:text-stone-400"
+                      className="flex items-center gap-1 rounded-xl border border-stone-200 px-3 py-1.5 text-[10px] font-black text-stone-500 transition hover:bg-stone-100 dark:border-white/10 dark:text-slate-400"
                     >
                       <UserX className="h-3 w-3" />
                       {/* A squad that has played can be taken out, but their money
@@ -463,12 +463,12 @@ export function LeagueHostPanel({
       </div>
 
       {/* ------------------------------------------------------------- ledger */}
-      <div className="rounded-3xl border border-[#F0E3CC] bg-white p-5 shadow-sm dark:border-white/10 dark:bg-stone-900">
+      <div className="rounded-3xl border border-[#F0E3CC] bg-white p-5 shadow-sm dark:border-white/10 dark:bg-slate-900">
         <h2 className="flex items-center gap-2 text-xs font-black uppercase tracking-widest text-emerald-700 dark:text-emerald-400">
           <Banknote className="h-3.5 w-3.5" /> Ledger
         </h2>
         {league.payments.length === 0 ? (
-          <p className="mt-3 text-xs font-semibold text-stone-400 dark:text-stone-500">
+          <p className="mt-3 text-xs font-semibold text-stone-400 dark:text-slate-500">
             Nothing has moved yet. Every eSewa/Khalti payment a captain makes lands here, and so does
             every rupee of cash you record.
           </p>
@@ -477,13 +477,13 @@ export function LeagueHostPanel({
             {league.payments.map((p) => (
               <li key={p.id} className="flex items-center justify-between gap-3 py-2">
                 <span className="min-w-0">
-                  <span className="block truncate text-xs font-bold text-stone-800 dark:text-stone-100">
+                  <span className="block truncate text-xs font-bold text-stone-800 dark:text-slate-100">
                     {p.teamName}{" "}
                     <span className="font-semibold text-stone-400">
                       {p.kind === "entry" ? "paid in" : p.kind === "refund" ? "refunded" : "prize"}
                     </span>
                   </span>
-                  <span className="block text-[10px] font-semibold text-stone-400 dark:text-stone-500">
+                  <span className="block text-[10px] font-semibold text-stone-400 dark:text-slate-500">
                     {p.method}
                     {p.reference ? ` • ${p.reference}` : ""} • {p.createdAt ? timeAgo(p.createdAt) : ""}
                   </span>

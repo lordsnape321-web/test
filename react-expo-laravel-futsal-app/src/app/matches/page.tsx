@@ -264,10 +264,10 @@ function MatchesInner() {
                 </>
               )}
             </p>
-            <h1 className="mt-1 text-2xl font-black text-stone-900 dark:text-stone-100 sm:text-3xl">
+            <h1 className="mt-1 text-2xl font-black text-stone-900 dark:text-slate-100 sm:text-3xl">
               {tab === "leagues" ? "Leagues and tournaments" : "Games looking for you"}
             </h1>
-            <p className="mt-1 text-sm text-stone-500 dark:text-stone-400">
+            <p className="mt-1 text-sm text-stone-500 dark:text-slate-400">
               {tab === "leagues"
                 ? "Squad football with a real table — enter, pay the deposit, play the fixtures, climb."
                 : `${matches.length} friendly games this week • everyone gets a warm welcome`}
@@ -296,7 +296,7 @@ function MatchesInner() {
         <div
           role="tablist"
           aria-label="Match views"
-          className="mt-5 grid w-full grid-cols-2 gap-1 rounded-2xl border border-[#F0E3CC] bg-white p-1 shadow-sm dark:border-white/10 dark:bg-stone-900 sm:inline-grid sm:w-auto sm:min-w-[22rem]"
+          className="mt-5 grid w-full grid-cols-2 gap-1 rounded-2xl border border-[#F0E3CC] bg-white p-1 shadow-sm dark:border-white/10 dark:bg-slate-900 sm:inline-grid sm:w-auto sm:min-w-[22rem]"
         >
           {(
             [
@@ -312,7 +312,7 @@ function MatchesInner() {
               className={`flex items-center justify-center gap-2 rounded-xl px-3 py-2.5 text-sm font-black transition sm:px-4 ${
                 tab === t.id
                   ? "bg-emerald-600 text-white shadow-md"
-                  : "text-stone-600 hover:bg-orange-50 dark:text-stone-300 dark:hover:bg-white/5"
+                  : "text-stone-600 hover:bg-orange-50 dark:text-slate-300 dark:hover:bg-white/5"
               }`}
             >
               <t.icon className="h-4 w-4 shrink-0" strokeWidth={2.5} />
@@ -336,28 +336,28 @@ function MatchesInner() {
                   className={`shrink-0 rounded-full px-4 py-2 text-xs font-black transition ${
                     filter === f
                       ? "bg-emerald-600 text-white shadow-md"
-                      : "border border-stone-200 bg-white text-stone-600 shadow-sm hover:bg-orange-50 dark:border-white/10 dark:bg-stone-900 dark:text-stone-300 dark:hover:bg-white/5"
+                      : "border border-stone-200 bg-white text-stone-600 shadow-sm hover:bg-orange-50 dark:border-white/10 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-white/5"
                   }`}
                 >
                   {f === "All" ? "🌍 Everyone" : f === "Beginner" ? "🌱 Beginner" : f === "Intermediate" ? "⚡ Intermediate" : "🔥 Advanced"}
                 </button>
               ))}
             </div>
-            <p className="mt-1.5 text-[11px] font-semibold text-stone-400 dark:text-stone-500">
+            <p className="mt-1.5 text-[11px] font-semibold text-stone-400 dark:text-slate-500">
               Tip: level filters also show “Anyone welcome” games — they&apos;re open to you too! 💛
             </p>
 
             {loading ? (
               <div className="mt-6 grid gap-4 md:grid-cols-2">
                 {[0, 1, 2, 3].map((i) => (
-                  <div key={i} className="h-64 animate-pulse rounded-3xl bg-white dark:bg-stone-900" />
+                  <div key={i} className="h-64 animate-pulse rounded-3xl bg-white dark:bg-slate-900" />
                 ))}
               </div>
             ) : filtered.length === 0 ? (
-              <div className="mt-6 rounded-3xl border border-dashed border-stone-300 bg-white p-12 text-center dark:border-white/20 dark:bg-stone-900">
-                <Zap className="mx-auto h-10 w-10 text-stone-300 dark:text-stone-600" />
-                <h3 className="mt-3 text-lg font-extrabold text-stone-900 dark:text-stone-100">Quiet here for now</h3>
-                <p className="mt-1 text-sm text-stone-500 dark:text-stone-400">Be the first to start a game — friends will follow!</p>
+              <div className="mt-6 rounded-3xl border border-dashed border-stone-300 bg-white p-12 text-center dark:border-white/20 dark:bg-slate-900">
+                <Zap className="mx-auto h-10 w-10 text-stone-300 dark:text-slate-600" />
+                <h3 className="mt-3 text-lg font-extrabold text-stone-900 dark:text-slate-100">Quiet here for now</h3>
+                <p className="mt-1 text-sm text-stone-500 dark:text-slate-400">Be the first to start a game — friends will follow!</p>
               </div>
             ) : (
               <div className="mt-6 grid gap-4 md:grid-cols-2">
@@ -370,16 +370,16 @@ function MatchesInner() {
                   return (
                     <div
                       key={m.id}
-                      className="overflow-hidden rounded-3xl border border-[#F0E3CC] bg-white p-5 shadow-[0_10px_30px_rgba(180,120,60,0.08)] transition hover:border-emerald-300 dark:border-white/10 dark:bg-stone-900 dark:hover:border-emerald-500/50"
+                      className="overflow-hidden rounded-3xl border border-[#F0E3CC] bg-white p-5 shadow-[0_10px_30px_rgba(180,120,60,0.08)] transition hover:border-emerald-300 dark:border-white/10 dark:bg-slate-900 dark:hover:border-emerald-500/50"
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div>
-                          <h3 className="text-base font-extrabold text-stone-900 dark:text-stone-100">{m.title}</h3>
-                          <p className="mt-0.5 text-xs text-stone-500 dark:text-stone-400">
+                          <h3 className="text-base font-extrabold text-stone-900 dark:text-slate-100">{m.title}</h3>
+                          <p className="mt-0.5 text-xs text-stone-500 dark:text-slate-400">
                             hosted with 💚 by {m.organizer?.name ?? "a friend"} •{" "}
                             {m.level === "All Levels" ? "🌍 Anyone welcome" : `🎯 ${m.level}`}
                           </p>
-                          <p className="mt-1 text-[11px] font-bold text-stone-400 dark:text-stone-500">
+                          <p className="mt-1 text-[11px] font-bold text-stone-400 dark:text-slate-500">
                             👥 {crew} crew • 🙋 {others} joined from outside
                           </p>
                           <span className="mt-1.5 flex flex-wrap items-center gap-1.5">
@@ -402,7 +402,7 @@ function MatchesInner() {
                         <span
                           className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-black uppercase ${
                             full
-                              ? "bg-stone-200 text-stone-500 dark:bg-white/10 dark:text-stone-400"
+                              ? "bg-stone-200 text-stone-500 dark:bg-white/10 dark:text-slate-400"
                               : "bg-orange-100 text-orange-700 dark:bg-orange-500/15 dark:text-orange-300"
                           }`}
                         >
@@ -410,11 +410,11 @@ function MatchesInner() {
                         </span>
                       </div>
                       {m.description && (
-                        <p className="mt-2 text-[13px] leading-relaxed text-stone-600 dark:text-stone-400">
+                        <p className="mt-2 text-[13px] leading-relaxed text-stone-600 dark:text-slate-400">
                           {m.description}
                         </p>
                       )}
-                      <div className="mt-3 space-y-1.5 text-[13px] font-semibold text-stone-600 dark:text-stone-300">
+                      <div className="mt-3 space-y-1.5 text-[13px] font-semibold text-stone-600 dark:text-slate-300">
                         <p className="flex items-center gap-2">
                           <MapPin className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
                           {m.venue?.name} — {m.venue?.address}
@@ -441,17 +441,17 @@ function MatchesInner() {
                                 <Avatar
                                   user={{ name: p.name, avatarColor: p.avatarColor, avatarUrl: (p as { avatarUrl?: string }).avatarUrl }}
                                   className="h-8 w-8 text-[10px]"
-                                  ring="border-2 border-white shadow dark:border-stone-900"
+                                  ring="border-2 border-white shadow dark:border-slate-900"
                                 />
                               </span>
                             ))}
                             {m.joinedCount > 6 && (
-                              <span className="grid h-8 w-8 place-items-center rounded-full border-2 border-white bg-stone-200 text-[10px] font-black text-stone-600 dark:border-stone-900 dark:bg-white/10 dark:text-stone-300">
+                              <span className="grid h-8 w-8 place-items-center rounded-full border-2 border-white bg-stone-200 text-[10px] font-black text-stone-600 dark:border-slate-900 dark:bg-white/10 dark:text-slate-300">
                                 +{m.joinedCount - 6}
                               </span>
                             )}
                           </div>
-                          <span className="text-xs font-bold text-stone-500 dark:text-stone-400">
+                          <span className="text-xs font-bold text-stone-500 dark:text-slate-400">
                             {m.joinedCount}/{m.maxPlayers} in • {m.spotsLeft} open 🙋
                           </span>
                         </div>
@@ -463,7 +463,7 @@ function MatchesInner() {
                           already
                             ? "border border-red-200 bg-red-50 text-red-500 hover:bg-red-100 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-400 dark:hover:bg-red-500/20"
                             : full
-                              ? "cursor-not-allowed bg-stone-100 text-stone-400 dark:bg-white/5 dark:text-stone-500"
+                              ? "cursor-not-allowed bg-stone-100 text-stone-400 dark:bg-white/5 dark:text-slate-500"
                               : "bg-emerald-600 text-white shadow-md hover:bg-emerald-700"
                         }`}
                       >
@@ -490,22 +490,22 @@ function MatchesInner() {
 
       {showCreate && (
         <div className="fixed inset-0 z-[60] grid place-items-center overflow-y-auto bg-stone-900/50 p-4 backdrop-blur-sm">
-          <div className="max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-[2rem] border border-stone-200 bg-white p-4 shadow-2xl sm:p-6 dark:border-white/10 dark:bg-stone-900">
+          <div className="max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-[2rem] border border-stone-200 bg-white p-4 shadow-2xl sm:p-6 dark:border-white/10 dark:bg-slate-900">
             <div className="flex items-center justify-between">
               <div>
-                <h3 className="text-lg font-black text-stone-900 dark:text-stone-100">Start a friendly game ⚽</h3>
-                <p className="text-xs text-stone-500 dark:text-stone-400">Your crew + open spots — we&apos;ll help fill the rest.</p>
+                <h3 className="text-lg font-black text-stone-900 dark:text-slate-100">Start a friendly game ⚽</h3>
+                <p className="text-xs text-stone-500 dark:text-slate-400">Your crew + open spots — we&apos;ll help fill the rest.</p>
               </div>
               <button
                 onClick={() => setShowCreate(false)}
-                className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-stone-100 text-stone-600 hover:bg-stone-200 dark:bg-white/10 dark:text-stone-300 dark:hover:bg-white/15"
+                className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-stone-100 text-stone-600 hover:bg-stone-200 dark:bg-white/10 dark:text-slate-300 dark:hover:bg-white/15"
               >
                 <X className="h-4 w-4" />
               </button>
             </div>
             <div className="mt-4 space-y-3">
               <label className="block">
-                <span className="mb-1 block text-xs font-black uppercase tracking-wider text-stone-400 dark:text-stone-500">Give your game a fun name</span>
+                <span className="mb-1 block text-xs font-black uppercase tracking-wider text-stone-400 dark:text-slate-500">Give your game a fun name</span>
                 <input
                   value={title}
                   onChange={(e) => {
@@ -514,18 +514,18 @@ function MatchesInner() {
                   }}
                   placeholder="e.g. Saturday Laughs & Goals ⚡"
                   maxLength={60}
-                  className={`w-full rounded-xl border bg-[#FFF6E9] px-3.5 py-2.5 text-sm font-semibold text-stone-900 placeholder:text-stone-400 focus:outline-none dark:bg-white/5 dark:text-stone-100 dark:placeholder:text-stone-500 ${
+                  className={`w-full rounded-xl border bg-[#FFF6E9] px-3.5 py-2.5 text-sm font-semibold text-stone-900 placeholder:text-stone-400 focus:outline-none dark:bg-white/5 dark:text-slate-100 dark:placeholder:text-slate-500 ${
                     fieldErrors.title ? "border-red-400" : "border-stone-200 focus:border-emerald-500 dark:border-white/10"
                   }`}
                 />
                 {fieldErrors.title && <span className="mt-1 block text-[11px] font-bold text-red-500">{fieldErrors.title}</span>}
               </label>
               <label className="block">
-                <span className="mb-1 block text-xs font-black uppercase tracking-wider text-stone-400 dark:text-stone-500">Where?</span>
+                <span className="mb-1 block text-xs font-black uppercase tracking-wider text-stone-400 dark:text-slate-500">Where?</span>
                 <select
                   value={venueId}
                   onChange={(e) => setVenueId(e.target.value)}
-                  className="w-full rounded-xl border border-stone-200 bg-[#FFF6E9] px-3.5 py-2.5 text-sm font-semibold text-stone-900 focus:border-emerald-500 focus:outline-none dark:border-white/10 dark:bg-white/5 dark:text-stone-100 [&>option]:bg-white [&>option]:text-stone-900 dark:[&>option]:bg-stone-900 dark:[&>option]:text-stone-100"
+                  className="w-full rounded-xl border border-stone-200 bg-[#FFF6E9] px-3.5 py-2.5 text-sm font-semibold text-stone-900 focus:border-emerald-500 focus:outline-none dark:border-white/10 dark:bg-white/5 dark:text-slate-100 [&>option]:bg-white [&>option]:text-stone-900 dark:[&>option]:bg-slate-900 dark:[&>option]:text-slate-100"
                 >
                   {venues.map((v) => (
                     <option key={v.id} value={v.id}>{v.name}</option>
@@ -534,7 +534,7 @@ function MatchesInner() {
               </label>
               <div className="grid grid-cols-2 gap-3">
                 <label className="block">
-                  <span className="mb-1 block text-xs font-black uppercase tracking-wider text-stone-400 dark:text-stone-500">Day</span>
+                  <span className="mb-1 block text-xs font-black uppercase tracking-wider text-stone-400 dark:text-slate-500">Day</span>
                   <input
                     type="date"
                     value={date}
@@ -543,14 +543,14 @@ function MatchesInner() {
                       setDate(e.target.value);
                       setFieldErrors((p) => ({ ...p, date: "" }));
                     }}
-                    className={`w-full rounded-xl border bg-[#FFF6E9] px-3.5 py-2.5 text-sm font-semibold text-stone-900 focus:outline-none dark:bg-white/5 dark:text-stone-100 ${
+                    className={`w-full rounded-xl border bg-[#FFF6E9] px-3.5 py-2.5 text-sm font-semibold text-stone-900 focus:outline-none dark:bg-white/5 dark:text-slate-100 ${
                       fieldErrors.date ? "border-red-400" : "border-stone-200 focus:border-emerald-500 dark:border-white/10"
                     }`}
                   />
                   {fieldErrors.date && <span className="mt-1 block text-[11px] font-bold text-red-500">{fieldErrors.date}</span>}
                 </label>
                 <label className="block">
-                  <span className="mb-1 block text-xs font-black uppercase tracking-wider text-stone-400 dark:text-stone-500">Time</span>
+                  <span className="mb-1 block text-xs font-black uppercase tracking-wider text-stone-400 dark:text-slate-500">Time</span>
                   <input
                     type="time"
                     value={start}
@@ -558,7 +558,7 @@ function MatchesInner() {
                       setStart(e.target.value);
                       setFieldErrors((p) => ({ ...p, start: "" }));
                     }}
-                    className={`w-full rounded-xl border bg-[#FFF6E9] px-3.5 py-2.5 text-sm font-semibold text-stone-900 focus:outline-none dark:bg-white/5 dark:text-stone-100 ${
+                    className={`w-full rounded-xl border bg-[#FFF6E9] px-3.5 py-2.5 text-sm font-semibold text-stone-900 focus:outline-none dark:bg-white/5 dark:text-slate-100 ${
                       fieldErrors.start ? "border-red-400" : "border-stone-200 focus:border-emerald-500 dark:border-white/10"
                     }`}
                   />
@@ -568,7 +568,7 @@ function MatchesInner() {
 
               {userTeams.length > 0 && (
                 <div>
-                  <span className="mb-1 block text-xs font-black uppercase tracking-wider text-stone-400 dark:text-stone-500">
+                  <span className="mb-1 block text-xs font-black uppercase tracking-wider text-stone-400 dark:text-slate-500">
                     Bringing a team? 🛡️
                   </span>
                   <div className="flex flex-wrap gap-1.5">
@@ -576,8 +576,8 @@ function MatchesInner() {
                       onClick={() => pickTeam("")}
                       className={`rounded-full px-3 py-1.5 text-xs font-black transition ${
                         selectedTeam === ""
-                          ? "bg-stone-800 text-white dark:bg-white dark:text-stone-900"
-                          : "border border-stone-200 bg-white text-stone-600 dark:border-white/10 dark:bg-white/5 dark:text-stone-300"
+                          ? "bg-stone-800 text-white dark:bg-white dark:text-slate-900"
+                          : "border border-stone-200 bg-white text-stone-600 dark:border-white/10 dark:bg-white/5 dark:text-slate-300"
                       }`}
                     >
                       Just friends
@@ -589,7 +589,7 @@ function MatchesInner() {
                         className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-black transition ${
                           selectedTeam === String(t.id)
                             ? "bg-orange-500 text-white"
-                            : "border border-stone-200 bg-white text-stone-600 dark:border-white/10 dark:bg-white/5 dark:text-stone-300"
+                            : "border border-stone-200 bg-white text-stone-600 dark:border-white/10 dark:bg-white/5 dark:text-slate-300"
                         }`}
                       >
                         <span className="grid h-4 w-4 place-items-center rounded-full text-white" style={{ background: t.logoColor }}>
@@ -604,7 +604,7 @@ function MatchesInner() {
 
               <div className="grid grid-cols-2 gap-3">
                 <div className="rounded-2xl border border-stone-200 p-3 dark:border-white/10">
-                  <span className="block text-xs font-black text-stone-700 dark:text-stone-200">👥 Our crew</span>
+                  <span className="block text-xs font-black text-stone-700 dark:text-slate-200">👥 Our crew</span>
                   <div className="mt-2 flex items-center justify-between">
                     <button
                       onClick={() => { setOurCrew((v) => Math.max(1, v - 1)); setSelectedTeam(""); }}
@@ -644,12 +644,12 @@ function MatchesInner() {
                   </div>
                 </div>
               </div>
-              <p className="text-center text-xs font-bold text-stone-500 dark:text-stone-400">
+              <p className="text-center text-xs font-bold text-stone-500 dark:text-slate-400">
                 {totalPlayers} total • {totalPlayers >= 4 && totalPlayers <= 22 ? "perfect! ✓" : "needs 4–22 ⚠️"}
               </p>
 
               <div>
-                <span className="mb-1 block text-xs font-black uppercase tracking-wider text-stone-400 dark:text-stone-500">
+                <span className="mb-1 block text-xs font-black uppercase tracking-wider text-stone-400 dark:text-slate-500">
                   Who&apos;s welcome? 💛
                 </span>
                 <div className="grid grid-cols-2 gap-2">
@@ -715,7 +715,7 @@ function MatchesInner() {
                       setPrice(Number(e.target.value));
                       setFieldErrors((p) => ({ ...p, price: "" }));
                     }}
-                    className={`w-full rounded-xl border bg-white px-3.5 py-2.5 text-lg font-black focus:outline-none dark:bg-stone-950 ${
+                    className={`w-full rounded-xl border bg-white px-3.5 py-2.5 text-lg font-black focus:outline-none dark:bg-slate-950 ${
                       fieldErrors.price ? "border-red-400" : "border-violet-300 focus:border-violet-500 dark:border-violet-500/40"
                     }`}
                   />
@@ -737,7 +737,7 @@ function MatchesInner() {
                       className={`rounded-full px-3 py-1.5 text-[11px] font-black transition ${
                         price === v
                           ? "bg-violet-600 text-white"
-                          : "bg-white text-stone-600 shadow-sm dark:bg-white/10 dark:text-stone-300"
+                          : "bg-white text-stone-600 shadow-sm dark:bg-white/10 dark:text-slate-300"
                       }`}
                     >
                       {v === 0 ? "🎉 Free" : `Rs. ${v}`}
@@ -755,7 +755,7 @@ function MatchesInner() {
                 )}
               </div>
               <label className="block">
-                <span className="mb-1 block text-xs font-black uppercase tracking-wider text-stone-400 dark:text-stone-500">A warm note for joiners</span>
+                <span className="mb-1 block text-xs font-black uppercase tracking-wider text-stone-400 dark:text-slate-500">A warm note for joiners</span>
                 <textarea
                   value={desc}
                   onChange={(e) => {
@@ -765,7 +765,7 @@ function MatchesInner() {
                   rows={2}
                   maxLength={500}
                   placeholder="Beginners welcome, we laugh a lot, bibs ready…"
-                  className={`w-full resize-none rounded-xl border bg-[#FFF6E9] px-3.5 py-2.5 text-sm font-semibold text-stone-900 placeholder:text-stone-400 focus:outline-none dark:bg-white/5 dark:text-stone-100 dark:placeholder:text-stone-500 ${
+                  className={`w-full resize-none rounded-xl border bg-[#FFF6E9] px-3.5 py-2.5 text-sm font-semibold text-stone-900 placeholder:text-stone-400 focus:outline-none dark:bg-white/5 dark:text-slate-100 dark:placeholder:text-slate-500 ${
                     fieldErrors.desc ? "border-red-400" : "border-stone-200 focus:border-emerald-500 dark:border-white/10"
                   }`}
                 />
@@ -808,11 +808,11 @@ function MatchesFallback() {
   return (
     <main className="turf-pattern min-h-screen">
       <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
-        <div className="h-8 w-52 max-w-full animate-pulse rounded-2xl bg-white dark:bg-stone-900" />
-        <div className="mt-5 h-12 w-full animate-pulse rounded-2xl bg-white dark:bg-stone-900 sm:w-80" />
+        <div className="h-8 w-52 max-w-full animate-pulse rounded-2xl bg-white dark:bg-slate-900" />
+        <div className="mt-5 h-12 w-full animate-pulse rounded-2xl bg-white dark:bg-slate-900 sm:w-80" />
         <div className="mt-6 grid gap-4 md:grid-cols-2">
           {[0, 1, 2, 3].map((i) => (
-            <div key={i} className="h-64 animate-pulse rounded-3xl bg-white dark:bg-stone-900" />
+            <div key={i} className="h-64 animate-pulse rounded-3xl bg-white dark:bg-slate-900" />
           ))}
         </div>
       </div>

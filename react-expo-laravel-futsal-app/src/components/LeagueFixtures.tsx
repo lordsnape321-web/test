@@ -98,14 +98,14 @@ export function LeagueFixtures({
   }
 
   return (
-    <div className="rounded-3xl border border-[#F0E3CC] bg-white p-5 shadow-sm dark:border-white/10 dark:bg-stone-900">
+    <div className="rounded-3xl border border-[#F0E3CC] bg-white p-5 shadow-sm dark:border-white/10 dark:bg-slate-900">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="flex items-center gap-2 text-xs font-black uppercase tracking-widest text-emerald-700 dark:text-emerald-400">
           <Trophy className="h-3.5 w-3.5" /> Fixtures &amp; results
           <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[10px] font-black text-orange-700 dark:bg-orange-500/15 dark:text-orange-300">
             {modeInfo.emoji} {modeInfo.label}
           </span>
-          <span className="rounded-full bg-stone-100 px-2 py-0.5 text-[10px] font-black text-stone-500 dark:bg-white/10 dark:text-stone-300">
+          <span className="rounded-full bg-stone-100 px-2 py-0.5 text-[10px] font-black text-stone-500 dark:bg-white/10 dark:text-slate-300">
             {league.playedMatches}/{league.totalMatches || 0} played
           </span>
         </h2>
@@ -153,7 +153,7 @@ export function LeagueFixtures({
           <select
             value={homeTeamId}
             onChange={(e) => setHomeTeamId(e.target.value)}
-            className="rounded-xl border border-[#F0E3CC] bg-white px-3 py-2 text-xs font-bold dark:border-white/10 dark:bg-stone-950 dark:text-stone-100"
+            className="rounded-xl border border-[#F0E3CC] bg-white px-3 py-2 text-xs font-bold dark:border-white/10 dark:bg-slate-950 dark:text-slate-100"
           >
             <option value="">Home squad…</option>
             {squads
@@ -167,7 +167,7 @@ export function LeagueFixtures({
           <select
             value={awayTeamId}
             onChange={(e) => setAwayTeamId(e.target.value)}
-            className="rounded-xl border border-[#F0E3CC] bg-white px-3 py-2 text-xs font-bold dark:border-white/10 dark:bg-stone-950 dark:text-stone-100"
+            className="rounded-xl border border-[#F0E3CC] bg-white px-3 py-2 text-xs font-bold dark:border-white/10 dark:bg-slate-950 dark:text-slate-100"
           >
             <option value="">Away squad…</option>
             {squads
@@ -181,7 +181,7 @@ export function LeagueFixtures({
           <select
             value={round}
             onChange={(e) => setRound(e.target.value)}
-            className="rounded-xl border border-[#F0E3CC] bg-white px-3 py-2 text-xs font-bold dark:border-white/10 dark:bg-stone-950 dark:text-stone-100"
+            className="rounded-xl border border-[#F0E3CC] bg-white px-3 py-2 text-xs font-bold dark:border-white/10 dark:bg-slate-950 dark:text-slate-100"
           >
             {LEAGUE_ROUNDS.map((r) => (
               <option key={r} value={r}>
@@ -194,13 +194,13 @@ export function LeagueFixtures({
               type="date"
               value={date}
               onChange={(e) => setDate(e.target.value)}
-              className="rounded-xl border border-[#F0E3CC] bg-white px-3 py-2 text-xs font-bold dark:border-white/10 dark:bg-stone-950 dark:text-stone-100"
+              className="rounded-xl border border-[#F0E3CC] bg-white px-3 py-2 text-xs font-bold dark:border-white/10 dark:bg-slate-950 dark:text-slate-100"
             />
             <input
               type="time"
               value={startTime}
               onChange={(e) => setStartTime(e.target.value)}
-              className="rounded-xl border border-[#F0E3CC] bg-white px-3 py-2 text-xs font-bold dark:border-white/10 dark:bg-stone-950 dark:text-stone-100"
+              className="rounded-xl border border-[#F0E3CC] bg-white px-3 py-2 text-xs font-bold dark:border-white/10 dark:bg-slate-950 dark:text-slate-100"
             />
           </div>
           <button
@@ -218,7 +218,7 @@ export function LeagueFixtures({
               )
             }
             disabled={busy !== "" || !homeTeamId || !awayTeamId || homeTeamId === awayTeamId}
-            className="rounded-xl bg-stone-900 px-4 py-2.5 text-xs font-black text-white transition hover:bg-stone-800 disabled:opacity-50 dark:bg-white dark:text-stone-900 sm:col-span-2"
+            className="rounded-xl bg-stone-900 px-4 py-2.5 text-xs font-black text-white transition hover:bg-stone-800 disabled:opacity-50 dark:bg-white dark:text-slate-900 sm:col-span-2"
           >
             {busy === "create"
               ? "Adding…"
@@ -230,7 +230,7 @@ export function LeagueFixtures({
       )}
 
       {league.matches.length === 0 && (
-        <p className="mt-3 rounded-2xl border border-dashed border-stone-300 px-4 py-6 text-center text-xs font-bold text-stone-400 dark:border-white/10 dark:text-stone-500">
+        <p className="mt-3 rounded-2xl border border-dashed border-stone-300 px-4 py-6 text-center text-xs font-bold text-stone-400 dark:border-white/10 dark:text-slate-500">
           No fixtures yet.{" "}
           {isHost
             ? league.mode === "knockout"
@@ -251,7 +251,7 @@ export function LeagueFixtures({
                   {m.round} • {leagueDateLabel(m.date)}
                   {m.startTime ? ` • ${formatTime12(m.startTime)}` : ""}
                 </p>
-                <p className="mt-0.5 flex flex-wrap items-center gap-1.5 text-sm font-black text-stone-900 dark:text-stone-100">
+                <p className="mt-0.5 flex flex-wrap items-center gap-1.5 text-sm font-black text-stone-900 dark:text-slate-100">
                   <span className="flex items-center gap-1.5">
                     <span
                       className="grid h-6 w-6 place-items-center rounded-lg text-[9px] font-black text-white"
@@ -273,20 +273,20 @@ export function LeagueFixtures({
                   </span>
                 </p>
                 {m.notes && (
-                  <p className="mt-1 text-[11px] font-semibold text-stone-400 dark:text-stone-500">
+                  <p className="mt-1 text-[11px] font-semibold text-stone-400 dark:text-slate-500">
                     {m.notes}
                   </p>
                 )}
               </div>
               {!isHost && (
-                <span className="rounded-full bg-[#FFF6E9] px-3 py-1.5 text-[10px] font-black text-stone-500 dark:bg-white/5 dark:text-stone-400">
+                <span className="rounded-full bg-[#FFF6E9] px-3 py-1.5 text-[10px] font-black text-stone-500 dark:bg-white/5 dark:text-slate-400">
                   Awaiting kickoff
                 </span>
               )}
             </div>
 
             {isHost && m.bracketRound > 0 && (m.homeTeamId === 0 || m.awayTeamId === 0) && (
-              <p className="mt-2 rounded-xl bg-stone-50 px-3 py-2 text-[11px] font-bold text-stone-400 dark:bg-white/5 dark:text-stone-500">
+              <p className="mt-2 rounded-xl bg-stone-50 px-3 py-2 text-[11px] font-bold text-stone-400 dark:bg-white/5 dark:text-slate-500">
                 ⏳ Waiting on the game before it — the squad lands here as soon as that result is in.
               </p>
             )}
@@ -315,7 +315,7 @@ export function LeagueFixtures({
                     }))
                   }
                   placeholder="0"
-                  className="w-14 rounded-xl border border-[#F0E3CC] px-2 py-1.5 text-center text-sm font-black dark:border-white/10 dark:bg-stone-950 dark:text-stone-100"
+                  className="w-14 rounded-xl border border-[#F0E3CC] px-2 py-1.5 text-center text-sm font-black dark:border-white/10 dark:bg-slate-950 dark:text-slate-100"
                 />
                 <span className="text-xs font-black text-stone-400">–</span>
                 <input
@@ -330,7 +330,7 @@ export function LeagueFixtures({
                     }))
                   }
                   placeholder="0"
-                  className="w-14 rounded-xl border border-[#F0E3CC] px-2 py-1.5 text-center text-sm font-black dark:border-white/10 dark:bg-stone-950 dark:text-stone-100"
+                  className="w-14 rounded-xl border border-[#F0E3CC] px-2 py-1.5 text-center text-sm font-black dark:border-white/10 dark:bg-slate-950 dark:text-slate-100"
                 />
                 <button
                   onClick={() =>
@@ -357,14 +357,14 @@ export function LeagueFixtures({
                 <button
                   onClick={() => void post({ action: "delete", matchId: m.id }, `del-${m.id}`)}
                   disabled={busy !== ""}
-                  className="rounded-xl border border-stone-200 px-3 py-2 text-[11px] font-black text-stone-500 transition hover:bg-stone-100 dark:border-white/10 dark:text-stone-400"
+                  className="rounded-xl border border-stone-200 px-3 py-2 text-[11px] font-black text-stone-500 transition hover:bg-stone-100 dark:border-white/10 dark:text-slate-400"
                 >
                   <Trash2 className="h-3.5 w-3.5" />
                 </button>
                 {onOpenAlbum && (
                   <button
                     onClick={() => onOpenAlbum(m.id)}
-                    className="flex items-center gap-1 rounded-xl border border-stone-200 px-3 py-2 text-[11px] font-black text-stone-500 transition hover:bg-stone-100 dark:border-white/10 dark:text-stone-400"
+                    className="flex items-center gap-1 rounded-xl border border-stone-200 px-3 py-2 text-[11px] font-black text-stone-500 transition hover:bg-stone-100 dark:border-white/10 dark:text-slate-400"
                   >
                     <Camera className="h-3.5 w-3.5" /> Photos
                   </button>
@@ -377,7 +377,7 @@ export function LeagueFixtures({
 
       {results.length > 0 && (
         <>
-          <p className="mt-4 text-[10px] font-black uppercase tracking-widest text-stone-400 dark:text-stone-500">
+          <p className="mt-4 text-[10px] font-black uppercase tracking-widest text-stone-400 dark:text-slate-500">
             Results
           </p>
           <ul className="mt-2 space-y-2">
@@ -386,7 +386,7 @@ export function LeagueFixtures({
                 key={m.id}
                 className="flex flex-wrap items-center justify-between gap-2 rounded-2xl bg-[#FFF6E9] px-3.5 py-2.5 dark:bg-white/5"
               >
-                <span className="flex flex-wrap items-center gap-2 text-sm font-bold text-stone-800 dark:text-stone-100">
+                <span className="flex flex-wrap items-center gap-2 text-sm font-bold text-stone-800 dark:text-slate-100">
                   <span
                     className={`${
                       Number(m.homeScore) > Number(m.awayScore) ? "font-black text-emerald-700 dark:text-emerald-300" : ""
@@ -394,7 +394,7 @@ export function LeagueFixtures({
                   >
                     {m.homeTeamName}
                   </span>
-                  <span className="rounded-lg bg-white px-2.5 py-1 text-sm font-black text-stone-900 shadow-sm dark:bg-stone-900 dark:text-stone-100">
+                  <span className="rounded-lg bg-white px-2.5 py-1 text-sm font-black text-stone-900 shadow-sm dark:bg-slate-900 dark:text-slate-100">
                     {m.homeScore}–{m.awayScore}
                   </span>
                   <span
@@ -406,7 +406,7 @@ export function LeagueFixtures({
                   </span>
                 </span>
                 <span className="flex items-center gap-2">
-                  <span className="text-[10px] font-bold text-stone-400 dark:text-stone-500">
+                  <span className="text-[10px] font-bold text-stone-400 dark:text-slate-500">
                     {m.round} • {leagueDateLabel(m.date)}
                   </span>
                   {isHost && (
@@ -414,7 +414,7 @@ export function LeagueFixtures({
                       onClick={() => void post({ action: "score", matchId: m.id, homeScore: "", awayScore: "" }, `clear-${m.id}`)}
                       disabled={busy !== ""}
                       title="Clear the score (a mistake)"
-                      className="rounded-lg border border-stone-200 px-2 py-1 text-[10px] font-black text-stone-500 transition hover:bg-white dark:border-white/10 dark:text-stone-400"
+                      className="rounded-lg border border-stone-200 px-2 py-1 text-[10px] font-black text-stone-500 transition hover:bg-white dark:border-white/10 dark:text-slate-400"
                     >
                       Fix
                     </button>
@@ -422,7 +422,7 @@ export function LeagueFixtures({
                   {onOpenAlbum && m.mediaCount > 0 && (
                     <button
                       onClick={() => onOpenAlbum(m.id)}
-                      className="flex items-center gap-1 rounded-lg bg-white px-2 py-1 text-[10px] font-black text-emerald-700 shadow-sm dark:bg-stone-900 dark:text-emerald-300"
+                      className="flex items-center gap-1 rounded-lg bg-white px-2 py-1 text-[10px] font-black text-emerald-700 shadow-sm dark:bg-slate-900 dark:text-emerald-300"
                     >
                       <Camera className="h-3 w-3" /> {m.mediaCount}
                     </button>
@@ -435,7 +435,7 @@ export function LeagueFixtures({
       )}
 
       {league.venueName && (
-        <p className="mt-3 flex items-center gap-1.5 text-[11px] font-bold text-stone-400 dark:text-stone-500">
+        <p className="mt-3 flex items-center gap-1.5 text-[11px] font-bold text-stone-400 dark:text-slate-500">
           <MapPin className="h-3 w-3" /> All fixtures at{" "}
           <Link href={`/venues/${league.venueId}`} className="underline hover:text-emerald-600">
             {league.venueName}
@@ -474,18 +474,18 @@ function ScheduleRow({
         type="date"
         value={date}
         onChange={(e) => setDate(e.target.value)}
-        className="rounded-xl border border-[#F0E3CC] px-2 py-1 text-[11px] font-bold dark:border-white/10 dark:bg-stone-950 dark:text-stone-100"
+        className="rounded-xl border border-[#F0E3CC] px-2 py-1 text-[11px] font-bold dark:border-white/10 dark:bg-slate-950 dark:text-slate-100"
       />
       <input
         type="time"
         value={startTime}
         onChange={(e) => setStartTime(e.target.value)}
-        className="rounded-xl border border-[#F0E3CC] px-2 py-1 text-[11px] font-bold dark:border-white/10 dark:bg-stone-950 dark:text-stone-100"
+        className="rounded-xl border border-[#F0E3CC] px-2 py-1 text-[11px] font-bold dark:border-white/10 dark:bg-slate-950 dark:text-slate-100"
       />
       <button
         onClick={() => onSave(date, startTime)}
         disabled={busy || !changed || (!date && !startTime)}
-        className="rounded-xl border border-stone-200 px-3 py-1 text-[11px] font-black text-stone-600 transition hover:bg-stone-100 disabled:opacity-40 dark:border-white/10 dark:text-stone-300 dark:hover:bg-white/5"
+        className="rounded-xl border border-stone-200 px-3 py-1 text-[11px] font-black text-stone-600 transition hover:bg-stone-100 disabled:opacity-40 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/5"
       >
         {busy ? "Saving…" : changed ? "Set kick-off 📅" : "Kick-off set ✓"}
       </button>
