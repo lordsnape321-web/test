@@ -120,8 +120,13 @@ async function runApi() {
     assigned = env;
     for (const line of plan) console.log(`   · ${line}`);
     for (const problem of problems) {
+      // Only reachable if minting above failed, because a freshly registered
+      // account always has the full allowance. Note that `POST /api/seed` is
+      // NOT a remedy: it returns early when the venues table is non-empty, so
+      // on a database that already has data it changes nothing.
       console.log(`   ⚠️  ${problem}`);
-      console.log("      Seed a fresh database (`curl -X POST /api/seed`) to reset the counters.");
+      console.log("      Signing up a fresh player did not work — is the dev server up?");
+      console.log("      Allowances also reset on their own on the 1st of each month.");
     }
   } catch (err) {
     console.log(`   ⚠️  could not read the database to pick players (${err.message});`);
