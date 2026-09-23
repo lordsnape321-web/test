@@ -105,6 +105,16 @@ ok("the warm near-black (#0c0a09) is gone from dark mode", !/#0c0a09/.test(css))
 ok("dark mode has no dot texture", !/\.dark \.turf-pattern\s*\{[^}]*1\.2px/.test(css));
 ok("light mode keeps its dot texture", /\.turf-pattern\s*\{[^}]*1\.2px/.test(css));
 
+console.log("\n— iOS can't zoom the page when a field is focused —");
+// iOS Safari force-zooms on focus when a field's font-size is under 16px. Most
+// form controls here are text-sm/text-xs, so a global rule handles all ~157 of
+// them at once. It must stay unlayered, or Tailwind's utilities win.
+const zoomRule = /@media \(max-width: 640px\)\s*\{[^}]*input:not\(\[type="checkbox"\][\s\S]*?font-size:\s*16px/;
+ok("form controls are bumped to 16px at phone widths", zoomRule.test(css),
+   "iOS will zoom the whole page on every input focus");
+ok("checkbox/radio/range are excluded from the bump",
+   /\[type="checkbox"\][\s\S]*?\[type="radio"\][\s\S]*?\[type="range"\]/.test(css));
+
 console.log("\n— no dark-mode warm neutrals crept back in —");
 const darkStone = [];
 for (const f of files) {

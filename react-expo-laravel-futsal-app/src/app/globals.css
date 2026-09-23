@@ -122,3 +122,22 @@ select optgroup {
   background-color: #0f172a;
   color: #94a3b8;
 }
+
+/*
+ * iOS Safari force-zooms the entire page when a focused field's computed
+ * font-size is below 16px, and the page stays zoomed after blur. Most of the
+ * ~157 form controls here are text-sm or text-xs for density, so this was
+ * happening on every input on an iPhone.
+ *
+ * Bumping them at the widths where the zoom actually occurs fixes all of them
+ * at once without touching a single call site. Desktop typography is
+ * untouched, and the non-text input types are excluded — they don't trigger
+ * the zoom and a 16px checkbox is just wrong.
+ */
+@media (max-width: 640px) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="hidden"]):not([type="color"]):not([type="submit"]):not([type="button"]):not([type="file"]),
+  select,
+  textarea {
+    font-size: 16px;
+  }
+}
