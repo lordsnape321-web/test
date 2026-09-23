@@ -42,7 +42,9 @@ export function LeagueCard({ league, compact = false }: { league: LeagueSummary;
   return (
     <div
       className={`group flex flex-col overflow-hidden rounded-3xl border border-[#F0E3CC] bg-white shadow-[0_10px_30px_rgba(180,120,60,0.08)] transition hover:border-emerald-300 dark:border-white/10 dark:bg-slate-900 dark:hover:border-emerald-500/50 ${
-        compact ? "w-[300px] shrink-0 sm:w-[340px]" : ""
+        // min() so a compact card can never be wider than its container: a
+        // pinned 300px overflows a 320px viewport once the gutters are counted.
+        compact ? "w-[min(300px,100%)] shrink-0 sm:w-[340px]" : ""
       }`}
     >
       <div className="relative h-32 shrink-0 overflow-hidden">

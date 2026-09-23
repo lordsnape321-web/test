@@ -60,13 +60,13 @@ function runTsx(file) {
 }
 
 /** Run a plain node suite. */
-function runMjs(file, env = {}) {
-  const r = spawnSync(process.execPath, [join(here, "api", file)], {
+function runMjs(file, env = {}, subdir = "api") {
+  const r = spawnSync(process.execPath, [join(here, subdir, file)], {
     cwd: app,
     encoding: "utf8",
     env: { ...process.env, ...env },
   });
-  report(`api/${file}`, r);
+  report(subdir === "api" ? `api/${file}` : file, r);
 }
 
 function report(name, r) {
@@ -85,6 +85,13 @@ function report(name, r) {
 if (wantOffline) {
   console.log("\n— pure logic + rendered components (no server) —");
   for (const f of readdirSync(here).filter((f) => f.endsWith(".tsx")).sort()) runTsx(f);
+  // Static guardrails: no server, no browser, just the source. `cleanup.mjs`
+  // is excluded — it is a maintenance script, not a test, and its dry run
+  // always exits 0, so it would report a pass without asserting anything.
+  const NOT_SUITES = new Set(["run.mjs", "players.mjs", "domsetup.mjs", "cleanup.mjs"]);
+  for (const f of readdirSync(here).filter((f) => f.endsWith(".mjs") && !NOT_SUITES.has(f)).sort()) {
+    runMjs(f, {}, ".");
+  }
 }
 
 /**

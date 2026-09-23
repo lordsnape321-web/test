@@ -113,15 +113,16 @@ that Next.js already ships, and it runs the `tests/api/*.mjs` suites as plain
 node scripts against a live dev server.
 
 ```bash
-npm test          # 114 assertions — pure logic + components rendered in jsdom
+npm test          # 128 assertions — pure logic, components rendered in jsdom, responsive guardrails
 npm run test:api  # 161 assertions — real HTTP against a running server + Postgres
-npm run test:all  # all 10 suites
+npm run test:all  # all 11 suites
 ```
 
 | Suite                      | Covers                                                        |
 | -------------------------- | ------------------------------------------------------------- |
 | `ledger.unit.tsx`          | The money maths: splits, part payment, overpayment, voids, and the 5-minute settle window |
 | `amendrow.dom.tsx`         | The Amend button in the bookings row: countdown while the window is open, Locked after it closes |
+| `responsive.mjs`           | Static responsive guardrails: viewport-fit, pinned widths, scrollable tables, grid truncation, dark palette |
 | `paypanel.dom.tsx`         | The owner's payment panel, rendered: venue default prefill, walking a balance down, undo, settle |
 | `paysummary.dom.tsx`       | The player's read-only breakdown: lazy fetch, itemised mediums, voided rows excluded |
 | `api/ledger.mjs`           | Every ledger action over HTTP, including who is refused and what the database ends up holding |
