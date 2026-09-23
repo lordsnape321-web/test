@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { ChevronDown, ChevronUp, Loader2, Wallet } from "lucide-react";
 import { formatNPR } from "@/lib/futsal";
+import { apiFetch } from "@/lib/api";
 
 type Line = {
   id: number;
@@ -53,7 +54,7 @@ export function BookingPaymentSummary({ bookingId }: { bookingId: number }) {
     setLoading(true);
     setError("");
     try {
-      const res = await fetch(`/api/bookings/${bookingId}/ledger`);
+      const res = await apiFetch(`/api/bookings/${bookingId}/ledger`);
       const body = await res.json();
       if (!res.ok) setError(String(body.error ?? "Couldn't load the payment details 🙏"));
       else setData(body as Summary);

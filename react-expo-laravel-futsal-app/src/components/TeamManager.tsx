@@ -33,6 +33,7 @@ import {
   validateTeamDescription,
   validateTitle,
 } from "@/lib/validation";
+import { apiFetch } from "@/lib/api";
 
 /** Everything the panel edits — the full team row as `/api/teams` returns it. */
 export type ManagedTeam = {
@@ -177,11 +178,11 @@ export function TeamManager({
     try {
       const [membersRes, requestsRes, invitesRes] = await Promise.all([
         // viewerId unlocks the members' email addresses for the captain only.
-        fetch(`/api/teams/${team.id}/members?viewerId=${captainId}`),
-        fetch(`/api/teams/${team.id}/requests?captainId=${captainId}`),
+        apiFetch(`/api/teams/${team.id}/members?viewerId=${captainId}`),
+        apiFetch(`/api/teams/${team.id}/requests?captainId=${captainId}`),
         // status=all, because the panel shows answered invites too — the pending
         // ones are simply the ones with a Withdraw button on them.
-        fetch(`/api/teams/${team.id}/invites?captainId=${captainId}&status=all`),
+        apiFetch(`/api/teams/${team.id}/invites?captainId=${captainId}&status=all`),
       ]);
       const membersData = await membersRes.json().catch(() => ({}));
       const requestsData = await requestsRes.json().catch(() => ({}));
@@ -203,8 +204,8 @@ export function TeamManager({
         // neither belongs in a squad. The server filters, and `candidates` below
         // filters again — see the Candidate type.
         const [vRes, uRes] = await Promise.all([
-          fetch("/api/venues"),
-          fetch("/api/users?role=player"),
+          apiFetch("/api/venues"),
+          apiFetch("/api/users?role=player"),
         ]);
         const vData = await vRes.json().catch(() => ({}));
         const uData = await uRes.json().catch(() => ({}));
@@ -248,7 +249,7 @@ export function TeamManager({
 
   const decide = (requestId: number, action: "accept" | "decline", who: string) =>
     act(`req-${requestId}`, () =>
-      fetch(`/api/teams/${team.id}/requests`, {
+      apiFetch(`/api/teams/${team.id}/requests`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ captainId, requestId, action }),
@@ -263,7 +264,7 @@ export function TeamManager({
     const ok = await act(
       `invite-${userId}`,
       () =>
-        fetch(`/api/teams/${team.id}/invites`, {
+        apiFetch(`/api/teams/${team.id}/invites`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ captainId, userId, message: inviteNote.trim() }),
@@ -275,21 +276,21 @@ export function TeamManager({
 
   const withdrawInvite = (inviteId: number, who: string) =>
     act(`withdraw-${inviteId}`, () =>
-      fetch(`/api/teams/${team.id}/invites?captainId=${captainId}&inviteId=${inviteId}`, {
+      apiFetch(`/api/teams/${team.id}/invites?captainId=${captainId}&inviteId=${inviteId}`, {
         method: "DELETE",
       }).then(async (r) => ({ status: r.status, data: await r.json().catch(() => ({})) }))
     , `Invite to ${who} withdrawn`);
 
   const removeMember = (userId: number, who: string) =>
     act(`rm-${userId}`, () =>
-      fetch(`/api/teams/${team.id}/members?captainId=${captainId}&userId=${userId}`, {
+      apiFetch(`/api/teams/${team.id}/members?captainId=${captainId}&userId=${userId}`, {
         method: "DELETE",
       }).then(async (r) => ({ status: r.status, data: await r.json().catch(() => ({})) }))
     , `${who} removed from the squad`);
 
   const handOver = (userId: number, who: string) =>
     act("transfer", () =>
-      fetch(`/api/teams/${team.id}`, {
+      apiFetch(`/api/teams/${team.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ captainId, newCaptainId: userId }),
@@ -316,7 +317,7 @@ export function TeamManager({
       return;
     }
     void act("save", () =>
-      fetch(`/api/teams/${team.id}`, {
+      apiFetch(`/api/teams/${team.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

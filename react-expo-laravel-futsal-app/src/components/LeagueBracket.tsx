@@ -5,6 +5,7 @@ import { ArrowRight, Loader2, RefreshCw, Swords, Trophy } from "lucide-react";
 import type { LeagueDetail, LeagueMatchRow } from "@/lib/league-store";
 import { leagueDateLabel, standingsFor } from "@/lib/league";
 import { formatTime12 } from "@/lib/futsal";
+import { apiFetch } from "@/lib/api";
 
 /**
  * The bracket 🥊
@@ -87,7 +88,7 @@ export function LeagueBracket({
     setMsg("");
     setErr("");
     try {
-      const res = await fetch(`/api/tournaments/${league.id}/matches`, {
+      const res = await apiFetch(`/api/tournaments/${league.id}/matches`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ hostId, action: "advance" }),

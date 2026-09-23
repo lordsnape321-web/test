@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Bell, Check, CheckCheck, Loader2 } from "lucide-react";
 import { useUser } from "./UserProvider";
+import { apiFetch } from "@/lib/api";
 
 type N = {
   id: number;
@@ -42,7 +43,7 @@ export function NotificationBell({ variant }: { variant: "dark" | "light" }) {
   const load = useCallback(async () => {
     if (!user) return;
     try {
-      const res = await fetch(`/api/notifications?userId=${user.id}`);
+      const res = await apiFetch(`/api/notifications?userId=${user.id}`);
       const data = await res.json();
       setItems((data.notifications ?? []).slice(0, 8));
       setUnread(data.unread ?? 0);
@@ -68,7 +69,7 @@ export function NotificationBell({ variant }: { variant: "dark" | "light" }) {
     setItems((list) => list.map((n) => (n.id === id ? { ...n, isRead: true } : n)));
     setUnread((c) => Math.max(0, c - 1));
     try {
-      await fetch(`/api/notifications/${id}`, {
+      await apiFetch(`/api/notifications/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ isRead: true }),
@@ -86,7 +87,7 @@ export function NotificationBell({ variant }: { variant: "dark" | "light" }) {
     setItems((list) => list.map((n) => ({ ...n, isRead: true })));
     setUnread(0);
     try {
-      await fetch(`/api/notifications/read-all`, {
+      await apiFetch(`/api/notifications/read-all`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ userId: uid }),
@@ -160,7 +161,7 @@ export function NotificationBell({ variant }: { variant: "dark" | "light" }) {
                   <button
                     onClick={async () => {
                       try {
-                        await fetch(`/api/notifications/${n.id}`, {
+                        await apiFetch(`/api/notifications/${n.id}`, {
                           method: "PATCH",
                           headers: { "Content-Type": "application/json" },
                           body: JSON.stringify({ isRead: true }),

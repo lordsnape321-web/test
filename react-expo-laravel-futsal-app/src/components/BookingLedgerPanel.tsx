@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Loader2, Plus, RotateCcw, Trash2, Wallet, CheckCheck, Lock, ReceiptText } from "lucide-react";
 import { formatNPR } from "@/lib/futsal";
 import { formatWindowLeft } from "@/lib/booking-ledger";
+import { apiFetch } from "@/lib/api";
 
 type ExtraLine = {
   id: number;
@@ -102,7 +103,7 @@ export function BookingLedgerPanel({
   // depending on them would re-run the load every time the owner types.
   useEffect(() => {
     let dead = false;
-    fetch(`/api/bookings/${bookingId}/ledger`)
+    apiFetch(`/api/bookings/${bookingId}/ledger`)
       .then(async (res) => {
         const data = await res.json();
         if (dead) return;
@@ -129,7 +130,7 @@ export function BookingLedgerPanel({
     setError("");
     setNotice("");
     try {
-      const res = await fetch(`/api/bookings/${bookingId}/ledger`, {
+      const res = await apiFetch(`/api/bookings/${bookingId}/ledger`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ...body, actorId: ownerId }),

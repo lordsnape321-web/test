@@ -8,6 +8,7 @@ import { ReceiptViewer } from "@/components/ReceiptUploader";
 import { PlayerRatingBadge } from "@/components/PlayerRating";
 import type { PlayerStats } from "@/lib/loyalty";
 import { formatNPR, formatTime12, prettyDate } from "@/lib/futsal";
+import { apiFetch } from "@/lib/api";
 
 type Booking = {
   id: number;
@@ -63,8 +64,8 @@ export default function OwnerRequestsPage() {
 
   const load = async () => {
     const [bRes, vRes] = await Promise.all([
-      fetch("/api/bookings"),
-      fetch("/api/venues"),
+      apiFetch("/api/bookings"),
+      apiFetch("/api/venues"),
     ]);
     const b = await bRes.json();
     const v = await vRes.json();
@@ -98,7 +99,7 @@ export default function OwnerRequestsPage() {
     if (!ok && !confirm("Decline this booking request? The player will be notified.")) return;
     setActing(id);
     try {
-      const res = await fetch(`/api/bookings/${id}`, {
+      const res = await apiFetch(`/api/bookings/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: ok ? "confirmed" : "rejected" }),

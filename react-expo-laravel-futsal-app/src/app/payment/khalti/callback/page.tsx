@@ -4,6 +4,7 @@ import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Loader2, PartyPopper, XCircle } from "lucide-react";
+import { apiFetch } from "@/lib/api";
 
 function Inner() {
   const params = useSearchParams();
@@ -29,7 +30,7 @@ function Inner() {
         return;
       }
       try {
-        const res = await fetch("/api/payments/khalti/verify", {
+        const res = await apiFetch("/api/payments/khalti/verify", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ pidx, bookingId: bid, transaction_id: txn, status }),

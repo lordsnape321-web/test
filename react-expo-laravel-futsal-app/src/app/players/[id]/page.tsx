@@ -24,6 +24,7 @@ import { PlayerRatingBadge } from "@/components/PlayerRating";
 import type { PlayerStats } from "@/lib/loyalty";
 import { initials } from "@/lib/futsal";
 import { timeAgo } from "@/components/NotificationBell";
+import { apiFetch } from "@/lib/api";
 
 type Squad = {
   id: number;
@@ -150,7 +151,7 @@ export default function PlayerDossierPage({
 
   const load = useCallback(async () => {
     try {
-      const res = await fetch(
+      const res = await apiFetch(
         `/api/players/${id}${user ? `?viewerId=${user.id}` : ""}`
       );
       const body = await res.json().catch(() => ({}));
@@ -207,7 +208,7 @@ export default function PlayerDossierPage({
     act(
       `${row.kind}-${row.id}-${action}`,
       () =>
-        fetch(`/api/teams/${row.teamId}/requests`, {
+        apiFetch(`/api/teams/${row.teamId}/requests`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ captainId: user?.id, requestId: row.id, action }),
@@ -221,7 +222,7 @@ export default function PlayerDossierPage({
     act(
       `withdraw-${row.id}`,
       () =>
-        fetch(
+        apiFetch(
           `/api/teams/${row.teamId}/invites?captainId=${user?.id}&inviteId=${row.id}`,
           { method: "DELETE" }
         ),
@@ -234,7 +235,7 @@ export default function PlayerDossierPage({
     void act(
       "invite",
       () =>
-        fetch(`/api/teams/${team.teamId}/invites`, {
+        apiFetch(`/api/teams/${team.teamId}/invites`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({

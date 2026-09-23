@@ -48,6 +48,69 @@ All demo accounts use the password `futsal123`.
 
 ---
 
+## Porting this to React Native (Expo) and Laravel
+
+This app is written in Next.js, but it is meant to be carried over to an Expo
+frontend with a Laravel backend. Two things were done deliberately to make that
+port mechanical rather than archaeological.
+
+### Every network call goes through one module
+
+There is no `fetch("/api/...")` anywhere in `src/` — all 146 call sites go
+through `src/lib/api.ts`:
+
+```ts
+import { apiFetch, apiUrl, apiGet } from "@/lib/api";
+
+const res = await apiFetch("/api/bookings", { method: "POST", body });
+```
+
+`apiFetch` is a thin wrapper: it resolves the path against a base origin and
+forwards `init` untouched, so JSON bodies, `FormData` uploads, headers and
+abort signals all keep working.
+
+The base comes from one environment variable:
+
+```
+NEXT_PUBLIC_API_BASE=https://api.yourdomain.com
+```
+
+It must carry the `NEXT_PUBLIC_` prefix so the value is inlined into the client
+bundle. Unset, it is `""` and every call resolves to the same relative path it
+always did — which is how the app runs today.
+
+Why this matters: **React Native has no origin**, so a relative URL is not a
+valid URL there, and Laravel will be a different host anyway. Without this
+module both migrations would have meant hand-editing 146 call sites. With it,
+they are one line.
+
+### The domain logic is already React Native safe
+
+React Native provides no `window`, `document` or `localStorage`. Auditing
+`src/lib` for those globals: **14 of the 16 modules port as-is** —
+`booking-ledger`, `loyalty`, `league`, `teams`, `payments`, `promos`,
+`validation`, `futsal`, `auth` and the store modules. They are pure TypeScript
+with no DOM dependency, so they can be copied into an Expo project unchanged.
+
+The two that cannot:
+
+- `download.ts` — builds an `<a download>` and a blob URL to save a ZIP.
+  In Expo, use `expo-sharing` / `expo-file-system` instead.
+- `gateway-client.ts` — opens eSewa/Khalti by writing an auto-submitting form
+  into a popup. In Expo, use a `WebView` or the gateway's deep link.
+
+Both are genuinely browser-only tasks, not accidental coupling, so they are the
+only two files in the domain layer that need rewriting.
+
+### For the Laravel side
+
+The API routes under `src/app/api/` are the contract to reimplement. The
+test suites in `tests/api/` assert it end to end (161 assertions) and are
+written against HTTP, not against Drizzle, so they are reusable as an
+acceptance suite for the Laravel port: point them at the new host with
+`BASE` and they should pass unchanged.
+
+
 ## Database
 
 The app needs PostgreSQL 14+ and a database named in `DATABASE_URL`. Both the app
@@ -113,7 +176,7 @@ that Next.js already ships, and it runs the `tests/api/*.mjs` suites as plain
 node scripts against a live dev server.
 
 ```bash
-npm test          # 130 assertions — pure logic, components rendered in jsdom, responsive guardrails
+npm test          # 144 assertions — pure logic, components rendered in jsdom, responsive guardrails
 npm run test:api  # 161 assertions — real HTTP against a running server + Postgres
 npm run test:all  # all 11 suites
 ```

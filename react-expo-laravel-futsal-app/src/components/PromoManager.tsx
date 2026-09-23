@@ -29,6 +29,7 @@ import {
   validatePromoWindow,
   validateUsageLimit,
 } from "@/lib/validation";
+import { apiFetch } from "@/lib/api";
 
 type Promo = {
   id: number;
@@ -140,7 +141,7 @@ export function PromoManager({
   const load = useCallback(async () => {
     if (!venueId) return;
     try {
-      const res = await fetch(`/api/promos?ownerId=${ownerId}`);
+      const res = await apiFetch(`/api/promos?ownerId=${ownerId}`);
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "Couldn't load promo codes");
       setPromos(
@@ -272,7 +273,7 @@ export function PromoManager({
         perUserLimit,
         isPublic,
       };
-      const res = await fetch(editing ? `/api/promos/${editing.id}` : "/api/promos", {
+      const res = await apiFetch(editing ? `/api/promos/${editing.id}` : "/api/promos", {
         method: editing ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(editing ? payload : { venueId: venue.id, ...payload }),
@@ -298,7 +299,7 @@ export function PromoManager({
     setBusy(p.id);
     setError("");
     try {
-      const res = await fetch(`/api/promos/${p.id}`, {
+      const res = await apiFetch(`/api/promos/${p.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ownerId, isActive: !p.isActive }),
@@ -319,7 +320,7 @@ export function PromoManager({
     setBusy(p.id);
     setError("");
     try {
-      const res = await fetch(`/api/promos/${p.id}?ownerId=${ownerId}`, { method: "DELETE" });
+      const res = await apiFetch(`/api/promos/${p.id}?ownerId=${ownerId}`, { method: "DELETE" });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         // Already-redeemed codes are paused instead of deleted.

@@ -9,6 +9,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { apiFetch } from "@/lib/api";
 
 export type AppUser = {
   id: number;
@@ -94,7 +95,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
         setUser(null);
         return;
       }
-      const res = await fetch("/api/users");
+      const res = await apiFetch("/api/users");
       const data = await res.json();
       const found: AppUser | undefined = (data.users ?? []).find(
         (u: AppUser) => u.id === stored
@@ -124,7 +125,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
   };
 
   const login = useCallback(async (email: string, password: string) => {
-    const res = await fetch("/api/auth/login", {
+    const res = await apiFetch("/api/auth/login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email, password }),
@@ -136,7 +137,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const signup = useCallback(async (form: SignupData) => {
-    const res = await fetch("/api/auth/signup", {
+    const res = await apiFetch("/api/auth/signup", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(form),
@@ -157,7 +158,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
   const updateProfile = useCallback(
     async (patch: Partial<AppUser>) => {
       if (!user) throw new Error("Not logged in");
-      const res = await fetch(`/api/users/${user.id}`, {
+      const res = await apiFetch(`/api/users/${user.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(patch),

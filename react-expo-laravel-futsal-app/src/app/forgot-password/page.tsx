@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { KeyRound, Mail, Phone, Lock, ChevronLeft, Loader2, Eye, EyeOff, PartyPopper } from "lucide-react";
 import { useUser } from "@/components/UserProvider";
 import { validateEmail, validatePhone, validatePassword, passwordStrength, firstError } from "@/lib/validation";
+import { apiFetch } from "@/lib/api";
 
 export default function ForgotPasswordPage() {
   const router = useRouter();
@@ -42,7 +43,7 @@ export default function ForgotPasswordPage() {
     setError("");
     setBusy(true);
     try {
-      const res = await fetch("/api/auth/reset", {
+      const res = await apiFetch("/api/auth/reset", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, phone, newPassword: newPw }),

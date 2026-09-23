@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Loader2, ShieldCheck, XCircle } from "lucide-react";
 import { formatNPR } from "@/lib/futsal";
+import { apiFetch } from "@/lib/api";
 
 function Inner() {
   const params = useSearchParams();
@@ -25,7 +26,7 @@ function Inner() {
     setBusy("pay");
     setError("");
     try {
-      const res = await fetch(
+      const res = await apiFetch(
         isLeague ? `/api/tournaments/${leagueId}/payments` : "/api/payments/khalti/verify",
         {
           method: "POST",

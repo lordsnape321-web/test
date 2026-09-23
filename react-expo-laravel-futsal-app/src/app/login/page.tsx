@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { useUser } from "@/components/UserProvider";
 import { validateEmail, firstError } from "@/lib/validation";
+import { apiFetch } from "@/lib/api";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -29,7 +30,7 @@ export default function LoginPage() {
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    fetch("/api/seed", { method: "POST" }).catch(() => {});
+    apiFetch("/api/seed", { method: "POST" }).catch(() => {});
   }, []);
 
   useEffect(() => {

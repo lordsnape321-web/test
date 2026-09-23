@@ -17,6 +17,7 @@ import { MAX_IMAGE_BYTES } from "./ImagePicker";
 import { validateExternalUrl } from "@/lib/validation";
 import { photoFile, savePhoto, saveZip, type ZipEntry } from "@/lib/download";
 import { timeAgo } from "./NotificationBell";
+import { apiFetch } from "@/lib/api";
 
 /**
  * The album 📸
@@ -120,7 +121,7 @@ export function LeagueAlbum({
     setMsg("");
     setErr("");
     try {
-      const res = await fetch(`/api/tournaments/${league.id}/media`, {
+      const res = await apiFetch(`/api/tournaments/${league.id}/media`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ userId: hostId, ...body }),

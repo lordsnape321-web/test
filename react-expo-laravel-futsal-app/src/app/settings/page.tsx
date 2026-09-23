@@ -29,6 +29,7 @@ import { useTheme } from "@/components/ThemeProvider";
 import { Avatar } from "@/components/Avatar";
 import { timeAgo } from "@/components/NotificationBell";
 import { CITY_OPTIONS } from "@/lib/futsal";
+import { apiFetch } from "@/lib/api";
 
 type Note = {
   id: number;
@@ -81,7 +82,7 @@ export default function SettingsPage() {
   const loadNotes = useCallback(async () => {
     if (!user) return;
     try {
-      const res = await fetch(`/api/notifications?userId=${user.id}`);
+      const res = await apiFetch(`/api/notifications?userId=${user.id}`);
       const data = await res.json();
       setNotes(data.notifications ?? []);
     } catch {
@@ -101,7 +102,7 @@ export default function SettingsPage() {
 
   async function markAllRead() {
     if (!user) return;
-    await fetch("/api/notifications/read-all", {
+    await apiFetch("/api/notifications/read-all", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ userId: user.id }),

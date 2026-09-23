@@ -23,6 +23,7 @@ import {
   PeakHours,
 } from "@/components/OwnerCharts";
 import { formatNPR, formatTime12, prettyDate } from "@/lib/futsal";
+import { apiFetch } from "@/lib/api";
 
 type Venue = {
   id: number;
@@ -77,8 +78,8 @@ export default function OwnerOverviewPage() {
 
   const load = async () => {
     const [vRes, bRes] = await Promise.all([
-      fetch("/api/venues"),
-      fetch("/api/bookings"),
+      apiFetch("/api/venues"),
+      apiFetch("/api/bookings"),
     ]);
     const v = await vRes.json();
     const b = await bRes.json();
@@ -89,7 +90,7 @@ export default function OwnerOverviewPage() {
   useEffect(() => {
     (async () => {
       try {
-        await fetch("/api/seed", { method: "POST" });
+        await apiFetch("/api/seed", { method: "POST" });
         await load();
       } finally {
         setLoading(false);
@@ -168,7 +169,7 @@ export default function OwnerOverviewPage() {
   async function decide(id: number, ok: boolean) {
     setActing(id);
     try {
-      await fetch(`/api/bookings/${id}`, {
+      await apiFetch(`/api/bookings/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: ok ? "confirmed" : "rejected" }),

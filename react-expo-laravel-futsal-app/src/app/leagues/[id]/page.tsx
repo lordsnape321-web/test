@@ -27,6 +27,7 @@ import { LeagueSquadPanel } from "@/components/LeagueSquadPanel";
 import type { LeagueDetail } from "@/lib/league-store";
 import { leagueModeLabel, leagueStatusLabel, leagueVisibilityLabel, modeHasBracket } from "@/lib/league";
 import { formatNPR, prettyDate } from "@/lib/futsal";
+import { apiFetch } from "@/lib/api";
 
 /**
  * One league, in full 🏆
@@ -48,7 +49,7 @@ export default function LeagueDetailPage({ params }: { params: Promise<{ id: str
 
   const load = useCallback(async () => {
     try {
-      const res = await fetch(`/api/tournaments/${id}${user ? `?viewerId=${user.id}` : ""}`);
+      const res = await apiFetch(`/api/tournaments/${id}${user ? `?viewerId=${user.id}` : ""}`);
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(String(data.error ?? "Couldn't load that league 🙏"));
       setLeague(data.league as LeagueDetail);

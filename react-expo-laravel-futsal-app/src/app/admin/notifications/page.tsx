@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Bell, CheckCheck, Trash2, ChevronRight } from "lucide-react";
 import { useUser } from "@/components/UserProvider";
 import { timeAgo } from "@/components/NotificationBell";
+import { apiFetch } from "@/lib/api";
 
 type N = {
   id: number;
@@ -34,7 +35,7 @@ export default function OwnerNotificationsPage() {
 
   const load = useCallback(async () => {
     if (!user) return;
-    const res = await fetch(`/api/notifications?userId=${user.id}`);
+    const res = await apiFetch(`/api/notifications?userId=${user.id}`);
     const data = await res.json();
     setItems(data.notifications ?? []);
   }, [user]);
@@ -48,7 +49,7 @@ export default function OwnerNotificationsPage() {
 
   async function markAll() {
     if (!user) return;
-    await fetch("/api/notifications/read-all", {
+    await apiFetch("/api/notifications/read-all", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ userId: user.id }),
@@ -57,7 +58,7 @@ export default function OwnerNotificationsPage() {
   }
 
   async function markOne(n: N) {
-    await fetch(`/api/notifications/${n.id}`, {
+    await apiFetch(`/api/notifications/${n.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ isRead: true }),
@@ -67,7 +68,7 @@ export default function OwnerNotificationsPage() {
   }
 
   async function remove(id: number) {
-    await fetch(`/api/notifications/${id}`, { method: "DELETE" });
+    await apiFetch(`/api/notifications/${id}`, { method: "DELETE" });
     setItems((prev) => prev.filter((x) => x.id !== id));
   }
 

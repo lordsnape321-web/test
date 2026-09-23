@@ -21,6 +21,7 @@ import { AvatarUploader } from "@/components/AvatarUploader";
 import { CITY_OPTIONS } from "@/lib/futsal";
 import { monthLabel, type PlayerStats } from "@/lib/loyalty";
 import { validateName, validatePhone, validatePassword, passwordStrength, firstError } from "@/lib/validation";
+import { apiFetch } from "@/lib/api";
 
 const COLORS = ["#16a34a", "#2563eb", "#dc2626", "#7c3aed", "#ea580c", "#0891b2", "#be123c", "#f59e0b"];
 const LEVELS = ["Beginner", "Intermediate", "Advanced"];
@@ -64,8 +65,8 @@ export default function PlayerProfilePage() {
       (async () => {
         try {
           const [sRes, vRes] = await Promise.all([
-            fetch(`/api/users/${user.id}`),
-            fetch(`/api/vouchers?userId=${user.id}`),
+            apiFetch(`/api/users/${user.id}`),
+            apiFetch(`/api/vouchers?userId=${user.id}`),
           ]);
           const sData = await sRes.json();
           const vData = await vRes.json();
@@ -121,7 +122,7 @@ export default function PlayerProfilePage() {
     setPwSaving(true);
     setPwMsg(null);
     try {
-      const res = await fetch("/api/auth/change-password", {
+      const res = await apiFetch("/api/auth/change-password", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ userId: user.id, currentPassword: currentPw, newPassword: newPw }),

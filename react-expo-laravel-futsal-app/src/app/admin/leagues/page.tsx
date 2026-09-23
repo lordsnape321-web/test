@@ -19,6 +19,7 @@ import { LeagueCard } from "@/components/LeagueCard";
 import { LeagueForm } from "@/components/LeagueForm";
 import type { LeagueSummary } from "@/lib/league-store";
 import { formatNPR } from "@/lib/futsal";
+import { apiFetch } from "@/lib/api";
 
 type Booking = {
   id: number;
@@ -56,9 +57,9 @@ export default function OwnerLeaguesPage() {
   const load = useCallback(async () => {
     if (!user) return;
     const [lRes, bRes, vRes] = await Promise.all([
-      fetch(`/api/tournaments?viewerId=${user.id}&limit=100`),
-      fetch("/api/bookings"),
-      fetch("/api/venues"),
+      apiFetch(`/api/tournaments?viewerId=${user.id}&limit=100`),
+      apiFetch("/api/bookings"),
+      apiFetch("/api/venues"),
     ]);
     const l = await lRes.json().catch(() => ({}));
     const b = await bRes.json().catch(() => ({}));

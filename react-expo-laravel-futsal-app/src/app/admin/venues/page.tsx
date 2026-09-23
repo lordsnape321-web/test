@@ -11,6 +11,7 @@ import { Avatar } from "@/components/Avatar";
 import { formatNPR } from "@/lib/futsal";
 import { PAYMENT_OPTIONS } from "@/lib/loyalty";
 import { validateVenueName, validateAddress, validatePhone, validateDescription, validateHoursRange, validateCourtName, validateMoney, validatePaymentMethods, validateDepositPercent, firstError } from "@/lib/validation";
+import { apiFetch } from "@/lib/api";
 
 type Court = {
   id: number;
@@ -179,7 +180,7 @@ export default function OwnerVenuesPage() {
   const [priceDrafts, setPriceDrafts] = useState<Record<number, string>>({});
 
   const load = async () => {
-    const res = await fetch("/api/venues");
+    const res = await apiFetch("/api/venues");
     const data = await res.json();
     setVenues(data.venues ?? []);
   };
@@ -190,7 +191,7 @@ export default function OwnerVenuesPage() {
     setDeleting(true);
     setDeleteError("");
     try {
-      const res = await fetch(`/api/venues/${deleteTarget.id}`, {
+      const res = await apiFetch(`/api/venues/${deleteTarget.id}`, {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ownerId: user.id }),
@@ -213,7 +214,7 @@ export default function OwnerVenuesPage() {
     setDeletingCourt(true);
     setCourtDeleteError("");
     try {
-      const res = await fetch(`/api/courts/${courtDeleteTarget.id}`, {
+      const res = await apiFetch(`/api/courts/${courtDeleteTarget.id}`, {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ownerId: user.id }),
@@ -232,7 +233,7 @@ export default function OwnerVenuesPage() {
 
   const loadReviews = async (venueId: number) => {
     try {
-      const res = await fetch(`/api/reviews?venueId=${venueId}`);
+      const res = await apiFetch(`/api/reviews?venueId=${venueId}`);
       const data = await res.json();
       setReviews(data.reviews ?? []);
     } catch {}
@@ -241,7 +242,7 @@ export default function OwnerVenuesPage() {
   useEffect(() => {
     (async () => {
       try {
-        await fetch("/api/seed", { method: "POST" });
+        await apiFetch("/api/seed", { method: "POST" });
         await load();
       } finally {
         setLoading(false);
@@ -295,7 +296,7 @@ export default function OwnerVenuesPage() {
     setAddError("");
     setSaving(true);
     try {
-      const res = await fetch("/api/venues", {
+      const res = await apiFetch("/api/venues", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -371,7 +372,7 @@ export default function OwnerVenuesPage() {
     setEditError("");
     setSavingVenue(true);
     try {
-      const res = await fetch(`/api/venues/${eVenue.id}`, {
+      const res = await apiFetch(`/api/venues/${eVenue.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -452,13 +453,13 @@ export default function OwnerVenuesPage() {
       };
       let res: Response;
       if (editingCourt) {
-        res = await fetch(`/api/courts/${editingCourt.id}`, {
+        res = await apiFetch(`/api/courts/${editingCourt.id}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
         });
       } else {
-        res = await fetch("/api/courts", {
+        res = await apiFetch("/api/courts", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ venueId: active.id, ownerId: user.id, ...payload }),
@@ -484,7 +485,7 @@ export default function OwnerVenuesPage() {
       alert(err);
       return;
     }
-    await fetch(`/api/courts/${court.id}`, {
+    await apiFetch(`/api/courts/${court.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -501,7 +502,7 @@ export default function OwnerVenuesPage() {
   }
 
   async function toggleCourt(court: Court) {
-    await fetch(`/api/courts/${court.id}`, {
+    await apiFetch(`/api/courts/${court.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ isActive: !court.isActive }),

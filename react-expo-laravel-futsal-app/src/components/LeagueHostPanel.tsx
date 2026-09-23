@@ -29,6 +29,7 @@ import { formatNPR } from "@/lib/futsal";
 import { timeAgo } from "./NotificationBell";
 import { PaymentLine } from "./LeagueCard";
 import { ReceiptViewer } from "./ReceiptUploader";
+import { apiFetch } from "@/lib/api";
 
 type TeamOption = { id: number; name: string; teamCode: string; captainName: string };
 
@@ -81,7 +82,7 @@ export function LeagueHostPanel({
     setMsg("");
     setErr("");
     try {
-      const res = await fetch(url, {
+      const res = await apiFetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ hostId, ...body }),
@@ -103,7 +104,7 @@ export function LeagueHostPanel({
     const q = inviteCode.trim();
     if (!q) return;
     try {
-      const res = await fetch(`/api/teams?q=${encodeURIComponent(q)}`);
+      const res = await apiFetch(`/api/teams?q=${encodeURIComponent(q)}`);
       const data = await res.json();
       setInviteMatches(
         ((data.teams ?? []) as Array<{ id: number; name: string; teamCode: string; captainName: string }>)

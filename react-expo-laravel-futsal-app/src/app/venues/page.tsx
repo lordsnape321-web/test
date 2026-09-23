@@ -7,6 +7,7 @@ import { VenueCard, type VenueWithCourts } from "@/components/cards";
 import { useUser } from "@/components/UserProvider";
 import { CITY_OPTIONS } from "@/lib/futsal";
 import { validateSearch } from "@/lib/validation";
+import { apiFetch } from "@/lib/api";
 
 function VenuesInner() {
   const params = useSearchParams();
@@ -30,8 +31,8 @@ function VenuesInner() {
   useEffect(() => {
     (async () => {
       try {
-        await fetch("/api/seed", { method: "POST" });
-        const res = await fetch("/api/venues");
+        await apiFetch("/api/seed", { method: "POST" });
+        const res = await apiFetch("/api/venues");
         const data = await res.json();
         setVenues(data.venues ?? []);
       } finally {

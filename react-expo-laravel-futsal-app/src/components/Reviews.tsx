@@ -6,6 +6,7 @@ import { useUser } from "./UserProvider";
 import { Avatar } from "./Avatar";
 import { timeAgo } from "./NotificationBell";
 import { validateMessage } from "@/lib/validation";
+import { apiFetch } from "@/lib/api";
 
 export type Review = {
   id: number;
@@ -87,7 +88,7 @@ export function ReviewsSection({
 
   const load = async () => {
     try {
-      const res = await fetch(`/api/reviews?venueId=${venueId}`);
+      const res = await apiFetch(`/api/reviews?venueId=${venueId}`);
       const data = await res.json();
       setReviews(data.reviews ?? []);
     } catch {}
@@ -145,7 +146,7 @@ export function ReviewsSection({
     setSaving(true);
     setError("");
     try {
-      const res = await fetch("/api/reviews", {
+      const res = await apiFetch("/api/reviews", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

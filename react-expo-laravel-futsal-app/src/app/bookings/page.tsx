@@ -11,6 +11,7 @@ import { BookingPaymentSummary } from "@/components/BookingPaymentSummary";
 import { formatNPR, formatTime12, prettyDate, gamePlayed } from "@/lib/futsal";
 import { hoursUntilGame, type PlayerStats } from "@/lib/loyalty";
 import { validateMessage } from "@/lib/validation";
+import { apiFetch } from "@/lib/api";
 
 type Booking = {
   id: number;
@@ -98,11 +99,11 @@ export default function BookingsPage() {
   const [payError, setPayError] = useState("");
 
   const load = async (uid: number) => {
-    const res = await fetch(`/api/bookings?userId=${uid}`);
+    const res = await apiFetch(`/api/bookings?userId=${uid}`);
     const data = await res.json();
     setBookings(data.bookings ?? []);
     try {
-      const rRes = await fetch(`/api/reviews?userId=${uid}`);
+      const rRes = await apiFetch(`/api/reviews?userId=${uid}`);
       const rData = await rRes.json();
       setMyReviews((rData.reviews ?? []) as MyReview[]);
     } catch {}
@@ -111,7 +112,7 @@ export default function BookingsPage() {
   useEffect(() => {
     (async () => {
       try {
-        await fetch("/api/seed", { method: "POST" });
+        await apiFetch("/api/seed", { method: "POST" });
         if (user) await load(user.id);
       } finally {
         setLoading(false);
@@ -142,7 +143,7 @@ export default function BookingsPage() {
   async function saveReceipt(id: number, receiptUrl: string) {
     setUploading(true);
     try {
-      await fetch(`/api/bookings/${id}`, {
+      await apiFetch(`/api/bookings/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ receiptUrl }),
@@ -160,7 +161,7 @@ export default function BookingsPage() {
     setCancelError("");
     try {
       if (b.paymentMethod === "eSewa") {
-        const init = await fetch("/api/payments/esewa/initiate", {
+        const init = await apiFetch("/api/payments/esewa/initiate", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ bookingId: b.id }),
@@ -182,7 +183,7 @@ export default function BookingsPage() {
         return;
       }
       if (b.paymentMethod === "Khalti") {
-        const init = await fetch("/api/payments/khalti/initiate", {
+        const init = await apiFetch("/api/payments/khalti/initiate", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ bookingId: b.id }),
@@ -228,7 +229,7 @@ export default function BookingsPage() {
     setReviewSaving(true);
     setReviewError("");
     try {
-      const res = await fetch("/api/reviews", {
+      const res = await apiFetch("/api/reviews", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -269,7 +270,7 @@ export default function BookingsPage() {
     setCancelling(b.id);
     setCancelError("");
     try {
-      const res = await fetch(`/api/bookings/${b.id}`, {
+      const res = await apiFetch(`/api/bookings/${b.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: "cancelled", actor: "player" }),

@@ -20,6 +20,7 @@ import {
 import { useUser } from "@/components/UserProvider";
 import { validateName, validateEmail, validatePhone, validatePassword, passwordStrength, validateCity, firstError } from "@/lib/validation";
 import { CITY_OPTIONS } from "@/lib/futsal";
+import { apiFetch } from "@/lib/api";
 
 const POSITIONS = ["Striker", "Midfielder", "Winger", "Defender", "Goalkeeper", "Pivot", "All-rounder"];
 const LEVELS = ["Beginner", "Intermediate", "Advanced"];
@@ -44,7 +45,7 @@ export default function SignupPage() {
   const strength = useMemo(() => passwordStrength(password), [password]);
 
   useEffect(() => {
-    fetch("/api/seed", { method: "POST" }).catch(() => {});
+    apiFetch("/api/seed", { method: "POST" }).catch(() => {});
   }, []);
 
   useEffect(() => {

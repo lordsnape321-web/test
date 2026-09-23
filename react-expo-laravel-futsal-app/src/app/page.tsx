@@ -24,6 +24,7 @@ import { VenueCard, MatchCard, type VenueWithCourts, type MatchItem } from "@/co
 import { useUser } from "@/components/UserProvider";
 import { formatNPR, CITY_OPTIONS } from "@/lib/futsal";
 import { validateSearch } from "@/lib/validation";
+import { apiFetch } from "@/lib/api";
 
 type Stats = {
   venues: number;
@@ -59,11 +60,11 @@ export default function HomePage() {
   useEffect(() => {
     (async () => {
       try {
-        await fetch("/api/seed", { method: "POST" });
+        await apiFetch("/api/seed", { method: "POST" });
         const [vRes, mRes, sRes] = await Promise.all([
-          fetch("/api/venues"),
-          fetch("/api/matches"),
-          fetch("/api/stats"),
+          apiFetch("/api/venues"),
+          apiFetch("/api/matches"),
+          apiFetch("/api/stats"),
         ]);
         const v = await vRes.json();
         const m = await mRes.json();

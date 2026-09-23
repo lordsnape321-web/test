@@ -19,6 +19,7 @@ import { TEAM_APPROVED, TEAM_INVITED, TEAM_REQUESTED, entryStatusLabel } from "@
 import { formatNPR } from "@/lib/futsal";
 import { PaymentLine } from "./LeagueCard";
 import { ReceiptUploader, isOnlineMethod } from "./ReceiptUploader";
+import { apiFetch } from "@/lib/api";
 
 /** The three media a booking offers — a league entry is the same money. */
 const LEAGUE_PAY_METHODS = ["eSewa", "Khalti", "Cash at Venue"];
@@ -56,7 +57,7 @@ export function LeagueSquadPanel({
     if (!viewerId) return;
     (async () => {
       try {
-        const res = await fetch(`/api/teams?userId=${viewerId}`);
+        const res = await apiFetch(`/api/teams?userId=${viewerId}`);
         const data = await res.json();
         setMyTeams(
           ((data.teams ?? []) as Array<{ id: number; name: string; logoColor: string; role: string }>).map(
@@ -85,7 +86,7 @@ export function LeagueSquadPanel({
     setMsg("");
     setErr("");
     try {
-      const res = await fetch(url, {
+      const res = await apiFetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
@@ -123,7 +124,7 @@ export function LeagueSquadPanel({
     setMsg("");
     setErr("");
     try {
-      const res = await fetch(`/api/tournaments/${league.id}/payments`, {
+      const res = await apiFetch(`/api/tournaments/${league.id}/payments`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

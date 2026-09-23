@@ -10,6 +10,7 @@ import type { PlayerStats } from "@/lib/loyalty";
 import { formatNPR, formatTime12, prettyDate } from "@/lib/futsal";
 import { BookingLedgerPanel } from "@/components/BookingLedgerPanel";
 import { SettleAmendButton } from "@/components/SettleAmendButton";
+import { apiFetch } from "@/lib/api";
 
 type Booking = {
   id: number;
@@ -79,8 +80,8 @@ export default function OwnerBookingsPage() {
 
   const load = async () => {
     const [bRes, vRes] = await Promise.all([
-      fetch("/api/bookings"),
-      fetch("/api/venues"),
+      apiFetch("/api/bookings"),
+      apiFetch("/api/venues"),
     ]);
     const b = await bRes.json();
     const v = await vRes.json();
@@ -114,7 +115,7 @@ export default function OwnerBookingsPage() {
   }, [bookings, myVenueIds, filter]);
 
   async function setStatus(id: number, status: string, actor: string = "owner") {
-    await fetch(`/api/bookings/${id}`, {
+    await apiFetch(`/api/bookings/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ status, actor }),
@@ -145,7 +146,7 @@ export default function OwnerBookingsPage() {
     setSavingScore(true);
     setScoreError("");
     try {
-      const res = await fetch(`/api/bookings/${scoreFor.id}`, {
+      const res = await apiFetch(`/api/bookings/${scoreFor.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

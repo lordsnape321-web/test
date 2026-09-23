@@ -45,6 +45,7 @@ import {
   validatePrizeBreakdown,
   validatePrizePool,
 } from "@/lib/validation";
+import { apiFetch } from "@/lib/api";
 
 type VenueOption = {
   id: number;
@@ -145,7 +146,7 @@ export function LeagueForm({
     if (!open) return;
     (async () => {
       try {
-        const res = await fetch("/api/venues");
+        const res = await apiFetch("/api/venues");
         const data = await res.json();
         const list: VenueOption[] = (data.venues ?? []).map(
           (v: { id: number; name: string; city: string; courts?: Array<{ id: number; name: string }> }) => ({
@@ -249,7 +250,7 @@ export function LeagueForm({
         contactPhone,
         bannerUrl,
       };
-      const res = await fetch(editing ? `/api/tournaments/${initial?.id}` : "/api/tournaments", {
+      const res = await apiFetch(editing ? `/api/tournaments/${initial?.id}` : "/api/tournaments", {
         method: editing ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),

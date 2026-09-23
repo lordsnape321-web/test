@@ -42,6 +42,7 @@ import {
   rangeSlots,
   gamePlayed,
 } from "@/lib/futsal";
+import { apiFetch } from "@/lib/api";
 
 type Court = {
   id: number;
@@ -185,7 +186,7 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
   useEffect(() => {
     (async () => {
       try {
-        const res = await fetch(`/api/venues/${id}`);
+        const res = await apiFetch(`/api/venues/${id}`);
         const data = await res.json();
         setVenue(data.venue ?? null);
         if (data.venue?.courts?.length > 0) setCourtId(data.venue.courts[0].id);
@@ -203,7 +204,7 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
       setPromoCode("");
       setPromoError("");
       try {
-        const res = await fetch(`/api/promos?venueId=${id}`);
+        const res = await apiFetch(`/api/promos?venueId=${id}`);
         const data = await res.json().catch(() => ({}));
         setVenuePromos(data.promos ?? []);
       } catch {
@@ -216,9 +217,9 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
     async (uid: number) => {
       try {
         const [vRes, bRes, sRes] = await Promise.all([
-          fetch(`/api/vouchers?userId=${uid}`),
-          fetch(`/api/bookings?userId=${uid}`),
-          fetch(`/api/users/${uid}`),
+          apiFetch(`/api/vouchers?userId=${uid}`),
+          apiFetch(`/api/bookings?userId=${uid}`),
+          apiFetch(`/api/users/${uid}`),
         ]);
         const vData = await vRes.json();
         const bData = await bRes.json();
@@ -268,7 +269,7 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
         try {
           // ?userId= returns only this player's squads, membership already
           // verified server-side, so there is nothing to filter here.
-          const res = await fetch(`/api/teams?userId=${user.id}`);
+          const res = await apiFetch(`/api/teams?userId=${user.id}`);
           const data = await res.json();
           setUserTeams((data.teams ?? []) as UserTeam[]);
         } catch {
@@ -282,7 +283,7 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
       // the only ones who ever receive it.
       (async () => {
         try {
-          const res = await fetch(`/api/tournaments?viewerId=${user.id}&limit=60`);
+          const res = await apiFetch(`/api/tournaments?viewerId=${user.id}&limit=60`);
           const data = await res.json();
           setMyLeagues((data.leagues ?? []) as MyLeague[]);
         } catch {
@@ -299,7 +300,7 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
     if (visibility !== "competition" || allTeams.length > 0) return;
     (async () => {
       try {
-        const res = await fetch("/api/teams");
+        const res = await apiFetch("/api/teams");
         const data = await res.json();
         setAllTeams(
           ((data.teams ?? []) as Array<{ id: number; name: string; logoColor: string }>).map((t) => ({
@@ -329,7 +330,7 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
     if (!court) return;
     setLoadingSlots(true);
     try {
-      const res = await fetch(`/api/availability?courtId=${court.id}&date=${date}`);
+      const res = await apiFetch(`/api/availability?courtId=${court.id}&date=${date}`);
       const data = await res.json();
       setBooked(data.booked ?? []);
     } finally {
@@ -465,7 +466,7 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
         amount: String(Math.round(afterFreePlay)),
       });
       if (user) qs.set("userId", String(user.id));
-      const res = await fetch(`/api/promos?${qs.toString()}`);
+      const res = await apiFetch(`/api/promos?${qs.toString()}`);
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.valid) throw new Error(data.error || `"${code}" didn't work 🎟️`);
       setAppliedPromo({
@@ -611,7 +612,7 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
     setBooking(true);
     setError("");
     try {
-      const res = await fetch("/api/bookings", {
+      const res = await apiFetch("/api/bookings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -657,7 +658,7 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
         setPayRedirect(true);
         try {
           if (payMethod === "eSewa") {
-            const init = await fetch("/api/payments/esewa/initiate", {
+            const init = await apiFetch("/api/payments/esewa/initiate", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ bookingId: created.id }),
@@ -678,7 +679,7 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
             form.submit();
             return;
           } else {
-            const init = await fetch("/api/payments/khalti/initiate", {
+            const init = await apiFetch("/api/payments/khalti/initiate", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ bookingId: created.id }),
@@ -832,7 +833,7 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
             venueName={venue.name}
             eligibleBookings={myVenueBookings}
             onChanged={async () => {
-              const res = await fetch(`/api/venues/${id}`);
+              const res = await apiFetch(`/api/venues/${id}`);
               const data = await res.json();
               if (data.venue) {
                 setVenue((v) => (v ? { ...v, rating: data.venue.rating, totalReviews: data.venue.totalReviews } : v));

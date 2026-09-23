@@ -34,6 +34,7 @@ import {
   validateTeamDescription,
   validateTitle,
 } from "@/lib/validation";
+import { apiFetch } from "@/lib/api";
 
 type Team = {
   id: number;
@@ -143,11 +144,11 @@ export default function TeamsPage() {
     if (q.trim()) params.set("q", q.trim());
     if (user) params.set("viewerId", String(user.id));
     const [res, invitesRes] = await Promise.all([
-      fetch(`/api/teams?${params.toString()}`),
+      apiFetch(`/api/teams?${params.toString()}`),
       // Pending invitations addressed to this player. Kept in the same round trip
       // so a fresh invite can't leave the banner one render behind.
       user
-        ? fetch(`/api/team-invites?status=pending&userId=${user.id}`)
+        ? apiFetch(`/api/team-invites?status=pending&userId=${user.id}`)
         : Promise.resolve(null),
     ]);
     const data = await res.json().catch(() => ({}));
@@ -167,7 +168,7 @@ export default function TeamsPage() {
       try {
         // Seed on first visit so a fresh database has squads to show. The call is
         // idempotent ("Already seeded"), so re-running it after a search is cheap.
-        await fetch("/api/seed", { method: "POST" });
+        await apiFetch("/api/seed", { method: "POST" });
         await load();
       } finally {
         if (alive) setLoading(false);
@@ -184,7 +185,7 @@ export default function TeamsPage() {
   useEffect(() => {
     (async () => {
       try {
-        const res = await fetch(`/api/tournaments?viewerId=${user?.id ?? 0}&limit=12`);
+        const res = await apiFetch(`/api/tournaments?viewerId=${user?.id ?? 0}&limit=12`);
         const data = await res.json().catch(() => ({}));
         setLeagues((data.leagues ?? []) as LeagueSummary[]);
       } catch {
@@ -197,7 +198,7 @@ export default function TeamsPage() {
   useEffect(() => {
     (async () => {
       try {
-        const res = await fetch("/api/venues");
+        const res = await apiFetch("/api/venues");
         const data = await res.json().catch(() => ({}));
         setVenues(
           ((data.venues ?? []) as Array<{ id: number; name: string; city: string }>).map(
@@ -226,7 +227,7 @@ export default function TeamsPage() {
     setNoticeBad(false);
     try {
       const pending = t.viewer?.requestStatus === "pending";
-      const res = await fetch(
+      const res = await apiFetch(
         `/api/teams/${t.id}/join${pending || t.viewer?.isMember ? `?userId=${user.id}` : ""}`,
         pending || t.viewer?.isMember
           ? { method: "DELETE" }
@@ -282,7 +283,7 @@ export default function TeamsPage() {
     setNotice("");
     setNoticeBad(false);
     try {
-      const res = await fetch("/api/team-invites", {
+      const res = await apiFetch("/api/team-invites", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ userId: user.id, inviteId, action }),
@@ -329,7 +330,7 @@ export default function TeamsPage() {
     setFormError("");
     setCreating(true);
     try {
-      const res = await fetch("/api/teams", {
+      const res = await apiFetch("/api/teams", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

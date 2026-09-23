@@ -21,6 +21,7 @@ import { LeagueForm } from "@/components/LeagueForm";
 import type { LeagueSummary } from "@/lib/league-store";
 import { formatNPR } from "@/lib/futsal";
 import { validateSearch } from "@/lib/validation";
+import { apiFetch } from "@/lib/api";
 
 const FILTERS = [
   { id: "all", label: "All" },
@@ -57,7 +58,7 @@ export function LeagueBrowser() {
 
   const load = useCallback(async () => {
     try {
-      const res = await fetch(`/api/tournaments${user ? `?viewerId=${user.id}&limit=100` : "?limit=100"}`);
+      const res = await apiFetch(`/api/tournaments${user ? `?viewerId=${user.id}&limit=100` : "?limit=100"}`);
       const data = await res.json().catch(() => ({}));
       setLeagues(data.leagues ?? []);
     } catch {

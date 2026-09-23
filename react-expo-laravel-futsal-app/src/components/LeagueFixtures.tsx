@@ -15,6 +15,7 @@ import {
 import type { LeagueDetail, LeagueMatchRow } from "@/lib/league-store";
 import { LEAGUE_ROUNDS, leagueDateLabel, leagueModeLabel, modeHasBracket } from "@/lib/league";
 import { formatTime12, initials } from "@/lib/futsal";
+import { apiFetch } from "@/lib/api";
 
 /**
  * Fixtures & results ⚽
@@ -69,7 +70,7 @@ export function LeagueFixtures({
     setMsg("");
     setErr("");
     try {
-      const res = await fetch(`/api/tournaments/${league.id}/matches`, {
+      const res = await apiFetch(`/api/tournaments/${league.id}/matches`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ hostId, ...body }),

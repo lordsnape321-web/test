@@ -25,6 +25,7 @@ import {
   todayISO,
 } from "@/lib/futsal";
 import { validateTitle, validateMessage, validateMoney, validateDateISO, validateTimeHM, firstError } from "@/lib/validation";
+import { apiFetch } from "@/lib/api";
 
 type Venue = { id: number; name: string; courts?: Array<{ id: number; name: string }> };
 type UserTeam = { id: number; name: string; memberCount: number; logoColor: string };
@@ -87,9 +88,9 @@ function MatchesInner() {
 
   const load = async () => {
     const [mRes, vRes, tRes] = await Promise.all([
-      fetch("/api/matches"),
-      fetch("/api/venues"),
-      fetch("/api/teams"),
+      apiFetch("/api/matches"),
+      apiFetch("/api/venues"),
+      apiFetch("/api/teams"),
     ]);
     const m = await mRes.json();
     const v = await vRes.json();
@@ -108,7 +109,7 @@ function MatchesInner() {
   useEffect(() => {
     (async () => {
       try {
-        await fetch("/api/seed", { method: "POST" });
+        await apiFetch("/api/seed", { method: "POST" });
         await load();
       } finally {
         setLoading(false);
@@ -153,9 +154,9 @@ function MatchesInner() {
     setJoining(m.id);
     try {
       if (already) {
-        await fetch(`/api/matches/${m.id}/join?userId=${user.id}`, { method: "DELETE" });
+        await apiFetch(`/api/matches/${m.id}/join?userId=${user.id}`, { method: "DELETE" });
       } else {
-        const res = await fetch(`/api/matches/${m.id}/join`, {
+        const res = await apiFetch(`/api/matches/${m.id}/join`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ userId: user.id }),
@@ -210,7 +211,7 @@ function MatchesInner() {
       const [h] = start.split(":").map(Number);
       const end = `${String(h + 1).padStart(2, "0")}:00`;
       const venue = venues.find((v) => v.id === Number(venueId));
-      const res = await fetch("/api/matches", {
+      const res = await apiFetch("/api/matches", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

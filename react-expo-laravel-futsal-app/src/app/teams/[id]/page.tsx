@@ -22,6 +22,7 @@ import { useUser } from "@/components/UserProvider";
 import { Avatar } from "@/components/Avatar";
 import { initials } from "@/lib/futsal";
 import { timeAgo } from "@/components/NotificationBell";
+import { apiFetch } from "@/lib/api";
 
 type Team = {
   id: number;
@@ -184,7 +185,7 @@ export default function TeamDetailPage({
 
   const load = useCallback(async () => {
     try {
-      const res = await fetch(`/api/teams/${id}${user ? `?viewerId=${user.id}` : ""}`);
+      const res = await apiFetch(`/api/teams/${id}${user ? `?viewerId=${user.id}` : ""}`);
       const body = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(String(body.error ?? "Couldn't load that squad 🙏"));
       setData(body as Detail);
@@ -405,7 +406,7 @@ export default function TeamDetailPage({
                       void act(
                         "accept",
                         () =>
-                          fetch("/api/team-invites", {
+                          apiFetch("/api/team-invites", {
                             method: "POST",
                             headers: { "Content-Type": "application/json" },
                             body: JSON.stringify({
@@ -428,7 +429,7 @@ export default function TeamDetailPage({
                       void act(
                         "decline",
                         () =>
-                          fetch("/api/team-invites", {
+                          apiFetch("/api/team-invites", {
                             method: "POST",
                             headers: { "Content-Type": "application/json" },
                             body: JSON.stringify({
@@ -464,7 +465,7 @@ export default function TeamDetailPage({
                         void act(
                           "withdraw",
                           () =>
-                            fetch(`/api/teams/${team.id}/join?userId=${user.id}`, { method: "DELETE" }),
+                            apiFetch(`/api/teams/${team.id}/join?userId=${user.id}`, { method: "DELETE" }),
                           `Request to join ${team.name} withdrawn`
                         )
                       }
@@ -479,7 +480,7 @@ export default function TeamDetailPage({
                         void act(
                           "leave",
                           () =>
-                            fetch(`/api/teams/${team.id}/join?userId=${user.id}`, { method: "DELETE" }),
+                            apiFetch(`/api/teams/${team.id}/join?userId=${user.id}`, { method: "DELETE" }),
                           `You've stepped away from ${team.name}`
                         )
                       }
@@ -494,7 +495,7 @@ export default function TeamDetailPage({
                         void act(
                           "ask",
                           () =>
-                            fetch(`/api/teams/${team.id}/join`, {
+                            apiFetch(`/api/teams/${team.id}/join`, {
                               method: "POST",
                               headers: { "Content-Type": "application/json" },
                               body: JSON.stringify({ userId: user.id, message: note.trim() }),
@@ -563,7 +564,7 @@ export default function TeamDetailPage({
                           void act(
                             `req-${r.id}-accept`,
                             () =>
-                              fetch(`/api/teams/${team.id}/requests`, {
+                              apiFetch(`/api/teams/${team.id}/requests`, {
                                 method: "POST",
                                 headers: { "Content-Type": "application/json" },
                                 body: JSON.stringify({ captainId: user?.id, requestId: r.id, action: "accept" }),
@@ -581,7 +582,7 @@ export default function TeamDetailPage({
                           void act(
                             `req-${r.id}-decline`,
                             () =>
-                              fetch(`/api/teams/${team.id}/requests`, {
+                              apiFetch(`/api/teams/${team.id}/requests`, {
                                 method: "POST",
                                 headers: { "Content-Type": "application/json" },
                                 body: JSON.stringify({ captainId: user?.id, requestId: r.id, action: "decline" }),
@@ -624,7 +625,7 @@ export default function TeamDetailPage({
                             void act(
                               `wd-${i.id}`,
                               () =>
-                                fetch(
+                                apiFetch(
                                   `/api/teams/${team.id}/invites?captainId=${user?.id}&inviteId=${i.id}`,
                                   { method: "DELETE" }
                                 ),
