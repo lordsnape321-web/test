@@ -14,6 +14,7 @@
  * These are static source scans; nothing here renders or requests anything.
  */
 import { readFileSync, readdirSync, statSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { join } from "node:path";
 
 let pass = 0, fail = 0;
@@ -116,6 +117,19 @@ ok("only the two documented modules use browser globals", dirty.length === 0, di
 
 const libCount = files.filter((f) => f.rel.startsWith("lib/") && f.rel.endsWith(".ts")).length;
 ok("src/lib still holds the domain logic", libCount >= 16, `${libCount} modules`);
+
+console.log("\n— the generated API inventory matches the routes on disk —");
+
+// docs/api-routes.md is the spec a Laravel backend reimplements. Hand-written
+// API docs drift; this one is generated, so it can be checked mechanically.
+try {
+  execFileSync(process.execPath, [join(root, "..", "scripts", "api-routes.mjs"), "--check"],
+    { stdio: "pipe", encoding: "utf8" });
+  ok("docs/api-routes.md is in sync with src/app/api", true);
+} catch (e) {
+  ok("docs/api-routes.md is in sync with src/app/api", false,
+     String(e.stderr || e.message).trim().split("\n")[0]);
+}
 
 console.log(fail === 0 ? `\nALL PASS (${pass}/${pass + fail})` : `\n${fail} FAILED, ${pass} passed`);
 process.exit(fail === 0 ? 0 : 1);

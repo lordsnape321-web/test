@@ -104,6 +104,16 @@ only two files in the domain layer that need rewriting.
 
 ### For the Laravel side
 
+The full endpoint inventory is in **[`docs/api-routes.md`](docs/api-routes.md)**
+— 44 route files, 77 endpoints, with the method and source file for each. It is
+generated from `src/app/api/**/route.ts` by `scripts/api-routes.mjs`, and
+`tests/portability.mjs` fails if it drifts from the routes on disk:
+
+```
+node scripts/api-routes.mjs --write   # regenerate after adding a route
+node scripts/api-routes.mjs --check   # what the test runs
+```
+
 The API routes under `src/app/api/` are the contract to reimplement. The
 six suites in `tests/api/` assert it end to end (161 assertions) over plain
 HTTP — they never import Drizzle — so they can double as an acceptance suite
@@ -196,7 +206,7 @@ that Next.js already ships, and it runs the `tests/api/*.mjs` suites as plain
 node scripts against a live dev server.
 
 ```bash
-npm test          # 158 assertions — pure logic, components rendered in jsdom, responsive + portability guardrails
+npm test          # 159 assertions — pure logic, components rendered in jsdom, responsive + portability guardrails
 npm run test:api  # 161 assertions — real HTTP against a running server + Postgres
 npm run test:all  # all 11 suites
 ```
