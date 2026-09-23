@@ -391,7 +391,9 @@ export default function SettingsScreen() {
                 icon={Trophy}
                 title="League matches"
                 text="Squad competitions, tables and fixtures"
-                onPress={() => router.push("/(app)/matches")}
+                onPress={() =>
+                  router.push({ pathname: "/(app)/matches", params: { tab: "leagues" } })
+                }
               />
               <ActivityTile
                 icon={Users}

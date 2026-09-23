@@ -1,7 +1,7 @@
 import Slider from "@react-native-community/slider";
 import { Picker } from "@react-native-picker/picker";
 import { LinearGradient } from "expo-linear-gradient";
-import { useRouter } from "expo-router";
+import { useRouter, useLocalSearchParams } from "expo-router";
 import {
   CalendarDays,
   Check,
@@ -25,6 +25,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Avatar } from "@/components/Avatar";
+import { LeagueBrowser } from "@/components/LeagueBrowser";
 import { useAuth } from "@/context/AuthContext";
 import { useTheme } from "@/context/ThemeContext";
 import { createMatch, fetchMatches, fetchVenues, joinMatch, leaveMatch } from "@/api";
@@ -74,7 +75,16 @@ export default function MatchesScreen() {
   const { user } = useAuth();
   const router = useRouter();
 
-  const [tab, setTab] = useState<"open" | "leagues">("open");
+  // The web keeps the toggle in `?tab=leagues` (settings, the old /leagues
+  // redirect, shared links). Native carries that as a route param; the state
+  // below stays the source of truth after mount, same as before.
+  const { tab: tabParam } = useLocalSearchParams<{ tab?: string }>();
+  const [tab, setTab] = useState<"open" | "leagues">(
+    tabParam === "leagues" ? "leagues" : "open",
+  );
+  useEffect(() => {
+    if (tabParam === "leagues") setTab("leagues");
+  }, [tabParam]);
   const [matches, setMatches] = useState<Match[]>([]);
   const [venues, setVenues] = useState<Venue[]>([]);
   const [loading, setLoading] = useState(true);
@@ -199,14 +209,7 @@ export default function MatchesScreen() {
         {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
         {tab === "leagues" ? (
-          <View style={[styles.pending, { backgroundColor: c.surface, borderColor: c.border }]}>
-            <Trophy size={36} color={c.textFaint} />
-            <Text style={[styles.pendingTitle, { color: c.text }]}>League browser</Text>
-            <Text style={[styles.pendingBody, { color: c.textMuted }]}>
-              The league browser (enter a league, pay the deposit, follow the table and fixtures)
-              is the next component in the port.
-            </Text>
-          </View>
+          <LeagueBrowser />
         ) : (
           <>
             {/* Level filter */}
@@ -952,23 +955,6 @@ const styles = StyleSheet.create({
   },
   emptyTitle: { fontSize: fontSize.xl, fontWeight: "800", marginTop: space[3] },
   emptyBody: { fontSize: fontSize.base, color: colors.stone500, marginTop: 4, textAlign: "center" },
-
-  pending: {
-    marginTop: space[6],
-    borderRadius: radius["3xl"],
-    borderWidth: 1,
-    borderStyle: "dashed",
-    padding: space[10],
-    alignItems: "center",
-  },
-  pendingTitle: { fontSize: fontSize.xl, fontWeight: "800", marginTop: space[3] },
-  pendingBody: {
-    fontSize: fontSize.base,
-    color: colors.stone500,
-    marginTop: 4,
-    textAlign: "center",
-    lineHeight: 20,
-  },
 
   /* card */
   card: {

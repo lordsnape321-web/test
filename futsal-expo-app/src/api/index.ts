@@ -7,8 +7,12 @@ import type {
   Ledger,
   LoyaltyProgress,
   Match,
+  LeagueDetail,
+  LeagueSummary,
   SiteStats,
+  TeamSearchHit,
   User,
+  UserTeamLite,
   Voucher,
   Venue,
 } from "@/lib/types";
@@ -328,4 +332,122 @@ export function verifyKhalti(
     method: "POST",
     json: { bookingId, pidx, mockApprove },
   });
+}
+
+/* ── leagues ─────────────────────────────────────────────────────────────── */
+
+/** GET /api/tournaments?viewerId=&limit= → { leagues } — the league board. */
+export async function fetchLeagues(viewerId?: number): Promise<LeagueSummary[]> {
+  const query = new URLSearchParams({ limit: "100" });
+  if (viewerId) query.set("viewerId", String(viewerId));
+  const data = await apiJson<{ leagues: LeagueSummary[] }>(
+    `/api/tournaments?${query}`,
+  );
+  return data.leagues ?? [];
+}
+
+/** GET /api/tournaments/:id?viewerId= → { league: LeagueDetail } */
+export async function fetchLeague(id: number, viewerId?: number): Promise<LeagueDetail> {
+  const qs = viewerId ? `?viewerId=${viewerId}` : "";
+  const data = await apiJson<{ league: LeagueDetail }>(`/api/tournaments/${id}${qs}`);
+  return data.league;
+}
+
+/** The body LeagueForm posts — identical for create (POST) and edit (PATCH). */
+export type LeagueFormPayload = {
+  hostId: number;
+  name: string;
+  venueId: number;
+  courtId: number;
+  format: string;
+  mode: string;
+  thirdPlace: boolean;
+  groupSize: number;
+  maxTeams: number;
+  entryFee: number;
+  depositPercent: number;
+  refundPercent: number;
+  prizePool: number;
+  prizeBreakdown: string;
+  startsAt: string;
+  endsAt: string;
+  closesAt: string;
+  matchDays: string;
+  visibility: string;
+  status: string;
+  description: string;
+  rules: string;
+  contactPhone: string;
+  bannerUrl: string;
+};
+
+/**
+ * POST /api/tournaments → 201 { league } (a raw row, not a LeagueDetail —
+ * callers navigate to `/leagues/:id` and refetch via GET).
+ */
+export function createLeague(
+  payload: LeagueFormPayload,
+): Promise<{ league: { id: number } }> {
+  return apiJson("/api/tournaments", { method: "POST", json: payload });
+}
+
+/** PATCH /api/tournaments/:id → { league } — same payload as create. */
+export function updateLeague(
+  id: number,
+  payload: LeagueFormPayload,
+): Promise<{ league: { id: number } }> {
+  return apiJson(`/api/tournaments/${id}`, { method: "PATCH", json: payload });
+}
+
+/**
+ * POST /api/tournaments/:id/teams — request / invite / approve / reject /
+ * withdraw. `{ message }` for the error body surfaces through ApiError.
+ */
+export function leagueTeamsAction(
+  id: number,
+  body: Record<string, unknown>,
+): Promise<{ ok?: boolean; message?: string }> {
+  return apiJson(`/api/tournaments/${id}/teams`, { method: "POST", json: body });
+}
+
+/**
+ * POST /api/tournaments/:id/payments — pay / record / initiate / verify /
+ * receipt / prize. Native calls `verify` with `mockApprove: true` directly
+ * (the same body the web mock-gateway page posts), skipping initiate+redirect.
+ */
+export function leaguePaymentsAction(
+  id: number,
+  body: Record<string, unknown>,
+): Promise<{ ok?: boolean; message?: string }> {
+  return apiJson(`/api/tournaments/${id}/payments`, { method: "POST", json: body });
+}
+
+/** POST /api/tournaments/:id/matches — create | generate, score, delete, schedule, advance. */
+export function leagueMatchesAction(
+  id: number,
+  body: Record<string, unknown>,
+): Promise<{ ok?: boolean; message?: string; created?: number }> {
+  return apiJson(`/api/tournaments/${id}/matches`, { method: "POST", json: body });
+}
+
+/** POST /api/tournaments/:id/media — add / delete (kind: "link" | "file"). */
+export function leagueMediaAction(
+  id: number,
+  body: Record<string, unknown>,
+): Promise<{ ok?: boolean; message?: string }> {
+  return apiJson(`/api/tournaments/${id}/media`, { method: "POST", json: body });
+}
+
+/** GET /api/teams?userId= → { teams } — the viewer's squads (role included). */
+export async function fetchUserTeams(userId: number): Promise<UserTeamLite[]> {
+  const data = await apiJson<{ teams: UserTeamLite[] }>(`/api/teams?userId=${userId}`);
+  return data.teams ?? [];
+}
+
+/** GET /api/teams?q= → { teams } — host invite search (code or name). */
+export async function searchTeams(q: string): Promise<TeamSearchHit[]> {
+  const data = await apiJson<{ teams: TeamSearchHit[] }>(
+    `/api/teams?q=${encodeURIComponent(q)}`,
+  );
+  return data.teams ?? [];
 }
