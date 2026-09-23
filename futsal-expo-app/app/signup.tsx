@@ -162,7 +162,10 @@ export default function Signup() {
               Already have an account?{" "}
             </Text>
             <Link href="/login" asChild>
-              <Text style={[styles.link, { color: colors.primary }]}>Sign in</Text>
+              {/* Slot can't merge an array style, so flatten it to one object. */}
+              <Text style={StyleSheet.flatten([styles.link, { color: colors.primary }])}>
+                Sign in
+              </Text>
             </Link>
           </View>
         </ScrollView>
