@@ -158,7 +158,7 @@ export default function Signup() {
           <Button label="Create account" onPress={submit} loading={busy} />
 
           <View style={styles.footerRow}>
-            <Text style={{ color: colors.textMuted, fontSize: fontSize.sm }}>
+            <Text style={{ color: colors.textMuted, fontSize: fontSize.base }}>
               Already have an account?{" "}
             </Text>
             <Link href="/login" asChild>
@@ -210,7 +210,7 @@ function ChoiceRow({
               <Text
                 style={{
                   color: active ? colors.primaryText : colors.text,
-                  fontSize: fontSize.sm,
+                  fontSize: fontSize.base,
                   fontWeight: "500",
                 }}
               >
@@ -226,20 +226,20 @@ function ChoiceRow({
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
-  scroll: { padding: space.xl, paddingTop: space.xl, paddingBottom: space.xxl },
-  title: { fontSize: fontSize.xl, fontWeight: "700" },
-  subtitle: { fontSize: fontSize.sm, color: "#64748B", marginTop: space.xs, marginBottom: space.xl },
-  choiceBlock: { marginBottom: space.lg },
-  choiceLabel: { fontSize: fontSize.sm, marginBottom: space.sm, fontWeight: "500" },
-  choiceRow: { flexDirection: "row", flexWrap: "wrap", gap: space.sm },
+  scroll: { padding: space["6"], paddingTop: space["6"], paddingBottom: space["8"] },
+  title: { fontSize: fontSize["3xl"], fontWeight: "700" },
+  subtitle: { fontSize: fontSize.base, color: "#64748B", marginTop: space["1"], marginBottom: space["6"] },
+  choiceBlock: { marginBottom: space["4"] },
+  choiceLabel: { fontSize: fontSize.base, marginBottom: space["2"], fontWeight: "500" },
+  choiceRow: { flexDirection: "row", flexWrap: "wrap", gap: space["2"] },
   chip: {
-    paddingHorizontal: space.md,
-    paddingVertical: space.sm,
-    borderRadius: radius.pill,
+    paddingHorizontal: space["3"],
+    paddingVertical: space["2"],
+    borderRadius: radius.full,
     borderWidth: 1,
     minHeight: 40,
     justifyContent: "center",
   },
-  footerRow: { flexDirection: "row", justifyContent: "center", marginTop: space.xl },
-  link: { fontSize: fontSize.sm, fontWeight: "600" },
+  footerRow: { flexDirection: "row", justifyContent: "center", marginTop: space["6"] },
+  link: { fontSize: fontSize.base, fontWeight: "600" },
 });

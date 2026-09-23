@@ -93,13 +93,13 @@ function BookingCard({ booking, onPress }: { booking: Booking; onPress: () => vo
       </View>
 
       <View style={[styles.moneyRow, { borderTopColor: colors.border }]}>
-        <Text style={{ color: colors.textMuted, fontSize: fontSize.sm }}>
+        <Text style={{ color: colors.textMuted, fontSize: fontSize.base }}>
           {formatNPR(booking.totalPrice)} total
         </Text>
         <Text
           style={{
             color: balance > 0 ? "#B45309" : "#047857",
-            fontSize: fontSize.sm,
+            fontSize: fontSize.base,
             fontWeight: "700",
           }}
         >
@@ -139,18 +139,18 @@ function StatusPills({ booking }: { booking: Booking }) {
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
-  noticeWrap: { paddingHorizontal: space.lg, paddingTop: space.md },
-  list: { padding: space.lg },
-  row: { flexDirection: "row", alignItems: "flex-start", gap: space.sm },
+  noticeWrap: { paddingHorizontal: space["4"], paddingTop: space["3"] },
+  list: { padding: space["4"] },
+  row: { flexDirection: "row", alignItems: "flex-start", gap: space["2"] },
   grow: { flex: 1 },
-  venueName: { fontSize: fontSize.lg, fontWeight: "700" },
-  meta: { fontSize: fontSize.sm, marginTop: 2 },
-  pillCol: { alignItems: "flex-end", gap: space.xs },
+  venueName: { fontSize: fontSize.xl, fontWeight: "700" },
+  meta: { fontSize: fontSize.base, marginTop: 2 },
+  pillCol: { alignItems: "flex-end", gap: space["1"] },
   moneyRow: {
     flexDirection: "row",
     justifyContent: "space-between",
-    marginTop: space.md,
-    paddingTop: space.md,
+    marginTop: space["3"],
+    paddingTop: space["3"],
     borderTopWidth: 1,
   },
 });

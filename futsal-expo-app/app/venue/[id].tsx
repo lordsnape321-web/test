@@ -161,7 +161,7 @@ export default function VenueDetail() {
         {/* ── court picker ─────────────────────────────────────────── */}
         <SectionTitle>Court</SectionTitle>
         {courts.length === 0 ? (
-          <Text style={{ color: colors.textMuted, fontSize: fontSize.sm }}>
+          <Text style={{ color: colors.textMuted, fontSize: fontSize.base }}>
             This venue has no active courts right now.
           </Text>
         ) : (
@@ -188,7 +188,7 @@ export default function VenueDetail() {
                   <Text
                     style={{
                       color: active ? colors.primaryText : colors.text,
-                      fontSize: fontSize.sm,
+                      fontSize: fontSize.base,
                       fontWeight: "600",
                     }}
                   >
@@ -197,7 +197,7 @@ export default function VenueDetail() {
                   <Text
                     style={{
                       color: active ? colors.primaryText : colors.textMuted,
-                      fontSize: fontSize.xs,
+                      fontSize: fontSize.sm,
                     }}
                   >
                     {formatNPR(c.pricePerHour)}/hr
@@ -238,7 +238,7 @@ export default function VenueDetail() {
                       <Text
                         style={{
                           color: active ? colors.primaryText : colors.textMuted,
-                          fontSize: fontSize.xs,
+                          fontSize: fontSize.sm,
                           textAlign: "center",
                         }}
                       >
@@ -247,7 +247,7 @@ export default function VenueDetail() {
                       <Text
                         style={{
                           color: active ? colors.primaryText : colors.text,
-                          fontSize: fontSize.base,
+                          fontSize: fontSize.lg,
                           fontWeight: "700",
                           textAlign: "center",
                         }}
@@ -257,7 +257,7 @@ export default function VenueDetail() {
                       <Text
                         style={{
                           color: active ? colors.primaryText : colors.textMuted,
-                          fontSize: fontSize.xs,
+                          fontSize: fontSize.sm,
                           textAlign: "center",
                         }}
                       >
@@ -296,7 +296,7 @@ export default function VenueDetail() {
                 <Text
                   style={{
                     color: active ? colors.primaryText : colors.text,
-                    fontSize: fontSize.sm,
+                    fontSize: fontSize.base,
                     fontWeight: "600",
                   }}
                 >
@@ -324,7 +324,7 @@ export default function VenueDetail() {
                   styles.slot,
                   {
                     backgroundColor: !free
-                      ? colors.surfaceAlt
+                      ? colors.inset
                       : active
                         ? colors.primary
                         : colors.surface,
@@ -340,7 +340,7 @@ export default function VenueDetail() {
                       : active
                         ? colors.primaryText
                         : colors.text,
-                    fontSize: fontSize.sm,
+                    fontSize: fontSize.base,
                     fontWeight: "600",
                   }}
                 >
@@ -352,7 +352,7 @@ export default function VenueDetail() {
         </View>
 
         {/* ── summary + submit ─────────────────────────────────────── */}
-        <Card style={{ marginTop: space.xl }}>
+        <Card style={{ marginTop: space["6"] }}>
           <SummaryRow label="Court" value={court?.name ?? "—"} colors={colors} />
           <SummaryRow label="Date" value={date} colors={colors} />
           <SummaryRow
@@ -403,11 +403,11 @@ function SummaryRow({
 }) {
   return (
     <View style={styles.summaryRow}>
-      <Text style={{ color: colors.textMuted, fontSize: fontSize.sm }}>{label}</Text>
+      <Text style={{ color: colors.textMuted, fontSize: fontSize.base }}>{label}</Text>
       <Text
         style={{
           color: colors.text,
-          fontSize: strong ? fontSize.lg : fontSize.sm,
+          fontSize: strong ? fontSize.xl : fontSize.base,
           fontWeight: strong ? "700" : "500",
         }}
       >
@@ -419,38 +419,38 @@ function SummaryRow({
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
-  scroll: { padding: space.lg, paddingBottom: space.xxxl },
-  pad: { padding: space.lg },
-  name: { fontSize: fontSize.xl, fontWeight: "700" },
-  address: { fontSize: fontSize.sm, marginTop: 2 },
-  desc: { fontSize: fontSize.sm, marginTop: space.md, marginBottom: space.lg, lineHeight: 20 },
-  section: { fontSize: fontSize.base, fontWeight: "700", marginTop: space.xl, marginBottom: space.sm },
-  chipRow: { flexDirection: "row", flexWrap: "wrap", gap: space.sm },
+  scroll: { padding: space["4"], paddingBottom: space["12"] },
+  pad: { padding: space["4"] },
+  name: { fontSize: fontSize["3xl"], fontWeight: "700" },
+  address: { fontSize: fontSize.base, marginTop: 2 },
+  desc: { fontSize: fontSize.base, marginTop: space["3"], marginBottom: space["4"], lineHeight: 20 },
+  section: { fontSize: fontSize.lg, fontWeight: "700", marginTop: space["6"], marginBottom: space["2"] },
+  chipRow: { flexDirection: "row", flexWrap: "wrap", gap: space["2"] },
   chip: {
-    paddingHorizontal: space.md,
-    paddingVertical: space.sm,
-    borderRadius: radius.md,
+    paddingHorizontal: space["3"],
+    paddingVertical: space["2"],
+    borderRadius: radius.xl,
     borderWidth: 1,
     alignItems: "center",
     minHeight: 44,
     justifyContent: "center",
   },
-  dayRow: { flexGrow: 0, marginBottom: space.sm },
+  dayRow: { flexGrow: 0, marginBottom: space["2"] },
   dayChip: {
-    paddingHorizontal: space.md,
-    paddingVertical: space.sm,
-    borderRadius: radius.md,
+    paddingHorizontal: space["3"],
+    paddingVertical: space["2"],
+    borderRadius: radius.xl,
     borderWidth: 1,
-    marginRight: space.sm,
+    marginRight: space["2"],
     minWidth: 64,
     minHeight: 44,
     justifyContent: "center",
   },
-  slotGrid: { flexDirection: "row", flexWrap: "wrap", gap: space.sm },
+  slotGrid: { flexDirection: "row", flexWrap: "wrap", gap: space["2"] },
   slot: {
-    paddingHorizontal: space.md,
-    paddingVertical: space.sm,
-    borderRadius: radius.md,
+    paddingHorizontal: space["3"],
+    paddingVertical: space["2"],
+    borderRadius: radius.xl,
     borderWidth: 1,
     minWidth: 72,
     minHeight: 44,
@@ -461,8 +461,8 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingVertical: space.xs,
+    paddingVertical: space["1"],
   },
-  divider: { height: 1, marginVertical: space.sm },
-  hint: { fontSize: fontSize.xs, textAlign: "center", marginTop: space.md },
+  divider: { height: 1, marginVertical: space["2"] },
+  hint: { fontSize: fontSize.sm, textAlign: "center", marginTop: space["3"] },
 });

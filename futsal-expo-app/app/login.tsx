@@ -103,7 +103,7 @@ export default function Login() {
           <Button label="Sign in" onPress={submit} loading={busy} />
 
           <View style={styles.footerRow}>
-            <Text style={{ color: colors.textMuted, fontSize: fontSize.sm }}>
+            <Text style={{ color: colors.textMuted, fontSize: fontSize.base }}>
               New here?{" "}
             </Text>
             <Link href="/signup" asChild>
@@ -134,12 +134,12 @@ export default function Login() {
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
-  scroll: { padding: space.xl, paddingTop: space.xxl, flexGrow: 1 },
-  header: { alignItems: "center", marginBottom: space.xxl },
+  scroll: { padding: space["6"], paddingTop: space["8"], flexGrow: 1 },
+  header: { alignItems: "center", marginBottom: space["8"] },
   logo: { fontSize: 44 },
-  title: { fontSize: fontSize.xxl, fontWeight: "700", marginTop: space.sm },
-  subtitle: { fontSize: fontSize.sm, marginTop: space.xs },
-  footerRow: { flexDirection: "row", justifyContent: "center", marginTop: space.xl },
-  link: { fontSize: fontSize.sm, fontWeight: "600" },
-  apiLine: { fontSize: fontSize.xs, textAlign: "center", marginTop: space.lg },
+  title: { fontSize: fontSize["4xl"], fontWeight: "700", marginTop: space["2"] },
+  subtitle: { fontSize: fontSize.base, marginTop: space["1"] },
+  footerRow: { flexDirection: "row", justifyContent: "center", marginTop: space["6"] },
+  link: { fontSize: fontSize.base, fontWeight: "600" },
+  apiLine: { fontSize: fontSize.sm, textAlign: "center", marginTop: space["4"] },
 });

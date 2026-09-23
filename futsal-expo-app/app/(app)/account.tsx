@@ -76,7 +76,7 @@ export default function AccountScreen() {
                 <Text
                   style={{
                     color: active ? colors.primaryText : colors.text,
-                    fontSize: fontSize.sm,
+                    fontSize: fontSize.base,
                     fontWeight: "600",
                     textTransform: "capitalize",
                   }}
@@ -88,7 +88,7 @@ export default function AccountScreen() {
           })}
         </View>
 
-        <Button label="Sign out" variant="danger" onPress={signOut} style={{ marginTop: space.xl }} />
+        <Button label="Sign out" variant="danger" onPress={signOut} style={{ marginTop: space["6"] }} />
       </ScrollView>
     </SafeAreaView>
   );
@@ -114,34 +114,34 @@ function StatRow({
 }) {
   return (
     <View style={styles.statRow}>
-      <Text style={{ color: colors.textMuted, fontSize: fontSize.sm }}>{label}</Text>
-      <Text style={{ color: colors.text, fontSize: fontSize.sm, fontWeight: "600" }}>{value}</Text>
+      <Text style={{ color: colors.textMuted, fontSize: fontSize.base }}>{label}</Text>
+      <Text style={{ color: colors.text, fontSize: fontSize.base, fontWeight: "600" }}>{value}</Text>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
-  scroll: { padding: space.lg, paddingBottom: space.xxxl },
-  header: { alignItems: "center", marginBottom: space.xl },
+  scroll: { padding: space["4"], paddingBottom: space["12"] },
+  header: { alignItems: "center", marginBottom: space["6"] },
   avatar: {
     width: 72,
     height: 72,
     borderRadius: 36,
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: space.md,
+    marginBottom: space["3"],
   },
-  avatarText: { fontSize: fontSize.xl, fontWeight: "700" },
-  name: { fontSize: fontSize.xl, fontWeight: "700" },
-  email: { fontSize: fontSize.sm, marginTop: 2 },
-  phone: { fontSize: fontSize.sm },
-  section: { fontSize: fontSize.base, fontWeight: "700", marginTop: space.xl, marginBottom: space.sm },
-  modeRow: { flexDirection: "row", gap: space.sm },
+  avatarText: { fontSize: fontSize["3xl"], fontWeight: "700" },
+  name: { fontSize: fontSize["3xl"], fontWeight: "700" },
+  email: { fontSize: fontSize.base, marginTop: 2 },
+  phone: { fontSize: fontSize.base },
+  section: { fontSize: fontSize.lg, fontWeight: "700", marginTop: space["6"], marginBottom: space["2"] },
+  modeRow: { flexDirection: "row", gap: space["2"] },
   modeChip: {
     flex: 1,
-    paddingVertical: space.sm,
-    borderRadius: radius.md,
+    paddingVertical: space["2"],
+    borderRadius: radius.xl,
     borderWidth: 1,
     alignItems: "center",
     minHeight: 44,
@@ -150,6 +150,6 @@ const styles = StyleSheet.create({
   statRow: {
     flexDirection: "row",
     justifyContent: "space-between",
-    paddingVertical: space.xs,
+    paddingVertical: space["1"],
   },
 });

@@ -1,33 +1,73 @@
 /**
  * Design tokens for the native app.
  *
- * React Native has no Tailwind, so the palette lives here as plain constants.
- * The values are Tailwind's own emerald/slate ramps, which is what the web app
- * uses throughout — verified by counting class usage across src/components and
- * src/app, where emerald is the accent (bg-emerald-500 ×111, bg-emerald-600 ×109)
- * and slate the neutral scale (text-slate-500 ×326).
+ * Every value here is transcribed from the Next.js app's src/app/globals.css and
+ * the component class strings, not invented. React Native has no Tailwind, so
+ * the design system lives here as plain constants that screens compose.
  *
- * Keeping both light and dark here matters: the web app carries a full dark
- * theme, and RN needs the equivalent expressed as a switchable palette object
- * rather than `dark:` variants.
+ * The web app has two distinct looks and both are represented:
+ *   - Player app: warm peach (#FFF9F0) light / slate-950 dark, stone text,
+ *     emerald + orange accents. This is the "clubhouse" look.
+ *   - Owner Studio (/admin/*): a light slate workspace. Ported separately.
+ *
+ * Light mode is NOT a neutral grey — it is deliberately warm. Getting this wrong
+ * makes every screen look like a different app, which is why the earlier draft
+ * of this file (slate-50 background) had to be rewritten.
  */
 
 export const colors = {
-  /** Brand accent. */
-  primary: "#10B981", // emerald-500
-  primaryDark: "#059669", // emerald-600
-  primaryDeep: "#047857", // emerald-700
-  primarySoft: "#D1FAE5", // emerald-100
+  /* ── Brand accents ─────────────────────────────────────────────────── */
+  emerald50: "#ECFDF5",
+  emerald100: "#D1FAE5",
+  emerald300: "#6EE7B7",
+  emerald400: "#34D399",
+  emerald500: "#10B981",
+  emerald600: "#059669", // primary action colour, and ::selection
+  emerald700: "#047857",
+  green700: "#15803D",
 
-  /** Feedback. */
-  danger: "#EF4444", // red-500
-  warning: "#F59E0B", // amber-500
-  info: "#3B82F6", // blue-500
-  purple: "#8B5CF6", // violet-500
+  orange50: "#FFF7ED",
+  orange100: "#FFEDD5",
+  orange300: "#FDBA74",
+  orange400: "#FB923C",
+  orange500: "#F97316", // secondary accent: Owner Studio, "Featured"
+  orange600: "#EA580C",
+  orange700: "#C2410C",
 
-  /** Slate ramp. */
-  slate50: "#F8FAFC",
-  slate100: "#F1F5F9",
+  amber300: "#FCD34D",
+  amber400: "#FBBF24",
+
+  /* ── Feedback ──────────────────────────────────────────────────────── */
+  red50: "#FEF2F2",
+  red100: "#FEE2E2",
+  red200: "#FECACA",
+  red400: "#F87171",
+  red500: "#EF4444",
+  red600: "#DC2626",
+
+  sky100: "#E0F2FE",
+  sky300: "#7DD3FC",
+  sky500: "#0EA5E9",
+  sky700: "#0369A1",
+
+  violet300: "#C4B5FD",
+  violet500: "#8B5CF6",
+  violet700: "#6D28D9",
+
+  /* ── Stone ramp: the player app's light-mode neutrals ──────────────── */
+  stone50: "#FAFAF9",
+  stone100: "#F5F5F4",
+  stone200: "#E7E5E4",
+  stone300: "#D6D3D1",
+  stone400: "#A8A29E",
+  stone500: "#78716C",
+  stone600: "#57534E",
+  stone700: "#44403C",
+  stone800: "#292524",
+  stone900: "#1C1917", // body text in light mode
+
+  /* ── Slate ramp: dark mode + Owner Studio neutrals ─────────────────── */
+  slate100: "#F1F5F9", // body text in dark mode
   slate200: "#E2E8F0",
   slate300: "#CBD5E1",
   slate400: "#94A3B8",
@@ -35,87 +75,176 @@ export const colors = {
   slate600: "#475569",
   slate700: "#334155",
   slate800: "#1E293B",
-  slate900: "#0F172A",
-  slate950: "#020617",
+  slate900: "#0F172A", // dark card surface
+  slate950: "#020617", // dark body background
 
   white: "#FFFFFF",
-  /** The web app's light-mode page tint. */
-  cream: "#FFF9F0",
+
+  /* ── The warm clubhouse palette (globals.css) ──────────────────────── */
+  peach: "#FFF9F0", // body background, light mode
+  headerCream: "#FFFDF7", // navbar background, light mode
+  borderSand: "#F0E3CC", // card + nav borders, light mode
+  insetCream: "#FFF6E9", // small stat tiles inside cards
 } as const;
 
 export type Palette = {
+  /** Page background. */
   bg: string;
+  /** Elevated surface: cards, sheets, header. */
   surface: string;
-  surfaceAlt: string;
+  /** Recessed surface: small stat tiles, input fills. */
+  inset: string;
   border: string;
   text: string;
   textMuted: string;
   textFaint: string;
+  /** Primary action. */
   primary: string;
   primaryText: string;
-  card: string;
+  /** Secondary / owner accent. */
+  accent: string;
+  accentText: string;
+  /** Active tab tint. */
+  activeSoft: string;
+  activeText: string;
+  shadow: string;
 };
 
+/**
+ * Player app, light mode: the warm clubhouse look.
+ * body #FFF9F0 / text #1C1917, cards white on #F0E3CC borders.
+ */
 export const lightPalette: Palette = {
-  bg: colors.slate50,
+  bg: colors.peach,
   surface: colors.white,
-  surfaceAlt: colors.slate100,
+  inset: colors.insetCream,
+  border: colors.borderSand,
+  text: colors.stone900,
+  textMuted: colors.stone500,
+  textFaint: colors.stone400,
+  primary: colors.emerald600,
+  primaryText: colors.white,
+  accent: colors.orange500,
+  accentText: colors.white,
+  activeSoft: colors.emerald100,
+  activeText: colors.emerald700,
+  shadow: "rgba(180,120,60,0.10)",
+};
+
+/**
+ * Player app, dark mode.
+ * body #020617 / text #F1F5F9, cards slate-900 on white/10 borders.
+ */
+export const darkPalette: Palette = {
+  bg: colors.slate950,
+  surface: colors.slate900,
+  inset: "rgba(255,255,255,0.05)",
+  border: "rgba(255,255,255,0.10)",
+  text: colors.slate100,
+  textMuted: colors.slate400,
+  textFaint: colors.slate500,
+  primary: colors.emerald500,
+  primaryText: colors.slate950,
+  accent: colors.orange500,
+  accentText: colors.white,
+  activeSoft: "rgba(16,185,129,0.15)",
+  activeText: colors.emerald400,
+  shadow: "rgba(0,0,0,0.55)",
+};
+
+/**
+ * Owner Studio (/admin/*) is a light slate workspace, deliberately unlike the
+ * warm player app. Only a light variant exists — the web app does not theme it
+ * dark beyond a few overrides.
+ */
+export const ownerPalette: Palette = {
+  bg: colors.slate100,
+  surface: colors.white,
+  inset: colors.slate100,
   border: colors.slate200,
   text: colors.slate900,
   textMuted: colors.slate500,
   textFaint: colors.slate400,
-  primary: colors.primary,
+  primary: colors.orange500,
   primaryText: colors.white,
-  card: colors.white,
-};
-
-export const darkPalette: Palette = {
-  bg: colors.slate950, // matches .dark body #020617
-  surface: colors.slate900,
-  surfaceAlt: colors.slate800,
-  border: colors.slate700,
-  text: colors.slate100,
-  textMuted: colors.slate400,
-  textFaint: colors.slate500,
-  primary: colors.primary,
-  primaryText: colors.slate950,
-  card: colors.slate900,
+  accent: colors.emerald600,
+  accentText: colors.white,
+  activeSoft: colors.orange100,
+  activeText: colors.orange700,
+  shadow: "rgba(15,23,42,0.08)",
 };
 
 /**
- * Spacing on a 4px grid, matching the Tailwind scale the web app is built on
- * (Tailwind's default step is 0.25rem = 4px).
+ * Spacing on a 4px grid — Tailwind's scale, which the web app is built on
+ * (1 unit = 0.25rem = 4px). Names match the Tailwind steps so a class string
+ * translates mechanically: p-4 -> space[4] -> 16.
  */
 export const space = {
-  xs: 4,
-  sm: 8,
-  md: 12,
-  lg: 16,
-  xl: 24,
-  xxl: 32,
-  xxxl: 48,
+  0: 0,
+  0.5: 2,
+  1: 4,
+  1.5: 6,
+  2: 8,
+  2.5: 10,
+  3: 12,
+  3.5: 14,
+  4: 16,
+  5: 20,
+  6: 24,
+  8: 32,
+  10: 40,
+  12: 48,
+  16: 64,
+  20: 80,
 } as const;
 
+/** Tailwind's border-radius scale, likewise 1:1 with the class names. */
 export const radius = {
-  sm: 6,
-  md: 10,
-  lg: 14,
-  xl: 20,
-  pill: 999,
-} as const;
-
-export const fontSize = {
-  xs: 12,
-  sm: 14,
-  base: 16,
-  lg: 18,
-  xl: 22,
-  xxl: 28,
+  none: 0,
+  sm: 2,
+  md: 6,
+  lg: 8,
+  xl: 12,
+  "2xl": 16,
+  "3xl": 24, // the card radius used throughout the player app
+  full: 999,
 } as const;
 
 /**
- * Minimum tap target. 44pt is Apple's guideline and Android's 48dp is close
- * enough that one value serves both; the web app enforces the same floor
- * (min-h-11/min-w-11 = 44px).
+ * Type scale. The web app leans on arbitrary values (text-[15px], text-[11px])
+ * for density, so the common ones are named rather than rounded away.
+ */
+export const fontSize = {
+  "2xs": 10, // text-[10px] — uppercase micro-labels
+  xs: 11, // text-[11px]
+  sm: 12, // text-xs
+  base: 14, // text-sm — the workhorse size
+  md: 15, // text-[15px] — card titles
+  lg: 16,
+  xl: 18, // text-lg
+  "2xl": 20,
+  "3xl": 24,
+  "4xl": 30,
+  "5xl": 36,
+} as const;
+
+/** Tailwind font-weight names, since the design uses them semantically. */
+export const fontWeight = {
+  medium: "500",
+  semibold: "600",
+  bold: "700",
+  extrabold: "800",
+  black: "900",
+} as const;
+
+/**
+ * Minimum tap target: 44pt (Apple's guideline; Android's 48dp is close enough
+ * that one value serves both). The web app enforces the same floor via
+ * min-h-11/min-w-11.
  */
 export const MIN_TAP_TARGET = 44;
+
+/** The web app's font stack. Plus Jakarta Sans is not bundled with RN. */
+export const fontFamily = {
+  sans: "Plus Jakarta Sans",
+} as const;

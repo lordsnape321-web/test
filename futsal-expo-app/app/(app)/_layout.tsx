@@ -64,7 +64,7 @@ export default function AppLayout() {
             <Text
               onPress={signOut}
               accessibilityRole="button"
-              style={{ color: colors.primary, fontSize: fontSize.sm, fontWeight: "600" }}
+              style={{ color: colors.primary, fontSize: fontSize.base, fontWeight: "600" }}
             >
               Sign out
             </Text>

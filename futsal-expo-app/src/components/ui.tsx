@@ -46,7 +46,7 @@ export function Button({
       : variant === "danger"
         ? "#EF4444"
         : variant === "secondary"
-          ? colors.surfaceAlt
+          ? colors.inset
           : "transparent";
 
   const fg =
@@ -154,7 +154,7 @@ export function Card({
     <View
       style={[
         styles.card,
-        { backgroundColor: colors.card, borderColor: colors.border },
+        { backgroundColor: colors.surface, borderColor: colors.border },
         style,
       ]}
     >
@@ -185,7 +185,7 @@ export function Pill({
 }) {
   const { colors } = useTheme();
   const map: Record<string, { bg: string; fg: string }> = {
-    neutral: { bg: colors.surfaceAlt, fg: colors.textMuted },
+    neutral: { bg: colors.inset, fg: colors.textMuted },
     success: { bg: "#D1FAE5", fg: "#047857" },
     warning: { bg: "#FEF3C7", fg: "#B45309" },
     danger: { bg: "#FEE2E2", fg: "#B91C1C" },
@@ -217,7 +217,7 @@ export function Notice({
       accessibilityRole="alert"
       style={[styles.notice, { backgroundColor: bg, borderColor: colors.border }]}
     >
-      <Text style={{ color: fg, fontSize: fontSize.sm }}>{message}</Text>
+      <Text style={{ color: fg, fontSize: fontSize.base }}>{message}</Text>
     </View>
   );
 }
@@ -230,7 +230,7 @@ export function Spinner({ label }: { label?: string }) {
     <View style={styles.center}>
       <ActivityIndicator size="large" color={colors.primary} />
       {label ? (
-        <Text style={[styles.muted, { color: colors.textMuted, marginTop: space.md }]}>
+        <Text style={[styles.muted, { color: colors.textMuted, marginTop: space["3"] }]}>
           {label}
         </Text>
       ) : null}
@@ -242,7 +242,7 @@ export function Empty({ message }: { message: string }) {
   const { colors } = useTheme();
   return (
     <View style={styles.center}>
-      <Text style={{ color: colors.textMuted, fontSize: fontSize.base }}>{message}</Text>
+      <Text style={{ color: colors.textMuted, fontSize: fontSize.lg }}>{message}</Text>
     </View>
   );
 }
@@ -253,42 +253,42 @@ const styles = StyleSheet.create({
   button: {
     minHeight: MIN_TAP_TARGET,
     minWidth: MIN_TAP_TARGET,
-    borderRadius: radius.md,
+    borderRadius: radius.xl,
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: space.lg,
-    paddingVertical: space.md,
+    paddingHorizontal: space["4"],
+    paddingVertical: space["3"],
   },
-  buttonLabel: { fontSize: fontSize.base, fontWeight: "600" },
-  field: { marginBottom: space.lg },
-  label: { fontSize: fontSize.sm, marginBottom: space.xs, fontWeight: "500" },
+  buttonLabel: { fontSize: fontSize.lg, fontWeight: "600" },
+  field: { marginBottom: space["4"] },
+  label: { fontSize: fontSize.base, marginBottom: space["1"], fontWeight: "500" },
   input: {
     borderWidth: 1,
-    borderRadius: radius.md,
-    paddingHorizontal: space.md,
-    paddingVertical: space.sm,
-    fontSize: fontSize.base,
+    borderRadius: radius.xl,
+    paddingHorizontal: space["3"],
+    paddingVertical: space["2"],
+    fontSize: fontSize.lg,
   },
-  errorText: { color: "#B91C1C", fontSize: fontSize.xs, marginTop: space.xs },
+  errorText: { color: "#B91C1C", fontSize: fontSize.sm, marginTop: space["1"] },
   card: {
     borderWidth: 1,
-    borderRadius: radius.lg,
-    padding: space.lg,
-    marginBottom: space.md,
+    borderRadius: radius.xl,
+    padding: space["4"],
+    marginBottom: space["3"],
   },
   pill: {
-    paddingHorizontal: space.sm + 2,
+    paddingHorizontal: space["2"] + 2,
     paddingVertical: 3,
-    borderRadius: radius.pill,
+    borderRadius: radius.full,
     alignSelf: "flex-start",
   },
-  pillLabel: { fontSize: fontSize.xs, fontWeight: "600" },
+  pillLabel: { fontSize: fontSize.sm, fontWeight: "600" },
   notice: {
     borderWidth: 1,
-    borderRadius: radius.md,
-    padding: space.md,
-    marginBottom: space.lg,
+    borderRadius: radius.xl,
+    padding: space["3"],
+    marginBottom: space["4"],
   },
-  center: { alignItems: "center", justifyContent: "center", padding: space.xxl },
-  muted: { fontSize: fontSize.sm },
+  center: { alignItems: "center", justifyContent: "center", padding: space["8"] },
+  muted: { fontSize: fontSize.base },
 });

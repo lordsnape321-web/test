@@ -139,7 +139,7 @@ export default function BookingDetail() {
         {success ? <Notice message={success} tone="success" /> : null}
 
         {/* ── ledger ───────────────────────────────────────────────── */}
-        <Card style={{ marginTop: space.lg }}>
+        <Card style={{ marginTop: space["4"] }}>
           <Text style={[styles.cardTitle, { color: colors.text }]}>Payment ledger</Text>
           <MoneyRow label="Court" value={formatNPR(ledger.courtPrice)} colors={colors} />
           {ledger.extras.map((x) => (
@@ -158,18 +158,18 @@ export default function BookingDetail() {
           />
 
           {ledger.payments.length > 0 ? (
-            <View style={{ marginTop: space.md }}>
+            <View style={{ marginTop: space["3"] }}>
               <Text style={[styles.subTitle, { color: colors.textMuted }]}>Recorded payments</Text>
               {ledger.payments.map((p) => (
                 <View key={p.id} style={styles.payRow}>
-                  <Text style={{ color: colors.textMuted, fontSize: fontSize.sm }}>
+                  <Text style={{ color: colors.textMuted, fontSize: fontSize.base }}>
                     {p.method}
                     {p.voidedAt ? " (voided)" : ""}
                   </Text>
                   <Text
                     style={{
                       color: p.voidedAt ? colors.textFaint : colors.text,
-                      fontSize: fontSize.sm,
+                      fontSize: fontSize.base,
                       fontWeight: "600",
                       textDecorationLine: p.voidedAt ? "line-through" : "none",
                     }}
@@ -186,7 +186,7 @@ export default function BookingDetail() {
         {settleWin.settled ? (
           <Card>
             <Text style={[styles.cardTitle, { color: colors.text }]}>Settlement</Text>
-            <Text style={{ color: colors.textMuted, fontSize: fontSize.sm }}>
+            <Text style={{ color: colors.textMuted, fontSize: fontSize.base }}>
               {settleWin.editable
                 ? `The owner can still correct this for ${formatWindowLeft(settleWin.msLeft)}.`
                 : "This booking is settled and locked. No further changes."}
@@ -212,7 +212,7 @@ export default function BookingDetail() {
               onPress={() => pay("khalti")}
               loading={busy === "khalti"}
               disabled={busy !== null}
-              style={{ marginTop: space.sm }}
+              style={{ marginTop: space["2"] }}
             />
             <Text style={[styles.hint, { color: colors.textFaint }]}>
               Sandbox mode — no real money moves. The ledger row, statuses and audit trail are the
@@ -250,11 +250,11 @@ function MoneyRow({
   const color = tone === "due" ? "#B45309" : tone === "credit" ? "#047857" : colors.text;
   return (
     <View style={styles.moneyRow}>
-      <Text style={{ color: colors.textMuted, fontSize: fontSize.sm }}>{label}</Text>
+      <Text style={{ color: colors.textMuted, fontSize: fontSize.base }}>{label}</Text>
       <Text
         style={{
           color,
-          fontSize: strong ? fontSize.lg : fontSize.sm,
+          fontSize: strong ? fontSize.xl : fontSize.base,
           fontWeight: strong ? "700" : "500",
         }}
       >
@@ -266,20 +266,20 @@ function MoneyRow({
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
-  scroll: { padding: space.lg, paddingBottom: space.xxxl },
-  pad: { padding: space.lg },
-  venue: { fontSize: fontSize.xl, fontWeight: "700" },
-  meta: { fontSize: fontSize.sm, marginTop: 2, marginBottom: space.md },
-  pillRow: { flexDirection: "row", gap: space.sm, marginBottom: space.lg },
-  cardTitle: { fontSize: fontSize.base, fontWeight: "700", marginBottom: space.sm },
-  subTitle: { fontSize: fontSize.sm, fontWeight: "600", marginBottom: space.xs },
+  scroll: { padding: space["4"], paddingBottom: space["12"] },
+  pad: { padding: space["4"] },
+  venue: { fontSize: fontSize["3xl"], fontWeight: "700" },
+  meta: { fontSize: fontSize.base, marginTop: 2, marginBottom: space["3"] },
+  pillRow: { flexDirection: "row", gap: space["2"], marginBottom: space["4"] },
+  cardTitle: { fontSize: fontSize.lg, fontWeight: "700", marginBottom: space["2"] },
+  subTitle: { fontSize: fontSize.base, fontWeight: "600", marginBottom: space["1"] },
   moneyRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     paddingVertical: 3,
   },
   payRow: { flexDirection: "row", justifyContent: "space-between", paddingVertical: 2 },
-  divider: { height: 1, marginVertical: space.sm },
-  section: { fontSize: fontSize.base, fontWeight: "700", marginTop: space.xl, marginBottom: space.sm },
-  hint: { fontSize: fontSize.xs, textAlign: "center", marginTop: space.md, lineHeight: 16 },
+  divider: { height: 1, marginVertical: space["2"] },
+  section: { fontSize: fontSize.lg, fontWeight: "700", marginTop: space["6"], marginBottom: space["2"] },
+  hint: { fontSize: fontSize.sm, textAlign: "center", marginTop: space["3"], lineHeight: 16 },
 });

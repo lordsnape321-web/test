@@ -86,7 +86,7 @@ export default function VenuesScreen() {
           style={[
             styles.searchInput,
             {
-              backgroundColor: colors.surfaceAlt,
+              backgroundColor: colors.inset,
               borderColor: colors.border,
               color: colors.text,
             },
@@ -142,7 +142,7 @@ function VenueCard({ venue, onPress }: { venue: Venue; onPress: () => void }) {
         {venue.isFeatured ? <Pill label="Featured" tone="brand" /> : null}
       </View>
 
-      <View style={[styles.statRow, { marginTop: space.md }]}>
+      <View style={[styles.statRow, { marginTop: space["3"] }]}>
         <Pill label={`★ ${rating.toFixed(1)} (${venue.totalReviews})`} tone="warning" />
         <Pill label={`${venue.courtCount} court${venue.courtCount === 1 ? "" : "s"}`} />
         <Pill label={`from ${formatNPR(venue.minPrice)}/hr`} tone="success" />
@@ -157,20 +157,20 @@ function VenueCard({ venue, onPress }: { venue: Venue; onPress: () => void }) {
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
-  searchWrap: { paddingHorizontal: space.lg, paddingVertical: space.md },
+  searchWrap: { paddingHorizontal: space["4"], paddingVertical: space["3"] },
   searchInput: {
     borderWidth: 1,
-    borderRadius: radius.md,
-    paddingHorizontal: space.md,
+    borderRadius: radius.xl,
+    paddingHorizontal: space["3"],
     minHeight: 44,
-    fontSize: fontSize.base,
+    fontSize: fontSize.lg,
   },
-  noticeWrap: { paddingHorizontal: space.lg, paddingTop: space.sm },
-  list: { padding: space.lg, paddingTop: space.sm },
-  row: { flexDirection: "row", alignItems: "flex-start", gap: space.sm },
+  noticeWrap: { paddingHorizontal: space["4"], paddingTop: space["2"] },
+  list: { padding: space["4"], paddingTop: space["2"] },
+  row: { flexDirection: "row", alignItems: "flex-start", gap: space["2"] },
   grow: { flex: 1 },
-  venueName: { fontSize: fontSize.lg, fontWeight: "700" },
-  venueMeta: { fontSize: fontSize.sm, marginTop: 2 },
-  statRow: { flexDirection: "row", flexWrap: "wrap", gap: space.sm },
-  hours: { fontSize: fontSize.xs, marginTop: space.md },
+  venueName: { fontSize: fontSize.xl, fontWeight: "700" },
+  venueMeta: { fontSize: fontSize.base, marginTop: 2 },
+  statRow: { flexDirection: "row", flexWrap: "wrap", gap: space["2"] },
+  hours: { fontSize: fontSize.sm, marginTop: space["3"] },
 });
