@@ -8,6 +8,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { storage } from "@/lib/storage";
 
 export type Theme = "light" | "dark";
 
@@ -40,7 +41,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let initial: Theme = "light";
     try {
-      const stored = localStorage.getItem(KEY);
+      const stored = storage.get(KEY);
       if (stored === "dark" || stored === "light") {
         initial = stored;
       } else if (window.matchMedia("(prefers-color-scheme: dark)").matches) {
@@ -54,7 +55,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   const setTheme = useCallback((t: Theme) => {
     setThemeState(t);
     try {
-      localStorage.setItem(KEY, t);
+      storage.set(KEY, t);
     } catch {}
     apply(t);
   }, []);

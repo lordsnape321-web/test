@@ -10,6 +10,7 @@ import {
   type ReactNode,
 } from "react";
 import { apiFetch } from "@/lib/api";
+import { storage } from "@/lib/storage";
 
 export type AppUser = {
   id: number;
@@ -89,7 +90,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
     try {
       const stored =
         typeof window !== "undefined"
-          ? Number(localStorage.getItem(SESSION_KEY) || "")
+          ? Number(storage.get(SESSION_KEY) || "")
           : 0;
       if (!stored) {
         setUser(null);
@@ -103,7 +104,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
       if (found) setUser(normalizeUser(found));
       else {
         setUser(null);
-        localStorage.removeItem(SESSION_KEY);
+        storage.remove(SESSION_KEY);
       }
     } catch {
       // stay logged out on network error
@@ -120,7 +121,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
   const persist = (u: AppUser) => {
     setUser(normalizeUser(u));
     try {
-      localStorage.setItem(SESSION_KEY, String(u.id));
+      storage.set(SESSION_KEY, String(u.id));
     } catch {}
   };
 
@@ -151,7 +152,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
   const logout = useCallback(() => {
     setUser(null);
     try {
-      localStorage.removeItem(SESSION_KEY);
+      storage.remove(SESSION_KEY);
     } catch {}
   }, []);
 
