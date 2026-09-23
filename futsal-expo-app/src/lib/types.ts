@@ -209,6 +209,35 @@ export type Ledger = {
   acceptedMethods: string[];
   defaultExtraFee?: number | null;
   defaultExtraFeeNote?: string | null;
-  extras: LedgerExtra[];
-  payments: LedgerPayment[];
+    extras: LedgerExtra[];
+    payments: LedgerPayment[];
+  };
+
+/**
+ * GET /api/vouchers?userId= → { vouchers } (each enriched with its venue).
+ * A free-hour reward earned by playing LOYALTY_TARGET games at one venue in a
+ * month. `venue` is null when the venue was deleted.
+ */
+export type Voucher = {
+  id: number;
+  userId: number;
+  venueId: number | null;
+  code: string;
+  status: string;
+  month: string;
+  venue?: { id: number; name: string; imageUrl: string | null } | null;
+};
+
+/**
+ * GET /api/vouchers?userId= → { progress }: per-venue monthly play count toward
+ * the next free hour, so the profile can draw the 7-step progress bar.
+ */
+export type LoyaltyProgress = {
+  venueId: number;
+  venueName: string;
+  venueImage: string;
+  count: number;
+  target: number;
+  remaining: number;
+  done: boolean;
 };

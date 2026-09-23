@@ -1,12 +1,15 @@
 import { ApiError, apiJson } from "@/lib/api";
+import type { PlayerStats } from "@/lib/loyalty";
 import type {
   AppNotification,
   Booking,
   Court,
   Ledger,
+  LoyaltyProgress,
   Match,
   SiteStats,
   User,
+  Voucher,
   Venue,
 } from "@/lib/types";
 
@@ -114,6 +117,40 @@ export async function updateProfile(
     json: patch,
   });
   return data.user;
+}
+
+/** GET /api/users/:id → { user, stats } — the player reliability stats. */
+export async function fetchUserStats(userId: number): Promise<PlayerStats | null> {
+  const data = await apiJson<{ stats?: PlayerStats }>(`/api/users/${userId}`);
+  return data.stats ?? null;
+}
+
+/** GET /api/vouchers?userId= → { vouchers, progress, month } — loyalty rewards. */
+export async function fetchVouchers(
+  userId: number,
+): Promise<{ vouchers: Voucher[]; progress: LoyaltyProgress[]; month: string }> {
+  const data = await apiJson<{
+    vouchers?: Voucher[];
+    progress?: LoyaltyProgress[];
+    month?: string;
+  }>(`/api/vouchers?userId=${userId}`);
+  return {
+    vouchers: data.vouchers ?? [],
+    progress: data.progress ?? [],
+    month: data.month ?? "",
+  };
+}
+
+/**
+ * POST /api/auth/change-password. Throws ApiError with the server's message
+ * ("Current password is incorrect 🔒") on a wrong current password.
+ */
+export function changePassword(input: {
+  userId: number;
+  currentPassword: string;
+  newPassword: string;
+}): Promise<Record<string, unknown>> {
+  return apiJson(`/api/auth/change-password`, { method: "POST", json: input });
 }
 
 /* ── notifications ───────────────────────────────────────────────────────── */
