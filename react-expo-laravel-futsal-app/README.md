@@ -196,7 +196,7 @@ that Next.js already ships, and it runs the `tests/api/*.mjs` suites as plain
 node scripts against a live dev server.
 
 ```bash
-npm test          # 157 assertions — pure logic, components rendered in jsdom, responsive + portability guardrails
+npm test          # 158 assertions — pure logic, components rendered in jsdom, responsive + portability guardrails
 npm run test:api  # 161 assertions — real HTTP against a running server + Postgres
 npm run test:all  # all 11 suites
 ```

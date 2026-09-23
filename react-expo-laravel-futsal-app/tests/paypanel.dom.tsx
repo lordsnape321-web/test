@@ -43,7 +43,10 @@ const calls: { action: string; [k: string]: unknown }[] = [];
   });
   if (init?.method === "POST") {
     const body = JSON.parse(String(init.body));
-    calls.push(body);
+    // Record the url too. The component reaches the network through apiFetch,
+    // so this is the only place that proves the seam resolves the path a real
+    // component asks for — apiclient.unit.tsx covers apiUrl() in isolation.
+    calls.push({ ...body, __url: url });
     if (body.action === "addPayment") {
       payments = [...payments, { id: nextId++, amount: Number(body.amount), method: body.method,
         note: String(body.note ?? ""), source: "owner", voidedAt: null, createdAt: new Date().toISOString() }];
@@ -114,6 +117,8 @@ await typeInto(amountBox(), "700");
 await click(btn("Add"));
 ok("the first instalment is sent", calls.at(-1)?.action === "addPayment" && calls.at(-1)?.amount === 700,
    JSON.stringify(calls.at(-1)));
+ok("it is sent to the ledger route through the API seam",
+   calls.at(-1)?.__url === "/api/bookings/42/ledger", String(calls.at(-1)?.__url));
 ok("eSewa is the default medium", calls.at(-1)?.method === "eSewa", String(calls.at(-1)?.method));
 ok("the balance falls to 1,000", txt().includes("1,000 still to collect"), txt().slice(0, 400));
 ok("the medium chip appears", txt().includes("eSewa • Rs. 700"));
