@@ -144,7 +144,7 @@ export function ReceiptViewer({ url, onClose }: { url: string; onClose: () => vo
           </p>
           <button
             onClick={onClose}
-            className="grid h-8 w-8 place-items-center rounded-full bg-stone-100 text-stone-600 dark:bg-white/10 dark:text-slate-300"
+            className="grid h-11 w-11 place-items-center rounded-full bg-stone-100 text-stone-600 dark:bg-white/10 dark:text-slate-300"
           >
             <X className="h-4 w-4" />
           </button>
