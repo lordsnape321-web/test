@@ -1,5 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
-import { login as apiLogin, signup as apiSignup } from "@/api";
+import { login as apiLogin, signup as apiSignup, updateProfile as apiUpdateProfile } from "@/api";
 import { STORAGE_KEYS, initStorage, storage } from "@/lib/storage";
 import type { User } from "@/lib/types";
 
@@ -21,6 +21,9 @@ type AuthState = {
   user: User | null;
   /** False until storage is hydrated and the cached profile has been loaded. */
   ready: boolean;
+  /** Derived, matching the web UserProvider: role === "owner". */
+  isOwner: boolean;
+  isPlayer: boolean;
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (input: {
     name: string;
@@ -33,6 +36,11 @@ type AuthState = {
   signOut: () => Promise<void>;
   /** Re-read the profile from the server (after a payment changes a rating). */
   refresh: () => Promise<void>;
+  /**
+   * Patch the profile and adopt whatever the server returns.
+   * Mirrors the web UserProvider.updateProfile contract.
+   */
+  updateProfile: (patch: Partial<User> & { defaultCity?: string }) => Promise<User>;
 };
 
 const AuthContext = createContext<AuthState | null>(null);
@@ -103,9 +111,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // no-op hook so screens can call it unconditionally.
   }, []);
 
+  const updateProfile = useCallback(
+    async (patch: Partial<User> & { defaultCity?: string }) => {
+      if (!user) throw new Error("Not logged in");
+      const next = await apiUpdateProfile(user.id, patch);
+      // Adopt the server's version wholesale rather than merging the patch
+      // locally, then persist it so a cold start sees the new values.
+      await persist(next);
+      return next;
+    },
+    [user, persist],
+  );
+
+  // Derived exactly as the web UserProvider does, so a screen ported from the
+  // web app can branch on isOwner without changes.
+  const isOwner = user?.role === "owner";
+  const isPlayer = user?.role !== "owner";
+
   const value = useMemo(
-    () => ({ user, ready, signIn, signUp, signOut, refresh }),
-    [user, ready, signIn, signUp, signOut, refresh],
+    () => ({ user, ready, isOwner, isPlayer, signIn, signUp, signOut, refresh, updateProfile }),
+    [user, ready, isOwner, isPlayer, signIn, signUp, signOut, refresh, updateProfile],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

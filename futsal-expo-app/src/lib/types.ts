@@ -99,6 +99,75 @@ export type Booking = {
   user?: Pick<User, "id" | "name" | "email" | "phone"> | null;
 };
 
+/**
+ * GET /api/notifications?userId= → { notifications }
+ *
+ * Deliberately NOT called `Notification`: that name is a DOM global
+ * (`interface Notification extends EventTarget`), so a local type with that name
+ * silently resolves to the browser's instead of erroring — tsc stays green while
+ * the type is wrong. The `App` prefix keeps the two apart.
+ */
+export type AppNotification = {
+  id: number;
+  userId: number;
+  type: string;
+  title: string;
+  message: string;
+  link: string;
+  isRead: boolean;
+  createdAt: string | null;
+};
+
+/** GET /api/stats → { stats } */
+export type SiteStats = {
+  venues: number;
+  courts: number;
+  bookings: number;
+  players: number;
+  openMatches: number;
+  teams: number;
+  revenue: number;
+  todaysBookings: number;
+  occupancy: number;
+};
+
+/** A player attached to an open match. */
+export type MatchPlayer = {
+  id: number;
+  name: string;
+  avatarColor: string;
+  avatarUrl?: string | null;
+};
+
+/** GET /api/matches → { matches } */
+export type Match = {
+  id: number;
+  title: string;
+  description: string;
+  date: string;
+  startTime: string;
+  endTime: string;
+  level: string;
+  status: string;
+  chargeMode?: string | null;
+  pricePerPlayer: number;
+  maxPlayers: number;
+  joinedCount: number;
+  spotsLeft: number;
+  openSpots?: number;
+  crewSize?: number;
+  otherJoined?: number;
+  bookingId?: number | null;
+  courtId?: number | null;
+  venueId?: number | null;
+  organizerId?: number | null;
+  organizer?: { name: string } | null;
+  venue?: { name: string; address: string; city: string; imageUrl: string } | null;
+  court?: { name: string } | null;
+  players?: MatchPlayer[] | null;
+  createdAt?: string;
+};
+
 /** GET /api/bookings/:id/ledger */
 export type LedgerPayment = {
   id: number;

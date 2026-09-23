@@ -1,5 +1,14 @@
 import { ApiError, apiJson } from "@/lib/api";
-import type { Booking, Court, Ledger, User, Venue } from "@/lib/types";
+import type {
+  AppNotification,
+  Booking,
+  Court,
+  Ledger,
+  Match,
+  SiteStats,
+  User,
+  Venue,
+} from "@/lib/types";
 
 /**
  * Typed calls for the vertical slice: auth → venues → booking → payment.
@@ -84,6 +93,101 @@ export async function fetchAvailability(
     `/api/availability?courtId=${courtId}&date=${date}`,
   );
   return { booked: data.booked ?? [], bookings: data.bookings ?? [] };
+}
+
+/* ── profile ─────────────────────────────────────────────────────────────── */
+
+/**
+ * PATCH /api/users/:id → { user }
+ *
+ * Same contract as the web app's UserProvider.updateProfile: send a partial
+ * user, get the full normalized user back. The caller replaces its cached user
+ * with the response rather than merging the patch locally, so the server stays
+ * the authority on what the profile actually contains.
+ */
+export async function updateProfile(
+  userId: number,
+  patch: Partial<User> & { defaultCity?: string },
+): Promise<User> {
+  const data = await apiJson<{ user: User }>(`/api/users/${userId}`, {
+    method: "PATCH",
+    json: patch,
+  });
+  return data.user;
+}
+
+/* ── notifications ───────────────────────────────────────────────────────── */
+
+/** GET /api/notifications?userId= → { notifications } */
+export async function fetchNotifications(userId: number): Promise<AppNotification[]> {
+  const data = await apiJson<{ notifications?: AppNotification[] }>(
+    `/api/notifications?userId=${userId}`,
+  );
+  return data.notifications ?? [];
+}
+
+/** POST /api/notifications/read-all — tick off the whole inbox. */
+export function markAllNotificationsRead(userId: number): Promise<Record<string, unknown>> {
+  return apiJson(`/api/notifications/read-all`, { method: "POST", json: { userId } });
+}
+
+/* ── site stats ──────────────────────────────────────────────────────────── */
+
+/** GET /api/stats → { stats } — the counters shown on the home hero. */
+export async function fetchStats(): Promise<SiteStats | null> {
+  const data = await apiJson<{ stats?: SiteStats }>(`/api/stats`);
+  return data.stats ?? null;
+}
+
+/* ── open matches ────────────────────────────────────────────────────────── */
+
+/** GET /api/matches → { matches } */
+export async function fetchMatches(): Promise<Match[]> {
+  const data = await apiJson<{ matches?: Match[] }>(`/api/matches`);
+  return data.matches ?? [];
+}
+
+/** POST /api/matches/:id/join — take a spot in an open game. */
+export function joinMatch(
+  matchId: number,
+  userId: number,
+  crewSize = 1,
+): Promise<Record<string, unknown>> {
+  return apiJson(`/api/matches/${matchId}/join`, {
+    method: "POST",
+    json: { userId, crewSize },
+  });
+}
+
+/**
+ * DELETE /api/matches/:id/join?userId= — give a spot back.
+ *
+ * Note the asymmetry with joinMatch: the web app sends userId in the *query
+ * string* here but in the *body* for the POST. Kept identical so both apps hit
+ * the route the way it expects.
+ */
+export function leaveMatch(matchId: number, userId: number): Promise<Record<string, unknown>> {
+  return apiJson(`/api/matches/${matchId}/join?userId=${userId}`, { method: "DELETE" });
+}
+
+/** POST /api/matches — host a new open game. */
+export function createMatch(input: {
+  title: string;
+  venueId: number;
+  courtId?: number;
+  organizerId: number;
+  date: string;
+  startTime: string;
+  endTime: string;
+  pricePerPlayer: number;
+  maxPlayers: number;
+  crewSize: number;
+  openSpots: number;
+  chargeMode: string;
+  level: string;
+  description: string;
+}): Promise<Record<string, unknown>> {
+  return apiJson(`/api/matches`, { method: "POST", json: input });
 }
 
 /* ── bookings ────────────────────────────────────────────────────────────── */
