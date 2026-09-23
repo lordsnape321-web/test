@@ -33,7 +33,9 @@ yarn-error.*
 .DS_Store
 *.pem
 
-# local env files
+# local env files — .env holds EXPO_PUBLIC_API_BASE (often a private LAN IP),
+# so it must never be committed. Only .env.example is tracked.
+.env
 .env*.local
 
 # typescript

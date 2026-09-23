@@ -12,7 +12,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Button, Field, Notice } from "@/components/ui";
 import { useAuth } from "@/context/AuthContext";
 import { useTheme } from "@/context/ThemeContext";
-import { ApiError } from "@/lib/api";
+import { API_BASE, ApiError } from "@/lib/api";
 import { firstError, validateEmail } from "@/lib/validation";
 import { fontSize, space } from "@/theme";
 
@@ -113,6 +113,19 @@ export default function Login() {
               </Text>
             </Link>
           </View>
+
+          {/*
+            Show the API base this bundle was built with. EXPO_PUBLIC_API_BASE is
+            inlined at build time, so if a .env edit didn't take (stale Metro
+            cache — restart with --clear), this still reads "localhost" and you
+            can see that immediately instead of guessing why a device can't
+            connect. On a phone, "localhost" is the phone itself, never your
+            computer.
+          */}
+          <Text style={[styles.apiLine, { color: colors.textFaint }]}>
+            API: {API_BASE}
+            {/localhost|127\.0\.0\.1/.test(API_BASE) ? "  ⚠ device needs your LAN IP" : ""}
+          </Text>
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -128,4 +141,5 @@ const styles = StyleSheet.create({
   subtitle: { fontSize: fontSize.sm, marginTop: space.xs },
   footerRow: { flexDirection: "row", justifyContent: "center", marginTop: space.xl },
   link: { fontSize: fontSize.sm, fontWeight: "600" },
+  apiLine: { fontSize: fontSize.xs, textAlign: "center", marginTop: space.lg },
 });
