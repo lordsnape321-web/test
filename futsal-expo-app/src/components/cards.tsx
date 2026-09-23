@@ -34,7 +34,7 @@ export function VenueCard({ v }: { v: VenueWithCourts }) {
 
   return (
     <Pressable
-      onPress={() => router.push(`/venues/${v.id}`)}
+      onPress={() => router.push(`/venue/${v.id}`)}
       accessibilityRole="button"
       style={({ pressed }) => [
         styles.venueCard,

@@ -42,6 +42,7 @@ function Shell() {
       <Stack.Screen name="signup" options={{ title: "Create account", headerShown: false }} />
       <Stack.Screen name="venue/[id]" options={{ title: "Venue" }} />
       <Stack.Screen name="booking/[id]" options={{ title: "Booking" }} />
+      <Stack.Screen name="notifications" options={{ title: "Notifications" }} />
     </Stack>
   );
 }

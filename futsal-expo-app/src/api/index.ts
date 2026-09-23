@@ -131,6 +131,16 @@ export function markAllNotificationsRead(userId: number): Promise<Record<string,
   return apiJson(`/api/notifications/read-all`, { method: "POST", json: { userId } });
 }
 
+/** PATCH /api/notifications/:id — mark a single note read before following its link. */
+export function markNotificationRead(id: number): Promise<Record<string, unknown>> {
+  return apiJson(`/api/notifications/${id}`, { method: "PATCH", json: { isRead: true } });
+}
+
+/** DELETE /api/notifications/:id — remove one note from the inbox. */
+export function deleteNotification(id: number): Promise<Record<string, unknown>> {
+  return apiJson(`/api/notifications/${id}`, { method: "DELETE" });
+}
+
 /* ── site stats ──────────────────────────────────────────────────────────── */
 
 /** GET /api/stats → { stats } — the counters shown on the home hero. */
