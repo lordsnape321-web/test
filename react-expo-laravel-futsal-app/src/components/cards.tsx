@@ -143,15 +143,15 @@ export function MatchCard({ m }: { m: MatchItem }) {
         </span>
       </div>
       <div className="mt-3 grid grid-cols-3 gap-2 text-center">
-        <div className="rounded-2xl bg-[#FFF6E9] px-2 py-2.5 dark:bg-white/5">
+        <div className="min-w-0 rounded-2xl bg-[#FFF6E9] px-2 py-2.5 dark:bg-white/5">
           <p className="text-[10px] font-bold uppercase tracking-wider text-stone-400 dark:text-slate-500">Date</p>
           <p className="mt-0.5 truncate text-xs font-extrabold text-stone-900 dark:text-slate-100">{prettyDate(m.date)}</p>
         </div>
-        <div className="rounded-2xl bg-[#FFF6E9] px-2 py-2.5 dark:bg-white/5">
+        <div className="min-w-0 rounded-2xl bg-[#FFF6E9] px-2 py-2.5 dark:bg-white/5">
           <p className="text-[10px] font-bold uppercase tracking-wider text-stone-400 dark:text-slate-500">Time</p>
           <p className="mt-0.5 truncate text-xs font-extrabold text-stone-900 dark:text-slate-100">{formatTime12(m.startTime)}</p>
         </div>
-        <div className="rounded-2xl bg-emerald-50 px-2 py-2.5 dark:bg-emerald-500/10">
+        <div className="min-w-0 rounded-2xl bg-emerald-50 px-2 py-2.5 dark:bg-emerald-500/10">
           <p className="text-[10px] font-bold uppercase tracking-wider text-stone-400 dark:text-slate-500">Share</p>
           <p className="mt-0.5 truncate text-xs font-extrabold text-emerald-700 dark:text-emerald-300">{formatNPR(m.pricePerPlayer)}</p>
         </div>
