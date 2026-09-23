@@ -120,6 +120,19 @@ ok("it shows the countdown, so the owner knows the window is closing",
 ok("the countdown is 4:00 for a booking settled a minute ago",
    (amend?.textContent ?? "").includes("4:00"), JSON.stringify(amend?.textContent));
 
+// The countdown used to resize every second: "4:32" and "4:09" are different
+// pixel widths in a proportional font, so the button changed width on each
+// tick and shoved the rest of the row sideways — the PAID badge appeared to
+// fluctuate. jsdom has no layout engine, so pixel width can't be measured
+// here; what is asserted is the mechanism that keeps the width constant.
+const countdown = amend?.querySelector("span.tabular-nums");
+ok("the countdown uses tabular figures, so every digit is the same width",
+   Boolean(countdown), amend?.innerHTML ?? "no tabular span");
+ok("and reserves a fixed width regardless of the value",
+   /min-w-/.test(countdown?.className ?? ""), countdown?.className ?? "");
+ok("the button itself can't be squeezed or stretched by the row",
+   /shrink-0/.test(amend?.className ?? ""), amend?.className ?? "");
+
 const old = rowFor(12);
 ok("a settled-and-locked row shows Locked instead",
    Boolean(old?.textContent?.includes("Locked")), old?.textContent?.slice(0, 160));

@@ -1,15 +1,15 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { CalendarCheck, Check, X, ReceiptText, Gift, Ticket, Shield, Swords, Trophy, RotateCcw, Lock } from "lucide-react";
+import { CalendarCheck, Check, X, ReceiptText, Gift, Ticket, Shield, Swords, Trophy } from "lucide-react";
 import { useUser } from "@/components/UserProvider";
 import { OwnerGuard } from "@/components/OwnerGuard";
 import { ReceiptViewer } from "@/components/ReceiptUploader";
 import { PlayerRatingBadge } from "@/components/PlayerRating";
 import type { PlayerStats } from "@/lib/loyalty";
 import { formatNPR, formatTime12, prettyDate } from "@/lib/futsal";
-import { settleWindow, formatWindowLeft } from "@/lib/booking-ledger";
 import { BookingLedgerPanel } from "@/components/BookingLedgerPanel";
+import { SettleAmendButton } from "@/components/SettleAmendButton";
 
 type Booking = {
   id: number;
@@ -76,17 +76,6 @@ export default function OwnerBookingsPage() {
   const [scoreError, setScoreError] = useState("");
   /** Which booking's payment desk is open — see `BookingLedgerPanel`. */
   const [ledgerFor, setLedgerFor] = useState<Booking | null>(null);
-  /**
-   * A one-second clock for the correction countdown. The Amend button lives in
-   * the row, not only inside the payment desk, so the owner can see from the
-   * list which settled games are still fixable — and the button has to
-   * disappear by itself the moment the window closes.
-   */
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const t = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(t);
-  }, []);
 
   const load = async () => {
     const [bRes, vRes] = await Promise.all([
@@ -233,11 +222,7 @@ export default function OwnerBookingsPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50 dark:divide-slate-800">
-                {filtered.map((b) => {
-                  // Settled bookings get a correction window; the Amend button
-                  // in the actions column is only offered while it is open.
-                  const win = settleWindow(b.settledAt, now);
-                  return (
+                {filtered.map((b) => (
                   <tr key={b.id} className="transition hover:bg-slate-50/60 dark:hover:bg-slate-800/40">
                     <td className="px-5 py-3 font-mono font-bold">#FN-{b.id}</td>
                     <td className="px-3 py-3 font-bold">
@@ -356,25 +341,12 @@ export default function OwnerBookingsPage() {
                         {/* Amending a settled game must not require opening the
                             payment desk first: the owner needs to see from the
                             list, at a glance, which ones are still fixable and
-                            how long is left. Same window the API enforces. */}
-                        {win.settled && win.editable && (
-                          <button
-                            onClick={() => setLedgerFor(b)}
-                            title={`Amend this settled payment — locks in ${formatWindowLeft(win.msLeft)}`}
-                            className="flex h-8 items-center gap-1 rounded-full bg-amber-500 px-3 text-[11px] font-black text-white transition hover:bg-amber-600"
-                          >
-                            <RotateCcw className="h-3.5 w-3.5" /> Amend{" "}
-                            {formatWindowLeft(win.msLeft)}
-                          </button>
-                        )}
-                        {win.settled && !win.editable && (
-                          <span
-                            title="Settled and locked — the 5-minute correction window has closed"
-                            className="flex h-8 items-center gap-1 rounded-full bg-slate-200 px-3 text-[11px] font-black text-slate-500 dark:bg-slate-700 dark:text-slate-300"
-                          >
-                            <Lock className="h-3.5 w-3.5" /> Locked
-                          </span>
-                        )}
+                            how long is left. The countdown owns its own clock
+                            so ticking it doesn't re-render the whole table. */}
+                        <SettleAmendButton
+                          settledAt={b.settledAt}
+                          onOpen={() => setLedgerFor(b)}
+                        />
                         {b.status === "pending" && (
                           <>
                             <button
@@ -431,8 +403,7 @@ export default function OwnerBookingsPage() {
                       </div>
                     </td>
                   </tr>
-                  );
-                })}
+                ))}
               </tbody>
             </table>
           </div>
