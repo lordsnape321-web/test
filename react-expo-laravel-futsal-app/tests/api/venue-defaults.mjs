@@ -1,4 +1,4 @@
-const B = "http://127.0.0.1:3000";
+const B = process.env.BASE_URL || "http://127.0.0.1:3000";
 let pass = 0, fail = 0;
 const ok = (n, c, e = "") => { c ? (pass++, console.log("  PASS  " + n)) : (fail++, console.log("  FAIL  " + n + (e ? "  → " + e : ""))); };
 const call = async (p, init) => {

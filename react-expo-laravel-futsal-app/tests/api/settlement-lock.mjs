@@ -1,4 +1,4 @@
-const B = "http://127.0.0.1:3000";
+const B = process.env.BASE_URL || "http://127.0.0.1:3000";
 let pass = 0, fail = 0;
 const ok = (n, c, e = "") => { c ? (pass++, console.log("  PASS  " + n)) : (fail++, console.log("  FAIL  " + n + (e ? "  → " + e : ""))); };
 const call = async (p, init) => {
@@ -9,7 +9,7 @@ const call = async (p, init) => {
 import { createRequire } from "node:module";
 const require = createRequire("/home/user/test/react-expo-laravel-futsal-app/");
 const { Client } = require("pg");
-const pg = new Client({ connectionString: "postgresql://postgres:postgres@127.0.0.1:5432/app_db" });
+const pg = new Client({ connectionString: process.env.DATABASE_URL || "postgresql://postgres:postgres@127.0.0.1:5432/app_db" });
 await pg.connect();
 
 const v = await call("/api/venues", { method: "POST", body: JSON.stringify({

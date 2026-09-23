@@ -105,10 +105,30 @@ only two files in the domain layer that need rewriting.
 ### For the Laravel side
 
 The API routes under `src/app/api/` are the contract to reimplement. The
-test suites in `tests/api/` assert it end to end (161 assertions) and are
-written against HTTP, not against Drizzle, so they are reusable as an
-acceptance suite for the Laravel port: point them at the new host with
-`BASE` and they should pass unchanged.
+six suites in `tests/api/` assert it end to end (161 assertions) over plain
+HTTP — they never import Drizzle — so they can double as an acceptance suite
+for the Laravel port:
+
+```
+BASE_URL=https://api.yourdomain.com npm run test:api
+```
+
+All six honour `BASE_URL`; it defaults to `http://127.0.0.1:3000`. Verified
+both directions: the correct host gives 6/6, and pointing at a dead port gives
+0/6, so the override really does reach every suite.
+
+Two honest caveats before you expect a green run against Laravel:
+
+- The suites assume seeded data — specific owner and player ids, an existing
+  venue and court. A fresh Laravel database needs equivalent fixtures, and the
+  expected ids can be overridden per suite via `PLAYER`, `PLAYER2`, `U`, `D1`,
+  `G1` and `G2`.
+- Two suites reach into Postgres directly, because the settlement lock can only
+  be tested by moving a timestamp into the past: `ledger.mjs` backdates
+  `settled_at` by 6 minutes and `settlement-lock.mjs` by 10, then assert every
+  write is refused. Both read their DSN from `DATABASE_URL`. They still need
+  rewriting against Laravel's database before they can run there, since they
+  assume Postgres `interval` syntax and the current table names.
 
 
 ## Database
