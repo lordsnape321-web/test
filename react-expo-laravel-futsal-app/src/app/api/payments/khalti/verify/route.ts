@@ -1,4 +1,4 @@
-import { db } from "@/db";
+import { db, ensureCompetitionBookingColumns } from "@/db";
 import { bookings, courts, venues } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { getKhaltiConfig, khaltiLookup } from "@/lib/payments";
@@ -10,6 +10,7 @@ export const dynamic = "force-dynamic";
 
 export async function POST(req: Request) {
   try {
+    await ensureCompetitionBookingColumns();
     const body = await req.json();
     const pidx = String(body.pidx ?? "").trim();
     const bookingId = Number(body.bookingId ?? 0) || null;

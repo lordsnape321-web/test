@@ -1,4 +1,4 @@
-import { db } from "@/db";
+import { db, ensureCompetitionBookingColumns } from "@/db";
 import { bookings } from "@/db/schema";
 import { expandBookingSlots } from "@/lib/futsal";
 import { validateDateISO, firstError } from "@/lib/validation";
@@ -8,6 +8,7 @@ export const dynamic = "force-dynamic";
 
 export async function GET(req: Request) {
   try {
+    await ensureCompetitionBookingColumns();
     const { searchParams } = new URL(req.url);
     const courtId = Number(searchParams.get("courtId"));
     const date = searchParams.get("date") ?? "";

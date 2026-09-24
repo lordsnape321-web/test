@@ -1,4 +1,4 @@
-import { db } from "@/db";
+import { db, ensureCompetitionBookingColumns } from "@/db";
 import {
   bookings,
   courts,
@@ -27,6 +27,7 @@ const PAY_METHODS = ["eSewa", "Khalti", "Cash at Venue", "Free Play 🎁"];
 
 export async function GET(req: Request) {
   try {
+    await ensureCompetitionBookingColumns();
     const { searchParams } = new URL(req.url);
     const userId = searchParams.get("userId");
     const courtId = searchParams.get("courtId");
@@ -166,6 +167,7 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   try {
+    await ensureCompetitionBookingColumns();
     const body = await req.json();
     const { courtId, userId, date, startTime, endTime, durationHours } = body;
 

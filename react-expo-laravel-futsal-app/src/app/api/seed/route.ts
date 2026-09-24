@@ -1,4 +1,4 @@
-import { db } from "@/db";
+import { db, ensureCompetitionBookingColumns } from "@/db";
 import {
   tournaments,
   tournamentMatches,
@@ -584,6 +584,7 @@ async function seedLeagues(lookup: {
 
 export async function POST() {
   try {
+    await ensureCompetitionBookingColumns();
     const existing = await db.select().from(venues);
     if (existing.length > 0) {
       // Backfill auth + ownership for databases seeded before login existed.

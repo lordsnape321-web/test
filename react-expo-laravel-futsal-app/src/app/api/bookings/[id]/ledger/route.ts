@@ -1,4 +1,4 @@
-import { db } from "@/db";
+import { db, ensureCompetitionBookingColumns } from "@/db";
 import { bookings, courts, venues, bookingPayments, bookingExtras } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { parsePayments } from "@/lib/loyalty";
@@ -86,6 +86,7 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    await ensureCompetitionBookingColumns();
     const { id } = await params;
     const bookingId = Number(id);
     if (!Number.isInteger(bookingId) || bookingId <= 0)
@@ -126,6 +127,7 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    await ensureCompetitionBookingColumns();
     const { id } = await params;
     const bookingId = Number(id);
     if (!Number.isInteger(bookingId) || bookingId <= 0)

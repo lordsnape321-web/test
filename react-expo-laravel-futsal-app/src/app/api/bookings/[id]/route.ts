@@ -1,4 +1,4 @@
-import { db } from "@/db";
+import { db, ensureCompetitionBookingColumns } from "@/db";
 import { bookings, openMatches, courts, teams, venues, vouchers, users } from "@/db/schema";
 import { prettyDate, formatTime12, formatNPR, gamePlayed } from "@/lib/futsal";
 import { monthKey, hoursUntilGame, CANCEL_CUTOFF_HOURS, LOYALTY_TARGET, TRUST_START, TRUST_COMPLETE_BOOST, TRUST_CANCEL_PENALTY, trustAfterComplete, trustAfterCancel, trustLabel } from "@/lib/loyalty";
@@ -198,6 +198,7 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    await ensureCompetitionBookingColumns();
     const { id } = await params;
     const bookingId = Number(id);
     if (!Number.isInteger(bookingId) || bookingId <= 0)
@@ -517,6 +518,7 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    await ensureCompetitionBookingColumns();
     const { id } = await params;
     const rows = await db.select().from(bookings).where(eq(bookings.id, Number(id)));
     const prev = rows[0];

@@ -142,6 +142,28 @@ if (missing.length > 0) {
 }
 ok(`all ${EXPECTED.length} tables present`);
 
+const REQUIRED_BOOKING_COLUMNS = [
+  "competition_status",
+  "competition_responded_by",
+  "competition_responded_at",
+];
+const { rows: bookingColumns } = await client.query(
+  `SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'bookings'`
+);
+const presentBookingColumns = new Set(bookingColumns.map((r) => r.column_name));
+const missingBookingColumns = REQUIRED_BOOKING_COLUMNS.filter((c) => !presentBookingColumns.has(c));
+if (missingBookingColumns.length > 0) {
+  note(`bookings is missing competition columns: ${missingBookingColumns.join(", ")}`);
+  await client.end();
+  hint([
+    "Apply the additive migration:",
+    "  npm run db:migrate",
+    "  (or restart the app; dev/start run the same idempotent migration automatically)",
+  ]);
+  process.exit(1);
+}
+ok("competition booking columns present");
+
 // 3. Is there any data to render?
 const counts = {};
 for (const t of ["users", "venues", "courts", "promos", "bookings"]) {

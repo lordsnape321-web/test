@@ -1,4 +1,4 @@
-import { db } from "@/db";
+import { db, ensureCompetitionBookingColumns } from "@/db";
 import { bookings, courts, venues, users } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { gamePlayed } from "@/lib/futsal";
@@ -8,6 +8,7 @@ export const dynamic = "force-dynamic";
 
 export async function POST(req: Request) {
   try {
+    await ensureCompetitionBookingColumns();
     const body = await req.json();
     const bookingId = Number(body.bookingId);
     if (!Number.isInteger(bookingId) || bookingId <= 0) {
