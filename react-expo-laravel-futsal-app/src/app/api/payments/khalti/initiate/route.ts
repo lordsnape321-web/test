@@ -16,6 +16,12 @@ export async function POST(req: Request) {
     const rows = await db.select().from(bookings).where(eq(bookings.id, bookingId));
     const booking = rows[0];
     if (!booking) return Response.json({ error: "Booking not found" }, { status: 404 });
+    if (booking.visibility === "competition" && booking.competitionStatus === "pending") {
+      return Response.json(
+        { error: "Payment opens after the opposition captain accepts this competition request 🆚" },
+        { status: 409 }
+      );
+    }
     if (booking.paymentMethod !== "Khalti") {
       return Response.json({ error: "This booking is not a Khalti payment 💳" }, { status: 400 });
     }

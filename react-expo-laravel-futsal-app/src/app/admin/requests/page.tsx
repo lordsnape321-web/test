@@ -36,6 +36,7 @@ type Booking = {
     homeScore: number | null;
     awayScore: number | null;
     scoreStatus: string;
+    competitionStatus?: string;
   } | null;
   receiptUrl: string;
   isFreePlay: boolean;
@@ -91,8 +92,17 @@ export default function OwnerRequestsPage() {
     () => bookings.filter((b) => b.venue && myVenueIds.has(b.venue.id)),
     [bookings, myVenueIds]
   );
-  const pending = mine.filter((b) => b.status === "pending");
-  const decided = mine.filter((b) => b.status === "confirmed" || b.status === "rejected");
+  // A competition row stays out of the owner queue while the opposition
+  // captain's durable consent is pending. Legacy competition rows have no
+  // competitionStatus and retain their existing owner workflow.
+  const releasedToOwner = (b: Booking) =>
+    b.visibility !== "competition" ||
+    b.competition?.competitionStatus === "accepted" ||
+    !b.competition?.competitionStatus ||
+    b.competition.competitionStatus === "none";
+  const visibleToOwner = mine.filter(releasedToOwner);
+  const pending = visibleToOwner.filter((b) => b.status === "pending");
+  const decided = visibleToOwner.filter((b) => b.status === "confirmed" || b.status === "rejected");
   const list = tab === "pending" ? pending : decided;
 
   async function decide(id: number, ok: boolean) {
@@ -102,7 +112,7 @@ export default function OwnerRequestsPage() {
       const res = await apiFetch(`/api/bookings/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: ok ? "confirmed" : "rejected" }),
+        body: JSON.stringify({ status: ok ? "confirmed" : "rejected", actor: "owner", actorId: user?.id }),
       });
       if (!res.ok) throw new Error("failed");
       await load();

@@ -26,6 +26,12 @@ export async function POST(req: Request) {
       booking = found;
     }
     if (!booking) return Response.json({ error: "Booking not found" }, { status: 404 });
+    if (booking.visibility === "competition" && booking.competitionStatus === "pending") {
+      return Response.json(
+        { error: "Payment opens after the opposition captain accepts this competition request 🆚" },
+        { status: 409 }
+      );
+    }
     if (booking.khaltiPidx && booking.khaltiPidx !== pidx) {
       return Response.json(
         { error: "Payment session doesn't match this booking — start again 🔄" },

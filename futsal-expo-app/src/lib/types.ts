@@ -71,9 +71,12 @@ export type User = {
   email: string;
   phone: string;
   role: "player" | "owner" | "admin";
+  /** The server returns these profile fields on every auth response. */
+  avatarColor?: string | null;
+  avatarUrl?: string | null;
+  defaultCity?: string;
   level?: string;
   position?: string;
-  avatarUrl?: string | null;
   matchesPlayed?: number;
   rating?: number;
   trustScore?: number;
@@ -91,6 +94,9 @@ export type BookingCompetition = {
   homeScore: number | null;
   awayScore: number | null;
   scoreStatus: string;
+  competitionStatus?: "none" | "pending" | "accepted" | "declined" | "cancelled" | string;
+  opponentCaptainId?: number | null;
+  isOpponentCaptain?: boolean;
 };
 
 export type Booking = {
@@ -408,8 +414,11 @@ export type LeagueMediaRow = {
   uploadedBy: number;
   uploaderName: string;
   createdAt: string | null;
-  /** Who may see it, spelled out: "Semi-final • A vs B" or "Whole league". */
+  /** Who may see it, spelled out: "Semi-final • A vs B", "Squad A", or "Whole league". */
   scope: string;
+  /** Optional additive audience fields. Older APIs omit these and keep league/match scope. */
+  teamId?: number | null;
+  teamName?: string;
 };
 
 export type LeaguePaymentRow = {

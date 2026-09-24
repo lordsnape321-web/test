@@ -58,6 +58,7 @@ type Booking = {
     homeScore: number | null;
     awayScore: number | null;
     scoreStatus: string;
+    competitionStatus?: string;
   } | null;
 };
 
@@ -105,7 +106,15 @@ export default function OwnerBookingsPage() {
   );
 
   const filtered = useMemo(() => {
-    const mine = bookings.filter((b) => b.venue && myVenueIds.has(b.venue.id));
+    const mine = bookings
+      .filter((b) => b.venue && myVenueIds.has(b.venue.id))
+      .filter(
+        (b) =>
+          b.visibility !== "competition" ||
+          b.competition?.competitionStatus === "accepted" ||
+          !b.competition?.competitionStatus ||
+          b.competition.competitionStatus === "none",
+      );
     if (filter === "all") return mine;
     if (filter === "today") {
       const t = new Date().toISOString().slice(0, 10);
@@ -118,7 +127,7 @@ export default function OwnerBookingsPage() {
     await apiFetch(`/api/bookings/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status, actor }),
+      body: JSON.stringify({ status, actor, actorId: user?.id }),
     });
     load();
   }

@@ -23,7 +23,8 @@ let ready = false;
 /** Keys this app persists. Keeping the list explicit lets init hydrate them. */
 export const STORAGE_KEYS = {
   session: "futsal.session.userId",
-  theme: "futsal.theme",
+  // Same key as the web ThemeProvider so Expo web and Next.js keep the mode aligned.
+  theme: "futsal-theme",
 } as const;
 
 const HYDRATE = Object.values(STORAGE_KEYS);

@@ -21,7 +21,7 @@ import {
   Text,
   View,
 } from "react-native";
-import { fetchBookings, fetchVenues, patchBooking, seedDemo } from "@/api";
+import { fetchBookings, fetchVenues, patchBooking } from "@/api";
 import {
   BookingDonut,
   PaymentParty,
@@ -57,7 +57,6 @@ export default function OwnerHome() {
     useCallback(() => {
       (async () => {
         try {
-          await seedDemo();
           await load();
         } finally {
           setLoading(false);
@@ -72,7 +71,16 @@ export default function OwnerHome() {
   );
   const myVenueIds = useMemo(() => new Set(myVenues.map((v) => v.id)), [myVenues]);
   const myBookings = useMemo(
-    () => bookings.filter((b) => b.venue && myVenueIds.has(b.venue.id)),
+    () =>
+      bookings
+        .filter((b) => b.venue && myVenueIds.has(b.venue.id))
+        .filter(
+          (b) =>
+            b.visibility !== "competition" ||
+            b.competition?.competitionStatus === "accepted" ||
+            !b.competition?.competitionStatus ||
+            b.competition.competitionStatus === "none",
+        ),
     [bookings, myVenueIds],
   );
 
@@ -90,6 +98,9 @@ export default function OwnerHome() {
     (b) =>
       b.visibility === "competition" &&
       b.competition &&
+      b.competition.competitionStatus !== "pending" &&
+      b.competition.competitionStatus !== "declined" &&
+      b.competition.competitionStatus !== "cancelled" &&
       b.competition.scoreStatus !== "recorded",
   );
 
@@ -438,8 +449,20 @@ const styles = StyleSheet.create({
   },
   kpiSubRow: { flexDirection: "row", alignItems: "center", gap: 4, marginTop: 2 },
   kpiSub: { fontSize: fontSize.xs, fontWeight: "600", flex: 1 },
-  twoCol: { flexDirection: "row", flexWrap: "wrap", gap: space[3], marginTop: space[2] },
-  threeCol: { flexDirection: "row", flexWrap: "wrap", gap: space[3], marginTop: space[2] },
+  twoCol: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "stretch",
+    gap: space[3],
+    marginTop: space[2],
+  },
+  threeCol: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "stretch",
+    gap: space[3],
+    marginTop: space[2],
+  },
   panel: {
     borderRadius: radius["2xl"],
     borderWidth: 1,
@@ -447,7 +470,6 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     flexBasis: "45%",
     minWidth: 260,
-    marginTop: space[2],
     gap: space[2.5],
   },
   panelHead: {
@@ -518,7 +540,6 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     flexBasis: "45%",
     minWidth: 260,
-    marginTop: space[2],
   },
   promoIcon: {
     width: 44,

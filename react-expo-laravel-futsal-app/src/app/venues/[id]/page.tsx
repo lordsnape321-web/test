@@ -169,7 +169,7 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
   const [selectedTeam, setSelectedTeam] = useState("");
   const [booking, setBooking] = useState(false);
   const [payRedirect, setPayRedirect] = useState(false);
-  const [success, setSuccess] = useState<null | { id: number; total: number; isPublic: boolean; freePlay: boolean; saved: number; promoCode: string; teamName: string; opponentName: string; leagueName: string }>(null);
+  const [success, setSuccess] = useState<null | { id: number; total: number; isPublic: boolean; visibility: "private" | "public" | "competition"; freePlay: boolean; saved: number; promoCode: string; teamName: string; opponentName: string; leagueName: string }>(null);
   const [error, setError] = useState("");
   const [myVouchers, setMyVouchers] = useState<Array<{ id: number; code: string; status: string }>>([]);
   const [loyalty, setLoyalty] = useState<{ count: number; target: number; remaining: number } | null>(null);
@@ -624,7 +624,7 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
           durationHours: hours,
           paymentMethod: total === 0 ? "Free Play 🎁" : payMethod,
           paymentStatus: "pending",
-          receiptUrl: isOnlineMethod(payMethod) && total > 0 ? receipt : "",
+          receiptUrl: visibility !== "competition" && isOnlineMethod(payMethod) && total > 0 ? receipt : "",
           useFreePlay: freePlayActive,
           promoCode: appliedPromo?.code ?? "",
           bookerName: user.name,
@@ -650,7 +650,11 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Booking failed");
       const created = data.booking;
+      // A competition request is held until the opposition captain accepts;
+      // payment starts from My Bookings after the owner receives the released
+      // request. Normal/private/public payments keep their existing path.
       const needsGateway =
+        visibility !== "competition" &&
         !freePlayActive &&
         created.totalPrice > 0 &&
         (payMethod === "eSewa" || payMethod === "Khalti");
@@ -697,6 +701,7 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
         id: created.id,
         total: created.totalPrice,
         isPublic: visibility === "public",
+        visibility,
         freePlay: !!data.freePlayUsed,
         saved: Number(created.discountAmount) || 0,
         promoCode: String(created.promoCode ?? ""),
@@ -1853,7 +1858,9 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
                       ))}
                     </div>
                     <p className="mt-1.5 text-[11px] text-stone-400">
-                      Online = real test gateway redirect. Cash = pay at venue.
+                      {visibility === "competition"
+                        ? "Competition payment opens after the opposition captain accepts and the venue confirms."
+                        : "Online = real test gateway redirect. Cash = pay at venue."}
                     </p>
                   </div>
                   {depositPreview.required && (
@@ -1863,11 +1870,13 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
                       </p>
                       <p className="mt-1 leading-relaxed text-amber-700 dark:text-amber-300">{depositPreview.reason}</p>
                       <p className="mt-1 font-bold text-amber-800 dark:text-amber-200">
-                        You&apos;ll pay {formatNPR(depositPreview.amount)} now via {payMethod} test • rest {formatNPR(Math.max(0, total - depositPreview.amount))} later • non-refundable if you cancel 😢
+                        {visibility === "competition"
+                          ? `Deposit of ${formatNPR(depositPreview.amount)} becomes payable after the opposition accepts via ${payMethod}.`
+                          : `You&apos;ll pay ${formatNPR(depositPreview.amount)} now via ${payMethod} test • rest ${formatNPR(Math.max(0, total - depositPreview.amount))} later • non-refundable if you cancel 😢`}
                       </p>
                     </div>
                   )}
-                  {isOnlineMethod(payMethod) && (
+                  {visibility !== "competition" && isOnlineMethod(payMethod) && (
                     <div className="rounded-2xl border border-sky-200 bg-sky-50 p-3.5 text-xs dark:border-sky-500/30 dark:bg-sky-500/10">
                       <p className="font-black text-sky-800 dark:text-sky-200">
                         {payMethod === "eSewa" ? "💚 eSewa TEST (UAT) checkout" : "💜 Khalti TEST checkout"}
@@ -1880,7 +1889,7 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
                       <p className="mt-1 font-bold">Amount charged now: {formatNPR(depositPreview.required ? depositPreview.amount : total)}</p>
                     </div>
                   )}
-                  {isOnlineMethod(payMethod) && (
+                  {visibility !== "competition" && isOnlineMethod(payMethod) && (
                     <details className="rounded-2xl border border-stone-200 p-3 dark:border-white/10">
                       <summary className="cursor-pointer text-[11px] font-black text-stone-500">
                         Paid manually already? Attach screenshot instead (optional) 🧾
@@ -1967,7 +1976,9 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
                       ? "Pick a time first ☝️"
                       : !rangeValid
                         ? "Pick a fully free block 🙏"
-                        : payMethod === "eSewa" && total > 0
+                        : visibility === "competition"
+                          ? `Request ${hours} hr • ${formatNPR(total)} • captain approval first`
+                          : payMethod === "eSewa" && total > 0
                           ? `Request + Pay ${formatNPR(depositPreview.required ? depositPreview.amount : total)} via eSewa 💚`
                           : payMethod === "Khalti" && total > 0
                             ? `Request + Pay ${formatNPR(depositPreview.required ? depositPreview.amount : total)} via Khalti 💜`
@@ -1998,7 +2009,9 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
                 ? success.freePlay
                   ? "FREE with your loyalty hour! 🎁"
                   : "FREE with your promo code! 🎟️"
-                : `${formatNPR(success.total)} via ${success.freePlay ? `${payMethod} (1hr free 🎁)` : payMethod}`}
+                : success.visibility === "competition"
+                  ? `${formatNPR(success.total)} held with the request — payment follows captain acceptance`
+                  : `${formatNPR(success.total)} via ${success.freePlay ? `${payMethod} (1hr free 🎁)` : payMethod}`}
             </p>
             {success.saved > 0 && (
               <p className="mx-auto mt-2 inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-black text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300">
@@ -2016,8 +2029,9 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
             )}
             <p className="mt-1 text-[11px] text-stone-400 dark:text-slate-500">Booking ref: #FN-{success.id}</p>
             <p className="mx-auto mt-3 max-w-[280px] rounded-xl bg-amber-50 px-3 py-2.5 text-xs font-bold leading-relaxed text-amber-700 dark:bg-amber-500/10 dark:text-amber-300">
-              ⏳ The lovely folks at the venue are reviewing it — we&apos;ll
-              notify you the second they confirm!
+              {success.visibility === "competition"
+                ? "🆚 Request sent to the opposition captain. The venue owner is only notified after they accept."
+                : "⏳ The lovely folks at the venue are reviewing it — we&apos;ll notify you the second they confirm!"}
             </p>
             {success.isPublic && (
               <p className="mx-auto mt-2 max-w-[280px] rounded-xl bg-emerald-50 px-3 py-2.5 text-xs font-bold leading-relaxed text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300">
@@ -2027,8 +2041,7 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
             {success.opponentName && (
               <p className="mx-auto mt-2 max-w-[280px] rounded-xl bg-sky-50 px-3 py-2.5 text-xs font-bold leading-relaxed text-sky-700 dark:bg-sky-500/10 dark:text-sky-300">
                 🆚 {success.teamName || "Your squad"} vs {success.opponentName}
-                {success.leagueName ? ` • 🏆 ${success.leagueName}` : ""} — the venue owner records
-                the score, and it shows on both squads&apos; profiles.
+                {success.leagueName ? ` • 🏆 ${success.leagueName}` : ""} — the opposition captain must accept first; then the venue owner reviews it and records the score on both squads&apos; profiles.
               </p>
             )}
             <div className="mt-5 grid grid-cols-2 gap-2">

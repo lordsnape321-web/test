@@ -124,6 +124,14 @@ export const bookings = pgTable("bookings", {
   awayScore: integer("away_score"),
   /** "none" (not a competition game) | "awaiting" | "recorded". */
   scoreStatus: text("score_status").notNull().default("none"),
+  /**
+   * Opposition consent is its own lifecycle, separate from score recording.
+   * "pending" keeps the venue owner from receiving an actionable request;
+   * only "accepted" releases it. Existing non-competition rows remain "none".
+   */
+  competitionStatus: text("competition_status").notNull().default("none"),
+  competitionRespondedBy: integer("competition_responded_by"),
+  competitionRespondedAt: timestamp("competition_responded_at"),
   scoreUpdatedBy: integer("score_updated_by"),
   scoreUpdatedAt: timestamp("score_updated_at"),
   chargeMode: text("charge_mode").notNull().default("split"),

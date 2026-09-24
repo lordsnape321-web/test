@@ -50,6 +50,9 @@ type Booking = {
     homeScore: number | null;
     awayScore: number | null;
     scoreStatus: string;
+    competitionStatus?: string;
+    opponentCaptainId?: number | null;
+    isOpponentCaptain?: boolean;
   } | null;
   court?: { name: string; format: string };
   venue?: { id: number; name: string; address: string; imageUrl: string };
@@ -97,6 +100,7 @@ export default function BookingsPage() {
   const [cancelError, setCancelError] = useState("");
   const [paying, setPaying] = useState<number | null>(null);
   const [payError, setPayError] = useState("");
+  const [competitionDecision, setCompetitionDecision] = useState<number | null>(null);
 
   const load = async (uid: number) => {
     const res = await apiFetch(`/api/bookings?userId=${uid}`);
@@ -136,6 +140,9 @@ export default function BookingsPage() {
   }, [bookings, tab, today]);
 
   const pendingCount = bookings.filter((b) => b.status === "pending" && b.date >= today).length;
+  const opponentRequestCount = bookings.filter(
+    (b) => b.competition?.competitionStatus === "pending" && b.competition.isOpponentCaptain,
+  ).length;
   const totalSpent = bookings
     .filter((b) => !gone(b.status))
     .reduce((s, b) => s + b.totalPrice, 0);
@@ -201,6 +208,8 @@ export default function BookingsPage() {
 
   function needsOnlinePay(b: Booking) {
     if (gone(b.status)) return false;
+    // Competition money is held back until the opposition captain accepts.
+    if (b.competition?.competitionStatus === "pending") return false;
     // Played games are locked — the money is settled at the venue, not here.
     if (played(b)) return false;
     if (b.isFreePlay && b.totalPrice === 0) return false;
@@ -273,7 +282,7 @@ export default function BookingsPage() {
       const res = await apiFetch(`/api/bookings/${b.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: "cancelled", actor: "player" }),
+        body: JSON.stringify({ status: "cancelled", actor: "player", actorId: user?.id }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -283,6 +292,25 @@ export default function BookingsPage() {
       if (user) await load(user.id);
     } finally {
       setCancelling(null);
+    }
+  }
+
+  async function decideCompetition(b: Booking, action: "accept" | "decline") {
+    if (!user || !b.competition?.isOpponentCaptain) return;
+    setCompetitionDecision(b.id);
+    try {
+      const res = await apiFetch(`/api/bookings/${b.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ competitionAction: action, actorId: user.id }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Couldn't update the competition request.");
+      await load(user.id);
+    } catch (e) {
+      setCancelError(e instanceof Error ? e.message : "Couldn't update the competition request.");
+    } finally {
+      setCompetitionDecision(null);
     }
   }
 
@@ -352,8 +380,9 @@ export default function BookingsPage() {
           <div className="mt-4 flex items-center gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 dark:border-amber-500/30 dark:bg-amber-500/10">
             <Hourglass className="h-5 w-5 shrink-0 animate-pulse text-amber-600 dark:text-amber-400" />
             <p className="text-[13px] font-bold text-amber-800 dark:text-amber-200">
-              {pendingCount} game{pendingCount > 1 ? "s" : ""} waiting for a friendly
-              thumbs-up from the venue — we&apos;ll ping you the moment they confirm!
+              {opponentRequestCount > 0
+                ? `${opponentRequestCount} competition request${opponentRequestCount > 1 ? "s" : ""} need your accept or decline. The venue owner stays out until you decide.`
+                : `${pendingCount} game${pendingCount > 1 ? "s" : ""} waiting for a friendly thumbs-up from the venue — we'll ping you the moment they confirm!`}
             </p>
           </div>
         )}
@@ -415,6 +444,13 @@ export default function BookingsPage() {
             {filtered.map((b) => {
               const isPublic = b.visibility === "public";
               const isPending = b.status === "pending";
+              const competitionPending = b.competition?.competitionStatus === "pending";
+              const competitionDeclined =
+                b.competition?.competitionStatus === "declined" ||
+                b.competition?.competitionStatus === "cancelled";
+              const canDecideCompetition = Boolean(
+                b.status === "pending" && competitionPending && b.competition?.isOpponentCaptain,
+              );
               const isPlayed = played(b);
               const mine = myReviewAt(b.venue?.id);
               return (
@@ -435,7 +471,11 @@ export default function BookingsPage() {
                       {isPlayed
                         ? "🔒 Played"
                         : b.status === "pending"
-                          ? "⏳ Waiting for venue"
+                          ? canDecideCompetition
+                            ? "🆚 Decision needed"
+                            : competitionPending
+                              ? "🆚 Waiting for opposition"
+                              : "⏳ Waiting for venue"
                           : b.status === "confirmed"
                             ? "✓ Confirmed"
                             : b.status}
@@ -467,7 +507,7 @@ export default function BookingsPage() {
                         actually paid, since a game is often part eSewa, part
                         Khalti, part cash, with the water added on afterwards. */}
                     {b.totalPrice > 0 && <BookingPaymentSummary bookingId={b.id} />}
-                    {isPending && (
+                    {isPending && !competitionPending && (
                       <p className="mt-2.5 rounded-xl bg-amber-50 px-3.5 py-2 text-xs font-bold leading-relaxed text-amber-700 dark:bg-amber-500/10 dark:text-amber-300">
                         Your request is with the venue — lovely humans are reviewing it
                         now. We&apos;ll let you know right away! 💛
@@ -475,8 +515,9 @@ export default function BookingsPage() {
                     )}
                     {b.status === "rejected" && (
                       <p className="mt-2.5 rounded-xl bg-red-50 px-3.5 py-2 text-xs font-bold leading-relaxed text-red-500 dark:bg-red-500/10 dark:text-red-400">
-                        Oh no — the venue was fully packed for this slot. Pick another
-                        time, we believe in you! 🙏
+                        {b.competition?.competitionStatus === "declined"
+                          ? "The opposition captain declined this competition request, so the venue owner was not notified."
+                          : "Oh no — the venue was fully packed for this slot. Pick another time, we believe in you! 🙏"}
                       </p>
                     )}
                     <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1.5 text-[13px] font-semibold text-stone-600 dark:text-slate-300">
@@ -500,20 +541,34 @@ export default function BookingsPage() {
                           </span>
                           <span
                             className={`rounded-full px-3 py-1 text-[11px] font-black ${
-                              b.competition.scoreStatus === "recorded"
-                                ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
-                                : "bg-white text-indigo-700 dark:bg-white/10 dark:text-indigo-200"
+                              competitionDeclined
+                                ? "bg-red-500/15 text-red-600 dark:text-red-300"
+                                : b.competition.scoreStatus === "recorded"
+                                  ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
+                                  : "bg-white text-indigo-700 dark:bg-white/10 dark:text-indigo-200"
                             }`}
                           >
-                            {b.competition.scoreStatus === "recorded"
-                              ? `⚽ ${b.competition.homeScore}–${b.competition.awayScore}`
-                              : "score pending"}
+                            {competitionDeclined
+                              ? "request declined"
+                              : competitionPending
+                                ? canDecideCompetition
+                                  ? "decision needed"
+                                  : "opponent pending"
+                                : b.competition.scoreStatus === "recorded"
+                                  ? `⚽ ${b.competition.homeScore}–${b.competition.awayScore}`
+                                  : "score pending"}
                           </span>
                         </div>
                         <p className="mt-1 text-[11px] font-semibold leading-relaxed text-indigo-700 dark:text-indigo-300">
-                          {b.competition.scoreStatus === "recorded"
-                            ? "The venue owner recorded this result — it counts on both squads' profiles."
-                            : "The venue owner records the final score after kick-off — it then counts on both squads' profiles."}
+                          {competitionDeclined
+                            ? "The opposition captain declined this request, so it was not sent to the venue owner."
+                            : competitionPending
+                              ? canDecideCompetition
+                                ? "Your explicit decision is required. The venue owner will only be notified if you accept."
+                                : "Waiting for the opposition captain to accept before the venue can review this request."
+                              : b.competition.scoreStatus === "recorded"
+                                ? "The venue owner recorded this result — it counts on both squads' profiles."
+                                : "The venue owner records the final score after kick-off — it then counts on both squads' profiles."}
                           {b.competition.leagueName ? ` 🏆 Counts towards ${b.competition.leagueName}.` : ""}
                           {b.competition.leagueId ? (
                             <>
@@ -527,6 +582,29 @@ export default function BookingsPage() {
                             </>
                           ) : null}
                         </p>
+                        {canDecideCompetition && (
+                          <div className="mt-3 rounded-xl border border-indigo-200 bg-white/70 p-3 dark:border-indigo-500/20 dark:bg-white/5">
+                            <p className="text-[11px] font-bold leading-relaxed text-indigo-700 dark:text-indigo-200">
+                              Accept this fixture to release it to the venue owner. Declining keeps it out of the owner&apos;s actionable bookings.
+                            </p>
+                            <div className="mt-2.5 flex flex-wrap gap-2">
+                              <button
+                                onClick={() => void decideCompetition(b, "accept")}
+                                disabled={competitionDecision === b.id}
+                                className="rounded-xl bg-emerald-600 px-4 py-2 text-[11px] font-black text-white disabled:opacity-50"
+                              >
+                                {competitionDecision === b.id ? "Saving…" : "Accept request"}
+                              </button>
+                              <button
+                                onClick={() => void decideCompetition(b, "decline")}
+                                disabled={competitionDecision === b.id}
+                                className="rounded-xl border border-red-200 px-4 py-2 text-[11px] font-black text-red-600 disabled:opacity-50 dark:border-red-500/30 dark:text-red-300"
+                              >
+                                Decline
+                              </button>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     )}
                     {/*
@@ -614,7 +692,7 @@ export default function BookingsPage() {
                           {paying === b.id ? "Opening…" : `${payLabel(b)} via ${b.paymentMethod} (Test)`}
                         </button>
                       )}
-                      {isOnlineMethod(b.paymentMethod) && !gone(b.status) && (
+                      {isOnlineMethod(b.paymentMethod) && !gone(b.status) && b.competition?.competitionStatus !== "pending" && (
                         b.receiptUrl ? (
                           <button
                             onClick={() => setViewReceipt(b.receiptUrl)}
@@ -633,7 +711,7 @@ export default function BookingsPage() {
                           )
                         )
                       )}
-                      {tab === "upcoming" && !isPlayed && (
+                      {tab === "upcoming" && !isPlayed && !b.competition?.isOpponentCaptain && (
                         <button
                           onClick={() => cancel(b)}
                           disabled={cancelling === b.id}
