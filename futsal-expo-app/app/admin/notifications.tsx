@@ -80,15 +80,18 @@ export default function OwnerNotifications() {
   }
 
   async function markOne(n: AppNotification) {
-    // A notification should still open its target if the read mutation is
-    // temporarily unavailable. The old early return made the visible Open
-    // affordance appear broken whenever the API was slow.
+    // Opening remains available if the read mutation is temporarily unavailable,
+    // but the local read state only changes after the database confirms it.
+    let persistedRead = false;
     try {
       await markNotificationRead(n.id);
+      persistedRead = true;
     } catch {
-      // Continue to the destination; the next inbox refresh can reconcile read state.
+      // Continue to the destination without pretending the read state was saved.
     }
-    setItems((prev) => prev.map((item) => (item.id === n.id ? { ...item, isRead: true } : item)));
+    if (persistedRead) {
+      setItems((prev) => prev.map((item) => (item.id === n.id ? { ...item, isRead: true } : item)));
+    }
     const destination = ownerNotificationDestination(n.link);
     if (destination) {
       try {
@@ -149,9 +152,9 @@ export default function OwnerNotifications() {
 
   async function markReadOnly(n: AppNotification) {
     if (n.isRead) return;
-    setItems((prev) => prev.map((item) => (item.id === n.id ? { ...item, isRead: true } : item)));
     try {
       await markNotificationRead(n.id);
+      setItems((prev) => prev.map((item) => (item.id === n.id ? { ...item, isRead: true } : item)));
     } catch {
       await load();
     }

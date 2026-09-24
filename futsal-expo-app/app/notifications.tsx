@@ -131,9 +131,9 @@ export default function NotificationsScreen() {
 
   async function markReadOnly(n: AppNotification) {
     if (n.isRead) return;
-    setItems((prev) => prev.map((item) => (item.id === n.id ? { ...item, isRead: true } : item)));
     try {
       await markNotificationRead(n.id);
+      setItems((prev) => prev.map((item) => (item.id === n.id ? { ...item, isRead: true } : item)));
     } catch {
       await load();
     }
