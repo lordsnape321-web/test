@@ -89,7 +89,9 @@ export function RevenueRainbow({ data }: { data: Array<[string, number]> }) {
       iconColor="#10b981"
       right={
         <View style={[styles.totalPill, { backgroundColor: "rgba(16,185,129,0.15)" }]}>
-          <Text style={styles.totalPillText}>
+          <Text
+            style={[styles.totalPillText, { color: isDark ? "#6EE7B7" : "#047857" }]}
+          >
             {formatNPR(total)} in {data.length} day{data.length > 1 ? "s" : ""}
           </Text>
         </View>
@@ -103,23 +105,24 @@ export function RevenueRainbow({ data }: { data: Array<[string, number]> }) {
       <View style={styles.barRow}>
         {data.map(([day, val], i) => {
           const col = RAINBOW[i % RAINBOW.length];
-          const pct = Math.max(8, (val / max) * 100);
           return (
             <View key={day} style={styles.barCol}>
-              <Text style={[styles.barValue, { color: isDark ? col.softText : col.softText }]}>
+              <Text style={[styles.barValue, { color: isDark ? col.solid : col.softText }]}>
                 {val >= 1000 ? `${(val / 1000).toFixed(1)}k` : val}
               </Text>
-              <View
-                style={[
-                  styles.bar,
-                  {
-                    height: `${pct}%`,
-                    backgroundColor: col.solid,
-                  },
-                ]}
-                accessibilityLabel={`${dayLabel(day)}: ${formatNPR(val)}`}
-              >
-                <Text style={styles.barEmoji}>{col.emoji}</Text>
+              <View style={styles.barTrack}>
+                <View
+                  style={[
+                    styles.bar,
+                    {
+                      height: Math.max(10, Math.round((val / max) * 128)),
+                      backgroundColor: col.solid,
+                    },
+                  ]}
+                  accessibilityLabel={`${dayLabel(day)}: ${formatNPR(val)}`}
+                >
+                  <Text style={styles.barEmoji}>{col.emoji}</Text>
+                </View>
               </View>
               <Text style={[styles.barDay, { color: c.textMuted }]}>
                 {dayLabel(day)}
@@ -259,7 +262,7 @@ export function PaymentParty({ byMethod }: { byMethod: Array<[string, number, nu
               <View key={method}>
                 <View style={styles.payHead}>
                   <View style={[styles.payChip, { backgroundColor: s.bg }]}>
-                    <Text style={[styles.payChipText, { color: s.soft }]}>
+                    <Text style={[styles.payChipText, { color: darkMode ? s.color : s.soft }]}>
                       {s.emoji} {method} × {count}
                     </Text>
                   </View>
@@ -300,17 +303,19 @@ export function PeakHours({ byHour }: { byHour: Array<[string, number]> }) {
           {byHour.map(([hour, n], i) => (
             <View key={hour} style={styles.peakCol}>
               <Text style={[styles.peakCount, { color: c.textMuted }]}>{n}×</Text>
-              <View
-                style={[
-                  styles.peakBar,
-                  {
-                    height: `${Math.max(8, (n / max) * 100)}%`,
-                    backgroundColor: "#f97316",
-                    opacity: 0.55 + (n / max) * 0.45,
-                  },
-                ]}
-                accessibilityLabel={`${hour}: ${n} bookings`}
-              />
+              <View style={styles.peakTrack}>
+                <View
+                  style={[
+                    styles.peakBar,
+                    {
+                      height: Math.max(10, Math.round((n / max) * 96)),
+                      backgroundColor: "#f97316",
+                      opacity: 0.55 + (n / max) * 0.45,
+                    },
+                  ]}
+                  accessibilityLabel={`${hour}: ${n} bookings`}
+                />
+              </View>
               <Text style={[styles.peakHour, { color: c.textFaint }]}>{hour}</Text>
             </View>
           ))}
@@ -326,6 +331,9 @@ export function PeakHours({ byHour }: { byHour: Array<[string, number]> }) {
 
 const styles = StyleSheet.create({
   card: {
+    flexGrow: 1,
+    flexBasis: "30%",
+    minWidth: 260,
     borderRadius: radius["2xl"],
     borderWidth: 1,
     padding: space[5],
@@ -367,22 +375,42 @@ const styles = StyleSheet.create({
     height: 192,
     marginTop: space[2],
   },
-  barCol: { flex: 1, height: "100%", alignItems: "center", justifyContent: "flex-end", gap: 4 },
+  barCol: {
+    flex: 1,
+    minWidth: 0,
+    height: "100%",
+    alignItems: "center",
+    justifyContent: "flex-end",
+    gap: 4,
+  },
   barValue: { fontSize: fontSize["2xs"], fontWeight: "900" },
+  barTrack: {
+    width: "100%",
+    height: 132,
+    justifyContent: "flex-end",
+    alignItems: "stretch",
+  },
   bar: {
     width: "100%",
     borderRadius: radius.lg,
     alignItems: "center",
     justifyContent: "flex-start",
     paddingTop: 4,
-    minHeight: 12,
+    minHeight: 10,
   },
   barEmoji: { fontSize: fontSize.sm },
   barDay: { fontSize: 10, fontWeight: "800", textAlign: "center" },
-  donutRow: { flexDirection: "row", alignItems: "center", gap: space[5], marginTop: space[2] },
+  donutRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "center",
+    gap: space[5],
+    marginTop: space[2],
+  },
   donutHole: {
     width: 144,
     height: 144,
+    flexShrink: 0,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -396,7 +424,7 @@ const styles = StyleSheet.create({
   },
   donutTotal: { fontSize: fontSize["2xl"], fontWeight: "900" },
   donutCap: { fontSize: 10, fontWeight: "700", textTransform: "uppercase" },
-  legend: { flex: 1, minWidth: 0, gap: space[1.5] },
+  legend: { flex: 1, flexBasis: 180, minWidth: 180, gap: space[1.5] },
   legendRow: { flexDirection: "row", alignItems: "center", gap: space[2] },
   legendDot: { width: 12, height: 12, borderRadius: 6 },
   legendLabel: { flex: 1, minWidth: 0, fontSize: fontSize.xs, fontWeight: "700" },
@@ -419,8 +447,9 @@ const styles = StyleSheet.create({
     height: 144,
     marginTop: space[2],
   },
-  peakCol: { flex: 1, height: "100%", alignItems: "center", justifyContent: "flex-end", gap: 2 },
+  peakCol: { flex: 1, minWidth: 0, height: "100%", alignItems: "center", justifyContent: "flex-end", gap: 2 },
   peakCount: { fontSize: 10, fontWeight: "800" },
+  peakTrack: { width: "100%", height: 108, justifyContent: "flex-end" },
   peakBar: { width: "100%", borderRadius: radius.lg, minHeight: 10 },
   peakHour: { fontSize: 9, fontWeight: "700" },
   tip: { marginTop: space[2], fontSize: fontSize.xs, lineHeight: 16, fontWeight: "600" },
