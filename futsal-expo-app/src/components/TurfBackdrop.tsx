@@ -20,7 +20,7 @@ export function TurfBackdrop({ style }: { style?: object }) {
       style={[
         StyleSheet.absoluteFill,
         {
-          backgroundColor: studio ? "#F1F5F9" : isDark ? "#020617" : "#FFFFFF",
+          backgroundColor: studio ? (isDark ? "#020617" : "#F1F5F9") : isDark ? "#020617" : "#FFFFFF",
         },
         style,
       ]}

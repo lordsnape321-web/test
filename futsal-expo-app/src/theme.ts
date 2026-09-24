@@ -158,9 +158,10 @@ export const darkPalette: Palette = {
 };
 
 /**
- * Owner Studio (/admin/*) is a light slate workspace, deliberately unlike the
- * warm player app. Only a light variant exists — the web app does not theme it
- * dark beyond a few overrides.
+ * Owner Studio (/admin/*) uses the slate workspace in both themes. The web
+ * OwnerShell keeps the same structure in dark mode, switching its page to
+ * slate-950 and its cards to slate-900 rather than falling back to the warm
+ * player palette.
  */
 export const ownerPalette: Palette = {
   bg: colors.slate100,
@@ -177,6 +178,23 @@ export const ownerPalette: Palette = {
   activeSoft: colors.orange100,
   activeText: colors.orange700,
   shadow: "rgba(15,23,42,0.08)",
+};
+
+export const ownerDarkPalette: Palette = {
+  bg: colors.slate950,
+  surface: colors.slate900,
+  inset: colors.slate800,
+  border: "rgba(255,255,255,0.10)",
+  text: colors.slate100,
+  textMuted: colors.slate400,
+  textFaint: colors.slate500,
+  primary: colors.orange500,
+  primaryText: colors.white,
+  accent: colors.emerald500,
+  accentText: colors.white,
+  activeSoft: "rgba(249,115,22,0.15)",
+  activeText: colors.orange300,
+  shadow: "rgba(0,0,0,0.45)",
 };
 
 /**

@@ -1,6 +1,6 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { Platform, useColorScheme } from "react-native";
-import { darkPalette, lightPalette, ownerPalette, type Palette } from "@/theme";
+import { darkPalette, lightPalette, ownerDarkPalette, ownerPalette, type Palette } from "@/theme";
 import { STORAGE_KEYS, initStorage, storage } from "@/lib/storage";
 
 /**
@@ -11,7 +11,8 @@ import { STORAGE_KEYS, initStorage, storage } from "@/lib/storage";
  * saved mode wins; otherwise the device colour scheme is used once as the
  * initial mode. The toggle always writes an explicit light/dark value.
  *
- * Owner Studio (/admin) forces `ownerPalette` (light slate workspace).
+ * Owner Studio (/admin) uses the slate workspace in either theme, matching the
+ * web OwnerShell's `dark:bg-slate-950` and `dark:bg-slate-900` surfaces.
  */
 
 export type ThemeMode = "light" | "dark" | "system";
@@ -75,8 +76,9 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   }, [system]);
 
   const systemDark = mode === "system" ? system === "dark" : mode === "dark";
-  // Studio is always the light slate workspace, matching OwnerShell on the web.
-  const isDark = studio ? false : systemDark;
+  // Studio changes the palette, not the user's selected mode. The web OwnerShell
+  // has its own slate dark surfaces, so the toggle must remain functional here.
+  const isDark = systemDark;
 
   useEffect(() => {
     if (Platform.OS !== "web" || typeof document === "undefined") return;
@@ -87,7 +89,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const value = useMemo(
     () => ({
       mode,
-      colors: studio ? ownerPalette : isDark ? darkPalette : lightPalette,
+      colors: studio ? (isDark ? ownerDarkPalette : ownerPalette) : isDark ? darkPalette : lightPalette,
       isDark,
       setMode,
       toggle,

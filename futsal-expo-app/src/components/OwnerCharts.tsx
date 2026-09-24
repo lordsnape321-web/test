@@ -242,13 +242,13 @@ const METHOD_STYLE: Record<string, { color: string; bg: string; soft: string; em
 };
 
 export function PaymentParty({ byMethod }: { byMethod: Array<[string, number, number]> }) {
-  const { colors: c } = useTheme();
+  const { colors: c, isDark: darkMode } = useTheme();
   const max = Math.max(1, ...byMethod.map(([, , amt]) => amt));
 
   return (
     <Card title="How friends pay 🎊" icon={<Wallet size={16} />} iconColor="#0ea5e9">
       {byMethod.length === 0 ? (
-        <Text style={[styles.empty, { backgroundColor: "#F1F5F9", color: c.textFaint }]}>
+        <Text style={[styles.empty, { backgroundColor: darkMode ? "#1E293B" : "#F1F5F9", color: c.textFaint }]}>
           Payment stories will dance here soon! 💃
         </Text>
       ) : (
@@ -265,7 +265,7 @@ export function PaymentParty({ byMethod }: { byMethod: Array<[string, number, nu
                   </View>
                   <Text style={[styles.payAmt, { color: c.text }]}>{formatNPR(amt)}</Text>
                 </View>
-                <View style={[styles.payTrack, { backgroundColor: isDark(c) ? "#1E293B" : "#F1F5F9" }]}>
+                <View style={[styles.payTrack, { backgroundColor: darkMode ? "#1E293B" : "#F1F5F9" }]}>
                   <View
                     style={[
                       styles.payFill,
@@ -322,16 +322,6 @@ export function PeakHours({ byHour }: { byHour: Array<[string, number]> }) {
       </Text>
     </Card>
   );
-}
-
-function isDark(c: { bg: string }) {
-  // Owner Studio is light-only on web; approximate with luminance of bg.
-  const hex = c.bg.replace("#", "");
-  if (hex.length !== 6) return false;
-  const r = parseInt(hex.slice(0, 2), 16);
-  const g = parseInt(hex.slice(2, 4), 16);
-  const b = parseInt(hex.slice(4, 6), 16);
-  return (r * 299 + g * 587 + b * 114) / 1000 < 128;
 }
 
 const styles = StyleSheet.create({
