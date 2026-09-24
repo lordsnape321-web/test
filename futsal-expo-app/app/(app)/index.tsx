@@ -43,6 +43,15 @@ import { useBreakpoints } from "@/lib/responsive";
 import type { Match, SiteStats, Venue } from "@/lib/types";
 import { colors, fontSize, radius, space } from "@/theme";
 
+const MARQUEE_ITEMS = [
+  "⚽ Everyone's welcome here",
+  "🤝 Come alone, leave with friends",
+  "🔥 Weekend games & laughter",
+  "💳 Pay your way — eSewa • Khalti",
+  "🏆 Friendly matches daily",
+  "👥 Bring your whole crew",
+] as const;
+
 /**
  * Home — a port of the web app's app/page.tsx.
  *
@@ -63,12 +72,14 @@ export default function HomeScreen() {
   const orangeText = isDark ? colors.orange400 : colors.orange500;
   const h2Size = bp.sm ? 30 : 24;
   const marqueeX = useRef(new Animated.Value(0)).current;
-  const [marqueeWidth, setMarqueeWidth] = useState(0);
+  const [marqueeGroupWidth, setMarqueeGroupWidth] = useState(0);
 
   useEffect(() => {
+    if (!marqueeGroupWidth) return;
+    marqueeX.setValue(0);
     const loop = Animated.loop(
       Animated.timing(marqueeX, {
-        toValue: 1,
+        toValue: -(marqueeGroupWidth + space[8]),
         duration: 28000,
         easing: Easing.linear,
         useNativeDriver: false,
@@ -76,7 +87,7 @@ export default function HomeScreen() {
     );
     loop.start();
     return () => loop.stop();
-  }, [marqueeX]);
+  }, [marqueeGroupWidth, marqueeX]);
 
   const [venues, setVenues] = useState<Venue[]>([]);
   const [matches, setMatches] = useState<Match[]>([]);
@@ -128,10 +139,11 @@ export default function HomeScreen() {
     { n: `${stats?.bookings ?? "—"}+`, l: "Games played" },
     { n: `${stats?.openMatches ?? "—"}`, l: "Open games" },
   ];
+  const statRows = bp.sm ? [statTiles] : [statTiles.slice(0, 2), statTiles.slice(2)];
 
   return (
     <SafeAreaView style={[styles.flex, { backgroundColor: c.bg }]} edges={[]}>
-      <ScrollView contentContainerStyle={[styles.content, { paddingHorizontal: bp.gutter, paddingBottom: bp.lg ? 0 : space[20] }]}>
+      <ScrollView contentContainerStyle={[styles.content, { paddingHorizontal: bp.gutter, paddingBottom: 0 }]}>
         <PageContainer padded={false}>
         {/* ── HERO ─────────────────────────────────────────────────── */}
         <View style={[styles.heroGrid, bp.lg ? styles.heroGridWide : null]}>
@@ -217,23 +229,19 @@ export default function HomeScreen() {
           <TrustItem icon={Heart} color={orangeText} text="Free cancellation with a smile" />
         </View>
 
-        {/* Stats — grid-cols-2 sm:grid-cols-4 */}
+        {/* Stats — a 2×2 matrix on phones, four cells in one row from sm up */}
         <View style={styles.statGrid}>
-          {statTiles.map((s) => (
-            <View
-              key={s.l}
-              style={[
-                styles.statTile,
-                {
-                  backgroundColor: c.surface,
-                  borderColor: c.border,
-                  flexBasis: `${100 / bp.statColumns}%`,
-                  maxWidth: `${100 / bp.statColumns}%`,
-                },
-              ]}
-            >
-              <Text style={[styles.statValue, { color: c.text }]}>{s.n}</Text>
-              <Text style={[styles.statLabel, { color: c.textFaint }]}>{s.l}</Text>
+          {statRows.map((row, rowIndex) => (
+            <View key={rowIndex} style={styles.statRow}>
+              {row.map((s) => (
+                <View
+                  key={s.l}
+                  style={[styles.statTile, { backgroundColor: c.surface, borderColor: c.border }]}
+                >
+                  <Text style={[styles.statValue, { color: c.text }]}>{s.n}</Text>
+                  <Text style={[styles.statLabel, { color: c.textFaint }]}>{s.l}</Text>
+                </View>
+              ))}
             </View>
           ))}
         </View>
@@ -243,25 +251,20 @@ export default function HomeScreen() {
 
         <View style={[styles.marquee, { marginHorizontal: -bp.gutter, backgroundColor: isDark ? "#064E3B" : colors.emerald700, borderColor: isDark ? "#022C22" : "#065F46" }]}>
           <View style={styles.marqueeViewport}>
-            <Animated.View
-              onLayout={(event) => setMarqueeWidth(event.nativeEvent.layout.width)}
-              style={[
-                styles.marqueeTrack,
-                {
-                  transform: [
-                    {
-                      translateX: marqueeX.interpolate({
-                        inputRange: [0, 1],
-                        outputRange: [0, marqueeWidth ? -marqueeWidth / 2 : 0],
-                      }),
-                    },
-                  ],
-                },
-              ]}
-            >
-              <Text style={styles.marqueeText} numberOfLines={1}>
-                ⚽ Everyone&apos;s welcome here   🤝 Come alone, leave with friends   🔥 Weekend games &amp; laughter   💳 Pay your way — eSewa • Khalti   🏆 Friendly matches daily   👥 Bring your whole crew   ⚽ Everyone&apos;s welcome here   🤝 Come alone, leave with friends   🔥 Weekend games &amp; laughter   💳 Pay your way — eSewa • Khalti   🏆 Friendly matches daily   👥 Bring your whole crew
-              </Text>
+            <Animated.View style={[styles.marqueeTrack, { transform: [{ translateX: marqueeX }] }]}>
+              {[0, 1].map((copy) => (
+                <View
+                  key={copy}
+                  onLayout={copy === 0 ? (event) => setMarqueeGroupWidth(event.nativeEvent.layout.width) : undefined}
+                  style={styles.marqueeGroup}
+                >
+                  {MARQUEE_ITEMS.map((item) => (
+                    <Text key={`${copy}-${item}`} style={styles.marqueeText} numberOfLines={1}>
+                      {item}
+                    </Text>
+                  ))}
+                </View>
+              ))}
             </Animated.View>
           </View>
         </View>
@@ -683,8 +686,9 @@ const styles = StyleSheet.create({
   ratingMeta: { fontSize: fontSize["2xs"], marginTop: 2 },
   marquee: { backgroundColor: colors.emerald700, borderTopWidth: 1, borderBottomWidth: 1, borderColor: "#065F46", paddingVertical: space[3], paddingHorizontal: space[4] },
   marqueeViewport: { overflow: "hidden" },
-  marqueeTrack: { alignSelf: "flex-start" },
-  marqueeText: { color: colors.emerald50, fontSize: fontSize.xs, fontWeight: "900", letterSpacing: 1.2 },
+  marqueeTrack: { flexDirection: "row", alignSelf: "flex-start", gap: space[8] },
+  marqueeGroup: { flexDirection: "row", alignItems: "center", gap: space[8], flexShrink: 0 },
+  marqueeText: { color: colors.emerald50, fontSize: fontSize.xs, fontWeight: "900", letterSpacing: 1.2, flexShrink: 0 },
   heroBadge: {
     flexDirection: "row",
     alignItems: "center",
@@ -701,6 +705,8 @@ const styles = StyleSheet.create({
 
   /* search */
   searchCard: {
+    width: "100%",
+    minWidth: 0,
     borderRadius: radius["3xl"],
     borderWidth: 1,
     padding: space[2],
@@ -711,9 +717,11 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 8 },
     elevation: 3,
   },
-  searchFormRow: { gap: space[2] },
+  searchFormRow: { width: "100%", alignItems: "stretch", gap: space[2] },
   searchFormRowWide: { flexDirection: "row", alignItems: "stretch" },
   searchField: {
+    width: "100%",
+    minWidth: 0,
     flexDirection: "row",
     alignItems: "center",
     gap: space[2],
@@ -721,11 +729,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: space[4],
     minHeight: 48,
   },
-  searchFieldWide: { flex: 1 },
-  searchInput: { flex: 1, fontSize: fontSize.base, fontWeight: "600", paddingVertical: 0 },
+  searchFieldWide: { flex: 1, width: 0 },
+  searchInput: { flex: 1, minWidth: 0, height: 48, fontSize: fontSize.base, fontWeight: "600", paddingVertical: 0 },
   cityField: { paddingRight: space[2] },
   cityFieldWide: { width: 176, marginTop: 0 },
-  cityPicker: { flex: 1, height: 48, fontSize: fontSize.base, fontWeight: "600" },
+  cityPicker: { flex: 1, minWidth: 0, height: 48, fontSize: fontSize.base, fontWeight: "600", padding: 0 },
   homeCityHint: { fontSize: fontSize.xs, fontWeight: "700", marginTop: space[2] },
   searchButton: {
     borderRadius: radius["2xl"],
@@ -749,10 +757,11 @@ const styles = StyleSheet.create({
   trustText: { fontSize: fontSize.sm, fontWeight: "600" },
 
   /* stats */
-  statGrid: { flexDirection: "row", flexWrap: "wrap", gap: space[2], marginTop: space[6] },
+  statGrid: { gap: space[2], marginTop: space[6] },
+  statRow: { flexDirection: "row", gap: space[2] },
   statTile: {
-    flexGrow: 1,
-    flexBasis: "47%",
+    flex: 1,
+    minWidth: 0,
     borderRadius: radius["2xl"],
     borderWidth: 1,
     paddingHorizontal: space[2],
