@@ -1,4 +1,4 @@
-import { db } from "@/db";
+import { db, ensureCompetitionBookingColumns } from "@/db";
 import { bookings, courts, venues } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { gamePlayed } from "@/lib/futsal";
@@ -13,6 +13,7 @@ export const dynamic = "force-dynamic";
 
 export async function POST(req: Request) {
   try {
+    await ensureCompetitionBookingColumns();
     const body = await req.json();
     const bookingId = Number(body.bookingId);
     if (!Number.isInteger(bookingId) || bookingId <= 0) {
@@ -21,6 +22,12 @@ export async function POST(req: Request) {
     const rows = await db.select().from(bookings).where(eq(bookings.id, bookingId));
     const booking = rows[0];
     if (!booking) return Response.json({ error: "Booking not found" }, { status: 404 });
+    if (booking.visibility === "competition" && booking.competitionStatus === "pending") {
+      return Response.json(
+        { error: "Payment opens after the opposition captain accepts this competition request 🆚" },
+        { status: 409 }
+      );
+    }
     if (booking.paymentMethod !== "eSewa") {
       return Response.json({ error: "This booking is not an eSewa payment 💳" }, { status: 400 });
     }

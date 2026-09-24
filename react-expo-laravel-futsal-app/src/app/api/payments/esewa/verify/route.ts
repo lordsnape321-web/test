@@ -1,4 +1,4 @@
-import { db } from "@/db";
+import { db, ensureCompetitionBookingColumns } from "@/db";
 import { bookings, courts, venues } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import {
@@ -16,6 +16,7 @@ export const dynamic = "force-dynamic";
 
 export async function POST(req: Request) {
   try {
+    await ensureCompetitionBookingColumns();
     const body = await req.json();
     const dataB64 = String(body.data ?? "").trim();
     const hintBookingId = Number(body.bookingId ?? 0) || null;
@@ -28,6 +29,12 @@ export async function POST(req: Request) {
       const mRows = await db.select().from(bookings).where(eq(bookings.id, hintBookingId));
       const mBooking = mRows[0];
       if (!mBooking) return Response.json({ error: "Booking not found" }, { status: 404 });
+      if (mBooking.visibility === "competition" && mBooking.competitionStatus === "pending") {
+        return Response.json(
+          { error: "Payment opens after the opposition captain accepts this competition request 🆚" },
+          { status: 409 }
+        );
+      }
       const paidAmount = mBooking.depositRequired
         ? Number(mBooking.depositAmount || 0)
         : Number(mBooking.totalPrice || 0);
@@ -97,6 +104,12 @@ export async function POST(req: Request) {
     const rows = await db.select().from(bookings).where(eq(bookings.id, bookingId));
     const booking = rows[0];
     if (!booking) return Response.json({ error: "Booking not found" }, { status: 404 });
+    if (booking.visibility === "competition" && booking.competitionStatus === "pending") {
+      return Response.json(
+        { error: "Payment opens after the opposition captain accepts this competition request 🆚" },
+        { status: 409 }
+      );
+    }
     if (booking.esewaUuid && booking.esewaUuid !== uuid) {
       return Response.json(
         { error: "Transaction doesn't match this booking — please start payment again 🔄" },

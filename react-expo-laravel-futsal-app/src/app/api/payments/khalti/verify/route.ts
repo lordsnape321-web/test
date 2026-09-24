@@ -1,4 +1,4 @@
-import { db } from "@/db";
+import { db, ensureCompetitionBookingColumns } from "@/db";
 import { bookings, courts, venues } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { getKhaltiConfig, khaltiLookup } from "@/lib/payments";
@@ -10,6 +10,7 @@ export const dynamic = "force-dynamic";
 
 export async function POST(req: Request) {
   try {
+    await ensureCompetitionBookingColumns();
     const body = await req.json();
     const pidx = String(body.pidx ?? "").trim();
     const bookingId = Number(body.bookingId ?? 0) || null;
@@ -26,6 +27,12 @@ export async function POST(req: Request) {
       booking = found;
     }
     if (!booking) return Response.json({ error: "Booking not found" }, { status: 404 });
+    if (booking.visibility === "competition" && booking.competitionStatus === "pending") {
+      return Response.json(
+        { error: "Payment opens after the opposition captain accepts this competition request 🆚" },
+        { status: 409 }
+      );
+    }
     if (booking.khaltiPidx && booking.khaltiPidx !== pidx) {
       return Response.json(
         { error: "Payment session doesn't match this booking — start again 🔄" },

@@ -30,6 +30,7 @@ import { ReceiptViewer } from "@/components/ReceiptUploader";
 import { useAuth } from "@/context/AuthContext";
 import { useTheme } from "@/context/ThemeContext";
 import { formatNPR, formatTime12, prettyDate } from "@/lib/futsal";
+import { useBreakpoints } from "@/lib/responsive";
 import type { Booking } from "@/lib/types";
 import { colors, fontSize, radius, space } from "@/theme";
 
@@ -40,6 +41,7 @@ import { colors, fontSize, radius, space } from "@/theme";
 export default function OwnerRequests() {
   const { user } = useAuth();
   const { colors: c, isDark } = useTheme();
+  const { sm } = useBreakpoints();
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [venues, setVenues] = useState<Array<{ id: number; ownerId: number | null }>>([]);
   const [loading, setLoading] = useState(true);
@@ -48,7 +50,7 @@ export default function OwnerRequests() {
   const [viewReceipt, setViewReceipt] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    const [b, v] = await Promise.all([fetchBookings(), fetchVenues()]);
+    const [b, v] = await Promise.all([fetchBookings({ refresh: true }), fetchVenues()]);
     setBookings(b);
     setVenues(v.map((x) => ({ id: x.id, ownerId: x.ownerId ?? null })));
   }, []);
@@ -70,7 +72,16 @@ export default function OwnerRequests() {
     [venues, user],
   );
   const mine = useMemo(
-    () => bookings.filter((b) => b.venue && myVenueIds.has(b.venue.id)),
+    () =>
+      bookings
+        .filter((b) => b.venue && myVenueIds.has(b.venue.id))
+        .filter(
+          (b) =>
+            b.visibility !== "competition" ||
+            b.competition?.competitionStatus === "accepted" ||
+            !b.competition?.competitionStatus ||
+            b.competition.competitionStatus === "none",
+        ),
     [bookings, myVenueIds],
   );
   const pending = mine.filter((b) => b.status === "pending");
@@ -187,12 +198,22 @@ export default function OwnerRequests() {
             style={[styles.card, { backgroundColor: c.surface, borderColor: c.border }]}
           >
             <View style={styles.cardBody}>
-              {b.venue?.imageUrl ? (
-                <Image source={{ uri: b.venue.imageUrl }} style={styles.cardImg} />
-              ) : (
-                <View style={[styles.cardImg, { backgroundColor: c.border }]} />
-              )}
-              <View style={styles.grow}>
+              <View style={[styles.requestMain, !sm && styles.requestMainNarrow]}>
+                {b.venue?.imageUrl ? (
+                  <Image
+                    source={{ uri: b.venue.imageUrl }}
+                    style={[styles.cardImg, !sm && styles.cardImgNarrow]}
+                  />
+                ) : (
+                  <View
+                    style={[
+                      styles.cardImg,
+                      !sm && styles.cardImgNarrow,
+                      { backgroundColor: c.border },
+                    ]}
+                  />
+                )}
+                <View style={[styles.requestInfo, !sm && styles.requestInfoNarrow]}>
                 <View style={styles.chipRow}>
                   <Text style={[styles.mono, { color: c.textFaint }]}>#FN-{b.id}</Text>
                   <View style={[styles.chip, { backgroundColor: statusBg(b) }]}>
@@ -202,7 +223,9 @@ export default function OwnerRequests() {
                     <View style={[styles.chip, { backgroundColor: "rgba(99,102,241,0.15)" }]}>
                       <Swords size={10} color="#4338CA" />
                       <Text style={[styles.chipText, { color: "#4338CA" }]}>
-                        Competition • you score it
+                        Competition • {b.competition.scoreStatus === "recorded"
+                          ? `⚽ ${b.competition.homeScore}–${b.competition.awayScore}`
+                          : "score due"}
                       </Text>
                     </View>
                   ) : b.visibility === "public" ? (
@@ -332,8 +355,14 @@ export default function OwnerRequests() {
                   ) : null}
                 </View>
               </View>
+            </View>
 
-              <View style={styles.actions}>
+              <View
+                style={[
+                  styles.cardFooter,
+                  { borderTopColor: c.border },
+                ]}
+              >
                 <View style={styles.priceCol}>
                   {(b.discountAmount ?? 0) > 0 && (b.priceBeforeDiscount ?? 0) > b.totalPrice ? (
                     <Text style={[styles.strike, { color: c.textFaint }]}>
@@ -355,7 +384,14 @@ export default function OwnerRequests() {
                     <Pressable
                       onPress={() => decide(b.id, false)}
                       disabled={acting === b.id}
-                      style={[styles.declineBtn, { opacity: acting === b.id ? 0.5 : 1 }]}
+                      style={[
+                        styles.declineBtn,
+                        {
+                          opacity: acting === b.id ? 0.5 : 1,
+                          backgroundColor: isDark ? "rgba(239,68,68,0.15)" : "#FEF2F2",
+                          borderColor: isDark ? "rgba(248,113,113,0.35)" : "#FECACA",
+                        },
+                      ]}
                     >
                       <X size={14} color="#DC2626" strokeWidth={3} />
                       <Text style={styles.declineText}>Decline</Text>
@@ -412,8 +448,19 @@ const styles = StyleSheet.create({
   emptyTitle: { marginTop: space[3], fontSize: fontSize.lg, fontWeight: "800" },
   emptyBody: { marginTop: space[1], fontSize: fontSize.sm, textAlign: "center" },
   card: { borderRadius: radius["2xl"], borderWidth: 1, overflow: "hidden" },
-  cardBody: { flexDirection: "row", flexWrap: "wrap", gap: space[4], padding: space[4] },
-  cardImg: { width: 144, height: 96, borderRadius: radius.xl },
+  cardBody: { gap: space[4], padding: space[4] },
+  requestMain: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "flex-start",
+    gap: space[4],
+  },
+  requestMainNarrow: { flexDirection: "column" },
+  requestInfo: { flexGrow: 1, flexBasis: 220, minWidth: 0 },
+  requestInfoNarrow: { width: "100%", flexBasis: "auto" },
+  cardImg: { width: 144, height: 96, flexShrink: 0, borderRadius: radius.xl },
+  cardImgNarrow: { width: "100%", height: 112 },
+
   chipRow: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: space[2] },
   mono: { fontFamily: "monospace", fontSize: fontSize.xs, fontWeight: "700" },
   chip: {
@@ -438,8 +485,17 @@ const styles = StyleSheet.create({
   metaItem: { flexDirection: "row", alignItems: "center", gap: 4 },
   metaSmall: { fontSize: fontSize.xs, fontWeight: "600" },
   notes: { fontSize: fontSize.xs, fontStyle: "italic" },
-  actions: { alignItems: "flex-end", gap: space[2], minWidth: 110 },
-  priceCol: { alignItems: "flex-end" },
+  cardFooter: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: space[3],
+    borderTopWidth: 1,
+    paddingTop: space[3],
+  },
+  priceCol: { alignItems: "flex-end", flexShrink: 0 },
+
   strike: { fontSize: fontSize.xs, textDecorationLine: "line-through", fontWeight: "700" },
   price: { fontSize: fontSize.xl, fontWeight: "900" },
   actionRow: { flexDirection: "row", gap: space[2] },
