@@ -113,9 +113,13 @@ export type Palette = {
 /**
  * Player app, light mode: the warm clubhouse look.
  * body #FFF9F0 / text #1C1917, cards white on #F0E3CC borders.
+ *
+ * `bg` is transparent so the shell's TurfBackdrop (the `.turf-pattern`
+ * equivalent) paints through every screen; the pattern itself includes the
+ * peach base colour.
  */
 export const lightPalette: Palette = {
-  bg: colors.peach,
+  bg: "transparent",
   surface: colors.white,
   inset: colors.insetCream,
   border: colors.borderSand,
@@ -134,9 +138,10 @@ export const lightPalette: Palette = {
 /**
  * Player app, dark mode.
  * body #020617 / text #F1F5F9, cards slate-900 on white/10 borders.
+ * `bg` is transparent for the same reason as light mode.
  */
 export const darkPalette: Palette = {
-  bg: colors.slate950,
+  bg: "transparent",
   surface: colors.slate900,
   inset: "rgba(255,255,255,0.05)",
   border: "rgba(255,255,255,0.10)",
@@ -244,7 +249,8 @@ export const fontWeight = {
  */
 export const MIN_TAP_TARGET = 44;
 
-/** The web app's font stack. Plus Jakarta Sans is not bundled with RN. */
+/** The web app's font stack. Plus Jakarta Sans is loaded in the root layout. */
+export const APP_FONT_FAMILY = "PlusJakartaSans_400Regular";
 export const fontFamily = {
-  sans: "Plus Jakarta Sans",
+  sans: "PlusJakartaSans_400Regular",
 } as const;

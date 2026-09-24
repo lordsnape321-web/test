@@ -253,28 +253,45 @@ const styles = StyleSheet.create({
   button: {
     minHeight: MIN_TAP_TARGET,
     minWidth: MIN_TAP_TARGET,
+    // Most primary CTAs on the web are rounded-full font-black; secondary
+    // buttons are rounded-xl. Primary keeps xl to match the shared Button;
+    // call sites that need full-round pass `style`.
     borderRadius: radius.xl,
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: space["4"],
     paddingVertical: space["3"],
   },
-  buttonLabel: { fontSize: fontSize.lg, fontWeight: "600" },
+  buttonLabel: { fontSize: fontSize.base, fontWeight: "800" },
   field: { marginBottom: space["4"] },
-  label: { fontSize: fontSize.base, marginBottom: space["1"], fontWeight: "500" },
+  label: {
+    fontSize: fontSize.sm,
+    marginBottom: space["1"],
+    fontWeight: "700",
+    textTransform: "uppercase",
+    letterSpacing: 0.8,
+  },
   input: {
     borderWidth: 1,
     borderRadius: radius.xl,
-    paddingHorizontal: space["3"],
-    paddingVertical: space["2"],
+    paddingHorizontal: space["3.5"],
+    paddingVertical: space["2.5"],
     fontSize: fontSize.lg,
+    minHeight: MIN_TAP_TARGET,
   },
   errorText: { color: "#B91C1C", fontSize: fontSize.sm, marginTop: space["1"] },
   card: {
     borderWidth: 1,
-    borderRadius: radius.xl,
+    // rounded-3xl border border-[#F0E3CC] bg-white shadow — player app cards
+    borderRadius: radius["3xl"],
     padding: space["4"],
     marginBottom: space["3"],
+    // shadow-[0_10px_30px_rgba(180,120,60,0.08)]
+    shadowColor: "rgb(180,120,60)",
+    shadowOpacity: 0.08,
+    shadowRadius: 15,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 2,
   },
   pill: {
     paddingHorizontal: space["2"] + 2,
@@ -285,7 +302,7 @@ const styles = StyleSheet.create({
   pillLabel: { fontSize: fontSize.sm, fontWeight: "600" },
   notice: {
     borderWidth: 1,
-    borderRadius: radius.xl,
+    borderRadius: radius["2xl"],
     padding: space["3"],
     marginBottom: space["4"],
   },

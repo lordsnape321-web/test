@@ -1,6 +1,6 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { useColorScheme } from "react-native";
-import { darkPalette, lightPalette, type Palette } from "@/theme";
+import { darkPalette, lightPalette, ownerPalette, type Palette } from "@/theme";
 import { STORAGE_KEYS, initStorage, storage } from "@/lib/storage";
 
 /**
@@ -12,6 +12,10 @@ import { STORAGE_KEYS, initStorage, storage } from "@/lib/storage";
  *
  * Three states: "light", "dark", and "system" (follow the device). "system" is
  * the default, which is what the web app does when nothing is stored.
+ *
+ * Owner Studio (/admin/*) is a light slate workspace on the web, unlike the
+ * warm player app — force `ownerPalette` while `studio` is true so admin
+ * screens never inherit the peach clubhouse look (or dark player colours).
  */
 
 export type ThemeMode = "light" | "dark" | "system";
@@ -22,6 +26,13 @@ type ThemeState = {
   colors: Palette;
   isDark: boolean;
   setMode: (mode: ThemeMode) => void;
+  /**
+   * Enter/leave Owner Studio chrome. The web routes pick the palette by
+   * path (`/admin/*` → OwnerShell); React Native stacks have no shared path
+   * context, so the admin layout flips this flag.
+   */
+  studio: boolean;
+  setStudio: (on: boolean) => void;
 };
 
 const ThemeContext = createContext<ThemeState | null>(null);
@@ -29,6 +40,7 @@ const ThemeContext = createContext<ThemeState | null>(null);
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const system = useColorScheme();
   const [mode, setModeState] = useState<ThemeMode>("system");
+  const [studio, setStudio] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -45,11 +57,20 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     void storage.set(STORAGE_KEYS.theme, next);
   }, []);
 
-  const isDark = mode === "system" ? system === "dark" : mode === "dark";
+  const systemDark = mode === "system" ? system === "dark" : mode === "dark";
+  // Studio is always the light slate workspace, matching OwnerShell on the web.
+  const isDark = studio ? false : systemDark;
 
   const value = useMemo(
-    () => ({ mode, colors: isDark ? darkPalette : lightPalette, isDark, setMode }),
-    [mode, isDark, setMode],
+    () => ({
+      mode,
+      colors: studio ? ownerPalette : isDark ? darkPalette : lightPalette,
+      isDark,
+      setMode,
+      studio,
+      setStudio,
+    }),
+    [mode, isDark, setMode, studio],
   );
 
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;

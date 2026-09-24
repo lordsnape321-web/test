@@ -226,7 +226,7 @@ export default function HomeScreen() {
               fg: "#B45309",
             },
           ].map((s) => (
-            <View key={s.step} style={[styles.stepCard, { backgroundColor: c.bg, borderColor: c.border }]}>
+            <View key={s.step} style={[styles.stepCard, { backgroundColor: c.surface, borderColor: c.border }]}>
               <Text style={[styles.stepNumber, { color: c.inset }]}>{s.step}</Text>
               <View style={[styles.stepIcon, { backgroundColor: s.bg }]}>
                 <s.icon size={24} color={s.fg} strokeWidth={2.5} />

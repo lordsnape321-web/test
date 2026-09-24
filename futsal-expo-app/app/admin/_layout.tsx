@@ -1,5 +1,5 @@
 import { Tabs } from "expo-router";
-import React from "react";
+import React, { useEffect } from "react";
 import { StyleSheet, View } from "react-native";
 import { OwnerGuard } from "@/components/OwnerGuard";
 import { OwnerHeader, OwnerTabBar } from "@/components/OwnerShell";
@@ -8,9 +8,18 @@ import { useTheme } from "@/context/ThemeContext";
 /**
  * Owner Studio layout — brand bar + the six-item owner rail, with every child
  * gated by OwnerGuard (loading → sign-in → owners-only → content).
+ *
+ * Entering here also forces `ownerPalette` (light slate workspace), matching
+ * the web OwnerShell which never uses the warm player clubhouse colours.
  */
 export default function AdminLayout() {
-  const { colors: c } = useTheme();
+  const { colors: c, setStudio } = useTheme();
+
+  useEffect(() => {
+    setStudio(true);
+    return () => setStudio(false);
+  }, [setStudio]);
+
   return (
     <OwnerGuard>
       <View style={[styles.flex, { backgroundColor: c.bg }]}>
