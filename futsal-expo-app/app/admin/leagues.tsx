@@ -182,7 +182,7 @@ export default function OwnerLeagues() {
           ) : (
             hosted.map((l) => (
               <View key={l.id} style={styles.leagueBlock}>
-                <LeagueCard league={l} />
+                <LeagueCard league={l} onPress={() => router.push(`/admin/leagues/${l.id}`)} />
                 <View style={styles.leagueMetaRow}>
                   <View style={styles.leagueMetaItem}>
                     {l.visibility === "private" ? (
@@ -203,7 +203,7 @@ export default function OwnerLeagues() {
                     </Text>
                   ) : null}
                   <Pressable
-                    onPress={() => router.push(`/leagues/${l.id}`)}
+                    onPress={() => router.push(`/admin/leagues/${l.id}`)}
                     style={styles.controlLink}
                   >
                     <Text style={styles.controlLinkText}>Control room</Text>
@@ -222,7 +222,7 @@ export default function OwnerLeagues() {
               {playing.map((l) => (
                 <Pressable
                   key={l.id}
-                  onPress={() => router.push(`/leagues/${l.id}`)}
+                  onPress={() => router.push(`/admin/leagues/${l.id}`)}
                   style={[styles.playingRow, { backgroundColor: c.surface, borderColor: c.border }]}
                 >
                   <View style={styles.playingIcon}>

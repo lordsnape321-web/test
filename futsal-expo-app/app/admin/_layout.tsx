@@ -31,7 +31,7 @@ export default function AdminLayout() {
           {lg ? <OwnerSidebar /> : null}
           <View style={styles.content}>
             <Tabs
-              screenOptions={{ headerShown: false }}
+              screenOptions={{ headerShown: false, sceneStyle: { backgroundColor: c.bg } }}
               tabBar={
                 lg
                   ? () => null
@@ -49,14 +49,15 @@ export default function AdminLayout() {
                     )
               }
             >
-          <Tabs.Screen name="index" options={{ title: "Home" }} />
-          <Tabs.Screen name="requests" options={{ title: "Requests" }} />
-          <Tabs.Screen name="bookings" options={{ title: "Bookings" }} />
-          <Tabs.Screen name="venues" options={{ title: "Venues" }} />
-          <Tabs.Screen name="leagues" options={{ title: "Leagues" }} />
-          <Tabs.Screen name="notifications" options={{ title: "Alerts" }} />
-          {/* Profile sits outside the rail but is still an owner screen. */}
-          <Tabs.Screen name="profile" options={{ title: "Profile", href: null }} />
+              <Tabs.Screen name="index" options={{ title: "Home" }} />
+              <Tabs.Screen name="requests" options={{ title: "Requests" }} />
+              <Tabs.Screen name="bookings" options={{ title: "Bookings" }} />
+              <Tabs.Screen name="venues" options={{ title: "Venues" }} />
+              <Tabs.Screen name="leagues" options={{ title: "Leagues" }} />
+              <Tabs.Screen name="notifications" options={{ title: "Alerts" }} />
+              {/* Profile and league detail sit outside the rail but remain owner screens. */}
+              <Tabs.Screen name="profile" options={{ title: "Profile", href: null }} />
+              <Tabs.Screen name="leagues/[id]" options={{ title: "League control", href: null }} />
             </Tabs>
           </View>
         </View>

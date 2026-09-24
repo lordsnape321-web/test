@@ -62,14 +62,31 @@ export default function OwnerNotifications() {
 
   async function markOne(n: AppNotification) {
     await markNotificationRead(n.id);
-    if (n.link) {
-      const path = n.link.replace(/^https?:\/\/[^/]+/, "");
-      if (path.startsWith("/")) {
-        router.push(path as never);
-        return;
-      }
+    const destination = ownerNotificationDestination(n.link);
+    if (destination) {
+      router.push(destination);
+      return;
     }
     await load();
+  }
+
+  /** Keep notification deep links inside the Owner Studio route tree. */
+  function ownerNotificationDestination(link: string | null):
+    | "/admin/bookings"
+    | "/admin/leagues"
+    | `/admin/leagues/${string}`
+    | "/admin/notifications"
+    | "/admin/venues"
+    | null {
+    if (!link) return null;
+    const path = link.replace(/^https?:\/\/[^/]+/, "");
+    const leagueId = path.match(/^\/leagues\/([^/?#]+)/)?.[1];
+    if (leagueId) return `/admin/leagues/${leagueId}`;
+    if (path.startsWith("/leagues")) return "/admin/leagues";
+    if (path.startsWith("/booking") || path.startsWith("/bookings")) return "/admin/bookings";
+    if (path.startsWith("/venue") || path.startsWith("/venues")) return "/admin/venues";
+    if (path.startsWith("/notification")) return "/admin/notifications";
+    return null;
   }
 
   async function remove(id: number) {
@@ -92,17 +109,22 @@ export default function OwnerNotifications() {
             cancellations & payments.
           </Text>
         </View>
-        {unread > 0 ? (
-          <Pressable
-            onPress={() => void markAll()}
-            style={[styles.markAllBtn, { backgroundColor: isDark ? "#FFFFFF" : "#0F172A" }]}
-          >
-            <CheckCheck size={16} color={isDark ? "#0F172A" : "#FFFFFF"} />
-            <Text style={[styles.markAllText, { color: isDark ? "#0F172A" : "#FFFFFF" }]}>
-              Mark all read
-            </Text>
-          </Pressable>
-        ) : null}
+        <Pressable
+          onPress={() => void markAll()}
+          disabled={unread === 0}
+          style={[
+            styles.markAllBtn,
+            {
+              backgroundColor: isDark ? "#FFFFFF" : "#0F172A",
+              opacity: unread === 0 ? 0.45 : 1,
+            },
+          ]}
+          accessibilityRole="button"
+          accessibilityState={{ disabled: unread === 0 }}
+        >
+          <CheckCheck size={16} color={isDark ? "#0F172A" : "#FFFFFF"} />
+          <Text style={[styles.markAllText, { color: isDark ? "#0F172A" : "#FFFFFF" }]}>Mark all read</Text>
+        </Pressable>
       </View>
 
       {loading ? (
@@ -118,6 +140,8 @@ export default function OwnerNotifications() {
       ) : (
         items.map((n) => {
           const tone = TYPE_STYLE[n.type] ?? TYPE_STYLE.info!;
+          const toneBg = n.type === "info" && isDark ? "rgba(148,163,184,0.14)" : tone.bg;
+          const toneFg = n.type === "info" && isDark ? c.textMuted : tone.fg;
           return (
             <View
               key={n.id}
@@ -130,8 +154,8 @@ export default function OwnerNotifications() {
                 },
               ]}
             >
-              <View style={[styles.typeChip, { backgroundColor: tone.bg }]}>
-                <Text style={[styles.typeText, { color: tone.fg }]}>
+              <View style={[styles.typeChip, { backgroundColor: toneBg }]}>
+                <Text style={[styles.typeText, { color: toneFg }]}>
                   {n.type.replace(/_/g, " ")}
                 </Text>
               </View>

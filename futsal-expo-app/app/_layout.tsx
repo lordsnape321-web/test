@@ -6,12 +6,12 @@ import {
   PlusJakartaSans_800ExtraBold,
   useFonts,
 } from "@expo-google-fonts/plus-jakarta-sans";
-import { Stack, usePathname } from "expo-router";
+import { Stack, usePathname, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import React from "react";
 import { ActivityIndicator, Text, TextInput, View } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
-import { AuthProvider } from "@/context/AuthContext";
+import { AuthProvider, useAuth } from "@/context/AuthContext";
 import { ThemeProvider, useTheme } from "@/context/ThemeContext";
 import { MobileNav } from "@/components/MobileNav";
 import { Navbar } from "@/components/Navbar";
@@ -82,11 +82,29 @@ function ThemedStatusBar() {
 
 function Shell() {
   const { colors, isDark } = useTheme();
+  const { user, ready } = useAuth();
   const pathname = usePathname();
+  const router = useRouter();
   const bp = useBreakpoints();
   const isOwnerStudio = pathname === "/admin" || pathname.startsWith("/admin/");
-  const showPlayerChrome = !isOwnerStudio;
+  const ownerOutsideStudio = ready && user?.role === "owner" && !isOwnerStudio;
+  const showPlayerChrome = !isOwnerStudio && !ownerOutsideStudio;
   const showPlayerRail = showPlayerChrome && bp.width < 1024;
+
+  React.useEffect(() => {
+    if (ownerOutsideStudio) router.replace("/admin");
+  }, [ownerOutsideStudio, router]);
+
+  // Do not mount a player route while the persisted session is being restored.
+  // An owner opening a saved player URL must never see the player shell, even
+  // for the short hydration window before `user.role` is available.
+  if (!ready || ownerOutsideStudio) {
+    return (
+      <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: isDark ? "#020617" : "#F1F5F9" }}>
+        <ActivityIndicator size="large" color={isDark ? "#FBBF24" : "#F97316"} />
+      </View>
+    );
+  }
 
   return (
     <View style={{ flex: 1, backgroundColor: isTransparent(colors.bg) ? undefined : colors.bg }}>

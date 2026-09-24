@@ -1,4 +1,4 @@
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useLocalSearchParams, usePathname, useRouter } from "expo-router";
 import {
   ArrowLeft,
   CalendarDays,
@@ -53,11 +53,14 @@ import { fontSize, radius, space } from "@/theme";
  * sidebar after — which is exactly how the web stacks it below `lg`. The web's
  * `#album` scrollIntoView becomes a measured scrollTo on the ScrollView.
  */
-export default function LeagueDetailScreen() {
+export function LeagueDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { user } = useAuth();
   const { colors: c, isDark } = useTheme();
   const router = useRouter();
+  const pathname = usePathname();
+  const inOwnerStudio = pathname === "/admin/leagues" || pathname.startsWith("/admin/leagues/");
+  const allLeaguesPath = inOwnerStudio ? "/admin/leagues" : "/(app)/matches";
   const [league, setLeague] = useState<LeagueDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -107,7 +110,7 @@ export default function LeagueDetailScreen() {
           captain's account and try again.
         </Text>
         <Pressable
-          onPress={() => router.push("/(app)/matches")}
+          onPress={() => router.push(allLeaguesPath)}
           accessibilityRole="button"
           style={styles.backBtn}
         >
@@ -150,7 +153,7 @@ export default function LeagueDetailScreen() {
             style={StyleSheet.absoluteFill}
           />
           <Pressable
-            onPress={() => router.push("/(app)/matches")}
+            onPress={() => router.push(allLeaguesPath)}
             accessibilityRole="button"
             style={styles.allLeagues}
           >
@@ -195,7 +198,11 @@ export default function LeagueDetailScreen() {
                 <MapPin size={14} color="rgba(255,255,255,0.85)" />
                 {league.venueId ? (
                   <Text
-                    onPress={() => router.push(`/venues/${league.venueId}`)}
+                    onPress={() =>
+                      inOwnerStudio
+                        ? router.push("/admin/venues")
+                        : router.push(`/venues/${league.venueId}`)
+                    }
                     style={styles.coverMetaLink}
                   >
                     {league.venueName}
@@ -323,7 +330,11 @@ export default function LeagueDetailScreen() {
                 </View>
                 {canSeeInside ? (
                   <View style={{ marginTop: space["3"] }}>
-                    <LeagueTable standings={league.standings} highlightTeamIds={myTeamIds} />
+                    <LeagueTable
+                      standings={league.standings}
+                      highlightTeamIds={myTeamIds}
+                      onTeamPress={inOwnerStudio ? () => router.push(allLeaguesPath) : undefined}
+                    />
                   </View>
                 ) : (
                   <View style={[styles.lockedTable, { borderColor: isDark ? "rgba(245,158,11,0.3)" : "#FCD34D" }]}>
@@ -344,6 +355,7 @@ export default function LeagueDetailScreen() {
                 isHost={isHost}
                 onChanged={load}
                 onOpenAlbum={(mid) => setFocusMatch(mid)}
+                onOpenVenue={inOwnerStudio ? () => router.push("/admin/venues") : undefined}
               />
             ) : (
               <View style={[styles.card, { backgroundColor: c.surface, borderColor: c.border }]}>
@@ -378,11 +390,17 @@ export default function LeagueDetailScreen() {
                 hostId={user.id}
                 onChanged={load}
                 onEdit={() => setEditing(true)}
+                onOpenTeam={inOwnerStudio ? () => router.push(allLeaguesPath) : undefined}
               />
             ) : null}
 
             {user && !isHost ? (
-              <LeagueSquadPanel league={league} viewerId={user.id} onChanged={load} />
+              <LeagueSquadPanel
+                league={league}
+                viewerId={user.id}
+                onChanged={load}
+                onOpenTeams={inOwnerStudio ? () => router.push(allLeaguesPath) : undefined}
+              />
             ) : null}
 
             {!user ? (
@@ -421,7 +439,11 @@ export default function LeagueDetailScreen() {
                   {league.teams.map((t) => (
                     <Pressable
                       key={t.teamId}
-                      onPress={() => router.push(`/teams/${t.teamId}`)}
+                      onPress={() =>
+                        inOwnerStudio
+                          ? router.push("/admin/leagues")
+                          : router.push(`/teams/${t.teamId}`)
+                      }
                       accessibilityRole="button"
                       style={styles.squadRow}
                     >
@@ -503,6 +525,8 @@ export default function LeagueDetailScreen() {
     </View>
   );
 }
+
+export default LeagueDetailScreen;
 
 const styles = StyleSheet.create({
   scrollBody: { paddingBottom: space["8"] },

@@ -2,12 +2,10 @@ import {
   Bell,
   Building2,
   CalendarCheck,
-  Globe,
   Inbox,
   LayoutDashboard,
   LogOut,
   Menu,
-  Settings,
   Trophy,
   X,
   User as UserIcon,
@@ -27,7 +25,7 @@ import { colors, fontSize, radius, space } from "@/theme";
 /**
  * OwnerShell — the Owner Studio chrome: responsive Studio brand bar, desktop
  * sidebar, and six-item mobile rail (the same breakpoints as the web shell).
- * The mobile drawer carries the web shell's profile/settings actions that do not
+ * The mobile drawer carries the owner profile and logout actions that do not
  * fit in the bottom rail.
  */
 
@@ -73,13 +71,6 @@ export const OWNER_NAV = [
     label: "My Profile",
     short: "Profile",
     icon: UserIcon,
-    badge: "none" as const,
-  },
-  {
-    href: "/settings",
-    label: "Settings",
-    short: "Settings",
-    icon: Settings,
     badge: "none" as const,
   },
 ];
@@ -190,18 +181,6 @@ export function OwnerHeader() {
         </Pressable>
 
         <View style={styles.headerActions}>
-          {sm ? (
-            <Pressable
-              onPress={() => router.push("/")}
-              style={[styles.ghostBtn, { borderColor: c.border }]}
-              accessibilityLabel="View player site"
-            >
-              <Globe size={14} color={c.textMuted} />
-              <Text style={[styles.ghostText, { color: c.textMuted }]} numberOfLines={1}>
-                View player site
-              </Text>
-            </Pressable>
-          ) : null}
           <ThemeToggle />
           <Pressable
             onPress={() => router.push("/admin/notifications")}
@@ -395,13 +374,6 @@ function OwnerDrawer({
 
         <View style={[styles.drawerFooter, { borderTopColor: c.border }]}>
           <Pressable
-            onPress={() => onNavigate("/")}
-            style={[styles.drawerFooterBtn, { borderColor: c.border }]}
-          >
-            <Globe size={16} color={c.textMuted} />
-            <Text style={[styles.drawerFooterText, { color: c.textMuted }]}>View player site</Text>
-          </Pressable>
-          <Pressable
             onPress={onLogout}
             style={[styles.drawerFooterBtn, { backgroundColor: "rgba(239,68,68,0.10)", borderColor: "rgba(239,68,68,0.20)" }]}
           >
@@ -582,16 +554,6 @@ const styles = StyleSheet.create({
     letterSpacing: 1.5,
   },
   headerActions: { flexDirection: "row", alignItems: "center", gap: space[1.5], marginLeft: "auto", flexShrink: 0 },
-  ghostBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    borderRadius: radius.xl,
-    borderWidth: 1,
-    paddingHorizontal: space[3],
-    paddingVertical: space[2],
-  },
-  ghostText: { fontSize: fontSize.xs, fontWeight: "700" },
   iconBtn: {
     position: "relative",
     width: 36,

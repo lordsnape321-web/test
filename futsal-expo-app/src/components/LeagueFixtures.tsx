@@ -46,12 +46,14 @@ export function LeagueFixtures({
   isHost,
   onChanged,
   onOpenAlbum,
+  onOpenVenue,
 }: {
   league: LeagueDetail;
   hostId: number;
   isHost: boolean;
   onChanged: () => void;
   onOpenAlbum?: (matchId: number) => void;
+  onOpenVenue?: (venueId: number) => void;
 }) {
   const { colors: c, isDark } = useTheme();
   const router = useRouter();
@@ -467,7 +469,11 @@ export function LeagueFixtures({
           <Text style={[styles.venueText, { color: c.textFaint }]}>
             All fixtures at{" "}
             <Text
-              onPress={() => router.push(`/venues/${league.venueId}`)}
+              onPress={() => {
+                if (!league.venueId) return;
+                if (onOpenVenue) onOpenVenue(league.venueId);
+                else router.push(`/venues/${league.venueId}`);
+              }}
               style={[styles.venueText, { color: c.textFaint, textDecorationLine: "underline" }]}
             >
               {league.venueName}

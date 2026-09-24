@@ -36,7 +36,16 @@ import { colors, fontSize, radius, space } from "@/theme";
  * Tailwind → RN: the gradient banner overlay is a LinearGradient layered over
  * the image; hover lift/translate becomes pressed opacity (no hover on touch).
  */
-export function LeagueCard({ league, compact = false }: { league: LeagueSummary; compact?: boolean }) {
+export function LeagueCard({
+  league,
+  compact = false,
+  onPress,
+}: {
+  league: LeagueSummary;
+  compact?: boolean;
+  /** Override navigation for scoped shells such as Owner Studio. */
+  onPress?: () => void;
+}) {
   const { colors: c, isDark } = useTheme();
   const router = useRouter();
 
@@ -49,7 +58,7 @@ export function LeagueCard({ league, compact = false }: { league: LeagueSummary;
 
   return (
     <Pressable
-      onPress={() => router.push(`/leagues/${league.id}`)}
+      onPress={onPress ?? (() => router.push(`/leagues/${league.id}`))}
       accessibilityRole="button"
       style={({ pressed }) => [
         styles.card,

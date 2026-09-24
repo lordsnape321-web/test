@@ -81,16 +81,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       if (!cancelled && cachedUser) setUser(cachedUser);
-      if (!cancelled) setReady(true);
+      // A full cached profile already contains the role, so it is safe to
+      // render the right shell while the background refresh runs. An older
+      // build only stored a numeric id; keep the app behind the auth loading
+      // view until that id has been resolved, otherwise an owner could briefly
+      // mount a player route with an unknown role.
+      if (!cancelled && (!cachedId || cachedUser)) setReady(true);
 
-      // Refresh after the first paint. If the API is temporarily offline, the
-      // cached profile remains usable and the next explicit refresh can retry.
+      // Refresh after the first paint when the role is known. For legacy id-only
+      // sessions, resolve the profile before marking auth ready. If that lookup
+      // fails, discard the unverifiable id rather than guessing that it is a
+      // player and exposing player navigation to an owner.
       if (cachedId) {
         try {
           const fresh = await fetchUser(cachedId);
           if (!cancelled) await persist(fresh);
         } catch {
-          // Do not log a returning user out just because the API is offline.
+          if (!cancelled && !cachedUser) await storage.remove(STORAGE_KEYS.session);
+        } finally {
+          if (!cancelled && !cachedUser) setReady(true);
         }
       }
     })();
