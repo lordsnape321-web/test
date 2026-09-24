@@ -6,14 +6,17 @@ import {
   PlusJakartaSans_800ExtraBold,
   useFonts,
 } from "@expo-google-fonts/plus-jakarta-sans";
-import { Stack } from "expo-router";
+import { Stack, usePathname, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import React from "react";
 import { ActivityIndicator, Text, TextInput, View } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
-import { AuthProvider } from "@/context/AuthContext";
+import { AuthProvider, useAuth } from "@/context/AuthContext";
 import { ThemeProvider, useTheme } from "@/context/ThemeContext";
+import { MobileNav } from "@/components/MobileNav";
+import { Navbar } from "@/components/Navbar";
 import { TurfBackdrop } from "@/components/TurfBackdrop";
+import { useBreakpoints } from "@/lib/responsive";
 import { APP_FONT_FAMILY } from "@/theme";
 
 /**
@@ -78,39 +81,82 @@ function ThemedStatusBar() {
 }
 
 function Shell() {
-  const { colors } = useTheme();
+  const { colors, isDark } = useTheme();
+  const { user, ready } = useAuth();
+  const pathname = usePathname();
+  const router = useRouter();
+  const bp = useBreakpoints();
+  const isOwnerStudio = pathname === "/admin" || pathname.startsWith("/admin/");
+  const ownerOutsideStudio = ready && user?.role === "owner" && !isOwnerStudio;
+  const showPlayerChrome = !isOwnerStudio && !ownerOutsideStudio;
+  // Auth forms need the full viewport for their scrollable card. The player
+  // rail is useful on app pages, but on login/signup it becomes an opaque
+  // rectangle over the last form controls on short screens.
+  const isAuthScreen = pathname === "/login" || pathname === "/signup" || pathname === "/forgot-password";
+  const showPlayerRail = showPlayerChrome && !isAuthScreen && bp.width < 1024;
+  // Keep the native/web root surface deterministic even while Owner Studio is
+  // switching its palette after a route change. A transparent scene must never
+  // fall through to the browser's default white canvas.
+  const shellBackground = isOwnerStudio
+    ? isDark
+      ? "#020617"
+      : "#F1F5F9"
+    : isDark
+      ? "#020617"
+      : "#FFFFFF";
+
+  React.useEffect(() => {
+    if (ownerOutsideStudio) router.replace("/admin");
+  }, [ownerOutsideStudio, router]);
+
+  // Do not mount a player route while the persisted session is being restored.
+  // An owner opening a saved player URL must never see the player shell, even
+  // for the short hydration window before `user.role` is available.
+  if (!ready || ownerOutsideStudio) {
+    return (
+      <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: isDark ? "#020617" : "#F1F5F9" }}>
+        <ActivityIndicator size="large" color={isDark ? "#FBBF24" : "#F97316"} />
+      </View>
+    );
+  }
+
   return (
-    <View style={{ flex: 1, backgroundColor: isTransparent(colors.bg) ? undefined : colors.bg }}>
-      {/* `.turf-pattern` — warm peach / night blobs behind every route. */}
-      <TurfBackdrop />
-      <Stack
-        screenOptions={{
-          headerStyle: { backgroundColor: colors.surface },
-          headerTintColor: colors.text,
-          headerTitleStyle: { color: colors.text, fontFamily: APP_FONT_FAMILY },
-          contentStyle: { backgroundColor: "transparent" },
-        }}
-      >
-        <Stack.Screen name="(app)" options={{ headerShown: false }} />
-        <Stack.Screen name="login" options={{ title: "Sign in", headerShown: false }} />
-        <Stack.Screen name="signup" options={{ title: "Create account", headerShown: false }} />
-        <Stack.Screen name="venue/[id]" options={{ title: "Venue" }} />
-        <Stack.Screen name="booking/[id]" options={{ title: "Booking" }} />
-        <Stack.Screen name="leagues/index" options={{ headerShown: false }} />
-        <Stack.Screen name="leagues/[id]" options={{ title: "League" }} />
-        <Stack.Screen name="notifications" options={{ title: "Notifications" }} />
-        <Stack.Screen name="profile" options={{ title: "My profile" }} />
-        <Stack.Screen name="forgot-password" options={{ headerShown: false }} />
-        <Stack.Screen name="teams/index" options={{ title: "Teams" }} />
-        <Stack.Screen name="teams/[id]" options={{ title: "Squad" }} />
-        <Stack.Screen name="players/[id]" options={{ title: "Player" }} />
-        <Stack.Screen name="admin" options={{ headerShown: false }} />
-      </Stack>
+    <View style={{ flex: 1, backgroundColor: shellBackground }}>
+      {/* `.turf-pattern` — warm peach / night blobs behind every player route. */}
+      <TurfBackdrop style={{ backgroundColor: shellBackground }} />
+      {showPlayerChrome ? <Navbar /> : null}
+      <View style={{ flex: 1 }}>
+        <Stack
+          screenOptions={{
+            headerShown: false,
+            headerStyle: { backgroundColor: colors.surface },
+            headerTintColor: colors.text,
+            headerTitleStyle: { color: colors.text, fontFamily: APP_FONT_FAMILY },
+            contentStyle: {
+              backgroundColor: isOwnerStudio ? shellBackground : "transparent",
+            },
+          }}
+        >
+          <Stack.Screen name="index" options={{ headerShown: false }} />
+          <Stack.Screen name="(app)" options={{ headerShown: false }} />
+          <Stack.Screen name="login" options={{ headerShown: false }} />
+          <Stack.Screen name="signup" options={{ headerShown: false }} />
+          <Stack.Screen name="venue/[id]" options={{ headerShown: false }} />
+          <Stack.Screen name="venues/[id]" options={{ headerShown: false }} />
+          <Stack.Screen name="booking/[id]" options={{ headerShown: false }} />
+          <Stack.Screen name="leagues/index" options={{ headerShown: false }} />
+          <Stack.Screen name="leagues/[id]" options={{ headerShown: false }} />
+          <Stack.Screen name="notifications" options={{ headerShown: false }} />
+          <Stack.Screen name="profile" options={{ headerShown: false }} />
+          <Stack.Screen name="forgot-password" options={{ headerShown: false }} />
+          <Stack.Screen name="teams/index" options={{ headerShown: false }} />
+          <Stack.Screen name="teams/[id]" options={{ headerShown: false }} />
+          <Stack.Screen name="players/[id]" options={{ headerShown: false }} />
+          <Stack.Screen name="admin" options={{ headerShown: false }} />
+          <Stack.Screen name="payment" options={{ headerShown: false }} />
+        </Stack>
+      </View>
+      {showPlayerRail ? <MobileNav isDark={isDark} /> : null}
     </View>
   );
-}
-
-/** Palette bg may be transparent (player + turf) or a solid studio colour. */
-function isTransparent(bg: string) {
-  return bg === "transparent";
 }

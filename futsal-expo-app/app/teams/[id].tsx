@@ -195,7 +195,7 @@ export default function TeamDetailScreen() {
                 {team.homeGround ? (
                   <Pressable
                     onPress={() =>
-                      team.homeVenueId ? router.push(`/venue/${team.homeVenueId}`) : undefined
+                      team.homeVenueId ? router.push(`/venues/${team.homeVenueId}`) : undefined
                     }
                     style={[styles.chip, { backgroundColor: c.inset }]}
                   >
