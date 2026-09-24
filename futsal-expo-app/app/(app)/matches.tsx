@@ -28,7 +28,7 @@ import { Avatar } from "@/components/Avatar";
 import { LeagueBrowser } from "@/components/LeagueBrowser";
 import { useAuth } from "@/context/AuthContext";
 import { useTheme } from "@/context/ThemeContext";
-import { createMatch, fetchMatches, fetchVenues, joinMatch, leaveMatch } from "@/api";
+import { createMatch, fetchMatches, fetchVenues, joinMatch, leaveMatch, seedDemo } from "@/api";
 import { formatNPR, formatTime12, prettyDate, timeSlots, todayISO } from "@/lib/futsal";
 import {
   firstError,
@@ -103,7 +103,10 @@ export default function MatchesScreen() {
   useEffect(() => {
     (async () => {
       try {
+        await seedDemo();
         await load();
+      } catch {
+        // Keep the filters and empty state usable while the API is offline.
       } finally {
         setLoading(false);
       }

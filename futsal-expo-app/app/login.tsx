@@ -1,48 +1,49 @@
+import { LinearGradient } from "expo-linear-gradient";
 import { Link, useRouter } from "expo-router";
-import React, { useState } from "react";
+import { Crown, Eye, EyeOff, Lock, LogIn, Mail, Trophy, Zap } from "lucide-react-native";
+import React, { useEffect, useState } from "react";
 import {
   KeyboardAvoidingView,
   Platform,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { Button, Field, Notice } from "@/components/ui";
+import { seedDemo } from "@/api";
+import { Button, Notice } from "@/components/ui";
 import { useAuth } from "@/context/AuthContext";
 import { useTheme } from "@/context/ThemeContext";
-import { API_BASE, ApiError } from "@/lib/api";
+import { ApiError } from "@/lib/api";
 import { firstError, validateEmail } from "@/lib/validation";
-import { colors as tokens, fontSize, space } from "@/theme";
+import { colors as tokens, fontSize, radius, space } from "@/theme";
 
-/**
- * Sign in.
- *
- * The email rule comes straight from the ported src/lib/validation.ts — the same
- * module the Next.js app uses, byte for byte. That is the point of the
- * migration: the rules are written once and both apps share them, so a player
- * cannot be told "invalid email" here and then rejected differently on the web.
- */
+/** Sign in, with the same demo shortcuts and owner routing as the web page. */
 export default function Login() {
-  const { colors } = useTheme();
+  const { colors: c, isDark } = useTheme();
   const { signIn } = useAuth();
   const router = useRouter();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [touched, setTouched] = useState(false);
+  const [showPw, setShowPw] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [touched, setTouched] = useState(false);
 
-  const emailError = validateEmail(email);
+  useEffect(() => {
+    void seedDemo().catch(() => undefined);
+  }, []);
 
-  async function submit() {
+  async function submit(demo?: { email: string; password: string }) {
     setTouched(true);
     setError(null);
-
-    // Same first-message-wins convention as the web forms.
-    const invalid = firstError(emailError, password ? null : "Enter your password");
+    const nextEmail = demo?.email ?? email;
+    const nextPassword = demo?.password ?? password;
+    const invalid = demo ? null : firstError(validateEmail(nextEmail), nextPassword ? null : "Password is required 🔒");
     if (invalid) {
       setError(invalid);
       return;
@@ -50,93 +51,59 @@ export default function Login() {
 
     setBusy(true);
     try {
-      await signIn(email.trim(), password);
-      router.replace("/(app)");
+      const next = await signIn(nextEmail.trim(), nextPassword);
+      // Route from the server role, not an email allow-list: this also handles
+      // every owner account created from the signup screen.
+      router.replace(next.role === "owner" ? "/admin" : "/");
     } catch (e) {
-      // Surface the server's own wording — these routes return specific
-      // messages like "Incorrect password. Try again — or reset it! 🔑".
       setError(e instanceof ApiError ? e.message : "Could not sign in. Check your connection.");
     } finally {
       setBusy(false);
     }
   }
 
+  const inputFill = isDark ? "rgba(255,255,255,0.05)" : tokens.insetCream;
+
   return (
-    <SafeAreaView style={[styles.flex, { backgroundColor: colors.bg }]} edges={["top", "bottom"]}>
-      <KeyboardAvoidingView
-        style={styles.flex}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
-      >
-        <ScrollView
-          contentContainerStyle={styles.scroll}
-          keyboardShouldPersistTaps="handled"
-        >
-          <View style={styles.header}>
-            <Text style={[styles.logo, { color: colors.primary }]}>⚽</Text>
-            <Text style={[styles.title, { color: colors.text }]}>Futsal Nepal</Text>
-            <Text style={[styles.subtitle, { color: colors.textMuted }]}>
-              Book a court in under a minute
-            </Text>
+    <SafeAreaView style={[styles.flex, { backgroundColor: c.bg }]} edges={["bottom"]}>
+      <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+        <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
+          <View style={[styles.card, { backgroundColor: c.surface, borderColor: c.border }]}>
+            <LinearGradient colors={isDark ? ["#065F46", "#14532D"] : ["#047857", "#166534"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.hero}>
+              <View style={styles.heroIcon}><Trophy size={28} color={tokens.emerald700} strokeWidth={2.5} /></View>
+              <Text style={styles.heroTitle}>Welcome back, friend! 👋</Text>
+              <Text style={styles.heroSub}>Your crew saved you a spot — let&apos;s get you back on court</Text>
+            </LinearGradient>
+
+            <View style={styles.form}>
+              <Text style={[styles.label, { color: c.textFaint }]}>Email</Text>
+              <View style={[styles.inputWrap, { backgroundColor: inputFill, borderColor: touched && validateEmail(email) ? tokens.red400 : c.border }]}>
+                <Mail size={16} color={c.textFaint} />
+                <TextInput value={email} onChangeText={setEmail} placeholder="you@example.com" placeholderTextColor={c.textFaint} keyboardType="email-address" autoCapitalize="none" maxLength={100} style={[styles.input, { color: c.text }]} />
+              </View>
+              {touched && validateEmail(email) ? <Text style={styles.error}>{validateEmail(email)}</Text> : null}
+
+              <Text style={[styles.label, { color: c.textFaint }]}>Password</Text>
+              <View style={[styles.inputWrap, { backgroundColor: inputFill, borderColor: touched && !password ? tokens.red400 : c.border }]}>
+                <Lock size={16} color={c.textFaint} />
+                <TextInput value={password} onChangeText={setPassword} placeholder="••••••••" placeholderTextColor={c.textFaint} secureTextEntry={!showPw} autoCapitalize="none" maxLength={100} style={[styles.input, { color: c.text }]} />
+                <Pressable onPress={() => setShowPw((v) => !v)} accessibilityLabel={showPw ? "Hide password" : "Show password"}>{showPw ? <EyeOff size={17} color={c.textFaint} /> : <Eye size={17} color={c.textFaint} />}</Pressable>
+              </View>
+              {touched && !password ? <Text style={styles.error}>Password is required 🔒</Text> : null}
+
+              {error ? <Notice message={error} /> : null}
+              <Button label={busy ? "Getting you in…" : "Log in & play"} onPress={() => void submit()} loading={busy} />
+
+              <View style={styles.dividerRow}><View style={[styles.divider, { backgroundColor: c.border }]} /><Text style={[styles.dividerText, { color: c.textFaint }]}>Just looking around?</Text><View style={[styles.divider, { backgroundColor: c.border }]} /></View>
+              <View style={styles.demoRow}>
+                <Pressable disabled={busy} onPress={() => void submit({ email: "aarav@futsal.np", password: "futsal123" })} style={[styles.demo, { borderColor: tokens.emerald100, backgroundColor: isDark ? "rgba(16,185,129,0.1)" : tokens.emerald50 }]}><Zap size={16} color={tokens.emerald600} /><Text style={[styles.demoText, { color: isDark ? tokens.emerald300 : tokens.emerald700 }]}>Try as Player</Text></Pressable>
+                <Pressable disabled={busy} onPress={() => void submit({ email: "ganesh@futsal.np", password: "futsal123" })} style={[styles.demo, { borderColor: tokens.orange100, backgroundColor: isDark ? "rgba(249,115,22,0.1)" : tokens.orange50 }]}><Crown size={16} color={tokens.orange500} /><Text style={[styles.demoText, { color: isDark ? tokens.orange300 : tokens.orange700 }]}>Try as Owner</Text></Pressable>
+              </View>
+
+              <Link href="/forgot-password" asChild><Text style={[styles.forgot, { color: tokens.orange600 }]}>Forgot your password? 🔑</Text></Link>
+              <View style={styles.footerRow}><Text style={{ color: c.textMuted, fontSize: fontSize.base }}>New to the family? </Text><Link href="/signup" asChild><Text style={[styles.link, { color: c.primary }]}>Join us — it&apos;s free</Text></Link></View>
+            </View>
           </View>
-
-          {error && touched ? <Notice message={error} /> : null}
-
-          <Field
-            label="Email"
-            value={email}
-            onChangeText={setEmail}
-            placeholder="you@example.com"
-            keyboardType="email-address"
-            autoCapitalize="none"
-            error={touched ? emailError : null}
-          />
-
-          <Field
-            label="Password"
-            value={password}
-            onChangeText={setPassword}
-            placeholder="Your password"
-            secureTextEntry
-            autoCapitalize="none"
-          />
-
-          <Button label="Sign in" onPress={submit} loading={busy} />
-
-          <Link href="/forgot-password" asChild>
-            <Text
-              style={StyleSheet.flatten([
-                styles.forgot,
-                { color: tokens.orange600 },
-              ])}
-            >
-              Forgot your password? 🔑
-            </Text>
-          </Link>
-
-          <View style={styles.footerRow}>
-            <Text style={{ color: colors.textMuted, fontSize: fontSize.base }}>
-              New here?{" "}
-            </Text>
-            <Link href="/signup" asChild>
-              {/* Slot can't merge an array style, so flatten it to one object. */}
-              <Text style={StyleSheet.flatten([styles.link, { color: colors.primary }])}>
-                Create an account
-              </Text>
-            </Link>
-          </View>
-
-          {/*
-            Show the API base this bundle was built with. EXPO_PUBLIC_API_BASE is
-            inlined at build time, so if a .env edit didn't take (stale Metro
-            cache — restart with --clear), this still reads "localhost" and you
-            can see that immediately instead of guessing why a device can't
-            connect. On a phone, "localhost" is the phone itself, never your
-            computer.
-          */}
-          <Text style={[styles.apiLine, { color: colors.textFaint }]}>
-            API: {API_BASE}
-            {/localhost|127\.0\.0\.1/.test(API_BASE) ? "  ⚠ device needs your LAN IP" : ""}
-          </Text>
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -145,18 +112,24 @@ export default function Login() {
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
-  scroll: { padding: space["6"], paddingTop: space["8"], flexGrow: 1 },
-  header: { alignItems: "center", marginBottom: space["8"] },
-  logo: { fontSize: 44 },
-  title: { fontSize: fontSize["4xl"], fontWeight: "700", marginTop: space["2"] },
-  subtitle: { fontSize: fontSize.base, marginTop: space["1"] },
-  footerRow: { flexDirection: "row", justifyContent: "center", marginTop: space["6"] },
-  forgot: {
-    fontSize: fontSize.base,
-    fontWeight: "700",
-    textAlign: "center",
-    marginTop: space[3],
-  },
-  link: { fontSize: fontSize.base, fontWeight: "600" },
-  apiLine: { fontSize: fontSize.sm, textAlign: "center", marginTop: space["4"] },
+  scroll: { padding: space[4], paddingBottom: space[10], justifyContent: "center", flexGrow: 1 },
+  card: { width: "100%", maxWidth: 520, alignSelf: "center", borderWidth: 1, borderRadius: 32, overflow: "hidden", shadowColor: "#B4783C", shadowOpacity: 0.14, shadowRadius: 30, shadowOffset: { width: 0, height: 12 }, elevation: 4 },
+  hero: { padding: space[7], alignItems: "center" },
+  heroIcon: { width: 56, height: 56, borderRadius: radius["2xl"], backgroundColor: "#FFFFFF", alignItems: "center", justifyContent: "center" },
+  heroTitle: { marginTop: space[3], color: "#FFFFFF", fontSize: fontSize["2xl"], fontWeight: "900", textAlign: "center" },
+  heroSub: { marginTop: space[1], color: "rgba(209,250,229,0.85)", fontSize: fontSize.base, textAlign: "center", lineHeight: 20 },
+  form: { padding: space[6], gap: space[2.5] },
+  label: { fontSize: fontSize.sm, fontWeight: "900", textTransform: "uppercase", letterSpacing: 0.8 },
+  inputWrap: { minHeight: 48, borderWidth: 1, borderRadius: radius["2xl"], paddingHorizontal: space[4], flexDirection: "row", alignItems: "center", gap: space[2] },
+  input: { flex: 1, fontSize: 16, fontWeight: "600", paddingVertical: 11 },
+  error: { fontSize: fontSize.xs, color: tokens.red500, fontWeight: "700" },
+  dividerRow: { flexDirection: "row", alignItems: "center", gap: space[3], paddingVertical: space[1] },
+  divider: { height: 1, flex: 1 },
+  dividerText: { fontSize: 10, fontWeight: "900", textTransform: "uppercase", letterSpacing: 1.2 },
+  demoRow: { flexDirection: "row", gap: space[2] },
+  demo: { flex: 1, minHeight: 48, borderWidth: 1, borderRadius: radius["2xl"], flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingHorizontal: space[2] },
+  demoText: { fontSize: fontSize.xs, fontWeight: "900" },
+  forgot: { fontSize: fontSize.base, fontWeight: "800", textAlign: "center", marginTop: space[2] },
+  footerRow: { flexDirection: "row", justifyContent: "center", marginTop: space[1] },
+  link: { fontSize: fontSize.base, fontWeight: "900" },
 });

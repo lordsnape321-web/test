@@ -13,8 +13,12 @@ import {
 import { useRouter } from "expo-router";
 import React, { useCallback, useEffect, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Avatar } from "@/components/Avatar";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import { useAuth } from "@/context/AuthContext";
 import { useTheme } from "@/context/ThemeContext";
+import { useBreakpoints } from "@/lib/responsive";
 import { fetchBookings, fetchNotifications, fetchVenues } from "@/api";
 import { colors, fontSize, radius, space } from "@/theme";
 
@@ -128,6 +132,8 @@ export function OwnerHeader() {
   const { colors: c, isDark } = useTheme();
   const { user, signOut } = useAuth();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
+  const { sm } = useBreakpoints();
   const { pending, unread } = useOwnerBadges(user?.id);
   const totalBadge = pending + unread;
 
@@ -138,6 +144,7 @@ export function OwnerHeader() {
         {
           backgroundColor: isDark ? "rgba(15,23,42,0.98)" : "#FFFFFF",
           borderColor: c.border,
+          paddingTop: insets.top + space[2.5],
         },
       ]}
     >
@@ -165,15 +172,18 @@ export function OwnerHeader() {
           accessibilityLabel="View player site"
         >
           <Globe size={14} color={c.textMuted} />
-          <Text style={[styles.ghostText, { color: c.textMuted }]}>Player site</Text>
+          {sm ? <Text style={[styles.ghostText, { color: c.textMuted }]}>Player site</Text> : null}
         </Pressable>
-        <Pressable
-          onPress={() => router.push("/(app)/settings")}
-          style={[styles.iconBtn, { borderColor: c.border }]}
-          accessibilityLabel="Settings"
-        >
-          <Settings size={16} color={c.textMuted} />
-        </Pressable>
+        <ThemeToggle />
+        {sm ? (
+          <Pressable
+            onPress={() => router.push("/(app)/settings")}
+            style={[styles.iconBtn, { borderColor: c.border }]}
+            accessibilityLabel="Settings"
+          >
+            <Settings size={16} color={c.textMuted} />
+          </Pressable>
+        ) : null}
         <Pressable
           onPress={() => router.push("/admin/notifications")}
           style={[styles.iconBtn, { borderColor: c.border }]}
@@ -188,6 +198,23 @@ export function OwnerHeader() {
             </View>
           ) : null}
         </Pressable>
+        {user ? (
+          <Pressable
+            onPress={() => router.push("/admin/profile")}
+            style={[styles.profileIconBtn, { borderColor: c.border }]}
+            accessibilityLabel="My profile"
+          >
+            <Avatar
+              user={{
+                name: user.name,
+                avatarColor: user.avatarColor ?? colors.emerald600,
+                avatarUrl: user.avatarUrl,
+              }}
+              size={30}
+              rounded={false}
+            />
+          </Pressable>
+        ) : null}
         <Pressable
           onPress={() => {
             void signOut().then(() => router.replace("/"));
@@ -322,6 +349,15 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     alignItems: "center",
     justifyContent: "center",
+  },
+  profileIconBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
   },
   headerBadge: {
     position: "absolute",

@@ -1,5 +1,7 @@
+import { LinearGradient } from "expo-linear-gradient";
 import { Link, useRouter } from "expo-router";
-import React, { useState } from "react";
+import { Check, Crown, Eye, EyeOff, Lock, MapPin, Trophy, UserRound, Zap } from "lucide-react-native";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   KeyboardAvoidingView,
   Platform,
@@ -7,30 +9,27 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from "react-native";
+import { Picker } from "@react-native-picker/picker";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { seedDemo } from "@/api";
 import { Button, Field, Notice } from "@/components/ui";
 import { useAuth } from "@/context/AuthContext";
 import { useTheme } from "@/context/ThemeContext";
 import { ApiError } from "@/lib/api";
+import { CITY_OPTIONS } from "@/lib/futsal";
 import {
   firstError,
+  passwordStrength,
+  validateCity,
   validateEmail,
   validateName,
   validatePassword,
   validatePhone,
 } from "@/lib/validation";
-import { fontSize, radius, space } from "@/theme";
-
-/**
- * Create a player account.
- *
- * Every rule is the ported validator from src/lib/validation.ts — the same file
- * the Next.js signup route calls. The API's own LEVELS and POSITIONS lists are
- * mirrored below; they must stay in sync with src/app/api/auth/signup/route.ts,
- * which rejects anything outside them with a 400.
- */
+import { colors as tokens, fontSize, radius, space } from "@/theme";
 
 const LEVELS = ["Beginner", "Intermediate", "Advanced"] as const;
 const POSITIONS = [
@@ -43,31 +42,46 @@ const POSITIONS = [
   "All-rounder",
 ] as const;
 
+/**
+ * Account creation, including the owner's path from the web app. Owners and
+ * players use the same API contract; an owner simply lands in Owner Studio
+ * after signup instead of being dropped into the player tabs.
+ */
 export default function Signup() {
-  const { colors } = useTheme();
+  const { colors: c, isDark } = useTheme();
   const { signUp } = useAuth();
   const router = useRouter();
 
+  const [role, setRole] = useState<"player" | "owner">("player");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
+  const [showPw, setShowPw] = useState(false);
   const [level, setLevel] = useState<string>("Intermediate");
   const [position, setPosition] = useState<string>("All-rounder");
-  const [touched, setTouched] = useState(false);
+  const [defaultCity, setDefaultCity] = useState("Kathmandu");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [touched, setTouched] = useState(false);
 
   const nameError = validateName(name);
   const emailError = validateEmail(email);
   const phoneError = validatePhone(phone, { required: true });
   const passwordError = validatePassword(password);
+  const cityError = validateCity(defaultCity, "Home city");
+  const strength = useMemo(() => passwordStrength(password), [password]);
+
+  // Match the web auth pages: seeded demo accounts are available immediately
+  // when someone opens signup from a fresh development database.
+  useEffect(() => {
+    void seedDemo().catch(() => undefined);
+  }, []);
 
   async function submit() {
     setTouched(true);
     setError(null);
-
-    const invalid = firstError(nameError, emailError, phoneError, passwordError);
+    const invalid = firstError(nameError, emailError, phoneError, passwordError, cityError);
     if (invalid) {
       setError(invalid);
       return;
@@ -75,98 +89,141 @@ export default function Signup() {
 
     setBusy(true);
     try {
-      await signUp({
+      const next = await signUp({
         name: name.trim(),
         email: email.trim(),
         phone: phone.trim(),
         password,
+        role,
         level,
         position,
+        defaultCity,
       });
-      router.replace("/(app)");
+      router.replace(next.role === "owner" ? "/admin" : "/venues");
     } catch (e) {
-      setError(
-        e instanceof ApiError ? e.message : "Could not create your account. Try again shortly.",
-      );
+      setError(e instanceof ApiError ? e.message : "Could not create your account. Try again shortly.");
     } finally {
       setBusy(false);
     }
   }
 
+  const inputFill = isDark ? "rgba(255,255,255,0.05)" : tokens.insetCream;
+
   return (
-    <SafeAreaView style={[styles.flex, { backgroundColor: colors.bg }]} edges={["top", "bottom"]}>
-      <KeyboardAvoidingView
-        style={styles.flex}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
-      >
+    <SafeAreaView style={[styles.flex, { backgroundColor: c.bg }]} edges={["bottom"]}>
+      <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === "ios" ? "padding" : undefined}>
         <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
-          <Text style={[styles.title, { color: colors.text }]}>Create your player account</Text>
-          <Text style={[styles.subtitle, { color: colors.textMuted }]}>
-            Your trust score starts at 100. Book and turn up to keep it there.
-          </Text>
+          <Link href="/" asChild>
+            <Pressable style={[styles.back, { backgroundColor: c.surface, borderColor: c.border }]}>
+              <Text style={[styles.backText, { color: c.text }]}>‹  Back home</Text>
+            </Pressable>
+          </Link>
 
-          {error && touched ? <Notice message={error} /> : null}
+          <View style={[styles.card, { backgroundColor: c.surface, borderColor: c.border }]}>
+            <LinearGradient
+              colors={isDark ? ["#065F46", "#14532D"] : ["#047857", "#166534"]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.hero}
+            >
+              <View style={styles.heroIcon}>
+                <Trophy size={28} color={tokens.emerald700} strokeWidth={2.5} />
+              </View>
+              <Text style={styles.heroTitle}>Come join the family ⚽</Text>
+              <Text style={styles.heroSub}>Free forever for players — tell us a little about yourself</Text>
+            </LinearGradient>
 
-          <Field
-            label="Full name"
-            value={name}
-            onChangeText={setName}
-            placeholder="Aashish Shrestha"
-            error={touched ? nameError : null}
-          />
-          <Field
-            label="Email"
-            value={email}
-            onChangeText={setEmail}
-            placeholder="you@example.com"
-            keyboardType="email-address"
-            autoCapitalize="none"
-            error={touched ? emailError : null}
-          />
-          <Field
-            label="Phone"
-            value={phone}
-            onChangeText={setPhone}
-            placeholder="98XXXXXXXX"
-            keyboardType="phone-pad"
-            autoCapitalize="none"
-            error={touched ? phoneError : null}
-          />
-          <Field
-            label="Password"
-            value={password}
-            onChangeText={setPassword}
-            placeholder="At least 8 characters"
-            secureTextEntry
-            autoCapitalize="none"
-            error={touched ? passwordError : null}
-          />
+            <View style={styles.form}>
+              <View style={styles.roleGrid}>
+                <RoleCard
+                  active={role === "player"}
+                  icon={<Zap size={20} color={role === "player" ? tokens.emerald600 : c.textFaint} />}
+                  title="I want to play"
+                  subtitle="Book courts, join games & teams"
+                  onPress={() => setRole("player")}
+                  activeColor={tokens.emerald600}
+                  colors={c}
+                />
+                <RoleCard
+                  active={role === "owner"}
+                  icon={<Crown size={20} color={role === "owner" ? tokens.orange500 : c.textFaint} />}
+                  title="I own a court"
+                  subtitle="Welcome players, grow bookings"
+                  onPress={() => setRole("owner")}
+                  activeColor={tokens.orange500}
+                  colors={c}
+                />
+              </View>
 
-          <ChoiceRow
-            label="Skill level"
-            options={LEVELS as readonly string[]}
-            value={level}
-            onChange={setLevel}
-          />
-          <ChoiceRow
-            label="Preferred position"
-            options={POSITIONS as readonly string[]}
-            value={position}
-            onChange={setPosition}
-          />
+              <Field label="What should we call you?" value={name} onChangeText={setName} placeholder="Your name" error={touched ? nameError : null} />
+              <Field label="Email" value={email} onChangeText={setEmail} placeholder="you@mail.com" keyboardType="email-address" autoCapitalize="none" error={touched ? emailError : null} />
+              <Field label="Phone" value={phone} onChangeText={setPhone} placeholder="98XXXXXXXX" keyboardType="phone-pad" autoCapitalize="none" error={touched ? phoneError : null} />
 
-          <Button label="Create account" onPress={submit} loading={busy} />
+              <View style={styles.fieldBlock}>
+                <Text style={[styles.label, { color: c.textFaint }]}>Password</Text>
+                <View style={[styles.passwordWrap, { backgroundColor: inputFill, borderColor: touched && passwordError ? tokens.red400 : c.border }]}>
+                  <Lock size={16} color={c.textFaint} />
+                  <TextInput
+                    value={password}
+                    onChangeText={setPassword}
+                    placeholder="At least 8 characters"
+                    placeholderTextColor={c.textFaint}
+                    secureTextEntry={!showPw}
+                    autoCapitalize="none"
+                    maxLength={100}
+                    style={[styles.passwordInput, { color: c.text }]}
+                  />
+                  <Pressable onPress={() => setShowPw((v) => !v)} accessibilityLabel={showPw ? "Hide password" : "Show password"}>
+                    {showPw ? <EyeOff size={17} color={c.textFaint} /> : <Eye size={17} color={c.textFaint} />}
+                  </Pressable>
+                </View>
+                {password ? (
+                  <View style={styles.strengthWrap}>
+                    <View style={styles.strengthBars}>
+                      {[1, 2, 3, 4].map((i) => (
+                        <View key={i} style={[styles.strengthBar, { backgroundColor: i <= strength.score ? (strength.score <= 1 ? tokens.red400 : strength.score === 2 ? tokens.amber400 : tokens.emerald500) : c.border }]} />
+                      ))}
+                    </View>
+                    <Text style={[styles.strengthLabel, { color: c.textMuted }]}>{strength.emoji} {strength.label}</Text>
+                  </View>
+                ) : null}
+                {touched && passwordError ? <Text style={styles.error}>{passwordError}</Text> : null}
+              </View>
 
-          <View style={styles.footerRow}>
-            <Text style={{ color: colors.textMuted, fontSize: fontSize.base }}>
-              Already have an account?{" "}
-            </Text>
-            <Link href="/login" asChild>
-              {/* Slot can't merge an array style, so flatten it to one object. */}
-              <Text style={StyleSheet.flatten([styles.link, { color: colors.primary }])}>
-                Sign in
-              </Text>
-            </Link>
+              <View style={styles.fieldBlock}>
+                <View style={styles.labelRow}>
+                  <MapPin size={14} color={c.textFaint} />
+                  <Text style={[styles.label, { color: c.textFaint }]}>Home city</Text>
+                </View>
+                <View style={[styles.pickerWrap, { backgroundColor: inputFill, borderColor: touched && cityError ? tokens.red400 : c.border }]}>
+                  <Picker selectedValue={defaultCity} onValueChange={(v) => setDefaultCity(String(v))} style={{ color: c.text }} dropdownIconColor={c.textMuted}>
+                    {CITY_OPTIONS.map((city) => <Picker.Item key={city} label={city} value={city} />)}
+                  </Picker>
+                </View>
+                <Text style={[styles.hint, { color: c.textFaint }]}>Home tab search starts here — change it anytime 🏠</Text>
+                {touched && cityError ? <Text style={styles.error}>{cityError}</Text> : null}
+              </View>
+
+              {role === "player" ? (
+                <>
+                  <ChoiceRow label="Skill level" options={LEVELS} value={level} onChange={setLevel} />
+                  <ChoiceRow label="Preferred position" options={POSITIONS} value={position} onChange={setPosition} />
+                </>
+              ) : (
+                <View style={[styles.ownerNote, { backgroundColor: isDark ? "rgba(249,115,22,0.12)" : tokens.orange50, borderColor: isDark ? "rgba(249,115,22,0.3)" : tokens.orange100 }]}>
+                  <Crown size={16} color={tokens.orange500} />
+                  <Text style={[styles.ownerNoteText, { color: isDark ? tokens.orange300 : tokens.orange700 }]}>Owner accounts can list venues, add courts, manage requests, and run leagues from Owner Studio.</Text>
+                </View>
+              )}
+
+              {error ? <Notice message={error} /> : null}
+              <Button label={busy ? "Getting you in…" : role === "owner" ? "Create owner account" : "Create account"} onPress={() => void submit()} loading={busy} />
+
+              <View style={styles.footerRow}>
+                <Text style={{ color: c.textMuted, fontSize: fontSize.base }}>Already have an account? </Text>
+                <Link href="/login" asChild><Text style={[styles.link, { color: c.primary }]}>Sign in</Text></Link>
+              </View>
+            </View>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -174,50 +231,26 @@ export default function Signup() {
   );
 }
 
-/** Wrapping row of selectable chips. */
-function ChoiceRow({
-  label,
-  options,
-  value,
-  onChange,
-}: {
-  label: string;
-  options: readonly string[];
-  value: string;
-  onChange: (next: string) => void;
-}) {
-  const { colors } = useTheme();
+function RoleCard({ active, icon, title, subtitle, onPress, activeColor, colors: c }: { active: boolean; icon: React.ReactNode; title: string; subtitle: string; onPress: () => void; activeColor: string; colors: { surface: string; border: string; text: string; textMuted: string; textFaint: string } }) {
   return (
-    <View style={styles.choiceBlock}>
-      <Text style={[styles.choiceLabel, { color: colors.textMuted }]}>{label}</Text>
+    <Pressable onPress={onPress} style={[styles.roleCard, { backgroundColor: active ? `${activeColor}12` : c.surface, borderColor: active ? activeColor : c.border }]} accessibilityRole="button" accessibilityState={{ selected: active }}>
+      {active ? <View style={[styles.check, { backgroundColor: activeColor }]}><Check size={12} color="#FFFFFF" strokeWidth={3.5} /></View> : null}
+      {icon}
+      <Text style={[styles.roleTitle, { color: c.text }]}>{title}</Text>
+      <Text style={[styles.roleSubtitle, { color: c.textMuted }]}>{subtitle}</Text>
+    </Pressable>
+  );
+}
+
+function ChoiceRow({ label, options, value, onChange }: { label: string; options: readonly string[]; value: string; onChange: (value: string) => void }) {
+  const { colors: c } = useTheme();
+  return (
+    <View style={styles.fieldBlock}>
+      <Text style={[styles.label, { color: c.textFaint }]}>{label}</Text>
       <View style={styles.choiceRow}>
-        {options.map((opt) => {
-          const active = opt === value;
-          return (
-            <Pressable
-              key={opt}
-              onPress={() => onChange(opt)}
-              accessibilityRole="button"
-              accessibilityState={{ selected: active }}
-              style={[
-                styles.chip,
-                {
-                  backgroundColor: active ? colors.primary : colors.surface,
-                  borderColor: active ? colors.primary : colors.border,
-                },
-              ]}
-            >
-              <Text
-                style={{
-                  color: active ? colors.primaryText : colors.text,
-                  fontSize: fontSize.base,
-                  fontWeight: "500",
-                }}
-              >
-                {opt}
-              </Text>
-            </Pressable>
-          );
+        {options.map((option) => {
+          const active = option === value;
+          return <Pressable key={option} onPress={() => onChange(option)} style={[styles.choice, { backgroundColor: active ? c.primary : c.surface, borderColor: active ? c.primary : c.border }]}><Text style={{ color: active ? c.primaryText : c.text, fontSize: fontSize.base, fontWeight: "600" }}>{option}</Text></Pressable>;
         })}
       </View>
     </View>
@@ -226,20 +259,36 @@ function ChoiceRow({
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
-  scroll: { padding: space["6"], paddingTop: space["6"], paddingBottom: space["8"] },
-  title: { fontSize: fontSize["3xl"], fontWeight: "700" },
-  subtitle: { fontSize: fontSize.base, color: "#64748B", marginTop: space["1"], marginBottom: space["6"] },
-  choiceBlock: { marginBottom: space["4"] },
-  choiceLabel: { fontSize: fontSize.base, marginBottom: space["2"], fontWeight: "500" },
-  choiceRow: { flexDirection: "row", flexWrap: "wrap", gap: space["2"] },
-  chip: {
-    paddingHorizontal: space["3"],
-    paddingVertical: space["2"],
-    borderRadius: radius.full,
-    borderWidth: 1,
-    minHeight: 40,
-    justifyContent: "center",
-  },
-  footerRow: { flexDirection: "row", justifyContent: "center", marginTop: space["6"] },
-  link: { fontSize: fontSize.base, fontWeight: "600" },
+  scroll: { padding: space[4], paddingBottom: space[10] },
+  back: { alignSelf: "flex-start", borderWidth: 1, borderRadius: radius.full, paddingHorizontal: space[4], paddingVertical: space[2], marginBottom: space[4] },
+  backText: { fontSize: fontSize.sm, fontWeight: "900" },
+  card: { width: "100%", maxWidth: 520, alignSelf: "center", borderWidth: 1, borderRadius: 32, overflow: "hidden", shadowColor: "#B4783C", shadowOpacity: 0.14, shadowRadius: 30, shadowOffset: { width: 0, height: 12 }, elevation: 4 },
+  hero: { padding: space[7], alignItems: "center" },
+  heroIcon: { width: 56, height: 56, borderRadius: radius["2xl"], backgroundColor: "#FFFFFF", alignItems: "center", justifyContent: "center" },
+  heroTitle: { marginTop: space[3], color: "#FFFFFF", fontSize: fontSize["2xl"], fontWeight: "900", textAlign: "center" },
+  heroSub: { marginTop: space[1], color: "rgba(209,250,229,0.85)", fontSize: fontSize.base, textAlign: "center", lineHeight: 20 },
+  form: { padding: space[6], gap: space[3] },
+  roleGrid: { flexDirection: "row", gap: space[2], marginBottom: space[2] },
+  roleCard: { flex: 1, minHeight: 118, borderWidth: 1, borderRadius: radius["2xl"], padding: space[3], position: "relative" },
+  check: { position: "absolute", top: 10, right: 10, width: 20, height: 20, borderRadius: 10, alignItems: "center", justifyContent: "center" },
+  roleTitle: { marginTop: space[2], fontSize: fontSize.base, fontWeight: "900" },
+  roleSubtitle: { marginTop: 2, fontSize: fontSize.xs, lineHeight: 16 },
+  fieldBlock: { gap: space[1] },
+  label: { fontSize: fontSize.sm, fontWeight: "900", textTransform: "uppercase", letterSpacing: 0.8 },
+  labelRow: { flexDirection: "row", alignItems: "center", gap: 5 },
+  passwordWrap: { minHeight: 48, borderWidth: 1, borderRadius: radius["2xl"], paddingHorizontal: space[4], flexDirection: "row", alignItems: "center", gap: space[2] },
+  passwordInput: { flex: 1, fontSize: 16, fontWeight: "600", paddingVertical: 11 },
+  pickerWrap: { borderWidth: 1, borderRadius: radius["2xl"], overflow: "hidden", minHeight: 48, justifyContent: "center" },
+  hint: { fontSize: fontSize.xs, fontWeight: "600" },
+  error: { fontSize: fontSize.xs, color: tokens.red500, fontWeight: "700" },
+  strengthWrap: { gap: 4 },
+  strengthBars: { flexDirection: "row", gap: 4 },
+  strengthBar: { height: 6, flex: 1, borderRadius: 99 },
+  strengthLabel: { fontSize: fontSize.xs, fontWeight: "700" },
+  choiceRow: { flexDirection: "row", flexWrap: "wrap", gap: space[2] },
+  choice: { borderWidth: 1, borderRadius: radius.full, paddingHorizontal: space[3], paddingVertical: space[2], minHeight: 40, justifyContent: "center" },
+  ownerNote: { flexDirection: "row", alignItems: "flex-start", gap: space[2], borderWidth: 1, borderRadius: radius.xl, padding: space[3] },
+  ownerNoteText: { flex: 1, fontSize: fontSize.xs, fontWeight: "700", lineHeight: 17 },
+  footerRow: { flexDirection: "row", justifyContent: "center", marginTop: space[2] },
+  link: { fontSize: fontSize.base, fontWeight: "900" },
 });

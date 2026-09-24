@@ -25,10 +25,21 @@
  * Later, swap the same variable to the Laravel host and nothing else changes.
  */
 
-const DEFAULT_BASE = "http://localhost:3000";
+const NATIVE_DEFAULT_BASE = "http://localhost:3000";
 
-/** Backend origin, without a trailing slash. */
-export const API_BASE = (process.env.EXPO_PUBLIC_API_BASE || DEFAULT_BASE).replace(/\/+$/, "");
+/**
+ * Browsers must never be shipped a localhost API URL: on a user's device that
+ * points back to the user's own machine. Web uses same-origin `/api` calls and
+ * the Expo dev server proxies them to the Next.js app; native keeps the useful
+ * simulator default and can be overridden with EXPO_PUBLIC_API_BASE.
+ */
+const configuredBase = process.env.EXPO_PUBLIC_API_BASE?.trim() ?? "";
+const runningInBrowser = typeof window !== "undefined";
+const configuredIsLocal = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?\/?$/i.test(configuredBase);
+const resolvedBase = runningInBrowser && configuredIsLocal ? "" : configuredBase;
+
+/** Backend origin, without a trailing slash. Empty means same-origin `/api`. */
+export const API_BASE = (resolvedBase || (runningInBrowser ? "" : NATIVE_DEFAULT_BASE)).replace(/\/+$/, "");
 
 /**
  * Resolve an API path to an absolute URL.

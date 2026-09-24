@@ -184,31 +184,17 @@ export default function BookingsScreen() {
    * posts verify with mockApprove — the identical server path (signature check
    * skipped, ledger row appended, statuses updated).
    */
-  async function payNow(b: DiaryBooking) {
+  function payNow(b: DiaryBooking) {
     setPaying(b.id);
     setPayError("");
     setCancelError("");
-    try {
-      const method = String(b.paymentMethod ?? "");
-      const { initiateEsewa, verifyEsewa, initiateKhalti, verifyKhalti } = await import("@/api");
-      if (method === "eSewa") {
-        try {
-          await initiateEsewa(b.id);
-        } catch {
-          /* initiate is optional against mockApprove */
-        }
-        await verifyEsewa(b.id, true);
-      } else if (method === "Khalti") {
-        const init = await initiateKhalti(b.id);
-        const pidx = typeof init.pidx === "string" ? init.pidx : "mock-pidx";
-        await verifyKhalti(b.id, pidx, true);
-      }
-      await load();
-    } catch (e) {
-      setPayError(e instanceof Error ? e.message : "Payment failed");
-    } finally {
-      setPaying(null);
-    }
+    const method = String(b.paymentMethod ?? "");
+    const amount = Math.max(0, b.depositRequired && b.depositStatus !== "paid" ? b.depositAmount ?? 0 : b.totalPrice - b.paidAmount);
+    const path = method === "eSewa"
+      ? `/payment/esewa/mock?bookingId=${b.id}&amount=${encodeURIComponent(String(amount))}`
+      : `/payment/khalti/mock?bookingId=${b.id}&amount=${encodeURIComponent(String(amount))}&pidx=mock-pidx`;
+    setPaying(null);
+    router.push(path as never);
   }
 
   function needsOnlinePay(b: DiaryBooking) {

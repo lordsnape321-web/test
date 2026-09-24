@@ -38,7 +38,7 @@ import { fontSize, radius, space } from "@/theme";
  *
  * Platform notes: `<input type="date|time">` becomes the DateField/TimeField
  * chip strips; `<select>` becomes Picker; the spin Loader2 becomes an
- * ActivityIndicator; `/venues/:id` links to the native `/venue/:id`.
+ * ActivityIndicator; venue links keep the web app's `/venues/:id` path.
  */
 export function LeagueFixtures({
   league,
@@ -467,7 +467,7 @@ export function LeagueFixtures({
           <Text style={[styles.venueText, { color: c.textFaint }]}>
             All fixtures at{" "}
             <Text
-              onPress={() => router.push(`/venue/${league.venueId}`)}
+              onPress={() => router.push(`/venues/${league.venueId}`)}
               style={[styles.venueText, { color: c.textFaint, textDecorationLine: "underline" }]}
             >
               {league.venueName}

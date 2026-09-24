@@ -64,12 +64,11 @@ function badgeFor(type: string, isDark: boolean): Badge {
 }
 
 /**
- * The server stores notification links as web paths (e.g. `/venues/3`). The
- * native venue detail route is singular (`/venue/[id]`), so rewrite that one
- * known mismatch before navigating; anything else is pushed as-is.
+ * Notification links are server-generated web paths. The native route tree
+ * exposes the same plural venue URL, so shared links can be pushed unchanged.
  */
 function normalizeLink(link: string): string {
-  return link.replace(/^\/venues\//, "/venue/");
+  return link;
 }
 
 export default function NotificationsScreen() {

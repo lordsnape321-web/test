@@ -195,7 +195,7 @@ export default function LeagueDetailScreen() {
                 <MapPin size={14} color="rgba(255,255,255,0.85)" />
                 {league.venueId ? (
                   <Text
-                    onPress={() => router.push(`/venue/${league.venueId}`)}
+                    onPress={() => router.push(`/venues/${league.venueId}`)}
                     style={styles.coverMetaLink}
                   >
                     {league.venueName}

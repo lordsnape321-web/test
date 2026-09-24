@@ -23,6 +23,7 @@ import { NotificationBell } from "@/components/NotificationBell";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { useAuth } from "@/context/AuthContext";
 import { useTheme } from "@/context/ThemeContext";
+import { useBreakpoints } from "@/lib/responsive";
 import { APP_FONT_FAMILY, colors as brand, fontSize, radius, space } from "@/theme";
 
 /*
@@ -48,6 +49,7 @@ export function Navbar() {
   const router = useRouter();
   const { user, isOwner, signOut } = useAuth();
   const { colors: c, isDark } = useTheme();
+  const { sm } = useBreakpoints();
   const insets = useSafeAreaInsets();
   const [open, setOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
@@ -95,7 +97,7 @@ export function Navbar() {
         <View style={styles.actions}>
           <ThemeToggle />
           {user ? <NotificationBell /> : null}
-          {user ? (
+          {user && sm ? (
             <Pressable
               onPress={() => router.push("/(app)/settings")}
               style={[
@@ -122,7 +124,7 @@ export function Navbar() {
             </Pressable>
           ) : null}
 
-          {!user ? (
+          {!user && sm ? (
             <View style={styles.authRow}>
               <Pressable
                 onPress={() => router.push("/login")}
@@ -144,7 +146,7 @@ export function Navbar() {
                 <Text style={styles.joinText}>Join free</Text>
               </Pressable>
             </View>
-          ) : (
+          ) : user && sm ? (
             <View style={styles.profileWrap}>
               <Pressable
                 onPress={() => setProfileOpen((v) => !v)}
@@ -262,7 +264,7 @@ export function Navbar() {
                 </>
               ) : null}
             </View>
-          )}
+          ) : null}
 
           {/* Hamburger (matches the web mobile menu; the bottom rail is always there too) */}
           <Pressable

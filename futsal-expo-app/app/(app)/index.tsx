@@ -4,6 +4,7 @@ import {
   ArrowRight,
   CalendarCheck,
   ChevronRight,
+  Clock,
   CreditCard,
   Heart,
   MapPin,
@@ -12,12 +13,15 @@ import {
   Search,
   ShieldCheck,
   Sparkles,
+  Star,
   Trophy,
   Users,
   Zap,
 } from "lucide-react-native";
 import React, { useCallback, useEffect, useState } from "react";
+import { Picker } from "@react-native-picker/picker";
 import {
+  Image,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -30,8 +34,8 @@ import { MatchCard, VenueCard } from "@/components/cards";
 import { PageContainer, ResponsiveGrid } from "@/components/layout";
 import { useAuth } from "@/context/AuthContext";
 import { useTheme } from "@/context/ThemeContext";
-import { fetchMatches, fetchStats, fetchVenues } from "@/api";
-import { formatNPR } from "@/lib/futsal";
+import { fetchMatches, fetchStats, fetchVenues, seedDemo } from "@/api";
+import { CITY_OPTIONS, formatNPR } from "@/lib/futsal";
 import { validateSearch } from "@/lib/validation";
 import { useBreakpoints } from "@/lib/responsive";
 import type { Match, SiteStats, Venue } from "@/lib/types";
@@ -44,14 +48,10 @@ import { colors, fontSize, radius, space } from "@/theme";
  * stat tiles, featured venues, how-it-works, open matches, community panel,
  * footer.
  *
- * Deliberate omissions, both decorative and neither representable without extra
- * native modules:
- *  - the blurred colour blobs behind the hero (CSS blur filters)
- *  - the infinite marquee strip (a CSS keyframe animation)
- *  - the desktop-only hero photo column (hidden below `lg` on web too, so a
- *    phone never showed it)
- * The gradient headline is rendered in the gradient's start colour rather than
- * clipped to a gradient, which RN text cannot do natively.
+ * Platform-native equivalents replace only rendering primitives that do not exist
+ * in React Native: the global TurfBackdrop supplies the blurred clubhouse blobs,
+ * the hero marquee is a bounded text rail, and the headline uses the gradient's
+ * emerald start colour because RN text cannot clip a LinearGradient.
  */
 export default function HomeScreen() {
   const { colors: c, isDark } = useTheme();
@@ -64,15 +64,26 @@ export default function HomeScreen() {
   const [stats, setStats] = useState<SiteStats | null>(null);
   const [q, setQ] = useState("");
   const [searchError, setSearchError] = useState("");
+  const [city, setCity] = useState("All Cities");
+  const [cityTouched, setCityTouched] = useState(false);
   const [loading, setLoading] = useState(true);
+
+  const homeCity = user?.defaultCity ?? "All Cities";
+
+  useEffect(() => {
+    if (!cityTouched && CITY_OPTIONS.includes(homeCity)) setCity(homeCity);
+  }, [cityTouched, homeCity]);
 
   useEffect(() => {
     (async () => {
       try {
+        await seedDemo();
         const [v, m, s] = await Promise.all([fetchVenues(), fetchMatches(), fetchStats()]);
         setVenues(v);
         setMatches(m.slice(0, 3));
         setStats(s);
+      } catch {
+        // Keep the marketing shell usable while the API is offline.
       } finally {
         setLoading(false);
       }
@@ -89,8 +100,8 @@ export default function HomeScreen() {
       return;
     }
     setSearchError("");
-    router.push({ pathname: "/venues", params: { q: q.trim() } });
-  }, [q, router]);
+    router.push({ pathname: "/venues", params: { q: q.trim(), city } });
+  }, [city, q, router]);
 
   const statTiles = [
     { n: `${stats?.venues ?? "—"}`, l: "Courts near you" },
@@ -104,6 +115,8 @@ export default function HomeScreen() {
       <ScrollView contentContainerStyle={[styles.content, { paddingHorizontal: bp.gutter }]}>
         <PageContainer padded={false}>
         {/* ── HERO ─────────────────────────────────────────────────── */}
+        <View style={[styles.heroGrid, bp.lg ? styles.heroGridWide : null]}>
+          <View style={[styles.heroCopy, bp.lg ? styles.heroCopyWide : null]}>
         <View style={[styles.heroBadge, { backgroundColor: c.surface, borderColor: c.border }]}>
           <Sparkles size={14} color={colors.orange500} />
           <Text style={[styles.heroBadgeText, { color: c.text }]} numberOfLines={2}>
@@ -143,6 +156,22 @@ export default function HomeScreen() {
               style={[styles.searchInput, { color: c.text }]}
             />
           </View>
+          <View style={[styles.searchField, styles.cityField, { backgroundColor: c.inset }]}>
+            <MapPin size={16} color={c.textFaint} />
+            <Picker
+              selectedValue={city}
+              onValueChange={(next) => {
+                setCity(String(next));
+                setCityTouched(true);
+              }}
+              style={[styles.cityPicker, { color: c.text }]}
+              dropdownIconColor={c.textMuted}
+            >
+              {CITY_OPTIONS.map((option) => (
+                <Picker.Item key={option} label={option === homeCity && option !== "All Cities" ? `${option} 🏠` : option} value={option} />
+              ))}
+            </Picker>
+          </View>
           <Pressable
             onPress={submitSearch}
             accessibilityRole="button"
@@ -155,6 +184,9 @@ export default function HomeScreen() {
           </Pressable>
           {searchError ? <Text style={styles.searchError}>{searchError}</Text> : null}
         </View>
+        {user && homeCity !== "All Cities" ? (
+          <Text style={[styles.homeCityHint, { color: c.textFaint }]}>🏠 Searching in your home city <Text style={{ color: c.textMuted, fontWeight: "800" }}>{homeCity}</Text> — change it in Profile</Text>
+        ) : null}
 
         {/* Trust line */}
         <View style={styles.trustRow}>
@@ -182,6 +214,15 @@ export default function HomeScreen() {
               <Text style={[styles.statLabel, { color: c.textFaint }]}>{s.l}</Text>
             </View>
           ))}
+        </View>
+          </View>
+          {bp.lg ? <HeroVisual /> : null}
+        </View>
+
+        <View style={styles.marquee}>
+          <Text style={styles.marqueeText} numberOfLines={1}>
+            ⚽ Everyone&apos;s welcome here   🤝 Come alone, leave with friends   🔥 Weekend games &amp; laughter   💳 Pay your way — eSewa • Khalti   🏆 Friendly matches daily   👥 Bring your whole crew   ⚽ Everyone&apos;s welcome here   🤝 Come alone, leave with friends
+          </Text>
         </View>
 
         {/* ── FEATURED VENUES ──────────────────────────────────────── */}
@@ -324,6 +365,8 @@ export default function HomeScreen() {
           colors={[colors.emerald700, "#064E3B"]}
           style={styles.community}
         >
+          <View style={[styles.communityGrid, bp.lg ? styles.communityGridWide : null]}>
+            <View style={styles.communityCopy}>
           <View style={[styles.communityPill]}>
             <Trophy size={14} color="#FCD34D" />
             <Text style={styles.communityPillText}>THE FAMILY LEAGUE • SEASON 4</Text>
@@ -355,7 +398,9 @@ export default function HomeScreen() {
               <Text style={styles.communitySecondaryText}>Book a kickabout</Text>
             </Pressable>
           </View>
+            </View>
 
+            <View style={styles.testimonials}>
           {[
             {
               q: "Came alone on a Friday, left with 9 new friends. Best decision ever!",
@@ -378,6 +423,8 @@ export default function HomeScreen() {
               <Text style={styles.testimonialName}>{t.n}</Text>
             </View>
           ))}
+            </View>
+          </View>
         </LinearGradient>
 
         {/* ── FOOTER ───────────────────────────────────────────────── */}
@@ -408,6 +455,84 @@ export default function HomeScreen() {
   );
 }
 
+function HeroVisual() {
+  const { colors: c, isDark } = useTheme();
+  const overlay = isDark ? "rgba(15,23,42,0.95)" : "rgba(255,255,255,0.95)";
+  const overlayText = isDark ? c.text : c.text;
+  const overlayMuted = isDark ? c.textMuted : c.textMuted;
+
+  return (
+    <View style={styles.heroVisual}>
+      <View
+        style={[
+          styles.heroPhotoFrame,
+          { borderColor: isDark ? colors.slate900 : colors.white },
+        ]}
+      >
+        <Image
+          source={{
+            uri: "https://images.unsplash.com/photo-1574629810360-7efbbe195018?q=80&w=1200&auto=format&fit=crop",
+          }}
+          accessibilityLabel="Friends playing futsal together"
+          style={styles.heroPhoto}
+          resizeMode="cover"
+        />
+        <LinearGradient
+          colors={["rgba(0,0,0,0.5)", "rgba(0,0,0,0)"]}
+          start={{ x: 0, y: 1 }}
+          end={{ x: 0, y: 0 }}
+          style={StyleSheet.absoluteFill}
+        />
+
+        <View style={[styles.bookingOverlay, { backgroundColor: overlay }]}>
+          <View style={[styles.bookingIcon, { backgroundColor: colors.emerald600 }]}>
+            <CalendarCheck size={20} color="#FFFFFF" />
+          </View>
+          <View style={styles.bookingCopy}>
+            <Text style={[styles.bookingTitle, { color: overlayText }]} numberOfLines={1}>
+              Saturday with the gang 🎉
+            </Text>
+            <Text style={[styles.bookingMeta, { color: overlayMuted }]} numberOfLines={1}>
+              Arena A • Today • 7:00 PM • 5v5
+            </Text>
+          </View>
+          <View style={[styles.bookingStatus, { backgroundColor: isDark ? "rgba(16,185,129,0.15)" : colors.emerald100 }]}>
+            <Text style={[styles.bookingStatusText, { color: isDark ? colors.emerald300 : colors.emerald700 }]}>YOU&apos;RE IN ✓</Text>
+          </View>
+        </View>
+
+        <View style={styles.heroBottomCards}>
+          <View style={[styles.heroSlotCard, { backgroundColor: overlay }]}>
+            <View style={styles.heroMiniLabel}>
+              <Clock size={14} color={overlayMuted} />
+              <Text style={[styles.heroMiniLabelText, { color: overlayMuted }]}>NEXT FREE SLOT</Text>
+            </View>
+            <Text style={[styles.heroSlotTitle, { color: overlayText }]}>Today, 8 PM</Text>
+            <Text style={[styles.heroSlotPrice, { color: isDark ? colors.emerald400 : colors.emerald600 }]}>{formatNPR(2000)}/hr</Text>
+          </View>
+          <View style={styles.heroJoinCard}>
+            <View style={styles.heroMiniLabel}>
+              <Zap size={14} color={colors.orange100} />
+              <Text style={[styles.heroMiniLabelText, { color: colors.orange100 }]}>JOIN US TONIGHT</Text>
+            </View>
+            <Text style={styles.heroJoinTitle}>Friday Night Game — 5 friendly spots left</Text>
+          </View>
+        </View>
+      </View>
+
+      <View style={[styles.ratingBadge, { backgroundColor: overlay, borderColor: isDark ? c.border : "rgba(255,255,255,0.6)" }]}>
+        <View style={[styles.ratingIcon, { backgroundColor: isDark ? "rgba(245,158,11,0.15)" : "#FEF3C7" }]}>
+          <Star size={20} color={colors.amber400} fill={colors.amber400} />
+        </View>
+        <View style={styles.ratingCopy}>
+          <Text style={[styles.ratingTitle, { color: overlayText }]}>4.8 / 5.0</Text>
+          <Text style={[styles.ratingMeta, { color: overlayMuted }]} numberOfLines={1}>from 2,400+ happy players</Text>
+        </View>
+      </View>
+    </View>
+  );
+}
+
 function TrustItem({
   icon: Icon,
   color,
@@ -433,6 +558,61 @@ const styles = StyleSheet.create({
   content: { padding: space[4], paddingBottom: space[12] },
 
   /* hero */
+  heroGrid: { gap: space[8] },
+  heroGridWide: { flexDirection: "row", alignItems: "center", gap: space[10] },
+  heroCopy: { alignSelf: "stretch" },
+  heroCopyWide: { flex: 1, minWidth: 0, alignSelf: "auto" },
+  heroVisual: { flex: 1, minWidth: 0, position: "relative" },
+  heroPhotoFrame: {
+    height: 520,
+    width: "100%",
+    borderWidth: 4,
+    borderRadius: 32,
+    overflow: "hidden",
+    shadowColor: "rgb(180,120,60)",
+    shadowOpacity: 0.25,
+    shadowRadius: 35,
+    shadowOffset: { width: 0, height: 20 },
+    elevation: 8,
+  },
+  heroPhoto: { width: "100%", height: "100%" },
+  bookingOverlay: {
+    position: "absolute",
+    left: 20,
+    right: 20,
+    top: 20,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    borderRadius: radius["2xl"],
+    padding: 12,
+    shadowColor: "#000",
+    shadowOpacity: 0.18,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 4,
+  },
+  bookingIcon: { width: 40, height: 40, borderRadius: radius.xl, alignItems: "center", justifyContent: "center" },
+  bookingCopy: { flex: 1, minWidth: 0 },
+  bookingTitle: { fontSize: fontSize.xs, fontWeight: "900" },
+  bookingMeta: { fontSize: fontSize["2xs"], marginTop: 3 },
+  bookingStatus: { borderRadius: radius.full, paddingHorizontal: 10, paddingVertical: 4 },
+  bookingStatusText: { fontSize: fontSize["2xs"], fontWeight: "900" },
+  heroBottomCards: { position: "absolute", left: 20, right: 20, bottom: 20, flexDirection: "row", gap: space[3] },
+  heroSlotCard: { flex: 1, borderRadius: radius["2xl"], padding: 14, shadowColor: "#000", shadowOpacity: 0.18, shadowRadius: 8, shadowOffset: { width: 0, height: 3 }, elevation: 4 },
+  heroJoinCard: { flex: 1, borderRadius: radius["2xl"], padding: 14, backgroundColor: colors.orange500, shadowColor: "#000", shadowOpacity: 0.18, shadowRadius: 8, shadowOffset: { width: 0, height: 3 }, elevation: 4 },
+  heroMiniLabel: { flexDirection: "row", alignItems: "center", gap: 6 },
+  heroMiniLabelText: { fontSize: fontSize["2xs"], fontWeight: "900" },
+  heroSlotTitle: { fontSize: fontSize.lg, fontWeight: "900", marginTop: 4 },
+  heroSlotPrice: { fontSize: fontSize.xs, fontWeight: "900", marginTop: 2 },
+  heroJoinTitle: { color: "#FFFFFF", fontSize: fontSize.sm, fontWeight: "900", lineHeight: 17, marginTop: 4 },
+  ratingBadge: { position: "absolute", left: 20, top: 250, flexDirection: "row", alignItems: "center", gap: 10, maxWidth: "88%", borderWidth: 1, borderRadius: radius["2xl"], padding: 12, paddingRight: 20, shadowColor: "#000", shadowOpacity: 0.2, shadowRadius: 12, shadowOffset: { width: 0, height: 5 }, elevation: 6 },
+  ratingIcon: { width: 40, height: 40, borderRadius: radius.xl, alignItems: "center", justifyContent: "center" },
+  ratingCopy: { minWidth: 0 },
+  ratingTitle: { fontSize: fontSize.base, fontWeight: "900" },
+  ratingMeta: { fontSize: fontSize["2xs"], marginTop: 2 },
+  marquee: { backgroundColor: colors.emerald700, borderTopWidth: 1, borderBottomWidth: 1, borderColor: "#065F46", marginTop: space[8], marginHorizontal: -space[4], paddingVertical: space[3], paddingHorizontal: space[4], overflow: "hidden" },
+  marqueeText: { color: colors.emerald50, fontSize: fontSize.xs, fontWeight: "900", letterSpacing: 1.2 },
   heroBadge: {
     flexDirection: "row",
     alignItems: "center",
@@ -463,6 +643,9 @@ const styles = StyleSheet.create({
     minHeight: 48,
   },
   searchInput: { flex: 1, fontSize: fontSize.base, fontWeight: "600", paddingVertical: 0 },
+  cityField: { marginTop: space[2], paddingRight: space[2] },
+  cityPicker: { flex: 1, height: 48, fontSize: fontSize.base, fontWeight: "600" },
+  homeCityHint: { fontSize: fontSize.xs, fontWeight: "700", marginTop: space[2] },
   searchButton: {
     borderRadius: radius["2xl"],
     alignItems: "center",
@@ -584,6 +767,11 @@ const styles = StyleSheet.create({
     padding: space[8],
     marginTop: space[10],
   },
+  communityGrid: { gap: space[5] },
+  communityGridWide: { flexDirection: "row", alignItems: "center", gap: space[8] },
+  communityCopy: { flex: 1, minWidth: 0 },
+  testimonials: { flex: 1, minWidth: 0 },
+
   communityPill: {
     flexDirection: "row",
     alignItems: "center",

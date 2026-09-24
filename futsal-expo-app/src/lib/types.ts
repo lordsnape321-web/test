@@ -71,9 +71,12 @@ export type User = {
   email: string;
   phone: string;
   role: "player" | "owner" | "admin";
+  /** The server returns these profile fields on every auth response. */
+  avatarColor?: string | null;
+  avatarUrl?: string | null;
+  defaultCity?: string;
   level?: string;
   position?: string;
-  avatarUrl?: string | null;
   matchesPlayed?: number;
   rating?: number;
   trustScore?: number;

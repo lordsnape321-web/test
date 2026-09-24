@@ -27,7 +27,9 @@ import type {
 } from "@/lib/types";
 
 /**
- * Typed calls for the vertical slice: auth → venues → booking → payment.
+ * Typed calls for the complete player and Owner Studio experience: auth, courts,
+ * bookings, payments, matches, leagues, teams, players, notifications, reviews,
+ * and owner management.
  *
  * Each function is one route. Keeping them here rather than inline in screens
  * means the route paths and request shapes are written down exactly once, which
@@ -42,6 +44,8 @@ export function signup(input: {
   email: string;
   phone: string;
   password: string;
+  /** Player or venue-owner account; the web API defaults to player. */
+  role?: "player" | "owner";
   level?: string;
   position?: string;
   defaultCity?: string;
@@ -112,6 +116,12 @@ export async function fetchAvailability(
 }
 
 /* ── profile ─────────────────────────────────────────────────────────────── */
+
+/** GET /api/users/:id → { user, stats } — refresh the cached session profile. */
+export async function fetchUser(userId: number): Promise<User> {
+  const data = await apiJson<{ user: User }>(`/api/users/${userId}`);
+  return data.user;
+}
 
 /**
  * PATCH /api/users/:id → { user }

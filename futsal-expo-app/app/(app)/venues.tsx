@@ -1,6 +1,6 @@
 import { Picker } from "@react-native-picker/picker";
 import Slider from "@react-native-community/slider";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import {
   Banknote,
   HeartHandshake,
@@ -24,7 +24,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { VenueCard } from "@/components/cards";
 import { useAuth } from "@/context/AuthContext";
 import { useTheme } from "@/context/ThemeContext";
-import { fetchVenues } from "@/api";
+import { fetchVenues, seedDemo } from "@/api";
 import { CITY_OPTIONS } from "@/lib/futsal";
 import { validateSearch } from "@/lib/validation";
 import { useBreakpoints } from "@/lib/responsive";
@@ -46,27 +46,33 @@ export default function VenuesScreen() {
   const { colors: c } = useTheme();
   const { user } = useAuth();
   const router = useRouter();
+  const { q: qParam, city: cityParam } = useLocalSearchParams<{ q?: string; city?: string }>();
   const bp = useBreakpoints();
 
   const [venues, setVenues] = useState<Venue[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [q, setQ] = useState("");
+  const [q, setQ] = useState(qParam ?? "");
   const [searchError, setSearchError] = useState("");
 
-  const homeCity = (user as { defaultCity?: string } | null)?.defaultCity ?? "All Cities";
-  const [city, setCity] = useState("All Cities");
+  const homeCity = user?.defaultCity ?? "All Cities";
+  const initialCity = cityParam && CITY_OPTIONS.includes(cityParam) ? cityParam : "All Cities";
+  const [city, setCity] = useState(initialCity);
+  const [cityTouched, setCityTouched] = useState(Boolean(cityParam));
   const [sort, setSort] = useState("rating");
   const [maxPrice, setMaxPrice] = useState(3000);
 
   // The web version seeds the city from the URL, then falls back to home city.
   useEffect(() => {
-    if (homeCity && CITY_OPTIONS.includes(homeCity)) setCity(homeCity);
-  }, [homeCity]);
+    if (!cityTouched && homeCity && CITY_OPTIONS.includes(homeCity)) setCity(homeCity);
+  }, [cityTouched, homeCity]);
 
   const load = useCallback(async () => {
     try {
+      await seedDemo();
       setVenues(await fetchVenues());
+    } catch {
+      // Keep the filters and empty state usable while the API is offline.
     } finally {
       setLoading(false);
     }
@@ -163,7 +169,10 @@ export default function VenuesScreen() {
                   <MapPin size={16} color={c.textFaint} />
                   <Picker
                     selectedValue={city}
-                    onValueChange={setCity}
+                    onValueChange={(next) => {
+                      setCity(String(next));
+                      setCityTouched(true);
+                    }}
                     style={[styles.picker, { color: c.text }]}
                     dropdownIconColor={c.textMuted}
                   >
@@ -228,7 +237,10 @@ export default function VenuesScreen() {
                 return (
                   <Pressable
                     key={opt}
-                    onPress={() => setCity(opt)}
+                    onPress={() => {
+                      setCity(opt);
+                      setCityTouched(true);
+                    }}
                     accessibilityRole="button"
                     accessibilityState={{ selected: active }}
                     style={[
