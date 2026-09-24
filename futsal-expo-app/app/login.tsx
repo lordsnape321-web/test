@@ -14,7 +14,7 @@ import { useAuth } from "@/context/AuthContext";
 import { useTheme } from "@/context/ThemeContext";
 import { API_BASE, ApiError } from "@/lib/api";
 import { firstError, validateEmail } from "@/lib/validation";
-import { fontSize, space } from "@/theme";
+import { colors as tokens, fontSize, space } from "@/theme";
 
 /**
  * Sign in.
@@ -102,6 +102,17 @@ export default function Login() {
 
           <Button label="Sign in" onPress={submit} loading={busy} />
 
+          <Link href="/forgot-password" asChild>
+            <Text
+              style={StyleSheet.flatten([
+                styles.forgot,
+                { color: tokens.orange600 },
+              ])}
+            >
+              Forgot your password? 🔑
+            </Text>
+          </Link>
+
           <View style={styles.footerRow}>
             <Text style={{ color: colors.textMuted, fontSize: fontSize.base }}>
               New here?{" "}
@@ -140,6 +151,12 @@ const styles = StyleSheet.create({
   title: { fontSize: fontSize["4xl"], fontWeight: "700", marginTop: space["2"] },
   subtitle: { fontSize: fontSize.base, marginTop: space["1"] },
   footerRow: { flexDirection: "row", justifyContent: "center", marginTop: space["6"] },
+  forgot: {
+    fontSize: fontSize.base,
+    fontWeight: "700",
+    textAlign: "center",
+    marginTop: space[3],
+  },
   link: { fontSize: fontSize.base, fontWeight: "600" },
   apiLine: { fontSize: fontSize.sm, textAlign: "center", marginTop: space["4"] },
 });

@@ -46,6 +46,10 @@ function Shell() {
       <Stack.Screen name="leagues/[id]" options={{ title: "League" }} />
       <Stack.Screen name="notifications" options={{ title: "Notifications" }} />
       <Stack.Screen name="profile" options={{ title: "My profile" }} />
+      <Stack.Screen name="forgot-password" options={{ headerShown: false }} />
+      <Stack.Screen name="teams/index" options={{ title: "Teams" }} />
+      <Stack.Screen name="teams/[id]" options={{ title: "Squad" }} />
+      <Stack.Screen name="players/[id]" options={{ title: "Player" }} />
     </Stack>
   );
 }

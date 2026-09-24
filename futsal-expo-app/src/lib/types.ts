@@ -429,3 +429,315 @@ export type TeamSearchHit = {
   teamCode: string;
   captainName: string;
 };
+
+/* ── teams ───────────────────────────────────────────────────────────────── */
+
+/**
+ * One squad as the list route returns it — enriched with the viewer's
+ * relationship so the card buttons can be honest about what is really true.
+ * (`GET /api/teams`, same shape as the web teams page's `Team` type.)
+ */
+export type TeamCard = {
+  id: number;
+  name: string;
+  motto: string;
+  /** Optional "about us" — what a captain wants a stranger to know first. */
+  description: string;
+  level: string;
+  logoColor: string;
+  wins: number;
+  losses: number;
+  draws: number;
+  homeGround: string;
+  /** Venue on this platform the squad calls home, if it picked one. */
+  homeVenueId: number | null;
+  /** Unique searchable handle. */
+  teamCode: string;
+  captainId: number;
+  lookingForPlayers: boolean;
+  maxPlayers: number;
+  memberCount: number;
+  captainName: string;
+  /** Waiting join requests — only non-zero for the captain. */
+  pendingRequests: number;
+  /** Invitations sent with no answer yet — captain only. */
+  pendingInvites: number;
+  /** Invitations this squad may still send today — captain only. */
+  invitesLeftToday: number;
+  /** This viewer's relationship to the squad, when logged in. */
+  viewer: {
+    isMember: boolean;
+    isCaptain: boolean;
+    requestStatus: string | null;
+    requestId: number | null;
+    /** An open invitation from this squad, if they have one. */
+    inviteStatus: string | null;
+    inviteId: number | null;
+  } | null;
+  players: Array<{
+    id: number;
+    name: string;
+    avatarColor: string;
+    avatarUrl?: string;
+    position: string;
+  }>;
+};
+
+/**
+ * One invitation waiting on this player. `squadFull` and `maxPlayers` come from
+ * the server so the card can be honest about a yes that would not fit.
+ */
+export type TeamInvite = {
+  id: number;
+  teamId: number;
+  teamName: string;
+  teamCode: string;
+  teamLogoColor: string;
+  teamLevel: string;
+  memberCount: number;
+  maxPlayers: number;
+  squadFull: boolean;
+  captainName: string;
+  message: string;
+  status: string;
+  createdAt: string | null;
+};
+
+export type TeamRosterRow = {
+  userId: number;
+  name: string;
+  email: string;
+  avatarColor: string;
+  avatarUrl: string;
+  position: string;
+  level: string;
+  role: string;
+  isCaptain: boolean;
+  joinedAt: string | null;
+};
+
+export type TeamRequestRow = {
+  id: number;
+  userId: number;
+  name: string;
+  avatarColor: string;
+  avatarUrl: string;
+  position: string;
+  level: string;
+  message: string;
+  status: string;
+  createdAt: string | null;
+};
+
+export type TeamSentInvite = {
+  id: number;
+  userId: number;
+  name: string;
+  avatarColor: string;
+  avatarUrl: string;
+  position: string;
+  level: string;
+  email: string;
+  message: string;
+  status: string;
+  createdAt: string | null;
+};
+
+/** A squad's record across one league it played in — see `teamCompetitionProfile`. */
+export type TeamLeagueRow = {
+  tournamentId: number;
+  name: string;
+  status: string;
+  format: string;
+  venueName: string;
+  startsAt: string;
+  record: {
+    played: number;
+    won: number;
+    drawn: number;
+    lost: number;
+    goalsFor: number;
+    goalsAgainst: number;
+    goalDiff: number;
+    points: number;
+    form: string[];
+  };
+  standing: number | null;
+  tableSize: number;
+};
+
+/**
+ * League & competition profile 🏆 — merged from host-scored league fixtures and
+ * competition bookings a venue owner scored. Public: a record a squad earned is
+ * part of who they are.
+ */
+export type TeamCompetitionProfile = {
+  record: TeamLeagueRow["record"];
+  leagues: TeamLeagueRow[];
+  results: Array<{
+    id: number;
+    source: "league" | "booking";
+    leagueId: number | null;
+    leagueName: string;
+    round: string;
+    opponent: string;
+    opponentId: number | null;
+    home: boolean;
+    scored: number;
+    conceded: number;
+    outcome: "W" | "D" | "L";
+    date: string;
+    link: string;
+  }>;
+};
+
+/** GET /api/teams/:id — the full squad page payload. */
+export type TeamDetail = {
+  team: {
+    id: number;
+    name: string;
+    motto: string;
+    description: string;
+    teamCode: string;
+    level: string;
+    logoColor: string;
+    maxPlayers: number;
+    wins: number;
+    draws: number;
+    losses: number;
+    winRate: number;
+    gamesPlayed: number;
+    homeGround: string;
+    homeVenueId: number | null;
+    lookingForPlayers: boolean;
+    captainId: number;
+    captainName: string;
+    memberCount: number;
+  };
+  competition: TeamCompetitionProfile | null;
+  roster: TeamRosterRow[];
+  viewer: {
+    isMember: boolean;
+    isCaptain: boolean;
+    requestStatus: string | null;
+    requestId: number | null;
+    inviteStatus: string | null;
+    inviteId: number | null;
+  } | null;
+  /** Present only when the viewer is the captain, checked on the server. */
+  captain?: {
+    pendingRequests: TeamRequestRow[];
+    requestHistory: TeamRequestRow[];
+    invites: TeamSentInvite[];
+    quota: { used: number; limit: number; left: number };
+  };
+};
+
+/** Everything the captain's panel edits — the full team row on the list route. */
+export type ManagedTeam = {
+  id: number;
+  name: string;
+  motto: string;
+  description: string;
+  teamCode: string;
+  level: string;
+  logoColor: string;
+  maxPlayers: number;
+  homeGround: string;
+  homeVenueId: number | null;
+  lookingForPlayers: boolean;
+  captainId: number;
+};
+
+/** GET /api/players/:id — the public dossier of one player. */
+export type PlayerDossier = {
+  player: {
+    id: number;
+    name: string;
+    avatarColor: string;
+    avatarUrl: string;
+    role: string;
+    level: string;
+    position: string;
+    defaultCity: string;
+    matchesPlayed: number;
+    trustScore: number;
+    memberSince: string | null;
+  };
+  invitable: boolean;
+  /** The same reliability the player sees on their own profile — one source. */
+  stats: import("@/lib/loyalty").PlayerStats;
+  teams: Array<{
+    id: number;
+    name: string;
+    teamCode: string;
+    memberCount: number;
+    logoColor: string;
+    level: string;
+    role: string;
+    motto: string;
+    description: string;
+    maxPlayers: number;
+    wins: number;
+    draws: number;
+    losses: number;
+    homeGround: string;
+    lookingForPlayers: boolean;
+  }>;
+  reviews: Array<{
+    id: number;
+    venueId: number;
+    venueName: string;
+    rating: number;
+    message: string;
+    createdAt: string | null;
+  }>;
+  matches: {
+    organized: PlayerMatchRow[];
+    joined: PlayerMatchRow[];
+  };
+  myQueue: Array<{
+    kind: "request" | "invite";
+    id: number;
+    teamId: number;
+    teamName: string;
+    teamCode: string;
+    logoColor: string;
+    message: string;
+    status: string;
+    createdAt: string | null;
+    decidedAt: string | null;
+  }>;
+  captainOptions: Array<{
+    teamId: number;
+    name: string;
+    teamCode: string;
+    logoColor: string;
+    level: string;
+    memberCount: number;
+    maxPlayers: number;
+    squadFull: boolean;
+    invitesLeftToday: number;
+    isMember: boolean;
+    hasPendingRequest: boolean;
+    hasPendingInvite: boolean;
+  }>;
+  viewer: {
+    id: number;
+    isSelf: boolean;
+    hasSomethingToDecide: boolean;
+    leadsAnyTeam: boolean;
+  } | null;
+};
+
+export type PlayerMatchRow = {
+  id: number;
+  title: string;
+  date: string;
+  startTime: string;
+  endTime: string;
+  level: string;
+  status: string;
+  pricePerPlayer: number;
+  venueName: string;
+};

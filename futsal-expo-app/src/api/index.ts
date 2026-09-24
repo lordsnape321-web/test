@@ -1,16 +1,25 @@
 import { ApiError, apiJson } from "@/lib/api";
 import type { PlayerStats } from "@/lib/loyalty";
+import type { Quota as TeamQuota } from "@/lib/teams";
 import type {
   AppNotification,
   Booking,
   Court,
   Ledger,
   LoyaltyProgress,
+  ManagedTeam,
   Match,
   LeagueDetail,
   LeagueSummary,
+  PlayerDossier,
   SiteStats,
+  TeamCard,
+  TeamDetail,
+  TeamInvite,
+  TeamRosterRow,
   TeamSearchHit,
+  TeamSentInvite,
+  TeamRequestRow,
   User,
   UserTeamLite,
   Voucher,
@@ -450,4 +459,261 @@ export async function searchTeams(q: string): Promise<TeamSearchHit[]> {
     `/api/teams?q=${encodeURIComponent(q)}`,
   );
   return data.teams ?? [];
+}
+
+/* ── teams (list / detail / captain panel) ───────────────────────────────── */
+
+/**
+ * GET /api/teams?viewerId=&q= → { teams, quota }.
+ *
+ * `viewerId` tells the API whose buttons to draw: membership, captaincy and any
+ * open request/invite come back on each row so the card never guesses.
+ */
+export async function fetchTeams(params?: {
+  q?: string;
+  viewerId?: number;
+}): Promise<{ teams: TeamCard[]; quota: TeamQuota | null }> {
+  const query = new URLSearchParams();
+  if (params?.q) query.set("q", params.q);
+  if (params?.viewerId) query.set("viewerId", String(params.viewerId));
+  const qs = query.toString();
+  const data = await apiJson<{ teams: TeamCard[]; quota?: TeamQuota | null }>(
+    `/api/teams${qs ? `?${qs}` : ""}`,
+  );
+  return { teams: data.teams ?? [], quota: data.quota ?? null };
+}
+
+/** GET /api/team-invites?status=pending&userId= → the player's open invitations. */
+export async function fetchMyInvites(userId: number): Promise<TeamInvite[]> {
+  const data = await apiJson<{ invites?: TeamInvite[] }>(
+    `/api/team-invites?status=pending&userId=${userId}`,
+  );
+  return (data.invites ?? []).filter((i) => i.status === "pending");
+}
+
+/**
+ * POST /api/team-invites — accept or decline an invitation.
+ * The roster row is created here; consent is what turns invite into member.
+ */
+export function answerTeamInvite(input: {
+  userId: number;
+  inviteId: number;
+  action: "accept" | "decline";
+}): Promise<Record<string, unknown>> {
+  return apiJson("/api/team-invites", { method: "POST", json: input });
+}
+
+/** POST /api/teams → 201 { team } — start a squad. */
+export function createTeam(input: {
+  name: string;
+  motto: string;
+  description: string;
+  teamCode: string;
+  captainId: number;
+  level: string;
+  logoColor: string;
+  homeVenueId: number;
+  maxPlayers: number;
+  lookingForPlayers: boolean;
+}): Promise<{ team: { id: number; name: string; teamCode: string } }> {
+  return apiJson("/api/teams", { method: "POST", json: input });
+}
+
+/**
+ * POST /api/teams/:id/join — ask to join (body: userId, message?).
+ * DELETE /api/teams/:id/join?userId= — withdraw a pending ask or leave.
+ *
+ * The asymmetry (body for POST, query for DELETE) matches the web app exactly.
+ */
+export function requestJoinTeam(
+  teamId: number,
+  userId: number,
+  message = "",
+): Promise<{ quota?: TeamQuota; alreadyMember?: boolean }> {
+  return apiJson(`/api/teams/${teamId}/join`, {
+    method: "POST",
+    json: { userId, message },
+  });
+}
+
+export function leaveTeam(
+  teamId: number,
+  userId: number,
+): Promise<{ left?: boolean; cancelled?: boolean }> {
+  return apiJson(`/api/teams/${teamId}/join?userId=${userId}`, { method: "DELETE" });
+}
+
+/** GET /api/teams/:id?viewerId= → the full squad page. */
+export async function fetchTeam(id: number, viewerId?: number): Promise<TeamDetail> {
+  const qs = viewerId ? `?viewerId=${viewerId}` : "";
+  return apiJson<TeamDetail>(`/api/teams/${id}${qs}`);
+}
+
+/** POST /api/teams/:id/requests — captain accepts or declines a join request. */
+export function teamRequestAction(input: {
+  teamId: number;
+  captainId: number;
+  requestId: number;
+  action: "accept" | "decline";
+}): Promise<Record<string, unknown>> {
+  return apiJson(`/api/teams/${input.teamId}/requests`, {
+    method: "POST",
+    json: {
+      captainId: input.captainId,
+      requestId: input.requestId,
+      action: input.action,
+    },
+  });
+}
+
+/** DELETE /api/teams/:id/invites?captainId=&inviteId= — withdraw a sent invite. */
+export function withdrawTeamInvite(
+  teamId: number,
+  captainId: number,
+  inviteId: number,
+): Promise<Record<string, unknown>> {
+  return apiJson(
+    `/api/teams/${teamId}/invites?captainId=${captainId}&inviteId=${inviteId}`,
+    { method: "DELETE" },
+  );
+}
+
+/** GET /api/teams/:id/members?viewerId= → { roster } (emails only for captain). */
+export async function fetchTeamRoster(
+  teamId: number,
+  viewerId: number,
+): Promise<TeamRosterRow[]> {
+  const data = await apiJson<{ roster?: TeamRosterRow[] }>(
+    `/api/teams/${teamId}/members?viewerId=${viewerId}`,
+  );
+  return data.roster ?? [];
+}
+
+/** GET /api/teams/:id/requests?captainId= → { requests } — the captain's queue. */
+export async function fetchTeamRequests(
+  teamId: number,
+  captainId: number,
+): Promise<TeamRequestRow[]> {
+  const data = await apiJson<{ requests?: TeamRequestRow[] }>(
+    `/api/teams/${teamId}/requests?captainId=${captainId}`,
+  );
+  return data.requests ?? [];
+}
+
+/** GET /api/teams/:id/invites?captainId=&status=all → { invites, quota }. */
+export async function fetchTeamInvites(
+  teamId: number,
+  captainId: number,
+  status: "all" | "pending" = "all",
+): Promise<{ invites: TeamSentInvite[]; quota: TeamQuota | null }> {
+  const data = await apiJson<{ invites?: TeamSentInvite[]; quota?: TeamQuota | null }>(
+    `/api/teams/${teamId}/invites?captainId=${captainId}&status=${status}`,
+  );
+  return { invites: data.invites ?? [], quota: data.quota ?? null };
+}
+
+/** POST /api/teams/:id/invites — invite a player (they decide for themselves). */
+export function sendTeamInvite(input: {
+  teamId: number;
+  captainId: number;
+  userId: number;
+  message: string;
+}): Promise<Record<string, unknown>> {
+  return apiJson(`/api/teams/${input.teamId}/invites`, {
+    method: "POST",
+    json: {
+      captainId: input.captainId,
+      userId: input.userId,
+      message: input.message,
+    },
+  });
+}
+
+/** DELETE /api/teams/:id/members?captainId=&userId= — remove a member. */
+export function removeTeamMember(
+  teamId: number,
+  captainId: number,
+  userId: number,
+): Promise<Record<string, unknown>> {
+  return apiJson(
+    `/api/teams/${teamId}/members?captainId=${captainId}&userId=${userId}`,
+    { method: "DELETE" },
+  );
+}
+
+/**
+ * PATCH /api/teams/:id — captain edits the squad. `newCaptainId` transfers the
+ * armband (the only way captaincy moves — and the only way a captain can later
+ * step away, since a team must always have exactly one).
+ */
+export function updateTeam(
+  teamId: number,
+  patch: Partial<ManagedTeam> & {
+    captainId: number;
+    newCaptainId?: number;
+  },
+): Promise<Record<string, unknown>> {
+  return apiJson(`/api/teams/${teamId}`, { method: "PATCH", json: patch });
+}
+
+/** GET /api/players/:id?viewerId= → the public dossier of one player. */
+export async function fetchPlayerDossier(
+  id: number,
+  viewerId?: number,
+): Promise<PlayerDossier> {
+  const qs = viewerId ? `?viewerId=${viewerId}` : "";
+  return apiJson<PlayerDossier>(`/api/players/${id}${qs}`);
+}
+
+/**
+ * GET /api/users?role=player — recruitment list for the captain's invite box.
+ * The server filters; the client re-checks `role` before rendering.
+ */
+export async function fetchPlayerDirectory(): Promise<
+  Array<{
+    id: number;
+    name: string;
+    email: string;
+    avatarColor: string;
+    avatarUrl: string;
+    position: string;
+    level: string;
+    role?: string;
+  }>
+> {
+  const data = await apiJson<{
+    users?: Array<{
+      id: number;
+      name: string;
+      email: string;
+      avatarColor: string;
+      avatarUrl: string;
+      position: string;
+      level: string;
+      role?: string;
+    }>;
+  }>("/api/users?role=player");
+  return data.users ?? [];
+}
+
+/**
+ * POST /api/seed — idempotent demo data, kicked off on first Teams visit so a
+ * fresh database has squads to show (same call the web teams page makes).
+ */
+export function seedDemo(): Promise<Record<string, unknown>> {
+  return apiJson("/api/seed", { method: "POST" });
+}
+
+/* ── password reset ──────────────────────────────────────────────────────── */
+
+/**
+ * POST /api/auth/reset — prove you own the account with email + phone, then
+ * set a fresh password. Throws ApiError with the server's wording.
+ */
+export function resetPassword(input: {
+  email: string;
+  phone: string;
+  newPassword: string;
+}): Promise<Record<string, unknown>> {
+  return apiJson("/api/auth/reset", { method: "POST", json: input });
 }
