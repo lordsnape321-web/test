@@ -68,9 +68,11 @@ export function TurfBackdrop({ style }: { style?: object }) {
             </Pattern>
           ) : null}
         </Defs>
-        <Rect x="0" y="0" width="100%" height="100%" fill="url(#blobA)" />
-        <Rect x="0" y="0" width="100%" height="100%" fill="url(#blobB)" />
-        <Rect x="0" y="0" width="100%" height="100%" fill="url(#blobC)" />
+        {/* Each blob is a positioned circle. Filling full-screen rects here would
+            centre every gradient and lose the web CSS background positions. */}
+        <Circle cx={blobs[0].cx} cy={blobs[0].cy} r={blobs[0].r} fill="url(#blobA)" />
+        <Circle cx={blobs[1].cx} cy={blobs[1].cy} r={blobs[1].r} fill="url(#blobB)" />
+        <Circle cx={blobs[2].cx} cy={blobs[2].cy} r={blobs[2].r} fill="url(#blobC)" />
         {!isDark ? <Rect x="0" y="0" width="100%" height="100%" fill="url(#dots)" /> : null}
       </Svg>
     </View>

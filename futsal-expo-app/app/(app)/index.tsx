@@ -18,9 +18,11 @@ import {
   Users,
   Zap,
 } from "lucide-react-native";
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Picker } from "@react-native-picker/picker";
 import {
+  Animated,
+  Easing,
   Image,
   Pressable,
   ScrollView,
@@ -58,6 +60,21 @@ export default function HomeScreen() {
   const { user, isOwner } = useAuth();
   const router = useRouter();
   const bp = useBreakpoints();
+  const marqueeX = useRef(new Animated.Value(0)).current;
+  const [marqueeWidth, setMarqueeWidth] = useState(0);
+
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.timing(marqueeX, {
+        toValue: 1,
+        duration: 28000,
+        easing: Easing.linear,
+        useNativeDriver: false,
+      }),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [marqueeX]);
 
   const [venues, setVenues] = useState<Venue[]>([]);
   const [matches, setMatches] = useState<Match[]>([]);
@@ -111,7 +128,7 @@ export default function HomeScreen() {
   ];
 
   return (
-    <SafeAreaView style={[styles.flex, { backgroundColor: c.bg }]} edges={["top"]}>
+    <SafeAreaView style={[styles.flex, { backgroundColor: c.bg }]} edges={[]}>
       <ScrollView contentContainerStyle={[styles.content, { paddingHorizontal: bp.gutter }]}>
         <PageContainer padded={false}>
         {/* ── HERO ─────────────────────────────────────────────────── */}
@@ -126,7 +143,7 @@ export default function HomeScreen() {
           </Text>
         </View>
 
-        <Text style={[styles.h1, { color: c.text }]}>
+        <Text style={[styles.h1, { color: c.text, fontSize: bp.lg ? 58 : bp.sm ? 48 : 36, lineHeight: bp.lg ? 62 : bp.sm ? 52 : 40 }]}>
           Grab your friends.{" "}
           <Text style={{ color: colors.emerald600 }}>Tonight we play.</Text>
         </Text>
@@ -139,49 +156,52 @@ export default function HomeScreen() {
 
         {/* Search */}
         <View style={[styles.searchCard, { backgroundColor: c.surface, borderColor: c.border }]}>
-          <View style={[styles.searchField, { backgroundColor: c.inset }]}>
-            <Search size={16} color={c.textFaint} />
-            <TextInput
-              value={q}
-              onChangeText={(t) => {
-                setQ(t);
-                setSearchError(validateSearch(t, { max: 60 }) ?? "");
-              }}
-              onSubmitEditing={submitSearch}
-              placeholder="Where do you want to play? (e.g. Chabahil)"
-              placeholderTextColor={c.textFaint}
-              maxLength={60}
-              autoCorrect={false}
-              returnKeyType="search"
-              style={[styles.searchInput, { color: c.text }]}
-            />
-          </View>
-          <View style={[styles.searchField, styles.cityField, { backgroundColor: c.inset }]}>
-            <MapPin size={16} color={c.textFaint} />
-            <Picker
-              selectedValue={city}
-              onValueChange={(next) => {
-                setCity(String(next));
-                setCityTouched(true);
-              }}
-              style={[styles.cityPicker, { color: c.text }]}
-              dropdownIconColor={c.textMuted}
+          <View style={[styles.searchFormRow, bp.sm ? styles.searchFormRowWide : null]}>
+            <View style={[styles.searchField, bp.sm ? styles.searchFieldWide : null, { backgroundColor: c.inset }]}>
+              <Search size={16} color={c.textFaint} />
+              <TextInput
+                value={q}
+                onChangeText={(t) => {
+                  setQ(t);
+                  setSearchError(validateSearch(t, { max: 60 }) ?? "");
+                }}
+                onSubmitEditing={submitSearch}
+                placeholder="Where do you want to play? (e.g. Chabahil)"
+                placeholderTextColor={c.textFaint}
+                maxLength={60}
+                autoCorrect={false}
+                returnKeyType="search"
+                style={[styles.searchInput, { color: c.text }]}
+              />
+            </View>
+            <View style={[styles.searchField, styles.cityField, bp.sm ? styles.cityFieldWide : null, { backgroundColor: c.inset }]}>
+              <MapPin size={16} color={c.textFaint} />
+              <Picker
+                selectedValue={city}
+                onValueChange={(next) => {
+                  setCity(String(next));
+                  setCityTouched(true);
+                }}
+                style={[styles.cityPicker, { color: c.text }]}
+                dropdownIconColor={c.textMuted}
+              >
+                {CITY_OPTIONS.map((option) => (
+                  <Picker.Item key={option} label={option === homeCity && option !== "All Cities" ? `${option} 🏠` : option} value={option} />
+                ))}
+              </Picker>
+            </View>
+            <Pressable
+              onPress={submitSearch}
+              accessibilityRole="button"
+              style={({ pressed }) => [
+                styles.searchButton,
+                bp.sm ? styles.searchButtonWide : null,
+                { backgroundColor: colors.emerald600, opacity: pressed ? 0.85 : 1 },
+              ]}
             >
-              {CITY_OPTIONS.map((option) => (
-                <Picker.Item key={option} label={option === homeCity && option !== "All Cities" ? `${option} 🏠` : option} value={option} />
-              ))}
-            </Picker>
+              <Text style={styles.searchButtonText}>Find my court</Text>
+            </Pressable>
           </View>
-          <Pressable
-            onPress={submitSearch}
-            accessibilityRole="button"
-            style={({ pressed }) => [
-              styles.searchButton,
-              { backgroundColor: colors.emerald600, opacity: pressed ? 0.85 : 1 },
-            ]}
-          >
-            <Text style={styles.searchButtonText}>Find my court</Text>
-          </Pressable>
           {searchError ? <Text style={styles.searchError}>{searchError}</Text> : null}
         </View>
         {user && homeCity !== "All Cities" ? (
@@ -219,10 +239,29 @@ export default function HomeScreen() {
           {bp.lg ? <HeroVisual /> : null}
         </View>
 
-        <View style={styles.marquee}>
-          <Text style={styles.marqueeText} numberOfLines={1}>
-            ⚽ Everyone&apos;s welcome here   🤝 Come alone, leave with friends   🔥 Weekend games &amp; laughter   💳 Pay your way — eSewa • Khalti   🏆 Friendly matches daily   👥 Bring your whole crew   ⚽ Everyone&apos;s welcome here   🤝 Come alone, leave with friends
-          </Text>
+        <View style={[styles.marquee, { marginHorizontal: -bp.gutter }]}>
+          <View style={styles.marqueeViewport}>
+            <Animated.View
+              onLayout={(event) => setMarqueeWidth(event.nativeEvent.layout.width)}
+              style={[
+                styles.marqueeTrack,
+                {
+                  transform: [
+                    {
+                      translateX: marqueeX.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [0, marqueeWidth ? -marqueeWidth / 2 : 0],
+                      }),
+                    },
+                  ],
+                },
+              ]}
+            >
+              <Text style={styles.marqueeText} numberOfLines={1}>
+                ⚽ Everyone&apos;s welcome here   🤝 Come alone, leave with friends   🔥 Weekend games &amp; laughter   💳 Pay your way — eSewa • Khalti   🏆 Friendly matches daily   👥 Bring your whole crew   ⚽ Everyone&apos;s welcome here   🤝 Come alone, leave with friends
+              </Text>
+            </Animated.View>
+          </View>
         </View>
 
         {/* ── FEATURED VENUES ──────────────────────────────────────── */}
@@ -263,11 +302,13 @@ export default function HomeScreen() {
           style={[
             styles.howWrap,
             {
-              backgroundColor: c.surface,
+              backgroundColor: isDark ? "rgba(15,23,42,0.40)" : "rgba(255,255,255,0.60)",
               borderColor: c.border,
+              marginHorizontal: -bp.gutter,
+              paddingHorizontal: bp.gutter,
               flexDirection: "row",
               flexWrap: "wrap",
-              columnGap: space[3],
+              columnGap: space[4],
             },
           ]}
         >
@@ -362,7 +403,7 @@ export default function HomeScreen() {
 
         {/* ── COMMUNITY ────────────────────────────────────────────── */}
         <LinearGradient
-          colors={[colors.emerald700, "#064E3B"]}
+          colors={isDark ? ["#022C22", "#064E3B"] : ["#065F46", "#064E3B"]}
           style={styles.community}
         >
           <View style={[styles.communityGrid, bp.lg ? styles.communityGridWide : null]}>
@@ -428,7 +469,19 @@ export default function HomeScreen() {
         </LinearGradient>
 
         {/* ── FOOTER ───────────────────────────────────────────────── */}
-        <View style={[styles.footer, { borderColor: c.border }]}>
+        <View
+          style={[
+            styles.footer,
+            {
+              borderColor: c.border,
+              marginHorizontal: -bp.gutter,
+              paddingHorizontal: bp.gutter,
+              backgroundColor: isDark ? "rgba(2,6,23,0.70)" : "rgba(255,255,255,0.70)",
+              flexDirection: bp.sm ? "row" : "column",
+              justifyContent: bp.sm ? "space-between" : "center",
+            },
+          ]}
+        >
           <Text style={[styles.footerBrand, { color: c.text }]}>
             Futsal<Text style={{ color: colors.emerald600 }}>Nepal</Text>
             <Text style={{ color: c.textFaint, fontWeight: "500" }}>
@@ -436,7 +489,7 @@ export default function HomeScreen() {
               — made with 💚 for players, by players
             </Text>
           </Text>
-          <View style={styles.footerLinks}>
+          <View style={[styles.footerLinks, bp.sm ? styles.footerLinksWide : null]}>
             {[
               { label: "Courts", to: "/venues" },
               { label: "Games", to: "/matches" },
@@ -555,10 +608,10 @@ const styles = StyleSheet.create({
   flex: { flex: 1 },
   grow: { flex: 1 },
   center: { textAlign: "center" },
-  content: { padding: space[4], paddingBottom: space[12] },
+  content: { paddingTop: space[10], paddingBottom: space[12] },
 
   /* hero */
-  heroGrid: { gap: space[8] },
+  heroGrid: { gap: space[8], paddingBottom: space[12] },
   heroGridWide: { flexDirection: "row", alignItems: "center", gap: space[10] },
   heroCopy: { alignSelf: "stretch" },
   heroCopyWide: { flex: 1, minWidth: 0, alignSelf: "auto" },
@@ -611,7 +664,9 @@ const styles = StyleSheet.create({
   ratingCopy: { minWidth: 0 },
   ratingTitle: { fontSize: fontSize.base, fontWeight: "900" },
   ratingMeta: { fontSize: fontSize["2xs"], marginTop: 2 },
-  marquee: { backgroundColor: colors.emerald700, borderTopWidth: 1, borderBottomWidth: 1, borderColor: "#065F46", marginTop: space[8], marginHorizontal: -space[4], paddingVertical: space[3], paddingHorizontal: space[4], overflow: "hidden" },
+  marquee: { backgroundColor: colors.emerald700, borderTopWidth: 1, borderBottomWidth: 1, borderColor: "#065F46", paddingVertical: space[3], paddingHorizontal: space[4] },
+  marqueeViewport: { overflow: "hidden" },
+  marqueeTrack: { alignSelf: "flex-start" },
   marqueeText: { color: colors.emerald50, fontSize: fontSize.xs, fontWeight: "900", letterSpacing: 1.2 },
   heroBadge: {
     flexDirection: "row",
@@ -634,6 +689,8 @@ const styles = StyleSheet.create({
     padding: space[2],
     marginTop: space[6],
   },
+  searchFormRow: { gap: space[2] },
+  searchFormRowWide: { flexDirection: "row", alignItems: "stretch" },
   searchField: {
     flexDirection: "row",
     alignItems: "center",
@@ -642,8 +699,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: space[4],
     minHeight: 48,
   },
+  searchFieldWide: { flex: 1 },
   searchInput: { flex: 1, fontSize: fontSize.base, fontWeight: "600", paddingVertical: 0 },
   cityField: { marginTop: space[2], paddingRight: space[2] },
+  cityFieldWide: { width: 176, marginTop: 0 },
   cityPicker: { flex: 1, height: 48, fontSize: fontSize.base, fontWeight: "600" },
   homeCityHint: { fontSize: fontSize.xs, fontWeight: "700", marginTop: space[2] },
   searchButton: {
@@ -653,6 +712,7 @@ const styles = StyleSheet.create({
     paddingVertical: space[3],
     marginTop: space[2],
   },
+  searchButtonWide: { marginTop: 0, paddingHorizontal: space[6] },
   searchButtonText: { color: "#FFFFFF", fontSize: fontSize.base, fontWeight: "900" },
   searchError: {
     fontSize: fontSize.xs,
@@ -732,16 +792,16 @@ const styles = StyleSheet.create({
 
   /* how it works */
   howWrap: {
-    borderRadius: radius["3xl"],
-    borderWidth: 1,
-    padding: space[5],
-    marginTop: space[10],
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    paddingVertical: space[12],
+    marginTop: space[12],
   },
   stepCard: {
     borderRadius: radius["3xl"],
     borderWidth: 1,
     padding: space[5],
-    marginTop: space[3],
+    marginTop: space[8],
     overflow: "hidden",
   },
   stepNumber: {
@@ -838,8 +898,9 @@ const styles = StyleSheet.create({
   },
 
   /* footer */
-  footer: { borderTopWidth: 1, marginTop: space[10], paddingTop: space[8], alignItems: "center" },
+  footer: { borderTopWidth: 1, marginTop: space[10], paddingTop: space[8], paddingBottom: space[8], alignItems: "center" },
   footerBrand: { fontSize: fontSize.base, fontWeight: "700", textAlign: "center" },
   footerLinks: { flexDirection: "row", gap: space[5], marginTop: space[4] },
+  footerLinksWide: { marginTop: 0 },
   footerLink: { fontSize: fontSize.sm, fontWeight: "700" },
 });

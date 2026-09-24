@@ -49,7 +49,7 @@ export function Navbar() {
   const router = useRouter();
   const { user, isOwner, signOut } = useAuth();
   const { colors: c, isDark } = useTheme();
-  const { sm } = useBreakpoints();
+  const { sm, lg } = useBreakpoints();
   const insets = useSafeAreaInsets();
   const [open, setOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
@@ -93,6 +93,43 @@ export function Navbar() {
             </Text>
           </View>
         </Pressable>
+
+        {lg ? (
+          <View style={styles.desktopNav}>
+            {LINKS.map((link) => {
+              const active = pathname === link.href || pathname.startsWith(link.href + "/");
+              const Icon = link.icon;
+              return (
+                <Pressable
+                  key={link.href}
+                  onPress={() => router.push(link.href as never)}
+                  accessibilityRole="link"
+                  style={[
+                    styles.desktopLink,
+                    active
+                      ? { backgroundColor: brand.emerald600 }
+                      : { backgroundColor: "transparent" },
+                  ]}
+                >
+                  <Icon size={16} color={active ? "#FFFFFF" : isLight ? brand.stone600 : brand.slate300} />
+                  <Text style={[styles.desktopLinkText, { color: active ? "#FFFFFF" : isLight ? brand.stone600 : brand.slate300 }]}>
+                    {link.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+            {user && isOwner ? (
+              <Pressable
+                onPress={() => router.push("/admin")}
+                accessibilityRole="link"
+                style={[styles.desktopLink, styles.ownerLink]}
+              >
+                <LayoutDashboard size={16} color="#FFFFFF" />
+                <Text style={[styles.desktopLinkText, { color: "#FFFFFF" }]}>Owner Studio</Text>
+              </Pressable>
+            ) : null}
+          </View>
+        ) : null}
 
         <View style={styles.actions}>
           <ThemeToggle />
@@ -266,6 +303,8 @@ export function Navbar() {
             </View>
           ) : null}
 
+          {!lg ? (
+            <>
           {/* Hamburger (matches the web mobile menu; the bottom rail is always there too) */}
           <Pressable
             onPress={() => setOpen((v) => !v)}
@@ -284,10 +323,12 @@ export function Navbar() {
               <Menu size={20} color={isLight ? brand.stone700 : brand.slate200} />
             )}
           </Pressable>
+            </>
+          ) : null}
         </View>
       </View>
 
-      {open ? (
+      {open && !lg ? (
         <View
           style={[
             styles.mobileMenu,
@@ -468,6 +509,10 @@ const styles = StyleSheet.create({
     alignSelf: "center",
   },
   brand: { flexDirection: "row", alignItems: "center", gap: 10, minWidth: 0 },
+  desktopNav: { flexDirection: "row", alignItems: "center", gap: space[1], flex: 1, justifyContent: "center" },
+  desktopLink: { flexDirection: "row", alignItems: "center", gap: 6, borderRadius: radius.full, paddingHorizontal: space[4], paddingVertical: space[2] },
+  desktopLinkText: { fontSize: fontSize.base, fontWeight: "600" },
+  ownerLink: { marginLeft: space[1], backgroundColor: brand.orange500 },
   brandIcon: {
     width: 40,
     height: 40,
