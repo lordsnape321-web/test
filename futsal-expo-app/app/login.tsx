@@ -73,7 +73,7 @@ export default function Login() {
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === "ios" ? "padding" : undefined}>
         <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
           <Link href="/" asChild>
-            <Pressable style={[styles.back, { backgroundColor: c.surface, borderColor: c.border }]}>
+            <Pressable style={StyleSheet.flatten([styles.back, { backgroundColor: c.surface, borderColor: c.border }])}>
               <ChevronLeft size={16} color={c.text} />
               <Text style={[styles.backText, { color: c.text }]}>Back home</Text>
             </Pressable>
@@ -115,8 +115,8 @@ export default function Login() {
                 <Pressable disabled={busy} onPress={() => void submit({ email: "ganesh@futsal.np", password: "futsal123" })} style={[styles.demo, { borderColor: tokens.orange100, backgroundColor: isDark ? "rgba(249,115,22,0.1)" : tokens.orange50 }]}><Crown size={16} color={tokens.orange500} /><Text style={[styles.demoText, { color: isDark ? tokens.orange300 : tokens.orange700 }]}>Try as Owner</Text></Pressable>
               </View>
 
-              <Link href="/forgot-password" asChild><Text style={[styles.forgot, { color: tokens.orange600 }]}>Forgot your password? 🔑</Text></Link>
-              <View style={styles.footerRow}><Text style={{ color: c.textMuted, fontSize: fontSize.base }}>New to the family? </Text><Link href="/signup" asChild><Text style={[styles.link, { color: c.primary }]}>Join us — it&apos;s free</Text></Link></View>
+              <Link href="/forgot-password" asChild><Text style={StyleSheet.flatten([styles.forgot, { color: tokens.orange600 }])}>Forgot your password? 🔑</Text></Link>
+              <View style={styles.footerRow}><Text style={{ color: c.textMuted, fontSize: fontSize.base }}>New to the family? </Text><Link href="/signup" asChild><Text style={StyleSheet.flatten([styles.link, { color: c.primary }])}>Join us — it&apos;s free</Text></Link></View>
             </View>
           </View>
         </ScrollView>

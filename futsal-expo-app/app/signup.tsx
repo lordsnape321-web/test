@@ -120,7 +120,7 @@ export default function Signup() {
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === "ios" ? "padding" : undefined}>
         <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
           <Link href="/" asChild>
-            <Pressable style={[styles.back, { backgroundColor: c.surface, borderColor: c.border }]}>
+            <Pressable style={StyleSheet.flatten([styles.back, { backgroundColor: c.surface, borderColor: c.border }])}>
               <ChevronLeft size={16} color={c.text} />
               <Text style={[styles.backText, { color: c.text }]}>Back home</Text>
             </Pressable>
@@ -248,7 +248,7 @@ export default function Signup() {
 
               <View style={styles.footerRow}>
                 <Text style={{ color: c.textMuted, fontSize: fontSize.base }}>Already have an account? </Text>
-                <Link href="/login" asChild><Text style={[styles.link, { color: c.primary }]}>Sign in</Text></Link>
+                <Link href="/login" asChild><Text style={StyleSheet.flatten([styles.link, { color: c.primary }])}>Sign in</Text></Link>
               </View>
             </View>
           </View>

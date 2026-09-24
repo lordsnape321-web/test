@@ -113,7 +113,7 @@ export function Navbar() {
                   style={[
                     styles.desktopLink,
                     active
-                      ? { backgroundColor: brand.emerald600 }
+                      ? { backgroundColor: brand.emerald600, borderRadius: radius.xl }
                       : { backgroundColor: "transparent" },
                   ]}
                 >
@@ -358,7 +358,7 @@ export function Navbar() {
                   style={[
                     styles.mobileLink,
                     active
-                      ? { backgroundColor: brand.emerald600 }
+                      ? { backgroundColor: brand.emerald600, borderRadius: radius.xl }
                       : { backgroundColor: isLight ? brand.stone100 : "rgba(255,255,255,0.05)" },
                   ]}
                 >

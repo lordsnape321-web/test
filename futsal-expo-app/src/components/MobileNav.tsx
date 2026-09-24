@@ -66,7 +66,7 @@ export function MobileNav({ isDark }: { isDark: boolean }) {
               accessibilityLabel={tab.label}
               style={styles.item}
             >
-              <View style={[styles.iconPill, active ? { backgroundColor: activeSoft } : null]}>
+              <View style={[styles.iconPill, active ? { backgroundColor: activeSoft, borderRadius: radius.xl } : null]}>
                 <Icon size={20} color={active ? activeText : idleText} strokeWidth={active ? 2.5 : 2} />
               </View>
               <Text style={[styles.label, { color: active ? activeText : idleText }]} numberOfLines={1}>
