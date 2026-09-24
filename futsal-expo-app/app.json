@@ -27,6 +27,12 @@
     "plugins": [
       "expo-router",
       "expo-system-ui"
-    ]
+    ],
+    "extra": {
+      "router": {
+        "origin": "https://8081-ifosys4azu9exm1gqq1f7.e2b.app",
+        "headOrigin": "https://8081-ifosys4azu9exm1gqq1f7.e2b.app"
+      }
+    }
   }
 }
