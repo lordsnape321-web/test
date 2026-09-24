@@ -1,5 +1,5 @@
 import { useRouter } from "expo-router";
-import { Bell, CheckCheck, ChevronRight, Trash2 } from "lucide-react-native";
+import { Bell, Check, CheckCheck, ChevronRight, Trash2 } from "lucide-react-native";
 import React, { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
@@ -43,8 +43,11 @@ export default function OwnerNotifications() {
 
   const load = useCallback(async () => {
     if (!user) return;
-    const list = await fetchNotifications(user.id);
-    setItems(list);
+    try {
+      setItems(await fetchNotifications(user.id));
+    } catch {
+      setItems([]);
+    }
   }, [user]);
 
   useEffect(() => {
@@ -56,20 +59,57 @@ export default function OwnerNotifications() {
 
   async function markAll() {
     if (!user) return;
-    await markAllNotificationsRead(user.id);
-    await load();
+    try {
+      await markAllNotificationsRead(user.id);
+      await load();
+    } catch {
+      /* keep the inbox visible if the API is temporarily unavailable */
+    }
   }
 
   async function markOne(n: AppNotification) {
-    await markNotificationRead(n.id);
-    if (n.link) {
-      const path = n.link.replace(/^https?:\/\/[^/]+/, "");
-      if (path.startsWith("/")) {
-        router.push(path as never);
-        return;
-      }
+    try {
+      await markNotificationRead(n.id);
+    } catch {
+      await load();
+      return;
+    }
+    setItems((prev) => prev.map((item) => (item.id === n.id ? { ...item, isRead: true } : item)));
+    const destination = ownerNotificationDestination(n.link);
+    if (destination) {
+      router.push(destination);
+      return;
     }
     await load();
+  }
+
+  /** Keep notification deep links inside the Owner Studio route tree. */
+  function ownerNotificationDestination(link: string | null):
+    | "/admin/bookings"
+    | "/admin/leagues"
+    | `/admin/leagues/${string}`
+    | "/admin/notifications"
+    | "/admin/venues"
+    | null {
+    if (!link) return null;
+    const path = link.replace(/^https?:\/\/[^/]+/, "");
+    const leagueId = path.match(/^\/leagues\/([^/?#]+)/)?.[1];
+    if (leagueId) return `/admin/leagues/${leagueId}`;
+    if (path.startsWith("/leagues")) return "/admin/leagues";
+    if (path.startsWith("/booking") || path.startsWith("/bookings")) return "/admin/bookings";
+    if (path.startsWith("/venue") || path.startsWith("/venues")) return "/admin/venues";
+    if (path.startsWith("/notification")) return "/admin/notifications";
+    return null;
+  }
+
+  async function markReadOnly(n: AppNotification) {
+    if (n.isRead) return;
+    setItems((prev) => prev.map((item) => (item.id === n.id ? { ...item, isRead: true } : item)));
+    try {
+      await markNotificationRead(n.id);
+    } catch {
+      await load();
+    }
   }
 
   async function remove(id: number) {
@@ -92,17 +132,22 @@ export default function OwnerNotifications() {
             cancellations & payments.
           </Text>
         </View>
-        {unread > 0 ? (
-          <Pressable
-            onPress={() => void markAll()}
-            style={[styles.markAllBtn, { backgroundColor: isDark ? "#FFFFFF" : "#0F172A" }]}
-          >
-            <CheckCheck size={16} color={isDark ? "#0F172A" : "#FFFFFF"} />
-            <Text style={[styles.markAllText, { color: isDark ? "#0F172A" : "#FFFFFF" }]}>
-              Mark all read
-            </Text>
-          </Pressable>
-        ) : null}
+        <Pressable
+          onPress={() => void markAll()}
+          disabled={unread === 0}
+          style={[
+            styles.markAllBtn,
+            {
+              backgroundColor: isDark ? "#FFFFFF" : "#0F172A",
+              opacity: unread === 0 ? 0.45 : 1,
+            },
+          ]}
+          accessibilityRole="button"
+          accessibilityState={{ disabled: unread === 0 }}
+        >
+          <CheckCheck size={16} color={isDark ? "#0F172A" : "#FFFFFF"} />
+          <Text style={[styles.markAllText, { color: isDark ? "#0F172A" : "#FFFFFF" }]}>Mark all read</Text>
+        </Pressable>
       </View>
 
       {loading ? (
@@ -118,6 +163,8 @@ export default function OwnerNotifications() {
       ) : (
         items.map((n) => {
           const tone = TYPE_STYLE[n.type] ?? TYPE_STYLE.info!;
+          const toneBg = n.type === "info" && isDark ? "rgba(148,163,184,0.14)" : tone.bg;
+          const toneFg = n.type === "info" && isDark ? c.textMuted : tone.fg;
           return (
             <View
               key={n.id}
@@ -130,8 +177,8 @@ export default function OwnerNotifications() {
                 },
               ]}
             >
-              <View style={[styles.typeChip, { backgroundColor: tone.bg }]}>
-                <Text style={[styles.typeText, { color: tone.fg }]}>
+              <View style={[styles.typeChip, { backgroundColor: toneBg }]}>
+                <Text style={[styles.typeText, { color: toneFg }]}>
                   {n.type.replace(/_/g, " ")}
                 </Text>
               </View>
@@ -155,6 +202,17 @@ export default function OwnerNotifications() {
                   ) : null}
                 </View>
               </Pressable>
+              {!n.isRead ? (
+                <Pressable
+                  onPress={() => void markReadOnly(n)}
+                  accessibilityRole="button"
+                  accessibilityLabel="Mark notification as read"
+                  style={[styles.readBtn, { borderColor: c.border, backgroundColor: c.surface }]}
+                >
+                  <Check size={13} color={c.textMuted} />
+                  <Text style={[styles.readBtnText, { color: c.textMuted }]}>Mark read</Text>
+                </Pressable>
+              ) : null}
               <Pressable
                 onPress={() => void remove(n.id)}
                 style={styles.deleteBtn}
@@ -205,6 +263,7 @@ const styles = StyleSheet.create({
   emptyBody: { marginTop: space[1], fontSize: fontSize.sm, textAlign: "center" },
   card: {
     flexDirection: "row",
+    flexWrap: "wrap",
     alignItems: "flex-start",
     gap: space[3],
     borderRadius: radius["2xl"],
@@ -224,5 +283,16 @@ const styles = StyleSheet.create({
   meta: { fontSize: 11, fontWeight: "700" },
   openRow: { flexDirection: "row", alignItems: "center", gap: 1 },
   openText: { fontSize: 11, fontWeight: "900" },
+  readBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    borderWidth: 1,
+    borderRadius: radius.full,
+    paddingHorizontal: space[2.5],
+    paddingVertical: space[1.5],
+    minHeight: 32,
+  },
+  readBtnText: { fontSize: 10, fontWeight: "900" },
   deleteBtn: { padding: space[1.5], minHeight: 36, minWidth: 36, alignItems: "center", justifyContent: "center" },
 });

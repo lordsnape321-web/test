@@ -25,10 +25,22 @@
  * Later, swap the same variable to the Laravel host and nothing else changes.
  */
 
-const DEFAULT_BASE = "http://localhost:3000";
+const NATIVE_DEFAULT_BASE = "http://localhost:3000";
+const API_TIMEOUT_MS = 20_000;
 
-/** Backend origin, without a trailing slash. */
-export const API_BASE = (process.env.EXPO_PUBLIC_API_BASE || DEFAULT_BASE).replace(/\/+$/, "");
+/**
+ * Browsers must never be shipped a localhost API URL: on a user's device that
+ * points back to the user's own machine. Web uses same-origin `/api` calls and
+ * the Expo dev server proxies them to the Next.js app; native keeps the useful
+ * simulator default and can be overridden with EXPO_PUBLIC_API_BASE.
+ */
+const configuredBase = process.env.EXPO_PUBLIC_API_BASE?.trim() ?? "";
+const runningInBrowser = typeof window !== "undefined";
+const configuredIsLocal = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?\/?$/i.test(configuredBase);
+const resolvedBase = runningInBrowser && configuredIsLocal ? "" : configuredBase;
+
+/** Backend origin, without a trailing slash. Empty means same-origin `/api`. */
+export const API_BASE = (resolvedBase || (runningInBrowser ? "" : NATIVE_DEFAULT_BASE)).replace(/\/+$/, "");
 
 /**
  * Resolve an API path to an absolute URL.
@@ -120,11 +132,24 @@ export async function apiJson<T>(
 ): Promise<T> {
   const { json, headers, ...rest } = init ?? {};
   const url = apiUrl(path);
+  const controller = new AbortController();
+  let timedOut = false;
+  const timeoutId = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, API_TIMEOUT_MS);
+  const parentSignal = rest.signal;
+  const abortFromParent = () => controller.abort();
+  if (parentSignal) {
+    if (parentSignal.aborted) controller.abort();
+    else parentSignal.addEventListener("abort", abortFromParent, { once: true });
+  }
 
   let res: Response;
   try {
     res = await apiFetch(path, {
       ...rest,
+      signal: controller.signal,
       headers: {
         ...(json !== undefined ? { "Content-Type": "application/json" } : {}),
         ...headers,
@@ -132,9 +157,18 @@ export async function apiJson<T>(
       ...(json !== undefined ? { body: JSON.stringify(json) } : {}),
     });
   } catch (e) {
+    if (timedOut) {
+      throw new ApiError(
+        0,
+        `The API took too long to respond at ${url}. Check the backend connection and try again.`,
+      );
+    }
     // No response at all — connection/DNS/TLS level. Status 0 marks "never got
     // an HTTP status", distinct from any real 4xx/5xx the server could return.
     throw new ApiError(0, networkMessage(url, e));
+  } finally {
+    clearTimeout(timeoutId);
+    parentSignal?.removeEventListener("abort", abortFromParent);
   }
 
   // 204 and empty bodies are legitimate; don't try to parse them.

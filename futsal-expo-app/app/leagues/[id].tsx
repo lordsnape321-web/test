@@ -1,4 +1,4 @@
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useLocalSearchParams, usePathname, useRouter } from "expo-router";
 import {
   ArrowLeft,
   CalendarDays,
@@ -53,11 +53,14 @@ import { fontSize, radius, space } from "@/theme";
  * sidebar after — which is exactly how the web stacks it below `lg`. The web's
  * `#album` scrollIntoView becomes a measured scrollTo on the ScrollView.
  */
-export default function LeagueDetailScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+export function LeagueDetailScreen({ ownerMode = false }: { ownerMode?: boolean } = {}) {
+  const { id, edit } = useLocalSearchParams<{ id: string; edit?: string }>();
   const { user } = useAuth();
   const { colors: c, isDark } = useTheme();
   const router = useRouter();
+  const pathname = usePathname();
+  const inOwnerStudio = ownerMode || pathname === "/admin/leagues" || pathname.startsWith("/admin/leagues/");
+  const allLeaguesPath = inOwnerStudio ? "/admin/leagues" : "/(app)/matches";
   const [league, setLeague] = useState<LeagueDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -87,6 +90,24 @@ export default function LeagueDetailScreen() {
     }
   }, [focusMatch]);
 
+  useEffect(() => {
+    if (edit === "1" && league?.viewer?.isHost) setEditing(true);
+  }, [edit, league?.viewer?.isHost]);
+
+  useEffect(() => {
+    if (user?.role === "owner" && !inOwnerStudio) router.replace("/admin/leagues");
+  }, [inOwnerStudio, router, user?.role]);
+
+  // A league deep link is a common way to enter the wrong shell. Do not render
+  // even the player league header while the owner redirect is being committed.
+  if (user?.role === "owner" && !inOwnerStudio) {
+    return (
+      <View style={[styles.stateBox, { backgroundColor: "#020617" }]}>
+        <ActivityIndicator size="large" color="#FBBF24" />
+      </View>
+    );
+  }
+
   if (loading) {
     return (
       <View style={[styles.stateBox, { backgroundColor: c.bg }]}>
@@ -107,7 +128,7 @@ export default function LeagueDetailScreen() {
           captain's account and try again.
         </Text>
         <Pressable
-          onPress={() => router.push("/(app)/matches")}
+          onPress={() => router.push(allLeaguesPath)}
           accessibilityRole="button"
           style={styles.backBtn}
         >
@@ -149,16 +170,28 @@ export default function LeagueDetailScreen() {
             end={{ x: 0, y: 0 }}
             style={StyleSheet.absoluteFill}
           />
-          <Pressable
-            onPress={() => router.push("/(app)/matches")}
-            accessibilityRole="button"
-            style={styles.allLeagues}
-          >
-            <ArrowLeft size={14} color={isDark ? "#F1F5F9" : "#292524"} />
-            <Text style={[styles.allLeaguesText, { color: isDark ? "#F1F5F9" : "#292524" }]}>
-              All leagues
-            </Text>
-          </Pressable>
+          <View style={styles.coverTopActions}>
+            <Pressable
+              onPress={() => router.push(allLeaguesPath)}
+              accessibilityRole="button"
+              style={styles.allLeagues}
+            >
+              <ArrowLeft size={14} color={isDark ? "#F1F5F9" : "#292524"} />
+              <Text style={[styles.allLeaguesText, { color: isDark ? "#F1F5F9" : "#292524" }]}>
+                All leagues
+              </Text>
+            </Pressable>
+            {inOwnerStudio && isHost ? (
+              <Pressable
+                onPress={() => setEditing(true)}
+                accessibilityRole="button"
+                accessibilityLabel="Edit league settings"
+                style={styles.editLeagueBtn}
+              >
+                <Text style={styles.editLeagueText}>Edit settings</Text>
+              </Pressable>
+            ) : null}
+          </View>
 
           <View style={styles.coverBottom}>
             <View style={styles.badgeRow}>
@@ -195,7 +228,11 @@ export default function LeagueDetailScreen() {
                 <MapPin size={14} color="rgba(255,255,255,0.85)" />
                 {league.venueId ? (
                   <Text
-                    onPress={() => router.push(`/venue/${league.venueId}`)}
+                    onPress={() =>
+                      inOwnerStudio
+                        ? router.push("/admin/venues")
+                        : router.push(`/venues/${league.venueId}`)
+                    }
                     style={styles.coverMetaLink}
                   >
                     {league.venueName}
@@ -323,7 +360,11 @@ export default function LeagueDetailScreen() {
                 </View>
                 {canSeeInside ? (
                   <View style={{ marginTop: space["3"] }}>
-                    <LeagueTable standings={league.standings} highlightTeamIds={myTeamIds} />
+                    <LeagueTable
+                      standings={league.standings}
+                      highlightTeamIds={myTeamIds}
+                      onTeamPress={inOwnerStudio ? () => router.push(allLeaguesPath) : undefined}
+                    />
                   </View>
                 ) : (
                   <View style={[styles.lockedTable, { borderColor: isDark ? "rgba(245,158,11,0.3)" : "#FCD34D" }]}>
@@ -344,6 +385,7 @@ export default function LeagueDetailScreen() {
                 isHost={isHost}
                 onChanged={load}
                 onOpenAlbum={(mid) => setFocusMatch(mid)}
+                onOpenVenue={inOwnerStudio ? () => router.push("/admin/venues") : undefined}
               />
             ) : (
               <View style={[styles.card, { backgroundColor: c.surface, borderColor: c.border }]}>
@@ -378,11 +420,17 @@ export default function LeagueDetailScreen() {
                 hostId={user.id}
                 onChanged={load}
                 onEdit={() => setEditing(true)}
+                onOpenTeam={inOwnerStudio ? () => router.push(allLeaguesPath) : undefined}
               />
             ) : null}
 
             {user && !isHost ? (
-              <LeagueSquadPanel league={league} viewerId={user.id} onChanged={load} />
+              <LeagueSquadPanel
+                league={league}
+                viewerId={user.id}
+                onChanged={load}
+                onOpenTeams={inOwnerStudio ? () => router.push(allLeaguesPath) : undefined}
+              />
             ) : null}
 
             {!user ? (
@@ -421,7 +469,11 @@ export default function LeagueDetailScreen() {
                   {league.teams.map((t) => (
                     <Pressable
                       key={t.teamId}
-                      onPress={() => router.push(`/teams/${t.teamId}`)}
+                      onPress={() =>
+                        inOwnerStudio
+                          ? router.push("/admin/leagues")
+                          : router.push(`/teams/${t.teamId}`)
+                      }
                       accessibilityRole="button"
                       style={styles.squadRow}
                     >
@@ -504,6 +556,8 @@ export default function LeagueDetailScreen() {
   );
 }
 
+export default LeagueDetailScreen;
+
 const styles = StyleSheet.create({
   scrollBody: { paddingBottom: space["8"] },
   stateBox: {
@@ -527,6 +581,12 @@ const styles = StyleSheet.create({
   },
   backBtnText: { fontSize: fontSize.base, fontWeight: "900", color: "#FFFFFF" },
   cover: { height: 260, justifyContent: "space-between" },
+  coverTopActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: space[2],
+  },
   allLeagues: {
     flexDirection: "row",
     alignItems: "center",
@@ -539,6 +599,14 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   allLeaguesText: { fontSize: fontSize.sm, fontWeight: "900" },
+  editLeagueBtn: {
+    marginRight: space["4"],
+    backgroundColor: "#FBBF24",
+    borderRadius: radius.full,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+  },
+  editLeagueText: { color: "#422006", fontSize: fontSize.xs, fontWeight: "900" },
   coverBottom: { padding: space["4"], gap: 4 },
   badgeRow: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
   badge: {

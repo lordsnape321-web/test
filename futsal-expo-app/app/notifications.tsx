@@ -1,7 +1,7 @@
 import { useRouter } from "expo-router";
-import { Bell, CheckCheck, ChevronRight, Heart, LogIn, Trash2 } from "lucide-react-native";
+import { Bell, Check, CheckCheck, ChevronRight, Heart, LogIn, Trash2 } from "lucide-react-native";
 import React, { useCallback, useEffect, useState } from "react";
-import { FlatList, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, FlatList, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { deleteNotification, fetchNotifications, markAllNotificationsRead, markNotificationRead } from "@/api";
 import { useAuth } from "@/context/AuthContext";
@@ -64,12 +64,11 @@ function badgeFor(type: string, isDark: boolean): Badge {
 }
 
 /**
- * The server stores notification links as web paths (e.g. `/venues/3`). The
- * native venue detail route is singular (`/venue/[id]`), so rewrite that one
- * known mismatch before navigating; anything else is pushed as-is.
+ * Notification links are server-generated web paths. The native route tree
+ * exposes the same plural venue URL, so shared links can be pushed unchanged.
  */
 function normalizeLink(link: string): string {
-  return link.replace(/^\/venues\//, "/venue/");
+  return link;
 }
 
 export default function NotificationsScreen() {
@@ -97,14 +96,28 @@ export default function NotificationsScreen() {
     })();
   }, [user, load]);
 
+  useEffect(() => {
+    if (ready && user?.role === "owner") router.replace("/admin/notifications");
+  }, [ready, user, router]);
+
   async function markAll() {
     if (!user) return;
-    await markAllNotificationsRead(user.id);
-    load();
+    try {
+      await markAllNotificationsRead(user.id);
+      await load();
+    } catch {
+      /* keep the current inbox visible while offline */
+    }
   }
 
   async function openOne(n: AppNotification) {
-    await markNotificationRead(n.id);
+    try {
+      await markNotificationRead(n.id);
+    } catch {
+      await load();
+      return;
+    }
+    setItems((prev) => prev.map((item) => (item.id === n.id ? { ...item, isRead: true } : item)));
     if (n.link) {
       try {
         router.push(normalizeLink(n.link) as never);
@@ -116,9 +129,30 @@ export default function NotificationsScreen() {
     }
   }
 
+  async function markReadOnly(n: AppNotification) {
+    if (n.isRead) return;
+    setItems((prev) => prev.map((item) => (item.id === n.id ? { ...item, isRead: true } : item)));
+    try {
+      await markNotificationRead(n.id);
+    } catch {
+      await load();
+    }
+  }
+
   async function remove(id: number) {
     await deleteNotification(id);
     setItems((prev) => prev.filter((x) => x.id !== id));
+  }
+
+  // Defensive boundary for direct/deep links. The root shell also redirects
+  // owners, but this screen must never render player notifications while that
+  // redirect is being committed.
+  if (ready && user?.role === "owner") {
+    return (
+      <SafeAreaView style={[styles.flex, styles.center, { backgroundColor: c.bg }]} edges={["top"]}>
+        <ActivityIndicator size="large" color={c.textFaint} />
+      </SafeAreaView>
+    );
   }
 
   // Signed-out state: the web page shows a "your letters await" card. Reachable
@@ -171,15 +205,24 @@ export default function NotificationsScreen() {
           ) : null}
         </Text>
       </View>
-      {unread > 0 ? (
-        <Pressable
-          onPress={() => void markAll()}
-          style={[styles.catchUpBtn, { borderColor: c.border, backgroundColor: c.surface }]}
-        >
-          <CheckCheck size={16} color={c.text} />
-          <Text style={[styles.catchUpText, { color: c.text }]}>All caught up</Text>
-        </Pressable>
-      ) : null}
+      <Pressable
+        onPress={() => void markAll()}
+        disabled={unread === 0}
+        style={[
+          styles.catchUpBtn,
+          {
+            borderColor: c.border,
+            backgroundColor: c.surface,
+            opacity: unread === 0 ? 0.45 : 1,
+          },
+        ]}
+        accessibilityRole="button"
+        accessibilityLabel="Mark all notifications as read"
+        accessibilityState={{ disabled: unread === 0 }}
+      >
+        <CheckCheck size={16} color={c.text} />
+        <Text style={[styles.catchUpText, { color: c.text }]}>Mark all read</Text>
+      </Pressable>
     </View>
   );
 
@@ -221,7 +264,10 @@ export default function NotificationsScreen() {
                 styles.noteRow,
                 n.isRead
                   ? { backgroundColor: c.surface, borderColor: c.border }
-                  : { backgroundColor: colors.emerald50, borderColor: colors.emerald300 },
+                  : {
+                      backgroundColor: isDark ? "rgba(16,185,129,0.14)" : colors.emerald50,
+                      borderColor: isDark ? "rgba(110,231,183,0.45)" : colors.emerald300,
+                    },
               ]}
             >
               <View style={[styles.badge, { backgroundColor: badge.bg }]}>
@@ -246,6 +292,18 @@ export default function NotificationsScreen() {
                   ) : null}
                 </View>
               </Pressable>
+
+              {!n.isRead ? (
+                <Pressable
+                  onPress={() => void markReadOnly(n)}
+                  accessibilityRole="button"
+                  accessibilityLabel="Mark notification as read"
+                  style={[styles.readBtn, { borderColor: c.border, backgroundColor: c.surface }]}
+                >
+                  <Check size={13} color={c.textMuted} />
+                  <Text style={[styles.readBtnText, { color: c.textMuted }]}>Mark read</Text>
+                </Pressable>
+              ) : null}
 
               <Pressable
                 onPress={() => void remove(n.id)}
@@ -302,7 +360,13 @@ const styles = StyleSheet.create({
 
   /* Header */
   listContent: { padding: space[4], paddingBottom: space[12], gap: space[2.5] },
-  headerRow: { flexDirection: "row", alignItems: "flex-end", gap: space[3], marginBottom: space[2] },
+  headerRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "flex-end",
+    gap: space[3],
+    marginBottom: space[2],
+  },
   eyebrowRow: { flexDirection: "row", alignItems: "center", gap: 6 },
   eyebrow: {
     fontSize: fontSize.xs,
@@ -348,6 +412,7 @@ const styles = StyleSheet.create({
   /* Note row */
   noteRow: {
     flexDirection: "row",
+    flexWrap: "wrap",
     alignItems: "flex-start",
     gap: space[3],
     borderRadius: radius["2xl"],
@@ -362,6 +427,17 @@ const styles = StyleSheet.create({
   noteMeta: { fontSize: fontSize.xs, fontWeight: "700" },
   lookRow: { flexDirection: "row", alignItems: "center", gap: 2 },
   lookText: { fontSize: fontSize.xs, fontWeight: "700", color: colors.emerald600 },
+  readBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    borderWidth: 1,
+    borderRadius: radius.full,
+    paddingHorizontal: space[2.5],
+    paddingVertical: space[1.5],
+    minHeight: 32,
+  },
+  readBtnText: { fontSize: fontSize["2xs"], fontWeight: "900" },
   deleteBtn: {
     width: 32,
     height: 32,

@@ -55,11 +55,13 @@ export function LeagueHostPanel({
   hostId,
   onChanged,
   onEdit,
+  onOpenTeam,
 }: {
   league: LeagueDetail;
   hostId: number;
   onChanged: () => void;
   onEdit: () => void;
+  onOpenTeam?: (teamId: number) => void;
 }) {
   const { colors: c, isDark } = useTheme();
   const router = useRouter();
@@ -191,7 +193,9 @@ export function LeagueHostPanel({
                   <View style={styles.entryTop}>
                     <View style={styles.grow}>
                       <Pressable
-                        onPress={() => router.push(`/teams/${e.teamId}`)}
+                        onPress={() =>
+                          onOpenTeam ? onOpenTeam(e.teamId) : router.push(`/teams/${e.teamId}`)
+                        }
                         accessibilityRole="button"
                       >
                         <Text style={[styles.entryName, { color: c.text }]} numberOfLines={1}>
