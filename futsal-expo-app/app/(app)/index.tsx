@@ -1,6 +1,5 @@
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
-import Svg, { Circle, Defs, RadialGradient, Stop } from "react-native-svg";
 import {
   ArrowRight,
   CalendarCheck,
@@ -25,7 +24,6 @@ import {
   Animated,
   Easing,
   Image,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -53,9 +51,8 @@ import { colors, fontSize, radius, space } from "@/theme";
  * footer.
  *
  * Platform-native equivalents replace only rendering primitives that do not exist
- * in React Native: the global TurfBackdrop supplies the blurred clubhouse blobs,
- * the hero marquee is a bounded text rail, and the headline uses a CSS gradient
- * on Expo web with an emerald fallback on native platforms.
+ * in React Native: the global TurfBackdrop supplies the shared solid player
+ * background, and the hero marquee is a bounded text rail.
  */
 export default function HomeScreen() {
   const { colors: c, isDark } = useTheme();
@@ -65,16 +62,6 @@ export default function HomeScreen() {
   const primaryText = isDark ? colors.emerald400 : colors.emerald600;
   const orangeText = isDark ? colors.orange400 : colors.orange500;
   const h2Size = bp.sm ? 30 : 24;
-  const headlineAccent =
-    Platform.OS === "web"
-      ? ({
-          color: "transparent",
-          backgroundImage: `linear-gradient(90deg, ${primaryText}, ${orangeText})`,
-          backgroundClip: "text",
-          WebkitBackgroundClip: "text",
-          WebkitTextFillColor: "transparent",
-        } as never)
-      : { color: primaryText };
   const marqueeX = useRef(new Animated.Value(0)).current;
   const [marqueeWidth, setMarqueeWidth] = useState(0);
 
@@ -148,20 +135,6 @@ export default function HomeScreen() {
         <PageContainer padded={false}>
         {/* ── HERO ─────────────────────────────────────────────────── */}
         <View style={[styles.heroGrid, bp.lg ? styles.heroGridWide : null]}>
-          <Svg pointerEvents="none" width="100%" height="100%" style={StyleSheet.absoluteFill}>
-            <Defs>
-              <RadialGradient id="heroOrange" cx="50%" cy="50%" r="50%">
-                <Stop offset="0" stopColor={isDark ? "#F97316" : "#FDBA74"} stopOpacity={isDark ? 0.10 : 0.30} />
-                <Stop offset="1" stopColor={isDark ? "#F97316" : "#FDBA74"} stopOpacity={0} />
-              </RadialGradient>
-              <RadialGradient id="heroEmerald" cx="50%" cy="50%" r="50%">
-                <Stop offset="0" stopColor={isDark ? "#10B981" : "#6EE7B7"} stopOpacity={isDark ? 0.10 : 0.30} />
-                <Stop offset="1" stopColor={isDark ? "#10B981" : "#6EE7B7"} stopOpacity={0} />
-              </RadialGradient>
-            </Defs>
-            <Circle cx="4%" cy="18%" r={144} fill="url(#heroOrange)" />
-            <Circle cx="104%" cy="24%" r={160} fill="url(#heroEmerald)" />
-          </Svg>
           <View style={[styles.heroCopy, bp.lg ? styles.heroCopyWide : null]}>
         <View style={[styles.heroBadge, { backgroundColor: c.surface, borderColor: isDark ? "rgba(249,115,22,0.30)" : "#FED7AA" }]}>
           <Sparkles size={14} color={orangeText} />
@@ -174,7 +147,7 @@ export default function HomeScreen() {
 
         <Text style={[styles.h1, { color: isDark ? "#F8FAFC" : c.text, fontSize: bp.lg ? 58 : bp.sm ? 48 : 36, lineHeight: bp.lg ? 62 : bp.sm ? 52 : 40 }]}>
           Grab your friends.{" "}
-          <Text style={headlineAccent}>Tonight we play.</Text>
+          <Text style={{ color: primaryText }}>Tonight we play.</Text>
         </Text>
 
         <Text style={[styles.lede, { color: isDark ? colors.slate400 : colors.stone600 }]}>
@@ -426,24 +399,15 @@ export default function HomeScreen() {
         )}
 
         {/* ── COMMUNITY ────────────────────────────────────────────── */}
-        <LinearGradient
-          colors={isDark ? ["#022C22", "#022C22"] : ["#065F46", "#065F46"]}
-          style={[styles.community, { padding: bp.sm ? space[12] : space[8] }]}
+        <View
+          style={[
+            styles.community,
+            {
+              backgroundColor: isDark ? "#022C22" : "#065F46",
+              padding: bp.sm ? space[12] : space[8],
+            },
+          ]}
         >
-          <Svg pointerEvents="none" width="100%" height="100%" style={StyleSheet.absoluteFill}>
-            <Defs>
-              <RadialGradient id="communityAmber" cx="50%" cy="50%" r="50%">
-                <Stop offset="0" stopColor="#FCD34D" stopOpacity={0.20} />
-                <Stop offset="1" stopColor="#FCD34D" stopOpacity={0} />
-              </RadialGradient>
-              <RadialGradient id="communityOrange" cx="50%" cy="50%" r="50%">
-                <Stop offset="0" stopColor="#FB923C" stopOpacity={0.20} />
-                <Stop offset="1" stopColor="#FB923C" stopOpacity={0} />
-              </RadialGradient>
-            </Defs>
-            <Circle cx="105%" cy="10%" r="144" fill="url(#communityAmber)" />
-            <Circle cx="-5%" cy="105%" r="144" fill="url(#communityOrange)" />
-          </Svg>
           <View style={[styles.communityGrid, bp.lg ? styles.communityGridWide : null]}>
             <View style={styles.communityCopy}>
           <View style={[styles.communityPill]}>
@@ -504,7 +468,7 @@ export default function HomeScreen() {
           ))}
             </View>
           </View>
-        </LinearGradient>
+        </View>
 
         {/* ── FOOTER ───────────────────────────────────────────────── */}
         <View
