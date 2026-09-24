@@ -339,7 +339,17 @@ export default function BookingsScreen() {
 
   return (
     <SafeAreaView style={[styles.flex, { backgroundColor: c.bg }]} edges={["top"]}>
-      <ScrollView contentContainerStyle={styles.scroll}>
+      <ScrollView
+        contentContainerStyle={[
+          styles.scroll,
+          {
+            paddingHorizontal: 16,
+            maxWidth: 1280,
+            width: "100%",
+            alignSelf: "center",
+          },
+        ]}
+      >
         <View style={styles.eyebrowRow}>
           <PartyPopper size={14} color={colors.orange500} />
           <Text style={styles.eyebrow}>{user?.name?.split(" ")[0]}'s game diary</Text>
@@ -610,7 +620,16 @@ function BookingCard({
           {b.totalPrice > 0 ? <BookingPaymentSummary bookingId={b.id} /> : null}
 
           {b.status === "pending" ? (
-            <Text style={[styles.note, styles.noteAmber]}>
+            <Text
+              style={[
+                styles.note,
+                styles.noteAmber,
+                isDark && {
+                  backgroundColor: "rgba(245,158,11,0.12)",
+                  color: "#FCD34D",
+                },
+              ]}
+            >
               Your request is with the venue — lovely humans are reviewing it now. We'll let you
               know right away! 💛
             </Text>

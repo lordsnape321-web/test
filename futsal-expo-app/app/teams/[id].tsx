@@ -330,10 +330,24 @@ export default function TeamDetailScreen() {
                         )
                       }
                       disabled={busy === "withdraw"}
-                      style={[styles.withdrawBtn, busy === "withdraw" ? styles.dim : null]}
+                      style={[
+                        styles.withdrawBtn,
+                        isDark && {
+                          backgroundColor: "rgba(245,158,11,0.12)",
+                          borderColor: "rgba(245,158,11,0.35)",
+                        },
+                        busy === "withdraw" ? styles.dim : null,
+                      ]}
                     >
-                      <Hourglass size={16} color="#B45309" />
-                      <Text style={styles.withdrawText}>Request pending ⏳ — tap to withdraw</Text>
+                      <Hourglass size={16} color={isDark ? "#FCD34D" : "#B45309"} />
+                      <Text
+                        style={[
+                          styles.withdrawText,
+                          isDark && { color: "#FCD34D" },
+                        ]}
+                      >
+                        Request pending ⏳ — tap to withdraw
+                      </Text>
                     </Pressable>
                   ) : viewer?.isMember ? (
                     <Pressable
@@ -562,7 +576,15 @@ export default function TeamDetailScreen() {
                             : "🚫 Cancelled"}
                     </Text>
                     {l.standing ? (
-                      <Text style={styles.standingChip}>
+                      <Text
+                        style={[
+                          styles.standingChip,
+                          isDark && {
+                            backgroundColor: "rgba(245,158,11,0.15)",
+                            color: "#FCD34D",
+                          },
+                        ]}
+                      >
                         {l.standing}
                         {l.standing === 1 ? "st" : l.standing === 2 ? "nd" : l.standing === 3 ? "rd" : "th"}{" "}
                         of {l.tableSize}
@@ -653,7 +675,19 @@ export default function TeamDetailScreen() {
                     <Text style={[styles.rowName, { color: c.text }]} numberOfLines={1}>
                       {m.name}
                     </Text>
-                    {m.isCaptain ? <Text style={styles.captainPill}>👑 Captain</Text> : null}
+                    {m.isCaptain ? (
+                      <Text
+                        style={[
+                          styles.captainPill,
+                          isDark && {
+                            backgroundColor: "rgba(245,158,11,0.15)",
+                            color: "#FCD34D",
+                          },
+                        ]}
+                      >
+                        👑 Captain
+                      </Text>
+                    ) : null}
                   </View>
                   <Text style={[styles.rowMeta, { color: c.textFaint }]} numberOfLines={1}>
                     {m.level} • {m.position}

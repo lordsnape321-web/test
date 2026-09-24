@@ -266,7 +266,15 @@ export default function PlayerDossierScreen() {
           </View>
 
           {!data.invitable ? (
-            <Text style={styles.warnBox}>
+            <Text
+              style={[
+                styles.warnBox,
+                isDark && {
+                  backgroundColor: "rgba(245,158,11,0.12)",
+                  color: "#FCD34D",
+                },
+              ]}
+            >
               This is a {player.role} account, not a player — squads are made of players, so there
               is nothing to invite here 🛡️
             </Text>
@@ -440,7 +448,19 @@ export default function PlayerDossierScreen() {
                       <Text style={[styles.rowName, { color: c.text }]} numberOfLines={1}>
                         {t.name}
                       </Text>
-                      {t.role === "captain" ? <Text style={styles.captainPill}>👑 Captain</Text> : null}
+                      {t.role === "captain" ? (
+                        <Text
+                          style={[
+                            styles.captainPill,
+                            isDark && {
+                              backgroundColor: "rgba(245,158,11,0.15)",
+                              color: "#FCD34D",
+                            },
+                          ]}
+                        >
+                          👑 Captain
+                        </Text>
+                      ) : null}
                     </View>
                     <Text style={[styles.rowMeta, { color: c.textFaint }]} numberOfLines={1}>
                       {t.level} • {t.wins}W {t.draws}D {t.losses}L • {t.memberCount}/{t.maxPlayers}{" "}

@@ -233,7 +233,16 @@ export function BookingLedgerPanel({
               strong
             />
             {totals.balance > 0 ? (
-              <Text style={[styles.banner, styles.bannerDue]}>
+              <Text
+                style={[
+                  styles.banner,
+                  styles.bannerDue,
+                  isDark && {
+                    backgroundColor: "rgba(245,158,11,0.12)",
+                    color: "#FCD34D",
+                  },
+                ]}
+              >
                 ⏳ {formatNPR(totals.balance)} still to collect
               </Text>
             ) : null}

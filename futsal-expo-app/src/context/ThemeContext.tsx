@@ -4,18 +4,14 @@ import { darkPalette, lightPalette, ownerPalette, type Palette } from "@/theme";
 import { STORAGE_KEYS, initStorage, storage } from "@/lib/storage";
 
 /**
- * Light/dark switching.
+ * Light/dark switching — mirrors the web ThemeProvider (`light` | `dark`),
+ * which reads `localStorage['futsal-theme']` and toggles a `dark` class.
  *
- * The web app applies a `dark` class to <html> from an inline script. React
- * Native has no DOM, so the palette is provided through context instead and
- * every component reads colours from `useTheme()`.
+ * Expo keeps a third `system` mode as the first-run default (same as the web
+ * script when nothing is stored), but the ThemeToggle always flips between
+ * explicit light and dark so one tap always changes what you see.
  *
- * Three states: "light", "dark", and "system" (follow the device). "system" is
- * the default, which is what the web app does when nothing is stored.
- *
- * Owner Studio (/admin/*) is a light slate workspace on the web, unlike the
- * warm player app — force `ownerPalette` while `studio` is true so admin
- * screens never inherit the peach clubhouse look (or dark player colours).
+ * Owner Studio (/admin) forces `ownerPalette` (light slate workspace).
  */
 
 export type ThemeMode = "light" | "dark" | "system";
@@ -26,11 +22,8 @@ type ThemeState = {
   colors: Palette;
   isDark: boolean;
   setMode: (mode: ThemeMode) => void;
-  /**
-   * Enter/leave Owner Studio chrome. The web routes pick the palette by
-   * path (`/admin/*` → OwnerShell); React Native stacks have no shared path
-   * context, so the admin layout flips this flag.
-   */
+  /** Flip light ↔ dark (what the navbar control does). */
+  toggle: () => void;
   studio: boolean;
   setStudio: (on: boolean) => void;
 };
@@ -41,6 +34,9 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const system = useColorScheme();
   const [mode, setModeState] = useState<ThemeMode>("system");
   const [studio, setStudio] = useState(false);
+  // Bumped on every setMode so consumers re-read even if isDark was already true
+  // (e.g. system→dark while device is dark) — rare but keeps optimistic UI honest.
+  const [nonce, setNonce] = useState(0);
 
   useEffect(() => {
     (async () => {
@@ -54,8 +50,20 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 
   const setMode = useCallback((next: ThemeMode) => {
     setModeState(next);
+    setNonce((n) => n + 1);
     void storage.set(STORAGE_KEYS.theme, next);
   }, []);
+
+  const toggle = useCallback(() => {
+    setModeState((prev) => {
+      const currentlyDark =
+        prev === "system" ? system === "dark" : prev === "dark";
+      const next: ThemeMode = currentlyDark ? "light" : "dark";
+      void storage.set(STORAGE_KEYS.theme, next);
+      return next;
+    });
+    setNonce((n) => n + 1);
+  }, [system]);
 
   const systemDark = mode === "system" ? system === "dark" : mode === "dark";
   // Studio is always the light slate workspace, matching OwnerShell on the web.
@@ -67,10 +75,13 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       colors: studio ? ownerPalette : isDark ? darkPalette : lightPalette,
       isDark,
       setMode,
+      toggle,
       studio,
       setStudio,
+      // expose so memo identity changes even when isDark is unchanged
+      nonce,
     }),
-    [mode, isDark, setMode, studio],
+    [mode, isDark, setMode, toggle, studio, nonce],
   );
 
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;

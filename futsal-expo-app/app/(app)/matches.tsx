@@ -38,6 +38,7 @@ import {
   validateTimeHM,
   validateTitle,
 } from "@/lib/validation";
+import { useBreakpoints } from "@/lib/responsive";
 import type { Match, Venue } from "@/lib/types";
 import { colors, fontSize, radius, space } from "@/theme";
 
@@ -135,9 +136,20 @@ export default function MatchesScreen() {
     }
   }
 
+  const bp = useBreakpoints();
   return (
     <SafeAreaView style={[styles.flex, { backgroundColor: c.bg }]} edges={["top"]}>
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView
+        contentContainerStyle={[
+          styles.content,
+          {
+            paddingHorizontal: bp.gutter,
+            maxWidth: bp.contentMax,
+            width: "100%",
+            alignSelf: "center",
+          },
+        ]}
+      >
         {/* Header */}
         <View style={styles.eyebrowRow}>
           {tab === "leagues" ? (

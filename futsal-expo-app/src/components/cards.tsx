@@ -115,7 +115,7 @@ export function VenueCard({ v }: { v: VenueWithCourts }) {
 }
 
 export function MatchCard({ m }: { m: MatchItem }) {
-  const { colors: c } = useTheme();
+  const { colors: c, isDark } = useTheme();
   const router = useRouter();
 
   const pct = Math.round((m.joinedCount / Math.max(1, m.maxPlayers)) * 100);
@@ -162,11 +162,22 @@ export function MatchCard({ m }: { m: MatchItem }) {
         <View
           style={[
             styles.spotsBadge,
-            { backgroundColor: full ? colors.red100 : colors.orange100 },
+            {
+              backgroundColor: full
+                ? isDark
+                  ? "rgba(239,68,68,0.15)"
+                  : colors.red100
+                : isDark
+                  ? "rgba(249,115,22,0.15)"
+                  : colors.orange100,
+            },
           ]}
         >
           <Text
-            style={[styles.spotsBadgeText, { color: full ? colors.red600 : colors.orange700 }]}
+            style={[
+              styles.spotsBadgeText,
+              { color: full ? (isDark ? "#F87171" : colors.red600) : isDark ? "#FDBA74" : colors.orange700 },
+            ]}
           >
             {full ? "Full house" : `${m.spotsLeft} spots left`}
           </Text>
@@ -264,10 +275,17 @@ const styles = StyleSheet.create({
 
   /* ── VenueCard ─────────────────────────────────────────────────────── */
   venueCard: {
+    width: "100%",
     borderWidth: 1,
     borderRadius: radius["3xl"],
     overflow: "hidden",
     marginBottom: space[4],
+    // shadow-[0_10px_30px_rgba(180,120,60,0.08)] — source card-glow base
+    shadowColor: "rgb(180,120,60)",
+    shadowOpacity: 0.08,
+    shadowRadius: 15,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 2,
   },
   venueImageWrap: { height: 192, backgroundColor: colors.stone200 },
   venueImage: { width: "100%", height: "100%" },
@@ -319,10 +337,16 @@ const styles = StyleSheet.create({
 
   /* ── MatchCard ─────────────────────────────────────────────────────── */
   matchCard: {
+    width: "100%",
     borderWidth: 1,
     borderRadius: radius["3xl"],
     padding: space[5],
     marginBottom: space[4],
+    shadowColor: "rgb(180,120,60)",
+    shadowOpacity: 0.08,
+    shadowRadius: 15,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 2,
   },
   matchHead: { flexDirection: "row", justifyContent: "space-between", gap: space[3] },
   matchTitle: { fontSize: fontSize.md, fontWeight: "800", lineHeight: 20 },

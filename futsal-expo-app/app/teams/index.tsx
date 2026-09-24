@@ -559,7 +559,17 @@ export default function TeamsScreen() {
                               {status.emoji} {status.label}
                             </Text>
                             {l.visibility === "private" ? (
-                              <Text style={styles.privateChip}>🔒 Private</Text>
+                              <Text
+                                style={[
+                                  styles.privateChip,
+                                  isDark && {
+                                    backgroundColor: "rgba(245,158,11,0.15)",
+                                    color: "#FCD34D",
+                                  },
+                                ]}
+                              >
+                                🔒 Private
+                              </Text>
                             ) : null}
                             <Text style={[styles.leagueMeta, { color: c.textFaint }]}>
                               {l.format} • {l.approvedTeams}/{l.maxTeams} squads
@@ -808,7 +818,13 @@ export default function TeamsScreen() {
                           style={[
                             styles.joinBtn,
                             pending
-                              ? styles.joinPending
+                              ? [
+                                  styles.joinPending,
+                                  isDark && {
+                                    backgroundColor: "rgba(245,158,11,0.12)",
+                                    borderColor: "rgba(245,158,11,0.35)",
+                                  },
+                                ]
                               : member
                                 ? styles.joinMember
                                 : styles.joinAsk,

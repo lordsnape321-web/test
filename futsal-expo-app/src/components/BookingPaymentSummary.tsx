@@ -123,7 +123,16 @@ export function BookingPaymentSummary({ bookingId }: { bookingId: number }) {
               </View>
 
               {data.totals.balance > 0 ? (
-                <Text style={[styles.banner, styles.bannerDue]}>
+                <Text
+                  style={[
+                    styles.banner,
+                    styles.bannerDue,
+                    isDark && {
+                      backgroundColor: "rgba(245,158,11,0.12)",
+                      color: "#FCD34D",
+                    },
+                  ]}
+                >
                   ⏳ {formatNPR(data.totals.balance)} still to pay
                 </Text>
               ) : null}

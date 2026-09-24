@@ -27,11 +27,13 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { MatchCard, VenueCard } from "@/components/cards";
+import { PageContainer, ResponsiveGrid } from "@/components/layout";
 import { useAuth } from "@/context/AuthContext";
 import { useTheme } from "@/context/ThemeContext";
 import { fetchMatches, fetchStats, fetchVenues } from "@/api";
 import { formatNPR } from "@/lib/futsal";
 import { validateSearch } from "@/lib/validation";
+import { useBreakpoints } from "@/lib/responsive";
 import type { Match, SiteStats, Venue } from "@/lib/types";
 import { colors, fontSize, radius, space } from "@/theme";
 
@@ -52,9 +54,10 @@ import { colors, fontSize, radius, space } from "@/theme";
  * clipped to a gradient, which RN text cannot do natively.
  */
 export default function HomeScreen() {
-  const { colors: c } = useTheme();
+  const { colors: c, isDark } = useTheme();
   const { user, isOwner } = useAuth();
   const router = useRouter();
+  const bp = useBreakpoints();
 
   const [venues, setVenues] = useState<Venue[]>([]);
   const [matches, setMatches] = useState<Match[]>([]);
@@ -98,7 +101,8 @@ export default function HomeScreen() {
 
   return (
     <SafeAreaView style={[styles.flex, { backgroundColor: c.bg }]} edges={["top"]}>
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView contentContainerStyle={[styles.content, { paddingHorizontal: bp.gutter }]}>
+        <PageContainer padded={false}>
         {/* ── HERO ─────────────────────────────────────────────────── */}
         <View style={[styles.heroBadge, { backgroundColor: c.surface, borderColor: c.border }]}>
           <Sparkles size={14} color={colors.orange500} />
@@ -159,10 +163,21 @@ export default function HomeScreen() {
           <TrustItem icon={Heart} color={colors.orange500} text="Free cancellation with a smile" />
         </View>
 
-        {/* Stats */}
+        {/* Stats — grid-cols-2 sm:grid-cols-4 */}
         <View style={styles.statGrid}>
           {statTiles.map((s) => (
-            <View key={s.l} style={[styles.statTile, { backgroundColor: c.surface, borderColor: c.border }]}>
+            <View
+              key={s.l}
+              style={[
+                styles.statTile,
+                {
+                  backgroundColor: c.surface,
+                  borderColor: c.border,
+                  flexBasis: `${100 / bp.statColumns}%`,
+                  maxWidth: `${100 / bp.statColumns}%`,
+                },
+              ]}
+            >
               <Text style={[styles.statValue, { color: c.text }]}>{s.n}</Text>
               <Text style={[styles.statLabel, { color: c.textFaint }]}>{s.l}</Text>
             </View>
@@ -188,14 +203,33 @@ export default function HomeScreen() {
           </Pressable>
         </View>
 
-        {loading
-          ? [0, 1, 2].map((i) => (
-              <View key={i} style={[styles.skeleton, { backgroundColor: c.surface }]} />
-            ))
-          : showVenues.map((v) => <VenueCard key={v.id} v={v} />)}
+        {loading ? (
+          <ResponsiveGrid>
+            {[0, 1, 2].map((i) => (
+              <View key={i} style={[styles.skeleton, { backgroundColor: c.surface, marginBottom: 0 }]} />
+            ))}
+          </ResponsiveGrid>
+        ) : (
+          <ResponsiveGrid>
+            {showVenues.map((v) => (
+              <VenueCard key={v.id} v={v} />
+            ))}
+          </ResponsiveGrid>
+        )}
 
         {/* ── HOW IT WORKS ─────────────────────────────────────────── */}
-        <View style={[styles.howWrap, { backgroundColor: c.surface, borderColor: c.border }]}>
+        <View
+          style={[
+            styles.howWrap,
+            {
+              backgroundColor: c.surface,
+              borderColor: c.border,
+              flexDirection: "row",
+              flexWrap: "wrap",
+              columnGap: space[3],
+            },
+          ]}
+        >
           <Text style={[styles.kicker, styles.center]}>Easy as chatting with a friend</Text>
           <Text style={[styles.h2, styles.center, { color: c.text }]}>
             From sofa to kickoff in 3 steps
@@ -206,27 +240,39 @@ export default function HomeScreen() {
               step: "01",
               title: "Find your spot",
               text: "Browse nearby courts with real photos, honest prices and reviews from players like you.",
-              bg: colors.emerald100,
-              fg: colors.emerald700,
+              bg: isDark ? "rgba(16,185,129,0.15)" : colors.emerald100,
+              fg: isDark ? colors.emerald300 : colors.emerald700,
             },
             {
               icon: CalendarCheck,
               step: "02",
               title: "Book in a minute",
               text: "Pick a time that suits, pay with eSewa, Khalti or cash — the venue confirms personally.",
-              bg: colors.orange100,
-              fg: colors.orange600,
+              bg: isDark ? "rgba(249,115,22,0.15)" : colors.orange100,
+              fg: isDark ? colors.orange300 : colors.orange600,
             },
             {
               icon: Users,
               step: "03",
               title: "Show up & play",
               text: "Bring your energy (or come solo!). Make friends, join weekly games and feel at home.",
-              bg: "#FEF3C7",
-              fg: "#B45309",
+              bg: isDark ? "rgba(245,158,11,0.15)" : "#FEF3C7",
+              fg: isDark ? "#FCD34D" : "#B45309",
             },
           ].map((s) => (
-            <View key={s.step} style={[styles.stepCard, { backgroundColor: c.surface, borderColor: c.border }]}>
+            <View
+              key={s.step}
+              style={[
+                styles.stepCard,
+                {
+                  backgroundColor: c.surface,
+                  borderColor: c.border,
+                  // lg:grid-cols-3 — three equal steps on wide screens
+                  flexBasis: bp.lg ? "32%" : "100%",
+                  maxWidth: bp.lg ? "32%" : "100%",
+                },
+              ]}
+            >
               <Text style={[styles.stepNumber, { color: c.inset }]}>{s.step}</Text>
               <View style={[styles.stepIcon, { backgroundColor: s.bg }]}>
                 <s.icon size={24} color={s.fg} strokeWidth={2.5} />
@@ -259,11 +305,19 @@ export default function HomeScreen() {
           </Pressable>
         </View>
 
-        {loading
-          ? [0, 1].map((i) => (
-              <View key={i} style={[styles.skeleton, { backgroundColor: c.surface }]} />
-            ))
-          : matches.map((m) => <MatchCard key={m.id} m={m} />)}
+        {loading ? (
+          <ResponsiveGrid>
+            {[0, 1].map((i) => (
+              <View key={i} style={[styles.skeleton, { backgroundColor: c.surface, marginBottom: 0 }]} />
+            ))}
+          </ResponsiveGrid>
+        ) : (
+          <ResponsiveGrid>
+            {matches.map((m) => (
+              <MatchCard key={m.id} m={m} />
+            ))}
+          </ResponsiveGrid>
+        )}
 
         {/* ── COMMUNITY ────────────────────────────────────────────── */}
         <LinearGradient
@@ -348,6 +402,7 @@ export default function HomeScreen() {
             ))}
           </View>
         </View>
+        </PageContainer>
       </ScrollView>
     </SafeAreaView>
   );

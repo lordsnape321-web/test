@@ -183,13 +183,22 @@ export function Pill({
   label: string;
   tone?: "neutral" | "success" | "warning" | "danger" | "info" | "brand";
 }) {
-  const { colors } = useTheme();
+  const { colors, isDark } = useTheme();
+  // Soft chips match the web's dark: variants (e.g. dark:bg-emerald-500/15).
   const map: Record<string, { bg: string; fg: string }> = {
     neutral: { bg: colors.inset, fg: colors.textMuted },
-    success: { bg: "#D1FAE5", fg: "#047857" },
-    warning: { bg: "#FEF3C7", fg: "#B45309" },
-    danger: { bg: "#FEE2E2", fg: "#B91C1C" },
-    info: { bg: "#DBEAFE", fg: "#1D4ED8" },
+    success: isDark
+      ? { bg: "rgba(16,185,129,0.15)", fg: "#34D399" }
+      : { bg: "#D1FAE5", fg: "#047857" },
+    warning: isDark
+      ? { bg: "rgba(245,158,11,0.15)", fg: "#FCD34D" }
+      : { bg: "#FEF3C7", fg: "#B45309" },
+    danger: isDark
+      ? { bg: "rgba(239,68,68,0.15)", fg: "#F87171" }
+      : { bg: "#FEE2E2", fg: "#B91C1C" },
+    info: isDark
+      ? { bg: "rgba(59,130,246,0.15)", fg: "#7DD3FC" }
+      : { bg: "#DBEAFE", fg: "#1D4ED8" },
     brand: { bg: colors.primary, fg: colors.primaryText },
   };
   const c = map[tone];
@@ -209,9 +218,13 @@ export function Notice({
   message: string;
   tone?: "error" | "info" | "success";
 }) {
-  const { colors } = useTheme();
-  const bg = tone === "error" ? "#FEE2E2" : tone === "success" ? "#D1FAE5" : "#DBEAFE";
-  const fg = tone === "error" ? "#B91C1C" : tone === "success" ? "#047857" : "#1D4ED8";
+  const { colors, isDark } = useTheme();
+  const soft = tone === "error" ? "rgba(239,68,68,0.12)" : tone === "success" ? "rgba(16,185,129,0.12)" : "rgba(59,130,246,0.12)";
+  const softFg = tone === "error" ? "#F87171" : tone === "success" ? "#34D399" : "#7DD3FC";
+  const solidBg = tone === "error" ? "#FEE2E2" : tone === "success" ? "#D1FAE5" : "#DBEAFE";
+  const solidFg = tone === "error" ? "#B91C1C" : tone === "success" ? "#047857" : "#1D4ED8";
+  const bg = isDark ? soft : solidBg;
+  const fg = isDark ? softFg : solidFg;
   return (
     <View
       accessibilityRole="alert"

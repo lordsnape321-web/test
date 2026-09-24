@@ -27,6 +27,7 @@ import { useTheme } from "@/context/ThemeContext";
 import { fetchVenues } from "@/api";
 import { CITY_OPTIONS } from "@/lib/futsal";
 import { validateSearch } from "@/lib/validation";
+import { useBreakpoints } from "@/lib/responsive";
 import type { Venue } from "@/lib/types";
 import { colors, fontSize, radius, space } from "@/theme";
 
@@ -45,6 +46,7 @@ export default function VenuesScreen() {
   const { colors: c } = useTheme();
   const { user } = useAuth();
   const router = useRouter();
+  const bp = useBreakpoints();
 
   const [venues, setVenues] = useState<Venue[]>([]);
   const [loading, setLoading] = useState(true);
@@ -103,16 +105,29 @@ export default function VenuesScreen() {
     return list;
   }, [venues, safeQ, city, sort, maxPrice]);
 
+  const cols = bp.cardColumns;
   return (
     <SafeAreaView style={[styles.flex, { backgroundColor: c.bg }]} edges={["top"]}>
       <FlatList
+        // Remount when column count changes — FlatList forbids changing numColumns live.
+        key={`cols-${cols}`}
         data={filtered}
         keyExtractor={(item) => String(item.id)}
+        numColumns={cols}
+        columnWrapperStyle={cols > 1 ? { gap: space[4] } : undefined}
         refreshing={refreshing}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={c.primary} />
         }
-        contentContainerStyle={styles.listContent}
+        contentContainerStyle={[
+          styles.listContent,
+          {
+            maxWidth: bp.contentMax,
+            width: "100%",
+            alignSelf: "center",
+            paddingHorizontal: bp.gutter,
+          },
+        ]}
         ListHeaderComponent={
           <>
             <View style={styles.eyebrowRow}>
@@ -246,7 +261,11 @@ export default function VenuesScreen() {
             </View>
           )
         }
-        renderItem={({ item }) => <VenueCard v={item} />}
+        renderItem={({ item }) => (
+          <View style={{ flex: cols > 1 ? 1 : undefined, minWidth: 0 }}>
+            <VenueCard v={item} />
+          </View>
+        )}
       />
     </SafeAreaView>
   );

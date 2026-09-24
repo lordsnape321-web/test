@@ -6,11 +6,10 @@ import { colors as brand, radius } from "@/theme";
 
 /** Theme toggle — same 40×40 rounded-xl control as the web ThemeToggle. */
 export function ThemeToggle({ style }: { style?: object }) {
-  const { isDark, setMode, mode } = useTheme();
-  const next = isDark ? "light" : "dark";
+  const { isDark, toggle } = useTheme();
   return (
     <Pressable
-      onPress={() => setMode(next as "light" | "dark")}
+      onPress={toggle}
       accessibilityRole="button"
       accessibilityLabel={isDark ? "Switch to light mode" : "Switch to dark mode"}
       style={[
@@ -32,7 +31,6 @@ export function ThemeToggle({ style }: { style?: object }) {
       ) : (
         <Moon size={20} color={brand.stone600} />
       )}
-      {mode === "system" ? null : null}
     </Pressable>
   );
 }

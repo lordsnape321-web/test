@@ -6,6 +6,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Navbar } from "@/components/Navbar";
 import { useAuth } from "@/context/AuthContext";
 import { useTheme } from "@/context/ThemeContext";
+import { useBreakpoints } from "@/lib/responsive";
 import { colors as brand, fontSize, radius, space } from "@/theme";
 
 /**
@@ -27,6 +28,9 @@ const TABS = [
 export default function AppLayout() {
   const { user, ready } = useAuth();
   const { colors: c, isDark } = useTheme();
+  const bp = useBreakpoints();
+  // Web MobileNav is `lg:hidden` — hide the bottom rail on wide screens.
+  const showBottomRail = bp.width < 1024;
 
   if (!ready) {
     return (
@@ -47,13 +51,17 @@ export default function AppLayout() {
             headerShown: false,
             sceneStyle: { backgroundColor: c.bg },
           }}
-          tabBar={(props) => (
-            <MobileNav
-              state={props.state}
-              navigation={props.navigation as never}
-              isDark={isDark}
-            />
-          )}
+          tabBar={(props) =>
+            showBottomRail ? (
+              <MobileNav
+                state={props.state}
+                navigation={props.navigation as never}
+                isDark={isDark}
+              />
+            ) : (
+              <View style={{ display: "none" }} />
+            )
+          }
         >
           {TABS.map((t) => (
             <Tabs.Screen key={t.name} name={t.name} options={{ title: t.label }} />

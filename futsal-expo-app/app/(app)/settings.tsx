@@ -55,7 +55,7 @@ type SectionId = (typeof SECTIONS)[number]["id"];
 
 export default function SettingsScreen() {
   const { colors: c } = useTheme();
-  const { mode, setMode } = useTheme();
+  const { mode, setMode, isDark } = useTheme();
   const { user, isOwner, signOut, updateProfile } = useAuth();
   const router = useRouter();
 
@@ -111,7 +111,17 @@ export default function SettingsScreen() {
 
   return (
     <SafeAreaView style={[styles.flex, { backgroundColor: c.bg }]} edges={["top"]}>
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView
+        contentContainerStyle={[
+          styles.content,
+          {
+            paddingHorizontal: 16,
+            maxWidth: 1280,
+            width: "100%",
+            alignSelf: "center",
+          },
+        ]}
+      >
         {/* Heading */}
         <View style={styles.heading}>
           <Avatar user={avatarUser} size={56} />
@@ -332,7 +342,10 @@ export default function SettingsScreen() {
                   { id: "dark", label: "Dark", text: "Night game under lights", icon: Moon },
                 ] as const
               ).map((t) => {
-                const active = mode === t.id;
+                // With mode="system", highlight whichever theme is actually resolved.
+                const active =
+                  mode === t.id ||
+                  (mode === "system" && ((t.id === "dark") === isDark));
                 return (
                   <Pressable
                     key={t.id}

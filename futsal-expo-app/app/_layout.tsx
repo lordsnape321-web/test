@@ -64,12 +64,17 @@ export default function RootLayout() {
     <SafeAreaProvider>
       <ThemeProvider>
         <AuthProvider>
-          <StatusBar style="auto" />
+          <ThemedStatusBar />
           <Shell />
         </AuthProvider>
       </ThemeProvider>
     </SafeAreaProvider>
   );
+}
+
+function ThemedStatusBar() {
+  const { isDark } = useTheme();
+  return <StatusBar style={isDark ? "light" : "dark"} />;
 }
 
 function Shell() {

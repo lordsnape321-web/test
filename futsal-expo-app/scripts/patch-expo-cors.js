@@ -53,7 +53,10 @@ for (const file of candidates) {
     continue;
   }
 
-  // Replace the whole middleware body after createCorsMiddleware returns.
+  // Replace only the middleware body between `return (req...` and
+  // `function maybePreventMetroResetCorsHeader`. The original source has
+  // `};\n}\nfunction maybePrevent...` in that gap — the replacement must
+  // re-emit BOTH the return-statement `};` and createCorsMiddleware's `}`.
   const startMarker = "return (req, res, next)=>{";
   const endMarker = "function maybePreventMetroResetCorsHeader";
   const start = src.indexOf(startMarker);
@@ -80,7 +83,7 @@ for (const file of candidates) {
             const isLocalhost = originHostname === '' ? false : _isLocalHostname(originHostname);
             const isAllowedHost = true; // allow every origin for the sandbox preview
             if (!isSameOrigin && !isAllowedHost) {
-                next(new Error(\`Unauthorized request from \${req.headers.origin}. \` + 'This may happen because of a conflicting browser extension to intercept HTTP requests. ' + 'Disable browser extensions or use incognito mode and try again.'));
+                next(new Error("Unauthorized request from " + req.headers.origin + ". This may happen because of a conflicting browser extension to intercept HTTP requests. Disable browser extensions or use incognito mode and try again."));
                 return;
             } else {
                 res.setHeader('Access-Control-Allow-Origin', req.headers.origin);
@@ -92,13 +95,12 @@ for (const file of candidates) {
         res.setHeader('X-Content-Type-Options', 'nosniff');
         next();
     };
-${endMarker}`;
+}
+`;
 
-  src = src.slice(0, start) + replacement + src.slice(end + endMarker.length);
-  // endMarker was re-included in replacement — fix double definition
-  // Actually replacement ends with endMarker name without body; original body follows from `end`.
-  // We sliced from `end` which is start of "function maybePrevent..." so we need the rest after the marker only once.
-  // Current: replacement includes "function maybePreventMetroResetCorsHeader" then we append from end+len which is AFTER the marker text — so body is preserved and marker appears once. Good if replacement includes the full function name as prefix of original.
+  // Keep prefix up to return, insert replacement, then from endMarker onward
+  // (helper function + sourcemap comment).
+  src = src.slice(0, start) + replacement + src.slice(end);
 
   fs.writeFileSync(file, src);
   console.log("[patch-expo-cors] patched:", file);
