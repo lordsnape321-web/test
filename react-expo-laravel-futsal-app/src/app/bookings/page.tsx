@@ -2,14 +2,16 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { CalendarCheck, MapPin, Clock, XCircle, QrCode, Wallet, LogIn, Lock, Globe, ArrowRight, Hourglass, PartyPopper, ReceiptText, Star, Gift, Ticket, Shield, Swords } from "lucide-react";
+import { CalendarCheck, MapPin, Clock, XCircle, QrCode, Wallet, LogIn, Lock, Globe, Hourglass, PartyPopper, ReceiptText, Star, Gift, Ticket, Shield, Swords } from "lucide-react";
 import { useUser } from "@/components/UserProvider";
 import { ReceiptUploader, ReceiptViewer, isOnlineMethod } from "@/components/ReceiptUploader";
 import { StarInput } from "@/components/Reviews";
 import { PlayerRatingBadge } from "@/components/PlayerRating";
-import { formatNPR, formatTime12, prettyDate } from "@/lib/futsal";
+import { BookingPaymentSummary } from "@/components/BookingPaymentSummary";
+import { formatNPR, formatTime12, prettyDate, gamePlayed } from "@/lib/futsal";
 import { hoursUntilGame, type PlayerStats } from "@/lib/loyalty";
 import { validateMessage } from "@/lib/validation";
+import { apiFetch } from "@/lib/api";
 
 type Booking = {
   id: number;
@@ -49,20 +51,31 @@ type Booking = {
     awayScore: number | null;
     scoreStatus: string;
   } | null;
-  linkedMatch: {
-    id: number;
-    title: string;
-    status: string;
-    joinedCount: number;
-    otherJoined: number;
-    crewSize: number;
-    maxPlayers: number;
-    spotsLeft: number;
-  } | null;
   court?: { name: string; format: string };
   venue?: { id: number; name: string; address: string; imageUrl: string };
   playerStats?: PlayerStats;
 };
+
+/** My one review at a venue (POST /api/reviews keeps it to a single row). */
+type MyReview = {
+  id: number;
+  venueId: number;
+  bookingId: number | null;
+  rating: number;
+  message: string;
+};
+
+/**
+ * Did this game actually happen? Completed, or confirmed with the end time
+ * behind us — never a pending or rejected request. A played game is locked:
+ * nothing on its card can be changed any more.
+ */
+const played = (b: {
+  status: string;
+  date: string;
+  startTime: string;
+  endTime: string;
+}) => b.status !== "cancelled" && b.status !== "rejected" && gamePlayed(b);
 
 export default function BookingsPage() {
   const { user, loading: authLoading } = useUser();
@@ -78,26 +91,28 @@ export default function BookingsPage() {
   const [reviewMsg, setReviewMsg] = useState("");
   const [reviewSaving, setReviewSaving] = useState(false);
   const [reviewError, setReviewError] = useState("");
-  const [reviewedIds, setReviewedIds] = useState<Set<number>>(new Set());
+  // My reviews, one per venue — POST /api/reviews updates a row in place, so
+  // this is what each venue's card edits rather than adds to.
+  const [myReviews, setMyReviews] = useState<MyReview[]>([]);
   const [cancelError, setCancelError] = useState("");
   const [paying, setPaying] = useState<number | null>(null);
   const [payError, setPayError] = useState("");
 
   const load = async (uid: number) => {
-    const res = await fetch(`/api/bookings?userId=${uid}`);
+    const res = await apiFetch(`/api/bookings?userId=${uid}`);
     const data = await res.json();
     setBookings(data.bookings ?? []);
     try {
-      const rRes = await fetch(`/api/reviews?userId=${uid}`);
+      const rRes = await apiFetch(`/api/reviews?userId=${uid}`);
       const rData = await rRes.json();
-      setReviewedIds(new Set(((rData.reviews ?? []) as Array<{ bookingId: number | null }>).map((r) => r.bookingId).filter(Boolean) as number[]));
+      setMyReviews((rData.reviews ?? []) as MyReview[]);
     } catch {}
   };
 
   useEffect(() => {
     (async () => {
       try {
-        await fetch("/api/seed", { method: "POST" });
+        await apiFetch("/api/seed", { method: "POST" });
         if (user) await load(user.id);
       } finally {
         setLoading(false);
@@ -108,12 +123,16 @@ export default function BookingsPage() {
 
   const today = new Date().toISOString().slice(0, 10);
   const gone = (s: string) => s === "cancelled" || s === "rejected";
+  /** My one review at a venue, if I've written one. */
+  const myReviewAt = (venueId?: number) =>
+    myReviews.find((r) => r.venueId === venueId) ?? null;
 
   const filtered = useMemo(() => {
     if (tab === "cancelled") return bookings.filter((b) => gone(b.status));
-    if (tab === "past")
-      return bookings.filter((b) => !gone(b.status) && b.date < today);
-    return bookings.filter((b) => !gone(b.status) && b.date >= today);
+    // "Played" lists only games that actually happened. A request that was
+    // never confirmed was never a game, however far back its date is.
+    if (tab === "past") return bookings.filter(played);
+    return bookings.filter((b) => !gone(b.status) && !played(b) && b.date >= today);
   }, [bookings, tab, today]);
 
   const pendingCount = bookings.filter((b) => b.status === "pending" && b.date >= today).length;
@@ -124,7 +143,7 @@ export default function BookingsPage() {
   async function saveReceipt(id: number, receiptUrl: string) {
     setUploading(true);
     try {
-      await fetch(`/api/bookings/${id}`, {
+      await apiFetch(`/api/bookings/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ receiptUrl }),
@@ -142,7 +161,7 @@ export default function BookingsPage() {
     setCancelError("");
     try {
       if (b.paymentMethod === "eSewa") {
-        const init = await fetch("/api/payments/esewa/initiate", {
+        const init = await apiFetch("/api/payments/esewa/initiate", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ bookingId: b.id }),
@@ -164,7 +183,7 @@ export default function BookingsPage() {
         return;
       }
       if (b.paymentMethod === "Khalti") {
-        const init = await fetch("/api/payments/khalti/initiate", {
+        const init = await apiFetch("/api/payments/khalti/initiate", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ bookingId: b.id }),
@@ -182,6 +201,8 @@ export default function BookingsPage() {
 
   function needsOnlinePay(b: Booking) {
     if (gone(b.status)) return false;
+    // Played games are locked — the money is settled at the venue, not here.
+    if (played(b)) return false;
     if (b.isFreePlay && b.totalPrice === 0) return false;
     if (b.paymentMethod !== "eSewa" && b.paymentMethod !== "Khalti") return false;
     return b.paymentStatus === "pending" || (b.depositRequired && b.depositStatus === "pending");
@@ -208,7 +229,7 @@ export default function BookingsPage() {
     setReviewSaving(true);
     setReviewError("");
     try {
-      const res = await fetch("/api/reviews", {
+      const res = await apiFetch("/api/reviews", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -232,20 +253,16 @@ export default function BookingsPage() {
     }
   }
 
+  /**
+   * Can this card open the review box? The game has to be played, and a player
+   * keeps one review per venue: an unreviewed venue starts it, and any *other*
+   * played game here updates the one that's already there.
+   */
   function reviewable(b: Booking) {
-    if (gone(b.status)) return false;
-    if (reviewedIds.has(b.id)) return false;
-    if (b.status === "completed") return true;
-    if (b.status !== "confirmed") return false;
-    if (b.date < today) return true;
-    if (b.date === today) {
-      try {
-        return new Date() > new Date(`${b.date}T${b.endTime || b.startTime}:00`);
-      } catch {
-        return false;
-      }
-    }
-    return false;
+    if (gone(b.status) || !played(b)) return false;
+    const mine = myReviewAt(b.venue?.id);
+    if (!mine) return true;
+    return mine.bookingId !== b.id;
   }
 
   async function cancel(b: Booking) {
@@ -253,7 +270,7 @@ export default function BookingsPage() {
     setCancelling(b.id);
     setCancelError("");
     try {
-      const res = await fetch(`/api/bookings/${b.id}`, {
+      const res = await apiFetch(`/api/bookings/${b.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: "cancelled", actor: "player" }),
@@ -275,18 +292,18 @@ export default function BookingsPage() {
       : s === "cancelled" || s === "rejected"
         ? "bg-red-500 text-white"
         : s === "completed"
-          ? "bg-white text-stone-700 dark:bg-white/10 dark:text-stone-200"
+          ? "bg-white text-stone-700 dark:bg-white/10 dark:text-slate-200"
           : "bg-emerald-500 text-white";
 
   if (!authLoading && !user) {
     return (
       <main className="turf-pattern grid min-h-screen place-items-center px-4 py-12">
-        <div className="w-full max-w-md rounded-[2rem] border border-[#F0E3CC] bg-white p-8 text-center shadow-lg dark:border-white/10 dark:bg-stone-900">
+        <div className="w-full max-w-md rounded-[2rem] border border-[#F0E3CC] bg-white p-8 text-center shadow-lg dark:border-white/10 dark:bg-slate-900">
           <span className="mx-auto grid h-16 w-16 place-items-center rounded-2xl bg-emerald-600 shadow-md">
             <CalendarCheck className="h-8 w-8 text-white" />
           </span>
-          <h1 className="mt-4 text-2xl font-black text-stone-900 dark:text-stone-100">Your games live here ⚽</h1>
-          <p className="mt-2 text-sm leading-relaxed text-stone-500 dark:text-stone-400">
+          <h1 className="mt-4 text-2xl font-black text-stone-900 dark:text-slate-100">Your games live here ⚽</h1>
+          <p className="mt-2 text-sm leading-relaxed text-stone-500 dark:text-slate-400">
             Log in to see upcoming kickabouts, receipts and venue passes. Takes
             10 seconds — promise!
           </p>
@@ -299,7 +316,7 @@ export default function BookingsPage() {
             </Link>
             <Link
               href="/signup"
-              className="rounded-2xl border border-stone-200 py-3 text-sm font-black text-stone-700 dark:border-white/10 dark:text-stone-200"
+              className="rounded-2xl border border-stone-200 py-3 text-sm font-black text-stone-700 dark:border-white/10 dark:text-slate-200"
             >
               Join free
             </Link>
@@ -316,7 +333,7 @@ export default function BookingsPage() {
           <PartyPopper className="h-3.5 w-3.5" /> {user?.name?.split(" ")[0]}&apos;s game diary
         </p>
         <div className="mt-1 flex flex-wrap items-center gap-3">
-          <h1 className="text-3xl font-black text-stone-900 dark:text-stone-100">My games</h1>
+          <h1 className="text-3xl font-black text-stone-900 dark:text-slate-100">My games</h1>
           {bookings[0]?.playerStats && <PlayerRatingBadge stats={bookings[0].playerStats} />}
         </div>
 
@@ -343,16 +360,16 @@ export default function BookingsPage() {
 
         <div className="mt-5 grid grid-cols-3 gap-2 sm:gap-3">
           {[
-            { l: "Coming up", v: bookings.filter((b) => !gone(b.status) && b.date >= today).length },
-            { l: "Memories made", v: bookings.filter((b) => !gone(b.status) && b.date < today).length },
+            { l: "Coming up", v: bookings.filter((b) => !gone(b.status) && !played(b) && b.date >= today).length },
+            { l: "Memories made", v: bookings.filter(played).length },
             { l: "Invested in fun", v: formatNPR(totalSpent) },
           ].map((s) => (
-            <div key={s.l} className="rounded-2xl border border-[#F0E3CC] bg-white px-3 py-3.5 text-center shadow-sm dark:border-white/10 dark:bg-stone-900">
-              <p className="truncate text-lg font-black text-stone-900 sm:text-xl dark:text-stone-100">{s.v}</p>
+            <div key={s.l} className="rounded-2xl border border-[#F0E3CC] bg-white px-3 py-3.5 text-center shadow-sm dark:border-white/10 dark:bg-slate-900">
+              <p className="truncate text-lg font-black text-stone-900 sm:text-xl dark:text-slate-100">{s.v}</p>
               {/* `tracking-widest` here needed ~100px for "INVESTED IN FUN" inside a
                   ~66px cell on a 320px phone; `tracking-wide` + `leading-tight` lets
                   it wrap to two tidy lines instead of overflowing the card. */}
-              <p className="text-[10px] font-bold uppercase leading-tight tracking-wide text-stone-400 dark:text-stone-500">{s.l}</p>
+              <p className="text-[10px] font-bold uppercase leading-tight tracking-wide text-stone-400 dark:text-slate-500">{s.l}</p>
             </div>
           ))}
         </div>
@@ -363,7 +380,7 @@ export default function BookingsPage() {
               key={t}
               onClick={() => setTab(t)}
               className={`flex-1 rounded-2xl py-2.5 text-xs font-black uppercase tracking-wider transition sm:flex-none sm:px-6 ${
-                tab === t ? "bg-emerald-600 text-white shadow-md" : "border border-stone-200 bg-white text-stone-600 shadow-sm dark:border-white/10 dark:bg-stone-900 dark:text-stone-300"
+                tab === t ? "bg-emerald-600 text-white shadow-md" : "border border-stone-200 bg-white text-stone-600 shadow-sm dark:border-white/10 dark:bg-slate-900 dark:text-slate-300"
               }`}
             >
               {t === "upcoming" ? "Coming up" : t === "past" ? "Played" : "Cancelled"}
@@ -374,16 +391,16 @@ export default function BookingsPage() {
         {loading ? (
           <div className="mt-5 space-y-3">
             {[0, 1].map((i) => (
-              <div key={i} className="h-40 animate-pulse rounded-3xl bg-white dark:bg-stone-900" />
+              <div key={i} className="h-40 animate-pulse rounded-3xl bg-white dark:bg-slate-900" />
             ))}
           </div>
         ) : filtered.length === 0 ? (
-          <div className="mt-6 rounded-3xl border border-dashed border-stone-300 bg-white p-12 text-center dark:border-white/20 dark:bg-stone-900">
-            <CalendarCheck className="mx-auto h-10 w-10 text-stone-300 dark:text-stone-600" />
-            <h3 className="mt-3 text-lg font-extrabold text-stone-900 dark:text-stone-100">
+          <div className="mt-6 rounded-3xl border border-dashed border-stone-300 bg-white p-12 text-center dark:border-white/20 dark:bg-slate-900">
+            <CalendarCheck className="mx-auto h-10 w-10 text-stone-300 dark:text-slate-600" />
+            <h3 className="mt-3 text-lg font-extrabold text-stone-900 dark:text-slate-100">
               {tab === "upcoming" ? "No games yet — let's fix that! ⚽" : "Nothing here yet"}
             </h3>
-            <p className="mt-1 text-sm text-stone-500 dark:text-stone-400">
+            <p className="mt-1 text-sm text-stone-500 dark:text-slate-400">
               {tab === "upcoming" ? "Your next great memory is one tap away." : "Your history will show up here."}
             </p>
             <Link
@@ -398,10 +415,12 @@ export default function BookingsPage() {
             {filtered.map((b) => {
               const isPublic = b.visibility === "public";
               const isPending = b.status === "pending";
+              const isPlayed = played(b);
+              const mine = myReviewAt(b.venue?.id);
               return (
               <div
                 key={b.id}
-                className="overflow-hidden rounded-3xl border border-[#F0E3CC] bg-white shadow-[0_10px_30px_rgba(180,120,60,0.08)] dark:border-white/10 dark:bg-stone-900"
+                className="overflow-hidden rounded-3xl border border-[#F0E3CC] bg-white shadow-[0_10px_30px_rgba(180,120,60,0.08)] dark:border-white/10 dark:bg-slate-900"
               >
                 <div className="flex flex-col sm:flex-row">
                   <div className="relative h-36 sm:h-auto sm:w-52 sm:shrink-0">
@@ -413,31 +432,41 @@ export default function BookingsPage() {
                     <span
                       className={`absolute left-3 top-3 rounded-full px-2.5 py-1 text-[10px] font-black uppercase shadow ${statusBadge(b.status)}`}
                     >
-                      {b.status === "pending" ? "⏳ Waiting for venue" : b.status === "confirmed" ? "✓ You're in!" : b.status}
+                      {isPlayed
+                        ? "🔒 Played"
+                        : b.status === "pending"
+                          ? "⏳ Waiting for venue"
+                          : b.status === "confirmed"
+                            ? "✓ Confirmed"
+                            : b.status}
                     </span>
                   </div>
                   <div className="flex-1 p-4 sm:p-5">
                     <div className="flex flex-wrap items-start justify-between gap-2">
                       <div>
-                        <h3 className="text-base font-extrabold text-stone-900 dark:text-stone-100">{b.venue?.name}</h3>
-                        <p className="mt-0.5 text-xs text-stone-500 dark:text-stone-400">
+                        <h3 className="text-base font-extrabold text-stone-900 dark:text-slate-100">{b.venue?.name}</h3>
+                        <p className="mt-0.5 text-xs text-stone-500 dark:text-slate-400">
                           {b.court?.name} • {b.court?.format}
                         </p>
                       </div>
                       <span className="text-right">
                         {b.discountAmount > 0 && b.priceBeforeDiscount > b.totalPrice && (
-                          <span className="block text-xs font-bold text-stone-400 line-through dark:text-stone-500">
+                          <span className="block text-xs font-bold text-stone-400 line-through dark:text-slate-500">
                             {formatNPR(b.priceBeforeDiscount)}
                           </span>
                         )}
                         <span className="block text-lg font-black text-emerald-700 dark:text-emerald-300">
                           {b.totalPrice === 0 ? "FREE 🎁" : formatNPR(b.totalPrice)}
                         </span>
-                        <span className="flex items-center gap-1 text-[11px] font-bold text-stone-400 dark:text-stone-500">
+                        <span className="flex items-center gap-1 text-[11px] font-bold text-stone-400 dark:text-slate-500">
                           <Wallet className="h-3 w-3" /> {b.paymentMethod} • {b.paymentStatus}
                         </span>
                       </span>
                     </div>
+                    {/* The badge above only says "paid" — this shows how it was
+                        actually paid, since a game is often part eSewa, part
+                        Khalti, part cash, with the water added on afterwards. */}
+                    {b.totalPrice > 0 && <BookingPaymentSummary bookingId={b.id} />}
                     {isPending && (
                       <p className="mt-2.5 rounded-xl bg-amber-50 px-3.5 py-2 text-xs font-bold leading-relaxed text-amber-700 dark:bg-amber-500/10 dark:text-amber-300">
                         Your request is with the venue — lovely humans are reviewing it
@@ -450,7 +479,7 @@ export default function BookingsPage() {
                         time, we believe in you! 🙏
                       </p>
                     )}
-                    <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1.5 text-[13px] font-semibold text-stone-600 dark:text-stone-300">
+                    <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1.5 text-[13px] font-semibold text-stone-600 dark:text-slate-300">
                       <span className="flex items-center gap-1.5">
                         <CalendarCheck className="h-4 w-4 text-emerald-600 dark:text-emerald-400" /> {prettyDate(b.date)}
                       </span>
@@ -500,56 +529,41 @@ export default function BookingsPage() {
                         </p>
                       </div>
                     )}
-                    {isPublic && b.linkedMatch && !gone(b.status) && (
-                      <div className="mt-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 dark:border-emerald-500/25 dark:bg-emerald-500/10">
-                        <div className="flex items-center justify-between text-[11px] font-bold">
-                          <span className="flex items-center gap-1.5 text-emerald-800 dark:text-emerald-200">
-                            <Globe className="h-3.5 w-3.5" />
-                            {b.linkedMatch.status === "open" ? (
-                              <>👥 {b.linkedMatch.crewSize} crew • 🙋 {b.linkedMatch.otherJoined} joined • {b.linkedMatch.spotsLeft} open 🎉</>
-                            ) : (
-                              <>Invite for 👥 {b.ourCrew} + 🙋 {b.openSpots} goes out once confirmed ⌛</>
-                            )}
-                          </span>
-                          {b.linkedMatch.status === "open" && (
-                            <Link
-                              href="/matches"
-                              className="flex items-center gap-1 font-black text-emerald-700 hover:text-emerald-800 dark:text-emerald-300"
-                            >
-                              See who&apos;s coming <ArrowRight className="h-3.5 w-3.5" />
-                            </Link>
-                          )}
-                        </div>
-                        <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white dark:bg-white/10">
-                          <div
-                            className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-orange-400"
-                            style={{
-                              width: `${Math.round((b.linkedMatch.joinedCount / Math.max(1, b.linkedMatch.maxPlayers)) * 100)}%`,
-                            }}
-                          />
-                        </div>
-                      </div>
-                    )}
+                    {/*
+                      Who's coming lives on the competition screen (/matches),
+                      not here: a booking card is the player's own diary entry,
+                      and once the game is played "who's coming" is a question
+                      with no answer left.
+                    */}
                     <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-stone-100 pt-3 dark:border-white/5">
-                      <span className="rounded-full bg-stone-100 px-3 py-1.5 font-mono text-[11px] font-bold text-stone-500 dark:bg-white/10 dark:text-stone-400">
+                      <span className="rounded-full bg-stone-100 px-3 py-1.5 font-mono text-[11px] font-bold text-stone-500 dark:bg-white/10 dark:text-slate-400">
                         #FN-{b.id}
                       </span>
                       {isPublic ? (
                         <span className="flex items-center gap-1.5 rounded-full bg-orange-100 px-3 py-1.5 text-[11px] font-black text-orange-700 dark:bg-orange-500/15 dark:text-orange-300">
-                          <Globe className="h-3.5 w-3.5" /> Open • 👥{b.ourCrew ?? 0}+🙋{b.openSpots ?? 0}
+                          <Globe className="h-3.5 w-3.5" /> Open game
                         </span>
                       ) : b.competition ? (
                         <span className="flex items-center gap-1.5 rounded-full bg-indigo-500/15 px-3 py-1.5 text-[11px] font-black text-indigo-700 dark:text-indigo-300">
                           <Swords className="h-3.5 w-3.5" /> Competition
                         </span>
                       ) : (
-                        <span className="flex items-center gap-1.5 rounded-full bg-stone-100 px-3 py-1.5 text-[11px] font-bold text-stone-500 dark:bg-white/10 dark:text-stone-400">
+                        <span className="flex items-center gap-1.5 rounded-full bg-stone-100 px-3 py-1.5 text-[11px] font-bold text-stone-500 dark:bg-white/10 dark:text-slate-400">
                           <Lock className="h-3.5 w-3.5" /> Just us
                         </span>
                       )}
-                      <span className="flex items-center gap-1.5 rounded-full bg-stone-100 px-3 py-1.5 text-[11px] font-bold text-stone-500 dark:bg-white/10 dark:text-stone-400">
-                        <QrCode className="h-3.5 w-3.5" /> Show at court
-                      </span>
+                      {isPlayed ? (
+                        <span
+                          title="The game is over — this booking can't be changed any more"
+                          className="flex items-center gap-1.5 rounded-full bg-stone-200 px-3 py-1.5 text-[11px] font-black text-stone-600 dark:bg-white/15 dark:text-slate-300"
+                        >
+                          <Lock className="h-3.5 w-3.5" /> Game played • locked
+                        </span>
+                      ) : (
+                        <span className="flex items-center gap-1.5 rounded-full bg-stone-100 px-3 py-1.5 text-[11px] font-bold text-stone-500 dark:bg-white/10 dark:text-slate-400">
+                          <QrCode className="h-3.5 w-3.5" /> Show at court
+                        </span>
+                      )}
                       {b.teamName && (
                         <span className="flex items-center gap-1.5 rounded-full bg-sky-500/15 px-3 py-1.5 text-[11px] font-black text-sky-700 dark:text-sky-300">
                           <Shield className="h-3.5 w-3.5" /> {b.teamName}
@@ -565,7 +579,7 @@ export default function BookingsPage() {
                           <Ticket className="h-3.5 w-3.5" /> {b.promoCode} saved {formatNPR(b.discountAmount)}
                         </span>
                       )}
-                      {reviewedIds.has(b.id) && (
+                      {mine?.bookingId === b.id && (
                         <span className="flex items-center gap-1.5 rounded-full bg-amber-500/15 px-3 py-1.5 text-[11px] font-black text-amber-700 dark:text-amber-300">
                           <Star className="h-3.5 w-3.5 fill-current" /> Reviewed
                         </span>
@@ -609,15 +623,17 @@ export default function BookingsPage() {
                             <ReceiptText className="h-3.5 w-3.5" /> Receipt ✓
                           </button>
                         ) : (
+                          !isPlayed && (
                           <button
                             onClick={() => setUploadFor(uploadFor === b.id ? null : b.id)}
                             className="flex items-center gap-1.5 rounded-full bg-orange-100 px-3 py-1.5 text-[11px] font-black text-orange-700 transition hover:bg-orange-200 dark:bg-orange-500/15 dark:text-orange-300"
                           >
                             <ReceiptText className="h-3.5 w-3.5" /> Add receipt 🧾
                           </button>
+                          )
                         )
                       )}
-                      {tab === "upcoming" && (
+                      {tab === "upcoming" && !isPlayed && (
                         <button
                           onClick={() => cancel(b)}
                           disabled={cancelling === b.id}
@@ -631,20 +647,30 @@ export default function BookingsPage() {
                       {reviewable(b) && (
                         <button
                           onClick={() => {
-                            setReviewFor(reviewFor === b.id ? null : b.id);
+                            if (reviewFor === b.id) {
+                              setReviewFor(null);
+                              return;
+                            }
+                            // Updating starts from what I already wrote at this
+                            // venue, so the old text isn't lost by accident.
+                            setReviewStars(mine?.rating ?? 5);
+                            setReviewMsg(mine?.message ?? "");
+                            setReviewFor(b.id);
                             setReviewError("");
                           }}
                           className="flex items-center gap-1.5 rounded-full bg-amber-400 px-4 py-1.5 text-[11px] font-black text-amber-950 transition hover:bg-amber-300"
                         >
                           <Star className="h-3.5 w-3.5 fill-current" />
-                          {reviewFor === b.id ? "Close" : "Review ⭐"}
+                          {reviewFor === b.id ? "Close" : mine ? "Update review ⭐" : "Review ⭐"}
                         </button>
                       )}
                     </div>
                     {reviewFor === b.id && (
                       <div className="mt-3 space-y-2.5 rounded-2xl border border-amber-200 bg-amber-50/60 p-4 dark:border-amber-500/25 dark:bg-amber-500/5">
-                        <p className="text-xs font-black text-stone-700 dark:text-stone-200">
-                          How was {b.venue?.name}? ⭐
+                        <p className="text-xs font-black text-stone-700 dark:text-slate-200">
+                          {mine
+                            ? `Update your review of ${b.venue?.name} — it replaces the old one, you keep just the one ⭐`
+                            : `How was ${b.venue?.name}? ⭐`}
                         </p>
                         <StarInput value={reviewStars} onChange={setReviewStars} />
                         <textarea
@@ -656,7 +682,7 @@ export default function BookingsPage() {
                           rows={2}
                           maxLength={1000}
                           placeholder="Turf, vibe, staff… help future players! ⚽"
-                          className="w-full resize-none rounded-xl border border-stone-200 bg-white px-3.5 py-2.5 text-sm font-semibold placeholder:text-stone-400 focus:border-amber-400 focus:outline-none dark:border-white/10 dark:bg-stone-950 dark:placeholder:text-stone-500"
+                          className="w-full resize-none rounded-xl border border-stone-200 bg-white px-3.5 py-2.5 text-sm font-semibold placeholder:text-stone-400 focus:border-amber-400 focus:outline-none dark:border-white/10 dark:bg-slate-950 dark:placeholder:text-slate-500"
                         />
                         <p className="text-[11px] text-stone-400">{reviewMsg.trim().length}/1000 • min 3 characters 💬</p>
                         {reviewError && (
@@ -667,13 +693,13 @@ export default function BookingsPage() {
                           disabled={reviewSaving}
                           className="w-full rounded-2xl bg-amber-400 py-2.5 text-sm font-black text-amber-950 transition hover:bg-amber-300 disabled:opacity-50"
                         >
-                          {reviewSaving ? "Posting…" : "Post review 💛"}
+                          {reviewSaving ? "Saving…" : mine ? "Update review 💛" : "Post review 💛"}
                         </button>
                       </div>
                     )}
                     {uploadFor === b.id && (
                       <div className="mt-3 rounded-2xl border border-orange-200 bg-orange-50/60 p-3 dark:border-orange-500/25 dark:bg-orange-500/5">
-                        <p className="mb-2 text-[11px] font-bold text-stone-500 dark:text-stone-400">
+                        <p className="mb-2 text-[11px] font-bold text-stone-500 dark:text-slate-400">
                           Paid via {b.paymentMethod}? Attach your screenshot — it speeds up approval! ⚡
                         </p>
                         <ReceiptUploader

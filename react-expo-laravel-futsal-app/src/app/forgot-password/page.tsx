@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { KeyRound, Mail, Phone, Lock, ChevronLeft, Loader2, Eye, EyeOff, PartyPopper } from "lucide-react";
 import { useUser } from "@/components/UserProvider";
 import { validateEmail, validatePhone, validatePassword, passwordStrength, firstError } from "@/lib/validation";
+import { apiFetch } from "@/lib/api";
 
 export default function ForgotPasswordPage() {
   const router = useRouter();
@@ -42,7 +43,7 @@ export default function ForgotPasswordPage() {
     setError("");
     setBusy(true);
     try {
-      const res = await fetch("/api/auth/reset", {
+      const res = await apiFetch("/api/auth/reset", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, phone, newPassword: newPw }),
@@ -62,12 +63,12 @@ export default function ForgotPasswordPage() {
       <div className="w-full max-w-md">
         <Link
           href="/login"
-          className="mb-5 inline-flex items-center gap-1.5 rounded-full border border-stone-200 bg-white px-4 py-2 text-xs font-black text-stone-700 shadow-sm transition hover:bg-stone-50 dark:border-white/10 dark:bg-stone-900 dark:text-stone-200 dark:hover:bg-white/5"
+          className="mb-5 inline-flex items-center gap-1.5 rounded-full border border-stone-200 bg-white px-4 py-2 text-xs font-black text-stone-700 shadow-sm transition hover:bg-stone-50 dark:border-white/10 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-white/5"
         >
           <ChevronLeft className="h-4 w-4" /> Back to login
         </Link>
 
-        <div className="overflow-hidden rounded-[2rem] border border-[#F0E3CC] bg-white shadow-[0_24px_60px_rgba(180,120,60,0.15)] dark:border-white/10 dark:bg-stone-900">
+        <div className="overflow-hidden rounded-[2rem] border border-[#F0E3CC] bg-white shadow-[0_24px_60px_rgba(180,120,60,0.15)] dark:border-white/10 dark:bg-slate-900">
           <div className="bg-gradient-to-br from-orange-500 to-amber-600 p-7 pb-6 text-center">
             <span className="animate-wiggle mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-white shadow-lg">
               <KeyRound className="h-7 w-7 text-orange-600" strokeWidth={2.5} />
@@ -83,8 +84,8 @@ export default function ForgotPasswordPage() {
               <span className="mx-auto grid h-16 w-16 place-items-center rounded-full bg-emerald-600 shadow-lg">
                 <PartyPopper className="h-8 w-8 text-white" />
               </span>
-              <h2 className="text-xl font-black text-stone-900 dark:text-stone-100">All set! 🎉</h2>
-              <p className="text-sm text-stone-500 dark:text-stone-400">
+              <h2 className="text-xl font-black text-stone-900 dark:text-slate-100">All set! 🎉</h2>
+              <p className="text-sm text-stone-500 dark:text-slate-400">
                 Your password is shiny and new. Log in and get back on court!
               </p>
               <Link
@@ -97,7 +98,7 @@ export default function ForgotPasswordPage() {
           ) : (
             <form onSubmit={submit} noValidate className="space-y-3 p-6">
               <label className="block">
-                <span className="mb-1.5 block text-xs font-black uppercase tracking-wider text-stone-400 dark:text-stone-500">
+                <span className="mb-1.5 block text-xs font-black uppercase tracking-wider text-stone-400 dark:text-slate-500">
                   Your account email
                 </span>
                 <span className={`flex items-center gap-2 rounded-2xl border bg-[#FFF6E9] px-4 dark:bg-white/5 ${fieldErrors.email ? "border-red-400" : "border-stone-200 focus-within:border-orange-400 dark:border-white/10"}`}>
@@ -111,13 +112,13 @@ export default function ForgotPasswordPage() {
                     }}
                     placeholder="you@example.com"
                     maxLength={100}
-                    className="w-full bg-transparent py-3 text-sm font-semibold text-stone-900 placeholder:text-stone-400 focus:outline-none dark:text-stone-100 dark:placeholder:text-stone-500"
+                    className="w-full bg-transparent py-3 text-sm font-semibold text-stone-900 placeholder:text-stone-400 focus:outline-none dark:text-slate-100 dark:placeholder:text-slate-500"
                   />
                 </span>
                 {fieldErrors.email && <span className="mt-1 block text-[11px] font-bold text-red-500">{fieldErrors.email}</span>}
               </label>
               <label className="block">
-                <span className="mb-1.5 block text-xs font-black uppercase tracking-wider text-stone-400 dark:text-stone-500">
+                <span className="mb-1.5 block text-xs font-black uppercase tracking-wider text-stone-400 dark:text-slate-500">
                   Registered phone number
                 </span>
                 <span className={`flex items-center gap-2 rounded-2xl border bg-[#FFF6E9] px-4 dark:bg-white/5 ${fieldErrors.phone ? "border-red-400" : "border-stone-200 focus-within:border-orange-400 dark:border-white/10"}`}>
@@ -131,13 +132,13 @@ export default function ForgotPasswordPage() {
                     placeholder="98XXXXXXXX"
                     maxLength={16}
                     inputMode="tel"
-                    className="w-full bg-transparent py-3 text-sm font-semibold text-stone-900 placeholder:text-stone-400 focus:outline-none dark:text-stone-100 dark:placeholder:text-stone-500"
+                    className="w-full bg-transparent py-3 text-sm font-semibold text-stone-900 placeholder:text-stone-400 focus:outline-none dark:text-slate-100 dark:placeholder:text-slate-500"
                   />
                 </span>
                 {fieldErrors.phone && <span className="mt-1 block text-[11px] font-bold text-red-500">{fieldErrors.phone}</span>}
               </label>
               <label className="block">
-                <span className="mb-1.5 block text-xs font-black uppercase tracking-wider text-stone-400 dark:text-stone-500">
+                <span className="mb-1.5 block text-xs font-black uppercase tracking-wider text-stone-400 dark:text-slate-500">
                   New password (min 6 chars)
                 </span>
                 <span className={`flex items-center gap-2 rounded-2xl border bg-[#FFF6E9] px-4 dark:bg-white/5 ${fieldErrors.newPw ? "border-red-400" : "border-stone-200 focus-within:border-orange-400 dark:border-white/10"}`}>
@@ -151,7 +152,7 @@ export default function ForgotPasswordPage() {
                     }}
                     placeholder="Something memorable"
                     maxLength={100}
-                    className="w-full bg-transparent py-3 text-sm font-semibold text-stone-900 placeholder:text-stone-400 focus:outline-none dark:text-stone-100 dark:placeholder:text-stone-500"
+                    className="w-full bg-transparent py-3 text-sm font-semibold text-stone-900 placeholder:text-stone-400 focus:outline-none dark:text-slate-100 dark:placeholder:text-slate-500"
                   />
                   <button type="button" onClick={() => setShowPw((v) => !v)} className="text-stone-400">
                     {showPw ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}

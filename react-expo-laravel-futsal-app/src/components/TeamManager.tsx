@@ -33,6 +33,7 @@ import {
   validateTeamDescription,
   validateTitle,
 } from "@/lib/validation";
+import { apiFetch } from "@/lib/api";
 
 /** Everything the panel edits — the full team row as `/api/teams` returns it. */
 export type ManagedTeam = {
@@ -115,7 +116,7 @@ const COLORS = ["#16a34a", "#2563eb", "#dc2626", "#7c3aed", "#ea580c", "#0891b2"
 const LEVELS = ["Beginner", "Intermediate", "Advanced"];
 
 const inputCls = (bad?: string) =>
-  `w-full rounded-xl border bg-[#FFF6E9] px-3.5 py-2.5 text-sm font-semibold text-stone-900 placeholder:text-stone-400 focus:outline-none dark:bg-white/5 dark:text-stone-100 dark:placeholder:text-stone-500 ${
+  `w-full rounded-xl border bg-[#FFF6E9] px-3.5 py-2.5 text-sm font-semibold text-stone-900 placeholder:text-stone-400 focus:outline-none dark:bg-white/5 dark:text-slate-100 dark:placeholder:text-slate-500 ${
     bad ? "border-red-400" : "border-stone-200 focus:border-emerald-500 dark:border-white/10"
   }`;
 
@@ -177,11 +178,11 @@ export function TeamManager({
     try {
       const [membersRes, requestsRes, invitesRes] = await Promise.all([
         // viewerId unlocks the members' email addresses for the captain only.
-        fetch(`/api/teams/${team.id}/members?viewerId=${captainId}`),
-        fetch(`/api/teams/${team.id}/requests?captainId=${captainId}`),
+        apiFetch(`/api/teams/${team.id}/members?viewerId=${captainId}`),
+        apiFetch(`/api/teams/${team.id}/requests?captainId=${captainId}`),
         // status=all, because the panel shows answered invites too — the pending
         // ones are simply the ones with a Withdraw button on them.
-        fetch(`/api/teams/${team.id}/invites?captainId=${captainId}&status=all`),
+        apiFetch(`/api/teams/${team.id}/invites?captainId=${captainId}&status=all`),
       ]);
       const membersData = await membersRes.json().catch(() => ({}));
       const requestsData = await requestsRes.json().catch(() => ({}));
@@ -203,8 +204,8 @@ export function TeamManager({
         // neither belongs in a squad. The server filters, and `candidates` below
         // filters again — see the Candidate type.
         const [vRes, uRes] = await Promise.all([
-          fetch("/api/venues"),
-          fetch("/api/users?role=player"),
+          apiFetch("/api/venues"),
+          apiFetch("/api/users?role=player"),
         ]);
         const vData = await vRes.json().catch(() => ({}));
         const uData = await uRes.json().catch(() => ({}));
@@ -248,7 +249,7 @@ export function TeamManager({
 
   const decide = (requestId: number, action: "accept" | "decline", who: string) =>
     act(`req-${requestId}`, () =>
-      fetch(`/api/teams/${team.id}/requests`, {
+      apiFetch(`/api/teams/${team.id}/requests`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ captainId, requestId, action }),
@@ -263,7 +264,7 @@ export function TeamManager({
     const ok = await act(
       `invite-${userId}`,
       () =>
-        fetch(`/api/teams/${team.id}/invites`, {
+        apiFetch(`/api/teams/${team.id}/invites`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ captainId, userId, message: inviteNote.trim() }),
@@ -275,21 +276,21 @@ export function TeamManager({
 
   const withdrawInvite = (inviteId: number, who: string) =>
     act(`withdraw-${inviteId}`, () =>
-      fetch(`/api/teams/${team.id}/invites?captainId=${captainId}&inviteId=${inviteId}`, {
+      apiFetch(`/api/teams/${team.id}/invites?captainId=${captainId}&inviteId=${inviteId}`, {
         method: "DELETE",
       }).then(async (r) => ({ status: r.status, data: await r.json().catch(() => ({})) }))
     , `Invite to ${who} withdrawn`);
 
   const removeMember = (userId: number, who: string) =>
     act(`rm-${userId}`, () =>
-      fetch(`/api/teams/${team.id}/members?captainId=${captainId}&userId=${userId}`, {
+      apiFetch(`/api/teams/${team.id}/members?captainId=${captainId}&userId=${userId}`, {
         method: "DELETE",
       }).then(async (r) => ({ status: r.status, data: await r.json().catch(() => ({})) }))
     , `${who} removed from the squad`);
 
   const handOver = (userId: number, who: string) =>
     act("transfer", () =>
-      fetch(`/api/teams/${team.id}`, {
+      apiFetch(`/api/teams/${team.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ captainId, newCaptainId: userId }),
@@ -316,7 +317,7 @@ export function TeamManager({
       return;
     }
     void act("save", () =>
-      fetch(`/api/teams/${team.id}`, {
+      apiFetch(`/api/teams/${team.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -373,7 +374,7 @@ export function TeamManager({
 
   return (
     <div className="fixed inset-0 z-[60] grid place-items-start overflow-y-auto bg-stone-900/50 p-4 backdrop-blur-sm">
-      <div className="my-auto w-full max-w-2xl rounded-[2rem] border border-stone-200 bg-white p-6 shadow-2xl dark:border-white/10 dark:bg-stone-900">
+      <div className="my-auto w-full max-w-2xl rounded-[2rem] border border-stone-200 bg-white p-6 shadow-2xl dark:border-white/10 dark:bg-slate-900">
         <div className="flex items-start justify-between gap-3">
           <div className="flex min-w-0 items-center gap-3">
             <span
@@ -383,10 +384,10 @@ export function TeamManager({
               <Shield className="h-5 w-5" />
             </span>
             <div className="min-w-0">
-              <h3 className="truncate text-lg font-black text-stone-900 dark:text-stone-100">
+              <h3 className="truncate text-lg font-black text-stone-900 dark:text-slate-100">
                 Manage {team.name}
               </h3>
-              <p className="flex items-center gap-1.5 text-xs font-bold text-stone-500 dark:text-stone-400">
+              <p className="flex items-center gap-1.5 text-xs font-bold text-stone-500 dark:text-slate-400">
                 <Crown className="h-3 w-3 text-amber-500" /> You&apos;re the captain •{" "}
                 <span className="font-mono">{normalizeTeamCode(code) || "no code"}</span>
               </p>
@@ -394,7 +395,7 @@ export function TeamManager({
           </div>
           <button
             onClick={onClose}
-            className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-stone-100 text-stone-600 dark:bg-white/10 dark:text-stone-300"
+            className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-stone-100 text-stone-600 dark:bg-white/10 dark:text-slate-300"
             aria-label="Close"
           >
             <X className="h-4 w-4" />
@@ -429,7 +430,7 @@ export function TeamManager({
                 </span>
               </h4>
               {requests.length === 0 ? (
-                <p className="mt-2 text-xs font-semibold text-stone-500 dark:text-stone-400">
+                <p className="mt-2 text-xs font-semibold text-stone-500 dark:text-slate-400">
                   Nobody waiting right now 🎉 Share your code{" "}
                   <span className="font-mono font-black">{normalizeTeamCode(code)}</span> so people can find you.
                 </p>
@@ -438,7 +439,7 @@ export function TeamManager({
                   {requests.map((r) => (
                     <li
                       key={r.id}
-                      className="flex flex-wrap items-center gap-2.5 rounded-xl border border-stone-200 bg-white p-3 dark:border-white/10 dark:bg-stone-950"
+                      className="flex flex-wrap items-center gap-2.5 rounded-xl border border-stone-200 bg-white p-3 dark:border-white/10 dark:bg-slate-950"
                     >
                       <Link href={`/players/${r.userId}`} title="See their full details">
                         <Avatar
@@ -447,16 +448,16 @@ export function TeamManager({
                         />
                       </Link>
                       <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-black text-stone-900 dark:text-stone-100">
+                        <p className="truncate text-sm font-black text-stone-900 dark:text-slate-100">
                           <Link href={`/players/${r.userId}`} className="hover:underline" title="Full profile, reliability and other squads">
                             {r.name}
                           </Link>
                         </p>
-                        <p className="truncate text-[11px] font-semibold text-stone-400 dark:text-stone-500">
+                        <p className="truncate text-[11px] font-semibold text-stone-400 dark:text-slate-500">
                           {r.level} • {r.position}
                         </p>
                         {r.message && (
-                          <p className="mt-1 line-clamp-2 text-[11px] italic text-stone-500 dark:text-stone-400">
+                          <p className="mt-1 line-clamp-2 text-[11px] italic text-stone-500 dark:text-slate-400">
                             &ldquo;{r.message}&rdquo;
                           </p>
                         )}
@@ -464,7 +465,7 @@ export function TeamManager({
                       <Link
                         href={`/players/${r.userId}`}
                         title="Everything about this player, on a proper page"
-                        className="flex items-center gap-1 rounded-xl border border-stone-200 px-2.5 py-2 text-[10px] font-black text-stone-500 transition hover:bg-stone-100 dark:border-white/10 dark:text-stone-300 dark:hover:bg-white/10"
+                        className="flex items-center gap-1 rounded-xl border border-stone-200 px-2.5 py-2 text-[10px] font-black text-stone-500 transition hover:bg-stone-100 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/10"
                       >
                         <ArrowUpRight className="h-3.5 w-3.5" /> Details
                       </Link>
@@ -480,7 +481,7 @@ export function TeamManager({
                         <button
                           onClick={() => decide(r.id, "decline", r.name)}
                           disabled={busy === `req-${r.id}`}
-                          className="flex items-center gap-1 rounded-xl border border-stone-200 px-3 py-2 text-[11px] font-black text-stone-600 transition hover:bg-stone-100 disabled:opacity-40 dark:border-white/10 dark:text-stone-300 dark:hover:bg-white/10"
+                          className="flex items-center gap-1 rounded-xl border border-stone-200 px-3 py-2 text-[11px] font-black text-stone-600 transition hover:bg-stone-100 disabled:opacity-40 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/10"
                         >
                           <X className="h-3.5 w-3.5" /> Decline
                         </button>
@@ -512,7 +513,7 @@ export function TeamManager({
                       className="h-8 w-8 text-[10px]"
                     />
                     <div className="min-w-0 flex-1">
-                      <p className="flex items-center gap-1.5 truncate text-sm font-bold text-stone-900 dark:text-stone-100">
+                      <p className="flex items-center gap-1.5 truncate text-sm font-bold text-stone-900 dark:text-slate-100">
                         <Link href={`/players/${m.userId}`} className="hover:underline" title="Full profile">
                           {m.name}
                         </Link>
@@ -522,13 +523,13 @@ export function TeamManager({
                           </span>
                         )}
                       </p>
-                      <p className="truncate text-[11px] text-stone-400 dark:text-stone-500">
+                      <p className="truncate text-[11px] text-stone-400 dark:text-slate-500">
                         {m.level} • {m.position}
                         {m.email ? ` • ${m.email}` : ""}
                       </p>
                     </div>
                     {m.isCaptain ? (
-                      <span className="text-[10px] font-black text-stone-400 dark:text-stone-500">
+                      <span className="text-[10px] font-black text-stone-400 dark:text-slate-500">
                         {m.userId === captainId ? "that's you" : "captain"}
                       </span>
                     ) : (
@@ -548,21 +549,21 @@ export function TeamManager({
             {/* ------------------------------------------ invite players */}
             <section className="rounded-2xl border border-stone-200 p-4 dark:border-white/10">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <h4 className="flex items-center gap-2 text-xs font-black uppercase tracking-widest text-stone-500 dark:text-stone-400">
+                <h4 className="flex items-center gap-2 text-xs font-black uppercase tracking-widest text-stone-500 dark:text-slate-400">
                   <Send className="h-3.5 w-3.5" /> Invite a player
                 </h4>
                 <span
                   className={`rounded-full px-2.5 py-1 text-[10px] font-black ${
                     noInvitesLeft
                       ? "bg-red-100 text-red-600 dark:bg-red-500/15 dark:text-red-300"
-                      : "bg-stone-100 text-stone-600 dark:bg-white/10 dark:text-stone-300"
+                      : "bg-stone-100 text-stone-600 dark:bg-white/10 dark:text-slate-300"
                   }`}
                   title={`A squad can invite ${inviteQuota.limit} players a day. The count resets at midnight.`}
                 >
                   {inviteQuota.left}/{inviteQuota.limit} invites left today
                 </span>
               </div>
-              <p className="mt-1 text-[11px] leading-relaxed text-stone-500 dark:text-stone-400">
+              <p className="mt-1 text-[11px] leading-relaxed text-stone-500 dark:text-slate-400">
                 You can&apos;t drop anyone into a squad without their say-so 🛡️ — an invitation waits
                 until <span className="font-black">they</span> accept or decline, so nobody ends up on a
                 roster they never agreed to. Players only: venue owners and staff aren&apos;t listed.
@@ -592,10 +593,10 @@ export function TeamManager({
                 maxLength={200}
                 placeholder={'Optional note they see — e.g. "Training Tuesdays, we split the court bill"'}
                 aria-label="Note to attach to the invite"
-                className="mt-2 w-full rounded-xl border border-stone-200 bg-[#FFF6E9] px-3.5 py-2.5 text-sm font-semibold text-stone-900 placeholder:text-stone-400 focus:border-emerald-500 focus:outline-none dark:border-white/10 dark:bg-white/5 dark:text-stone-100 dark:placeholder:text-stone-500"
+                className="mt-2 w-full rounded-xl border border-stone-200 bg-[#FFF6E9] px-3.5 py-2.5 text-sm font-semibold text-stone-900 placeholder:text-stone-400 focus:border-emerald-500 focus:outline-none dark:border-white/10 dark:bg-white/5 dark:text-slate-100 dark:placeholder:text-slate-500"
               />
               {candidates.length === 0 ? (
-                <p className="mt-2 text-[11px] font-semibold text-stone-400 dark:text-stone-500">
+                <p className="mt-2 text-[11px] font-semibold text-stone-400 dark:text-slate-500">
                   {find.trim()
                     ? "No player outside your squad matches that 🔍"
                     : "Every player on the platform is already in your squad or has an invite waiting 🎉"}
@@ -614,12 +615,12 @@ export function TeamManager({
                           className="h-8 w-8 text-[10px]"
                         />
                         <div className="min-w-0 flex-1">
-                          <p className="truncate text-sm font-bold text-stone-900 dark:text-stone-100">
+                          <p className="truncate text-sm font-bold text-stone-900 dark:text-slate-100">
                             <Link href={`/players/${p.id}`} className="hover:underline" title="Read their dossier before you invite">
                               {p.name}
                             </Link>
                           </p>
-                          <p className="truncate text-[11px] text-stone-400 dark:text-stone-500">
+                          <p className="truncate text-[11px] text-stone-400 dark:text-slate-500">
                             {p.level} • {p.position}
                           </p>
                         </div>
@@ -651,27 +652,27 @@ export function TeamManager({
 
               {pendingInvites.length > 0 && (
                 <div className="mt-3 rounded-xl bg-stone-50 p-3 dark:bg-white/5">
-                  <p className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-stone-500 dark:text-stone-400">
+                  <p className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-stone-500 dark:text-slate-400">
                     <Hourglass className="h-3 w-3" /> Waiting on their answer • {pendingInvites.length}
                   </p>
                   <ul className="mt-2 space-y-1.5">
                     {pendingInvites.map((i) => (
                       <li
                         key={i.id}
-                        className="flex items-center gap-2.5 rounded-xl bg-white px-3 py-2 dark:bg-stone-950"
+                        className="flex items-center gap-2.5 rounded-xl bg-white px-3 py-2 dark:bg-slate-950"
                       >
                         <Avatar
                           user={{ name: i.name, avatarColor: i.avatarColor, avatarUrl: i.avatarUrl }}
                           className="h-7 w-7 text-[9px]"
                         />
                         <div className="min-w-0 flex-1">
-                          <p className="truncate text-xs font-bold text-stone-900 dark:text-stone-100">
+                          <p className="truncate text-xs font-bold text-stone-900 dark:text-slate-100">
                             <Link href={`/players/${i.userId}`} className="hover:underline" title="See their full details">
                               {i.name}
                             </Link>
                           </p>
                           {i.message && (
-                            <p className="truncate text-[10px] italic text-stone-400 dark:text-stone-500">
+                            <p className="truncate text-[10px] italic text-stone-400 dark:text-slate-500">
                               &ldquo;{i.message}&rdquo;
                             </p>
                           )}
@@ -679,7 +680,7 @@ export function TeamManager({
                         <button
                           onClick={() => void withdrawInvite(i.id, i.name)}
                           disabled={busy === `withdraw-${i.id}`}
-                          className="rounded-lg border border-stone-200 px-2 py-1 text-[10px] font-black text-stone-500 transition hover:bg-stone-100 disabled:opacity-40 dark:border-white/10 dark:text-stone-400 dark:hover:bg-white/10"
+                          className="rounded-lg border border-stone-200 px-2 py-1 text-[10px] font-black text-stone-500 transition hover:bg-stone-100 disabled:opacity-40 dark:border-white/10 dark:text-slate-400 dark:hover:bg-white/10"
                         >
                           Withdraw
                         </button>
@@ -693,7 +694,7 @@ export function TeamManager({
                 <div className="mt-2">
                   <button
                     onClick={() => setShowInviteHistory((v) => !v)}
-                    className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-stone-400 transition hover:text-stone-600 dark:text-stone-500 dark:hover:text-stone-300"
+                    className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-stone-400 transition hover:text-stone-600 dark:text-slate-500 dark:hover:text-slate-300"
                   >
                     <MailQuestion className="h-3 w-3" />
                     {showInviteHistory ? "Hide" : "Show"} answered invites • {answeredInvites.length}
@@ -705,14 +706,14 @@ export function TeamManager({
                           key={i.id}
                           className="flex items-center justify-between gap-2 rounded-xl bg-stone-50 px-3 py-1.5 text-[11px] dark:bg-white/5"
                         >
-                          <span className="min-w-0 truncate font-bold text-stone-600 dark:text-stone-300">
+                          <span className="min-w-0 truncate font-bold text-stone-600 dark:text-slate-300">
                             {i.name}
                           </span>
                           <span
                             className={`shrink-0 rounded-full px-2 py-0.5 text-[9px] font-black uppercase tracking-wider ${
                               i.status === "accepted"
                                 ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300"
-                                : "bg-stone-200 text-stone-600 dark:bg-white/10 dark:text-stone-300"
+                                : "bg-stone-200 text-stone-600 dark:bg-white/10 dark:text-slate-300"
                             }`}
                           >
                             {i.status}
@@ -730,12 +731,12 @@ export function TeamManager({
               <h4 className="flex items-center gap-2 text-xs font-black uppercase tracking-widest text-amber-700 dark:text-amber-400">
                 <Crown className="h-3.5 w-3.5" /> Hand over the armband
               </h4>
-              <p className="mt-1 text-[11px] leading-relaxed text-stone-500 dark:text-stone-400">
+              <p className="mt-1 text-[11px] leading-relaxed text-stone-500 dark:text-slate-400">
                 A team always has exactly one captain. To step away, pass it to a member first —
                 then you&apos;ll be able to leave the squad like anyone else.
               </p>
               {transferTargets.length === 0 ? (
-                <p className="mt-2 text-[11px] font-bold text-stone-400 dark:text-stone-500">
+                <p className="mt-2 text-[11px] font-bold text-stone-400 dark:text-slate-500">
                   No other members yet — add someone before you can hand over 👥
                 </p>
               ) : (
@@ -743,7 +744,7 @@ export function TeamManager({
                   <select
                     value={newCaptainId}
                     onChange={(e) => setNewCaptainId(e.target.value)}
-                    className="min-w-[12rem] flex-1 rounded-xl border border-stone-200 bg-white px-3.5 py-2.5 text-sm font-semibold text-stone-900 focus:border-amber-500 focus:outline-none dark:border-white/10 dark:bg-stone-950 dark:text-stone-100 [&>option]:bg-white [&>option]:text-stone-900 dark:[&>option]:bg-stone-900 dark:[&>option]:text-stone-100"
+                    className="min-w-[12rem] flex-1 rounded-xl border border-stone-200 bg-white px-3.5 py-2.5 text-sm font-semibold text-stone-900 focus:border-amber-500 focus:outline-none dark:border-white/10 dark:bg-slate-950 dark:text-slate-100 [&>option]:bg-white [&>option]:text-stone-900 dark:[&>option]:bg-slate-900 dark:[&>option]:text-slate-100"
                   >
                     <option value="">Choose the next captain…</option>
                     {transferTargets.map((m) => (
@@ -768,12 +769,12 @@ export function TeamManager({
 
             {/* ------------------------------------------ details */}
             <section className="rounded-2xl border border-stone-200 p-4 dark:border-white/10">
-              <h4 className="text-xs font-black uppercase tracking-widest text-stone-500 dark:text-stone-400">
+              <h4 className="text-xs font-black uppercase tracking-widest text-stone-500 dark:text-slate-400">
                 Team details
               </h4>
               <div className="mt-3 space-y-3">
                 <label className="block">
-                  <span className="mb-1 block text-[11px] font-black uppercase tracking-wider text-stone-400 dark:text-stone-500">
+                  <span className="mb-1 block text-[11px] font-black uppercase tracking-wider text-stone-400 dark:text-slate-500">
                     Team name
                   </span>
                   <input
@@ -791,7 +792,7 @@ export function TeamManager({
                 </label>
 
                 <label className="block">
-                  <span className="mb-1 block text-[11px] font-black uppercase tracking-wider text-stone-400 dark:text-stone-500">
+                  <span className="mb-1 block text-[11px] font-black uppercase tracking-wider text-stone-400 dark:text-slate-500">
                     Unique code — how others find you
                   </span>
                   <div className="flex gap-2">
@@ -808,14 +809,14 @@ export function TeamManager({
                     <button
                       onClick={() => setCode(suggestTeamCode(name || team.name))}
                       title="Suggest a code"
-                      className="grid w-11 shrink-0 place-items-center rounded-xl border border-stone-200 text-stone-500 transition hover:bg-stone-100 dark:border-white/10 dark:text-stone-300 dark:hover:bg-white/10"
+                      className="grid w-11 shrink-0 place-items-center rounded-xl border border-stone-200 text-stone-500 transition hover:bg-stone-100 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/10"
                     >
                       <Dice5 className="h-4 w-4" />
                     </button>
                     <button
                       onClick={copyCode}
                       title="Copy code"
-                      className="grid w-11 shrink-0 place-items-center rounded-xl border border-stone-200 text-stone-500 transition hover:bg-stone-100 dark:border-white/10 dark:text-stone-300 dark:hover:bg-white/10"
+                      className="grid w-11 shrink-0 place-items-center rounded-xl border border-stone-200 text-stone-500 transition hover:bg-stone-100 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/10"
                     >
                       {copied ? <Check className="h-4 w-4 text-emerald-600" /> : <Copy className="h-4 w-4" />}
                     </button>
@@ -830,7 +831,7 @@ export function TeamManager({
                 </label>
 
                 <label className="block">
-                  <span className="mb-1 block text-[11px] font-black uppercase tracking-wider text-stone-400 dark:text-stone-500">
+                  <span className="mb-1 block text-[11px] font-black uppercase tracking-wider text-stone-400 dark:text-slate-500">
                     Motto
                   </span>
                   <input
@@ -848,7 +849,7 @@ export function TeamManager({
                 </label>
 
                 <label className="block">
-                  <span className="mb-1 block text-[11px] font-black uppercase tracking-wider text-stone-400 dark:text-stone-500">
+                  <span className="mb-1 block text-[11px] font-black uppercase tracking-wider text-stone-400 dark:text-slate-500">
                     About the squad — optional description
                   </span>
                   <textarea
@@ -874,13 +875,13 @@ export function TeamManager({
 
                 <div className="grid gap-3 sm:grid-cols-2">
                   <label className="block">
-                    <span className="mb-1 block text-[11px] font-black uppercase tracking-wider text-stone-400 dark:text-stone-500">
+                    <span className="mb-1 block text-[11px] font-black uppercase tracking-wider text-stone-400 dark:text-slate-500">
                       Level
                     </span>
                     <select
                       value={level}
                       onChange={(e) => setLevel(e.target.value)}
-                      className="w-full rounded-xl border border-stone-200 bg-[#FFF6E9] px-3.5 py-2.5 text-sm font-semibold text-stone-900 focus:border-emerald-500 focus:outline-none dark:border-white/10 dark:bg-white/5 dark:text-stone-100 [&>option]:bg-white [&>option]:text-stone-900 dark:[&>option]:bg-stone-900 dark:[&>option]:text-stone-100"
+                      className="w-full rounded-xl border border-stone-200 bg-[#FFF6E9] px-3.5 py-2.5 text-sm font-semibold text-stone-900 focus:border-emerald-500 focus:outline-none dark:border-white/10 dark:bg-white/5 dark:text-slate-100 [&>option]:bg-white [&>option]:text-stone-900 dark:[&>option]:bg-slate-900 dark:[&>option]:text-slate-100"
                     >
                       {LEVELS.map((l) => (
                         <option key={l}>{l}</option>
@@ -888,7 +889,7 @@ export function TeamManager({
                     </select>
                   </label>
                   <label className="block">
-                    <span className="mb-1 block text-[11px] font-black uppercase tracking-wider text-stone-400 dark:text-stone-500">
+                    <span className="mb-1 block text-[11px] font-black uppercase tracking-wider text-stone-400 dark:text-slate-500">
                       Team size • {roster.length} in squad
                     </span>
                     <input
@@ -903,13 +904,13 @@ export function TeamManager({
                 </div>
 
                 <label className="block">
-                  <span className="mb-1 flex items-center gap-1 text-[11px] font-black uppercase tracking-wider text-stone-400 dark:text-stone-500">
+                  <span className="mb-1 flex items-center gap-1 text-[11px] font-black uppercase tracking-wider text-stone-400 dark:text-slate-500">
                     <MapPin className="h-3 w-3" /> Home turf — venues on this platform
                   </span>
                   <select
                     value={homeVenueId}
                     onChange={(e) => setHomeVenueId(e.target.value)}
-                    className="w-full rounded-xl border border-stone-200 bg-[#FFF6E9] px-3.5 py-2.5 text-sm font-semibold text-stone-900 focus:border-emerald-500 focus:outline-none dark:border-white/10 dark:bg-white/5 dark:text-stone-100 [&>option]:bg-white [&>option]:text-stone-900 dark:[&>option]:bg-stone-900 dark:[&>option]:text-stone-100"
+                    className="w-full rounded-xl border border-stone-200 bg-[#FFF6E9] px-3.5 py-2.5 text-sm font-semibold text-stone-900 focus:border-emerald-500 focus:outline-none dark:border-white/10 dark:bg-white/5 dark:text-slate-100 [&>option]:bg-white [&>option]:text-stone-900 dark:[&>option]:bg-slate-900 dark:[&>option]:text-slate-100"
                   >
                     <option value="0">No home turf</option>
                     {venueOptions.map((v) => (
@@ -924,7 +925,7 @@ export function TeamManager({
                 </label>
 
                 <div>
-                  <span className="mb-1.5 block text-[11px] font-black uppercase tracking-wider text-stone-400 dark:text-stone-500">
+                  <span className="mb-1.5 block text-[11px] font-black uppercase tracking-wider text-stone-400 dark:text-slate-500">
                     Colours
                   </span>
                   <div className="flex flex-wrap gap-2">
@@ -934,7 +935,7 @@ export function TeamManager({
                         onClick={() => setColor(c)}
                         className={`h-9 w-9 rounded-full transition ${
                           color === c
-                            ? "ring-2 ring-emerald-500 ring-offset-2 ring-offset-white dark:ring-offset-stone-900"
+                            ? "ring-2 ring-emerald-500 ring-offset-2 ring-offset-white dark:ring-offset-slate-900"
                             : ""
                         }`}
                         style={{ background: c }}
@@ -951,7 +952,7 @@ export function TeamManager({
                     onChange={(e) => setLooking(e.target.checked)}
                     className="h-4 w-4 accent-emerald-600"
                   />
-                  <span className="text-xs font-bold text-stone-700 dark:text-stone-200">
+                  <span className="text-xs font-bold text-stone-700 dark:text-slate-200">
                     Welcoming new friends — show this squad to people searching for a team
                   </span>
                 </label>

@@ -7,6 +7,7 @@ import { OwnerGuard } from "@/components/OwnerGuard";
 import { AvatarUploader } from "@/components/AvatarUploader";
 import { CITY_OPTIONS } from "@/lib/futsal";
 import { validateName, validatePhone, validatePassword, passwordStrength, firstError } from "@/lib/validation";
+import { apiFetch } from "@/lib/api";
 
 const COLORS = ["#16a34a", "#2563eb", "#dc2626", "#7c3aed", "#ea580c", "#0891b2", "#be123c", "#f59e0b"];
 
@@ -80,7 +81,7 @@ export default function OwnerProfilePage() {
     setPwSaving(true);
     setPwMsg(null);
     try {
-      const res = await fetch("/api/auth/change-password", {
+      const res = await apiFetch("/api/auth/change-password", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ userId: user.id, currentPassword: currentPw, newPassword: newPw }),

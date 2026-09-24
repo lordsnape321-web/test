@@ -20,12 +20,14 @@ import { useUser } from "@/components/UserProvider";
 import { LeagueForm } from "@/components/LeagueForm";
 import { LeagueTable, PrizeBreakdown } from "@/components/LeagueTable";
 import { LeagueFixtures } from "@/components/LeagueFixtures";
+import { LeagueBracket } from "@/components/LeagueBracket";
 import { LeagueAlbum } from "@/components/LeagueAlbum";
 import { LeagueHostPanel } from "@/components/LeagueHostPanel";
 import { LeagueSquadPanel } from "@/components/LeagueSquadPanel";
 import type { LeagueDetail } from "@/lib/league-store";
-import { leagueStatusLabel, leagueVisibilityLabel } from "@/lib/league";
+import { leagueModeLabel, leagueStatusLabel, leagueVisibilityLabel, modeHasBracket } from "@/lib/league";
 import { formatNPR, prettyDate } from "@/lib/futsal";
+import { apiFetch } from "@/lib/api";
 
 /**
  * One league, in full 🏆
@@ -47,7 +49,7 @@ export default function LeagueDetailPage({ params }: { params: Promise<{ id: str
 
   const load = useCallback(async () => {
     try {
-      const res = await fetch(`/api/tournaments/${id}${user ? `?viewerId=${user.id}` : ""}`);
+      const res = await apiFetch(`/api/tournaments/${id}${user ? `?viewerId=${user.id}` : ""}`);
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(String(data.error ?? "Couldn't load that league 🙏"));
       setLeague(data.league as LeagueDetail);
@@ -71,10 +73,10 @@ export default function LeagueDetailPage({ params }: { params: Promise<{ id: str
 
   if (loading) {
     return (
-      <main className="min-h-screen bg-[#FFF9F0] dark:bg-stone-950">
+      <main className="min-h-screen bg-[#FFF9F0] dark:bg-slate-950">
         <div className="mx-auto max-w-7xl animate-pulse px-4 py-8 sm:px-6">
-          <div className="h-64 rounded-[2rem] bg-white dark:bg-stone-900" />
-          <div className="mt-4 h-40 rounded-3xl bg-white dark:bg-stone-900" />
+          <div className="h-64 rounded-[2rem] bg-white dark:bg-slate-900" />
+          <div className="mt-4 h-40 rounded-3xl bg-white dark:bg-slate-900" />
         </div>
       </main>
     );
@@ -82,12 +84,12 @@ export default function LeagueDetailPage({ params }: { params: Promise<{ id: str
 
   if (error || !league) {
     return (
-      <main className="grid min-h-screen place-items-center bg-[#FFF9F0] px-4 dark:bg-stone-950">
+      <main className="grid min-h-screen place-items-center bg-[#FFF9F0] px-4 dark:bg-slate-950">
         <div className="max-w-md text-center">
-          <h1 className="text-2xl font-black text-stone-900 dark:text-stone-100">
+          <h1 className="text-2xl font-black text-stone-900 dark:text-slate-100">
             {error || "That league has moved on 🏆"}
           </h1>
-          <p className="mt-2 text-sm text-stone-500 dark:text-stone-400">
+          <p className="mt-2 text-sm text-stone-500 dark:text-slate-400">
             Private leagues only open for the squads in them — if you were invited, log in with the
             captain&apos;s account and try again.
           </p>
@@ -104,6 +106,7 @@ export default function LeagueDetailPage({ params }: { params: Promise<{ id: str
 
   const status = leagueStatusLabel(league.status);
   const visibility = leagueVisibilityLabel(league.visibility);
+  const mode = leagueModeLabel(league.mode);
   const isHost = league.viewer?.isHost ?? false;
   const myTeamIds = league.viewer?.myTeams.map((t) => t.teamId) ?? [];
   const spotsLeft = Math.max(0, league.maxTeams - league.approvedTeams);
@@ -123,20 +126,23 @@ export default function LeagueDetailPage({ params }: { params: Promise<{ id: str
         <div className="absolute inset-x-0 top-0 mx-auto max-w-7xl px-4 pt-5 sm:px-6">
           <Link
             href="/leagues"
-            className="inline-flex items-center gap-1.5 rounded-full bg-white/90 px-4 py-2 text-xs font-black text-stone-800 shadow backdrop-blur transition hover:bg-white dark:bg-stone-900/90 dark:text-stone-100"
+            className="inline-flex items-center gap-1.5 rounded-full bg-white/90 px-4 py-2 text-xs font-black text-stone-800 shadow backdrop-blur transition hover:bg-white dark:bg-slate-900/90 dark:text-slate-100"
           >
             <ArrowLeft className="h-3.5 w-3.5" /> All leagues
           </Link>
         </div>
         <div className="absolute inset-x-0 bottom-0 mx-auto max-w-7xl px-4 pb-5 sm:px-6">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="rounded-full bg-white/90 px-2.5 py-1 text-[11px] font-black text-stone-800 shadow backdrop-blur dark:bg-stone-900/90 dark:text-stone-100">
+            <span className="rounded-full bg-white/90 px-2.5 py-1 text-[11px] font-black text-stone-800 shadow backdrop-blur dark:bg-slate-900/90 dark:text-slate-100">
               {status.emoji} {status.label}
             </span>
-            <span className="rounded-full bg-white/90 px-2.5 py-1 text-[11px] font-bold text-stone-700 shadow backdrop-blur dark:bg-stone-900/90 dark:text-stone-200">
+            <span className="rounded-full bg-white/90 px-2.5 py-1 text-[11px] font-black text-orange-700 shadow backdrop-blur dark:bg-slate-900/90 dark:text-orange-300">
+              {mode.emoji} {mode.label}
+            </span>
+            <span className="rounded-full bg-white/90 px-2.5 py-1 text-[11px] font-bold text-stone-700 shadow backdrop-blur dark:bg-slate-900/90 dark:text-slate-200">
               {league.format} • {league.approvedTeams}/{league.maxTeams} squads
             </span>
-            <span className="flex items-center gap-1 rounded-full bg-white/90 px-2.5 py-1 text-[11px] font-bold text-stone-700 shadow backdrop-blur dark:bg-stone-900/90 dark:text-stone-200">
+            <span className="flex items-center gap-1 rounded-full bg-white/90 px-2.5 py-1 text-[11px] font-bold text-stone-700 shadow backdrop-blur dark:bg-slate-900/90 dark:text-slate-200">
               {visibility.emoji} {visibility.label}
             </span>
             {isHost && (
@@ -173,7 +179,7 @@ export default function LeagueDetailPage({ params }: { params: Promise<{ id: str
       <div className="mx-auto grid max-w-7xl gap-5 px-4 py-6 sm:px-6 lg:grid-cols-[1fr_360px]">
         <div className="min-w-0 space-y-5">
           {/* Terms */}
-          <section className="rounded-3xl border border-[#F0E3CC] bg-white p-5 shadow-sm dark:border-white/10 dark:bg-stone-900">
+          <section className="rounded-3xl border border-[#F0E3CC] bg-white p-5 shadow-sm dark:border-white/10 dark:bg-slate-900">
             <h2 className="text-xs font-black uppercase tracking-widest text-orange-500 dark:text-orange-400">
               The deal
             </h2>
@@ -182,7 +188,7 @@ export default function LeagueDetailPage({ params }: { params: Promise<{ id: str
                 <p className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-stone-400">
                   <Coins className="h-3 w-3" /> Entry fee
                 </p>
-                <p className="mt-1 text-lg font-black text-stone-900 dark:text-stone-100">
+                <p className="mt-1 text-lg font-black text-stone-900 dark:text-slate-100">
                   {league.entryFee > 0 ? formatNPR(league.entryFee) : "Free"}
                 </p>
                 {league.entryFee > 0 && (
@@ -195,10 +201,10 @@ export default function LeagueDetailPage({ params }: { params: Promise<{ id: str
                 <p className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-stone-400">
                   <Shield className="h-3 w-3" /> Back out
                 </p>
-                <p className="mt-1 text-lg font-black text-stone-900 dark:text-stone-100">
+                <p className="mt-1 text-lg font-black text-stone-900 dark:text-slate-100">
                   {league.refundPercent}% back
                 </p>
-                <p className="text-[11px] font-bold text-stone-500 dark:text-stone-400">
+                <p className="text-[11px] font-bold text-stone-500 dark:text-slate-400">
                   of what the squad paid — the rest stays with the league
                 </p>
               </div>
@@ -206,10 +212,10 @@ export default function LeagueDetailPage({ params }: { params: Promise<{ id: str
                 <p className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-stone-400">
                   <Users className="h-3 w-3" /> Squads
                 </p>
-                <p className="mt-1 text-lg font-black text-stone-900 dark:text-stone-100">
+                <p className="mt-1 text-lg font-black text-stone-900 dark:text-slate-100">
                   {league.approvedTeams}/{league.maxTeams}
                 </p>
-                <p className="text-[11px] font-bold text-stone-500 dark:text-stone-400">
+                <p className="text-[11px] font-bold text-stone-500 dark:text-slate-400">
                   {spotsLeft > 0 && !closed
                     ? `${spotsLeft} spot${spotsLeft === 1 ? "" : "s"} left`
                     : "League full"}
@@ -219,7 +225,7 @@ export default function LeagueDetailPage({ params }: { params: Promise<{ id: str
             </div>
 
             {league.description && (
-              <p className="mt-3 text-sm leading-relaxed text-stone-600 dark:text-stone-400">
+              <p className="mt-3 text-sm leading-relaxed text-stone-600 dark:text-slate-400">
                 {league.description}
               </p>
             )}
@@ -227,17 +233,17 @@ export default function LeagueDetailPage({ params }: { params: Promise<{ id: str
               <PrizeBreakdown lines={league.prizeLines} prizePool={league.prizePool} />
               {league.rules && (
                 <div className="rounded-2xl border border-[#F0E3CC] p-4 dark:border-white/10">
-                  <p className="flex items-center gap-2 text-xs font-black uppercase tracking-widest text-stone-500 dark:text-stone-400">
+                  <p className="flex items-center gap-2 text-xs font-black uppercase tracking-widest text-stone-500 dark:text-slate-400">
                     <Info className="h-3.5 w-3.5" /> Rules
                   </p>
-                  <p className="mt-2 whitespace-pre-line text-sm leading-relaxed text-stone-600 dark:text-stone-400">
+                  <p className="mt-2 whitespace-pre-line text-sm leading-relaxed text-stone-600 dark:text-slate-400">
                     {league.rules}
                   </p>
                 </div>
               )}
             </div>
             {league.matchDays && (
-              <p className="mt-3 flex items-center gap-1.5 text-[11px] font-bold text-stone-400 dark:text-stone-500">
+              <p className="mt-3 flex items-center gap-1.5 text-[11px] font-bold text-stone-400 dark:text-slate-500">
                 <CalendarDays className="h-3.5 w-3.5" /> {league.matchDays}
                 {league.contactPhone ? (
                   <>
@@ -249,22 +255,35 @@ export default function LeagueDetailPage({ params }: { params: Promise<{ id: str
             )}
           </section>
 
-          {/* Table */}
-          <section className="rounded-3xl border border-[#F0E3CC] bg-white p-5 shadow-sm dark:border-white/10 dark:bg-stone-900">
-            <h2 className="flex items-center gap-2 text-xs font-black uppercase tracking-widest text-emerald-700 dark:text-emerald-400">
-              <Trophy className="h-3.5 w-3.5" /> League table
-            </h2>
-            <div className="mt-3">
-              {league.viewer?.canSeeInside || league.visibility === "public" ? (
-                <LeagueTable standings={league.standings} highlightTeamIds={myTeamIds} />
-              ) : (
-                <p className="flex items-center gap-2 rounded-2xl border border-dashed border-amber-300 px-4 py-6 text-xs font-bold text-amber-700 dark:border-amber-500/30 dark:text-amber-300">
-                  <Lock className="h-3.5 w-3.5" /> The table is inside the league — ask the host for an
-                  invitation.
-                </p>
-              )}
-            </div>
-          </section>
+          {/* The bracket, when that's the shape of the competition 🥊 */}
+          {modeHasBracket(league.mode) &&
+            (league.viewer?.canSeeInside || league.visibility === "public") && (
+              <LeagueBracket
+                league={league}
+                hostId={user?.id ?? 0}
+                isHost={isHost}
+                onChanged={load}
+              />
+            )}
+
+          {/* Table — a round robin has one; a knockout's standings *are* the bracket */}
+          {!modeHasBracket(league.mode) && (
+            <section className="rounded-3xl border border-[#F0E3CC] bg-white p-5 shadow-sm dark:border-white/10 dark:bg-slate-900">
+              <h2 className="flex items-center gap-2 text-xs font-black uppercase tracking-widest text-emerald-700 dark:text-emerald-400">
+                <Trophy className="h-3.5 w-3.5" /> League table
+              </h2>
+              <div className="mt-3">
+                {league.viewer?.canSeeInside || league.visibility === "public" ? (
+                  <LeagueTable standings={league.standings} highlightTeamIds={myTeamIds} />
+                ) : (
+                  <p className="flex items-center gap-2 rounded-2xl border border-dashed border-amber-300 px-4 py-6 text-xs font-bold text-amber-700 dark:border-amber-500/30 dark:text-amber-300">
+                    <Lock className="h-3.5 w-3.5" /> The table is inside the league — ask the host for
+                    an invitation.
+                  </p>
+                )}
+              </div>
+            </section>
+          )}
 
           {/* Fixtures */}
           {league.viewer?.canSeeInside || league.visibility === "public" ? (
@@ -276,7 +295,7 @@ export default function LeagueDetailPage({ params }: { params: Promise<{ id: str
               onOpenAlbum={(mid) => setFocusMatch(mid)}
             />
           ) : (
-            <section className="rounded-3xl border border-[#F0E3CC] bg-white p-5 text-xs font-bold text-stone-500 shadow-sm dark:border-white/10 dark:bg-stone-900 dark:text-stone-400">
+            <section className="rounded-3xl border border-[#F0E3CC] bg-white p-5 text-xs font-bold text-stone-500 shadow-sm dark:border-white/10 dark:bg-slate-900 dark:text-slate-400">
               Fixtures and results are visible to the squads in this league.
             </section>
           )}
@@ -305,11 +324,11 @@ export default function LeagueDetailPage({ params }: { params: Promise<{ id: str
           {user && !isHost && <LeagueSquadPanel league={league} viewerId={user.id} onChanged={load} />}
 
           {!user && (
-            <div className="rounded-3xl border border-[#F0E3CC] bg-white p-5 shadow-sm dark:border-white/10 dark:bg-stone-900">
-              <p className="text-sm font-black text-stone-900 dark:text-stone-100">
+            <div className="rounded-3xl border border-[#F0E3CC] bg-white p-5 shadow-sm dark:border-white/10 dark:bg-slate-900">
+              <p className="text-sm font-black text-stone-900 dark:text-slate-100">
                 Want a place in this league?
               </p>
-              <p className="mt-1 text-xs leading-relaxed text-stone-500 dark:text-stone-400">
+              <p className="mt-1 text-xs leading-relaxed text-stone-500 dark:text-slate-400">
                 Log in as the captain of your squad, ask to join (or accept the invitation the host
                 sent you), and pay the deposit to lock it in.
               </p>
@@ -323,12 +342,12 @@ export default function LeagueDetailPage({ params }: { params: Promise<{ id: str
           )}
 
           {/* Squad list */}
-          <div className="rounded-3xl border border-[#F0E3CC] bg-white p-5 shadow-sm dark:border-white/10 dark:bg-stone-900">
+          <div className="rounded-3xl border border-[#F0E3CC] bg-white p-5 shadow-sm dark:border-white/10 dark:bg-slate-900">
             <h2 className="flex items-center gap-2 text-xs font-black uppercase tracking-widest text-emerald-700 dark:text-emerald-400">
               <Users className="h-3.5 w-3.5" /> Squads in the league
             </h2>
             {league.teams.length === 0 ? (
-              <p className="mt-3 text-xs font-semibold text-stone-400 dark:text-stone-500">
+              <p className="mt-3 text-xs font-semibold text-stone-400 dark:text-slate-500">
                 No squad has been admitted yet.
               </p>
             ) : (
@@ -346,7 +365,7 @@ export default function LeagueDetailPage({ params }: { params: Promise<{ id: str
                         {t.name.slice(0, 2).toUpperCase()}
                       </span>
                       <span className="min-w-0">
-                        <span className="block truncate text-xs font-bold text-stone-800 dark:text-stone-100">
+                        <span className="block truncate text-xs font-bold text-stone-800 dark:text-slate-100">
                           {t.name}
                         </span>
                         <span className="block truncate font-mono text-[10px] font-bold text-stone-400">
@@ -375,7 +394,7 @@ export default function LeagueDetailPage({ params }: { params: Promise<{ id: str
                 {league.allTeams
                   .filter((t) => t.status !== "approved")
                   .map((t) => (
-                    <li key={t.teamId} className="text-[11px] font-bold text-stone-600 dark:text-stone-300">
+                    <li key={t.teamId} className="text-[11px] font-bold text-stone-600 dark:text-slate-300">
                       {t.name}: {t.status}
                       {t.paidAmount > 0 ? ` • ${formatNPR(t.paidAmount)} in` : ""}
                     </li>
@@ -384,8 +403,8 @@ export default function LeagueDetailPage({ params }: { params: Promise<{ id: str
             </div>
           )}
 
-          <div className="rounded-3xl border border-[#F0E3CC] bg-white p-5 text-[11px] font-semibold leading-relaxed text-stone-500 shadow-sm dark:border-white/10 dark:bg-stone-900 dark:text-stone-400">
-            <p className="flex items-center gap-1.5 font-black uppercase tracking-widest text-stone-400 dark:text-stone-500">
+          <div className="rounded-3xl border border-[#F0E3CC] bg-white p-5 text-[11px] font-semibold leading-relaxed text-stone-500 shadow-sm dark:border-white/10 dark:bg-slate-900 dark:text-slate-400">
+            <p className="flex items-center gap-1.5 font-black uppercase tracking-widest text-stone-400 dark:text-slate-500">
               <Camera className="h-3 w-3" /> Photos &amp; privacy
             </p>
             <p className="mt-2">

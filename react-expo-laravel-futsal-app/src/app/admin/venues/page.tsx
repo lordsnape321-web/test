@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Building2, Plus, Power, Star, MapPin, Pencil, MessageCircleHeart, Wallet, ShieldCheck } from "lucide-react";
+import { Building2, Plus, Power, Star, MapPin, Pencil, MessageCircleHeart, Wallet, ShieldCheck, Trash2, Loader2 } from "lucide-react";
 import { useUser } from "@/components/UserProvider";
 import { OwnerGuard } from "@/components/OwnerGuard";
 import { ImagePicker } from "@/components/ImagePicker";
@@ -11,6 +11,7 @@ import { Avatar } from "@/components/Avatar";
 import { formatNPR } from "@/lib/futsal";
 import { PAYMENT_OPTIONS } from "@/lib/loyalty";
 import { validateVenueName, validateAddress, validatePhone, validateDescription, validateHoursRange, validateCourtName, validateMoney, validatePaymentMethods, validateDepositPercent, firstError } from "@/lib/validation";
+import { apiFetch } from "@/lib/api";
 
 type Court = {
   id: number;
@@ -124,6 +125,8 @@ export default function OwnerVenuesPage() {
   const [fPrice, setFPrice] = useState(1500);
   const [fPay, setFPay] = useState<string[]>([...PAYMENT_OPTIONS]);
   const [fDeposit, setFDeposit] = useState(30);
+  const [fExtraFee, setFExtraFee] = useState(0);
+  const [fExtraNote, setFExtraNote] = useState("");
   const [saving, setSaving] = useState(false);
   const [addError, setAddError] = useState("");
 
@@ -141,8 +144,25 @@ export default function OwnerVenuesPage() {
   const [eAmen, setEAmen] = useState<string[]>([]);
   const [ePay, setEPay] = useState<string[]>([...PAYMENT_OPTIONS]);
   const [eDeposit, setEDeposit] = useState(30);
+  // What the venue usually adds on top of the court fee (water, spare balls) —
+  // prefills the extra-charge line on the payment desk.
+  const [eExtraFee, setEExtraFee] = useState(0);
+  const [eExtraNote, setEExtraNote] = useState("");
   const [savingVenue, setSavingVenue] = useState(false);
   const [editError, setEditError] = useState("");
+
+  // Retiring a venue is one-way from the studio, so it asks for the name back.
+  const [deleteTarget, setDeleteTarget] = useState<Venue | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState("");
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
+
+  // Same treatment for a single court — a pitch is easier to retire by accident
+  // than a whole venue, so it asks for the court name back too.
+  const [courtDeleteTarget, setCourtDeleteTarget] = useState<Court | null>(null);
+  const [courtDeleteConfirm, setCourtDeleteConfirm] = useState("");
+  const [deletingCourt, setDeletingCourt] = useState(false);
+  const [courtDeleteError, setCourtDeleteError] = useState("");
 
   // Add / edit court (full details)
   const [showCourt, setShowCourt] = useState(false);
@@ -160,14 +180,60 @@ export default function OwnerVenuesPage() {
   const [priceDrafts, setPriceDrafts] = useState<Record<number, string>>({});
 
   const load = async () => {
-    const res = await fetch("/api/venues");
+    const res = await apiFetch("/api/venues");
     const data = await res.json();
     setVenues(data.venues ?? []);
   };
 
+  /** Retire the venue — soft delete, so the history stays. */
+  async function confirmDeleteVenue() {
+    if (!deleteTarget || !user) return;
+    setDeleting(true);
+    setDeleteError("");
+    try {
+      const res = await apiFetch(`/api/venues/${deleteTarget.id}`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ownerId: user.id }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(String(data.error ?? "Couldn't retire the venue 🙏"));
+      setDeleteTarget(null);
+      setDeleteConfirm("");
+      await load();
+    } catch (e) {
+      setDeleteError(e instanceof Error ? e.message : "Couldn't retire the venue 🙏");
+    } finally {
+      setDeleting(false);
+    }
+  }
+
+  /** Retire one court — soft delete, so the bookings against it stay readable. */
+  async function confirmDeleteCourt() {
+    if (!courtDeleteTarget || !user) return;
+    setDeletingCourt(true);
+    setCourtDeleteError("");
+    try {
+      const res = await apiFetch(`/api/courts/${courtDeleteTarget.id}`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ownerId: user.id }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(String(data.error ?? "Couldn't retire that court 🙏"));
+      setCourtDeleteTarget(null);
+      setCourtDeleteConfirm("");
+      await load();
+    } catch (e) {
+      setCourtDeleteError(e instanceof Error ? e.message : "Couldn't retire that court 🙏");
+    } finally {
+      setDeletingCourt(false);
+    }
+  }
+
   const loadReviews = async (venueId: number) => {
     try {
-      const res = await fetch(`/api/reviews?venueId=${venueId}`);
+      const res = await apiFetch(`/api/reviews?venueId=${venueId}`);
       const data = await res.json();
       setReviews(data.reviews ?? []);
     } catch {}
@@ -176,7 +242,7 @@ export default function OwnerVenuesPage() {
   useEffect(() => {
     (async () => {
       try {
-        await fetch("/api/seed", { method: "POST" });
+        await apiFetch("/api/seed", { method: "POST" });
         await load();
       } finally {
         setLoading(false);
@@ -208,6 +274,7 @@ export default function OwnerVenuesPage() {
     setFDesc(""); setFImage(""); setFOpen(6); setFClose(22);
     setFAmen(["Parking", "Changing Room", "Shower", "WiFi"]); setFPrice(1500);
     setFPay([...PAYMENT_OPTIONS]); setFDeposit(30);
+    setFExtraFee(0); setFExtraNote("");
   }
 
   async function addVenue() {
@@ -229,7 +296,7 @@ export default function OwnerVenuesPage() {
     setAddError("");
     setSaving(true);
     try {
-      const res = await fetch("/api/venues", {
+      const res = await apiFetch("/api/venues", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -245,6 +312,8 @@ export default function OwnerVenuesPage() {
           amenities: fAmen.join(","),
           acceptedPayments: fPay.join(","),
           depositPercent: fDeposit,
+          defaultExtraFee: fExtraFee,
+          defaultExtraFeeNote: fExtraNote,
           ownerId: user.id,
           courts: [
             { name: "Court 1", format: "5v5", pricePerHour: fPrice, priceMorning: Math.round(fPrice * 0.75) },
@@ -278,6 +347,9 @@ export default function OwnerVenuesPage() {
     const pays = String(v.acceptedPayments ?? "").split(",").map((s) => s.trim()).filter((s) => PAYMENT_OPTIONS.includes(s));
     setEPay(pays.length > 0 ? pays : [...PAYMENT_OPTIONS]);
     setEDeposit(Number.isFinite(Number(v.depositPercent)) ? Number(v.depositPercent) : 30);
+    const vv = v as typeof v & { defaultExtraFee?: number; defaultExtraFeeNote?: string };
+    setEExtraFee(Number.isFinite(Number(vv.defaultExtraFee)) ? Number(vv.defaultExtraFee) : 0);
+    setEExtraNote(String(vv.defaultExtraFeeNote ?? ""));
     setEditError("");
     setShowEditVenue(true);
   }
@@ -300,7 +372,7 @@ export default function OwnerVenuesPage() {
     setEditError("");
     setSavingVenue(true);
     try {
-      const res = await fetch(`/api/venues/${eVenue.id}`, {
+      const res = await apiFetch(`/api/venues/${eVenue.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -316,6 +388,8 @@ export default function OwnerVenuesPage() {
           amenities: eAmen.join(","),
           acceptedPayments: ePay.join(","),
           depositPercent: eDeposit,
+          defaultExtraFee: eExtraFee,
+          defaultExtraFeeNote: eExtraNote,
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -379,13 +453,13 @@ export default function OwnerVenuesPage() {
       };
       let res: Response;
       if (editingCourt) {
-        res = await fetch(`/api/courts/${editingCourt.id}`, {
+        res = await apiFetch(`/api/courts/${editingCourt.id}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
         });
       } else {
-        res = await fetch("/api/courts", {
+        res = await apiFetch("/api/courts", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ venueId: active.id, ownerId: user.id, ...payload }),
@@ -411,7 +485,7 @@ export default function OwnerVenuesPage() {
       alert(err);
       return;
     }
-    await fetch(`/api/courts/${court.id}`, {
+    await apiFetch(`/api/courts/${court.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -428,7 +502,7 @@ export default function OwnerVenuesPage() {
   }
 
   async function toggleCourt(court: Court) {
-    await fetch(`/api/courts/${court.id}`, {
+    await apiFetch(`/api/courts/${court.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ isActive: !court.isActive }),
@@ -527,6 +601,17 @@ export default function OwnerVenuesPage() {
                       >
                         <Plus className="h-3.5 w-3.5" strokeWidth={3} /> Add court
                       </button>
+                      <button
+                        onClick={() => {
+                          setDeleteTarget(active);
+                          setDeleteConfirm("");
+                          setDeleteError("");
+                        }}
+                        title="Retire this venue"
+                        className="flex items-center gap-1.5 rounded-xl border border-red-300 px-4 py-2.5 text-xs font-black text-red-600 transition hover:bg-red-50 dark:border-red-500/40 dark:text-red-400 dark:hover:bg-red-500/10"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" /> Delete
+                      </button>
                     </div>
                   </div>
                 </div>
@@ -559,6 +644,17 @@ export default function OwnerVenuesPage() {
 
                 {tab === "courts" ? (
                   <div className="space-y-2.5 p-4">
+                    {active.courts.length === 0 && (
+                      <div className="rounded-xl bg-slate-50 px-4 py-8 text-center dark:bg-slate-800/60">
+                        <p className="text-sm font-bold text-slate-500 dark:text-slate-400">
+                          No courts are live right now.
+                        </p>
+                        <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
+                          Retired courts drop off this list — their past bookings are untouched.
+                          Add a court to start taking bookings again. ⚽
+                        </p>
+                      </div>
+                    )}
                     {active.courts.map((c) => (
                       <div
                         key={c.id}
@@ -619,6 +715,17 @@ export default function OwnerVenuesPage() {
                           >
                             <Power className="h-3.5 w-3.5" />
                             {c.isActive ? "Live" : "Off"}
+                          </button>
+                          <button
+                            onClick={() => {
+                              setCourtDeleteTarget(c);
+                              setCourtDeleteConfirm("");
+                              setCourtDeleteError("");
+                            }}
+                            title="Retire this court"
+                            className="flex items-center gap-1.5 rounded-lg border border-red-300 px-3.5 py-2 text-xs font-black text-red-600 transition hover:bg-red-50 dark:border-red-500/40 dark:text-red-400 dark:hover:bg-red-500/10"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" /> Delete
                           </button>
                         </div>
                       </div>
@@ -765,6 +872,34 @@ export default function OwnerVenuesPage() {
                       : `Players with low stars / repeat cancels pay ${fDeposit}% upfront (non-refundable). They get it back in trust when they show up! 💪`}
                   </p>
                 </div>
+
+                <div>
+                  <span className={labelCls}>Usual extra fee 🧾 (Rs.)</span>
+                  <input
+                    type="number"
+                    min={0}
+                    max={20000}
+                    step={10}
+                    value={fExtraFee}
+                    onChange={(e) => setFExtraFee(Number(e.target.value))}
+                    className={inputCls}
+                  />
+                </div>
+                <div>
+                  <span className={labelCls}>What it&apos;s for</span>
+                  <input
+                    value={fExtraNote}
+                    onChange={(e) => setFExtraNote(e.target.value)}
+                    placeholder="Water and refreshments"
+                    maxLength={120}
+                    className={inputCls}
+                  />
+                </div>
+                <p className="col-span-2 -mt-1 text-[11px] text-slate-400">
+                  Prefills the extra-charge line on the payment desk — the water and spare balls
+                  bought during a match, added on top of the court fee. Leave it at 0 if you don&apos;t
+                  usually add anything.
+                </p>
                 <div className="col-span-2">
                   <span className={labelCls}>Starting price per hour (Rs.)</span>
                   <input type="number" min={100} max={20000} step={50} value={fPrice} onChange={(e) => setFPrice(Number(e.target.value))} className={inputCls} />
@@ -853,6 +988,36 @@ export default function OwnerVenuesPage() {
                       : `Low-trust players pay ${eDeposit}% upfront, non-refundable if they cancel. Honest players earn trust back fast! 💪`}
                   </p>
                 </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <span className={labelCls}>Usual extra fee 🧾</span>
+                    <input
+                      type="number"
+                      min={0}
+                      max={20000}
+                      step={10}
+                      value={eExtraFee}
+                      onChange={(e) => setEExtraFee(Number(e.target.value))}
+                      className={inputCls}
+                    />
+                  </div>
+                  <div>
+                    <span className={labelCls}>What it&apos;s for</span>
+                    <input
+                      value={eExtraNote}
+                      onChange={(e) => setEExtraNote(e.target.value)}
+                      placeholder="Water and refreshments"
+                      maxLength={120}
+                      className={inputCls}
+                    />
+                  </div>
+                </div>
+                <p className="-mt-1 text-[11px] text-slate-400">
+                  {eExtraFee > 0
+                    ? `The payment desk prefills ${formatNPR(eExtraFee)}${eExtraNote ? ` for "${eExtraNote}"` : ""} — still editable per booking.`
+                    : "No default add-on — the payment desk starts the extra-charge line blank."}
+                </p>
               </div>
               {editError && (
                 <p className="mt-3 rounded-xl bg-red-500/10 px-4 py-3 text-xs font-bold text-red-600 dark:text-red-400">
@@ -939,6 +1104,120 @@ export default function OwnerVenuesPage() {
                   {savingCourt ? "Saving…" : editingCourt ? "Save court ✨" : "Add court ⚽"}
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* -------------------------------------------------- retire a venue */}
+      {deleteTarget && (
+        <div className="fixed inset-0 z-[70] grid place-items-center overflow-y-auto bg-slate-900/60 p-4 backdrop-blur-sm">
+          <div className="my-6 w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl dark:bg-slate-900">
+            <h3 className="flex items-center gap-2 text-lg font-black text-red-600 dark:text-red-400">
+              <Trash2 className="h-5 w-5" /> Retire {deleteTarget.name}?
+            </h3>
+            <p className="mt-2 text-xs leading-relaxed text-slate-500 dark:text-slate-400">
+              The venue leaves every listing and its courts stop taking bookings. Past bookings,
+              payments and reviews stay exactly where they are — nothing is erased.
+            </p>
+            <p className="mt-3 rounded-2xl bg-red-50 px-3.5 py-2.5 text-[11px] font-bold leading-relaxed text-red-700 dark:bg-red-500/10 dark:text-red-300">
+              This can&apos;t be undone from the studio. If any player still has a game to come,
+              you&apos;ll be asked to cancel or play those first.
+            </p>
+            <div className="mt-4">
+              <span className={labelCls}>
+                Type <b className="text-slate-700 dark:text-slate-200">{deleteTarget.name}</b> to
+                confirm
+              </span>
+              <input
+                value={deleteConfirm}
+                onChange={(e) => setDeleteConfirm(e.target.value)}
+                placeholder={deleteTarget.name}
+                className={inputCls}
+              />
+            </div>
+            {deleteError && (
+              <p className="mt-3 rounded-2xl bg-red-50 px-3.5 py-2.5 text-xs font-bold text-red-600 dark:bg-red-500/10 dark:text-red-400">
+                {deleteError}
+              </p>
+            )}
+            <div className="mt-4 grid grid-cols-2 gap-2">
+              <button
+                onClick={() => {
+                  setDeleteTarget(null);
+                  setDeleteConfirm("");
+                  setDeleteError("");
+                }}
+                disabled={deleting}
+                className="rounded-xl border border-slate-200 py-3 text-sm font-black text-slate-600 transition hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+              >
+                Keep it
+              </button>
+              <button
+                onClick={() => void confirmDeleteVenue()}
+                disabled={deleting || deleteConfirm.trim() !== deleteTarget.name}
+                className="flex items-center justify-center gap-1.5 rounded-xl bg-red-600 py-3 text-sm font-black text-white transition hover:bg-red-700 disabled:opacity-40"
+              >
+                {deleting && <Loader2 className="h-4 w-4 animate-spin" />}
+                {deleting ? "Retiring…" : "Delete venue"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* -------------------------------------------------- retire one court */}
+      {courtDeleteTarget && (
+        <div className="fixed inset-0 z-[70] grid place-items-center overflow-y-auto bg-slate-900/60 p-4 backdrop-blur-sm">
+          <div className="my-6 w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl dark:bg-slate-900">
+            <h3 className="flex items-center gap-2 text-lg font-black text-red-600 dark:text-red-400">
+              <Trash2 className="h-5 w-5" /> Retire {courtDeleteTarget.name}?
+            </h3>
+            <p className="mt-2 text-xs leading-relaxed text-slate-500 dark:text-slate-400">
+              The court comes off the booking page and stops counting towards this venue. Past
+              bookings, payments and reviews against it stay exactly where they are — nothing is
+              erased.
+            </p>
+            <p className="mt-3 rounded-2xl bg-red-50 px-3.5 py-2.5 text-[11px] font-bold leading-relaxed text-red-700 dark:bg-red-500/10 dark:text-red-300">
+              This can&apos;t be undone from the studio. If a player still has a game booked on this
+              pitch, you&apos;ll be asked to cancel or play it first.
+            </p>
+            <div className="mt-4">
+              <span className={labelCls}>
+                Type <b className="text-slate-700 dark:text-slate-200">{courtDeleteTarget.name}</b> to
+                confirm
+              </span>
+              <input
+                value={courtDeleteConfirm}
+                onChange={(e) => setCourtDeleteConfirm(e.target.value)}
+                placeholder={courtDeleteTarget.name}
+                className={inputCls}
+              />
+            </div>
+            {courtDeleteError && (
+              <p className="mt-3 rounded-2xl bg-red-50 px-3.5 py-2.5 text-xs font-bold text-red-600 dark:bg-red-500/10 dark:text-red-400">
+                {courtDeleteError}
+              </p>
+            )}
+            <div className="mt-4 grid grid-cols-2 gap-2">
+              <button
+                onClick={() => {
+                  setCourtDeleteTarget(null);
+                  setCourtDeleteConfirm("");
+                  setCourtDeleteError("");
+                }}
+                disabled={deletingCourt}
+                className="rounded-xl border border-slate-200 py-3 text-sm font-black text-slate-600 transition hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+              >
+                Keep it
+              </button>
+              <button
+                onClick={() => void confirmDeleteCourt()}
+                disabled={deletingCourt || courtDeleteConfirm.trim() !== courtDeleteTarget.name}
+                className="flex items-center justify-center gap-1.5 rounded-xl bg-red-600 py-3 text-sm font-black text-white transition hover:bg-red-700 disabled:opacity-40"
+              >
+                {deletingCourt && <Loader2 className="h-4 w-4 animate-spin" />}
+                {deletingCourt ? "Retiring…" : "Delete court"}
+              </button>
             </div>
           </div>
         </div>

@@ -3,6 +3,7 @@ import { bookings, courts, venues } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { getKhaltiConfig, khaltiLookup } from "@/lib/payments";
 import { sendNotification } from "@/lib/notify";
+import { recordGatewayPayment } from "@/lib/ledger-record";
 import { formatNPR } from "@/lib/futsal";
 
 export const dynamic = "force-dynamic";
@@ -53,6 +54,16 @@ export async function POST(req: Request) {
         patch.paymentStatus = "paid";
       }
       const updated = await db.update(bookings).set(patch).where(eq(bookings.id, booking.id)).returning();
+      // Mirror the payment into the ledger: the payment desk derives "which
+      // medium paid how much" from those rows, not from `paidAmount`.
+      await recordGatewayPayment({
+        bookingId: booking.id,
+        amount: paidAmount,
+        method: "Khalti",
+        reference: String(patch.gatewayTxnId || pidx),
+        userId: booking.userId,
+        note: "Khalti simulator",
+      });
       return Response.json({ ok: true, mock: true, booking: updated[0], transactionId: patch.gatewayTxnId });
     }
 
@@ -80,6 +91,14 @@ export async function POST(req: Request) {
       patch.paymentStatus = "paid";
     }
     const updated = await db.update(bookings).set(patch).where(eq(bookings.id, booking.id)).returning();
+    await recordGatewayPayment({
+      bookingId: booking.id,
+      amount: Number(patch.paidAmount || 0),
+      method: "Khalti",
+      reference: String(patch.gatewayTxnId || pidx),
+      userId: booking.userId,
+      note: "Khalti",
+    });
 
     try {
       const courtRows = await db.select().from(courts).where(eq(courts.id, booking.courtId));

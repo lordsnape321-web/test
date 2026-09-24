@@ -30,6 +30,7 @@ import {
   TEAM_REQUESTED,
   TEAM_WITHDRAWN,
   depositFor,
+  moneyLockedFor,
   paymentState,
   recordFor,
   standingsFor,
@@ -45,6 +46,10 @@ export type LeagueSummary = {
   id: number;
   name: string;
   format: string;
+  /** "round_robin" | "knockout" | "group_knockout" — how a winner is decided. */
+  mode: string;
+  thirdPlace: boolean;
+  groupSize: number;
   maxTeams: number;
   entryFee: number;
   depositPercent: number;
@@ -105,6 +110,9 @@ export type LeagueTeamRow = {
   requestedBy: number;
   paidAmount: number;
   refundedAmount: number;
+  /** The medium the captain picked to pay by, and any proof they attached. */
+  payMethod: string;
+  receiptUrl: string;
   payment: PaymentState;
   createdAt: string | null;
   decidedAt: string | null;
@@ -113,6 +121,14 @@ export type LeagueTeamRow = {
 export type LeagueMatchRow = {
   id: number;
   round: string;
+  /** 0 for a league or group game; 1..n for a knockout round. */
+  bracketRound: number;
+  slot: number;
+  homeFrom: string;
+  awayFrom: string;
+  homeLabel: string;
+  awayLabel: string;
+  /** 0 while a bracket slot waits on the game before it. */
   homeTeamId: number;
   awayTeamId: number;
   homeTeamName: string;
@@ -370,6 +386,8 @@ export async function listLeagues(opts: {
             refundedAmount: e.refundedAmount,
             depositPercent: t.depositPercent,
             refundPercent: t.refundPercent,
+            lock: moneyLockedFor(e.teamId, matches),
+            status: e.status,
           }),
         };
       });
@@ -383,6 +401,9 @@ export async function listLeagues(opts: {
       id: t.id,
       name: t.name,
       format: t.format,
+      mode: t.mode,
+      thirdPlace: t.thirdPlace,
+      groupSize: t.groupSize,
       maxTeams: t.maxTeams,
       entryFee: t.entryFee,
       depositPercent: t.depositPercent,
@@ -467,12 +488,16 @@ export async function leagueDetail(
       requestedBy: e.requestedBy,
       paidAmount: e.paidAmount,
       refundedAmount: e.refundedAmount,
+      payMethod: e.payMethod,
+      receiptUrl: e.receiptUrl,
       payment: paymentState({
         entryFee: t.entryFee,
         paidAmount: e.paidAmount,
         refundedAmount: e.refundedAmount,
         depositPercent: t.depositPercent,
         refundPercent: t.refundPercent,
+        lock: moneyLockedFor(e.teamId, allMatches),
+        status: e.status,
       }),
       createdAt: iso(e.createdAt),
       decidedAt: iso(e.decidedAt),
@@ -486,10 +511,18 @@ export async function leagueDetail(
     .map((m) => ({
       id: m.id,
       round: m.round,
+      bracketRound: m.bracketRound,
+      slot: m.slot,
+      homeFrom: m.homeFrom,
+      awayFrom: m.awayFrom,
+      homeLabel: m.homeLabel,
+      awayLabel: m.awayLabel,
       homeTeamId: m.homeTeamId,
       awayTeamId: m.awayTeamId,
-      homeTeamName: teamById(m.homeTeamId)?.name ?? "Squad",
-      awayTeamName: teamById(m.awayTeamId)?.name ?? "Squad",
+      // An empty bracket slot is named by where its squad will come from, so the
+      // card reads "Winner Group A" instead of a meaningless "Squad".
+      homeTeamName: teamById(m.homeTeamId)?.name ?? m.homeLabel ?? "TBD",
+      awayTeamName: teamById(m.awayTeamId)?.name ?? m.awayLabel ?? "TBD",
       homeLogoColor: teamById(m.homeTeamId)?.logoColor ?? "#16a34a",
       awayLogoColor: teamById(m.awayTeamId)?.logoColor ?? "#2563eb",
       date: m.date,
@@ -582,6 +615,9 @@ export async function leagueDetail(
     id: t.id,
     name: t.name,
     format: t.format,
+    mode: t.mode,
+    thirdPlace: t.thirdPlace,
+    groupSize: t.groupSize,
     maxTeams: t.maxTeams,
     entryFee: t.entryFee,
     depositPercent: t.depositPercent,
@@ -984,4 +1020,4 @@ export async function allVenues() {
   return rows.map((v) => ({ id: v.id, name: v.name, city: v.city }));
 }
 
-export { depositFor, paymentState, recordFor, standingsFor };
+export { depositFor, moneyLockedFor, paymentState, recordFor, standingsFor };

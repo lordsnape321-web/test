@@ -18,6 +18,10 @@ export async function GET(req: Request) {
       return Response.json({ venues: [], error: "Pick a valid city 📍" }, { status: 400 });
 
     let list = await db.select().from(venues);
+    // A retired venue is out of the shop window — the owner's booking history
+    // stays intact, it just stops showing up anywhere.
+    const includeDeleted = searchParams.get("includeDeleted") === "1";
+    if (!includeDeleted) list = list.filter((v) => !v.deletedAt);
     if (q) {
       const ql = q.toLowerCase();
       list = list.filter(
@@ -31,8 +35,14 @@ export async function GET(req: Request) {
     }
 
     const allCourts = await db.select().from(courts);
+    // A retired court is out of the count and out of the price, or a venue would
+    // advertise a pitch nobody can book. Pass includeDeletedCourts=1 to see them.
+    const includeDeletedCourts = searchParams.get("includeDeletedCourts") === "1";
+    const liveCourts = includeDeletedCourts
+      ? allCourts
+      : allCourts.filter((c) => !c.deletedAt);
     const enriched = list.map((v) => {
-      const vc = allCourts.filter((c) => c.venueId === v.id);
+      const vc = liveCourts.filter((c) => c.venueId === v.id);
       const minPrice =
         vc.length > 0 ? Math.min(...vc.map((c) => c.pricePerHour)) : 0;
       return { ...v, courts: vc, courtCount: vc.length, minPrice };
@@ -60,6 +70,8 @@ export async function POST(req: Request) {
       ? String(body.acceptedPayments).split(",").map((s: string) => s.trim()).filter(Boolean)
       : ["eSewa", "Khalti", "Cash at Venue"];
     const depositPercent = body.depositPercent === undefined ? 30 : Number(body.depositPercent);
+    const defaultExtraFee =
+      body.defaultExtraFee === undefined ? 0 : Number(body.defaultExtraFee);
     const err = firstError(
       validateVenueName(name),
       validateAddress(address),
@@ -68,7 +80,8 @@ export async function POST(req: Request) {
       validateDescription(description, { required: false, max: 1000 }),
       validateHoursRange(openingHour, closingHour),
       validatePaymentMethods(acceptedRaw),
-      validateDepositPercent(depositPercent)
+      validateDepositPercent(depositPercent),
+      validateMoney(defaultExtraFee, { min: 0, max: 20000, label: "Default extra fee" })
     );
     if (err) return Response.json({ error: err }, { status: 400 });
 
@@ -97,6 +110,8 @@ export async function POST(req: Request) {
         amenities: String(body.amenities ?? "Parking,Changing Room,Shower").slice(0, 500),
         acceptedPayments: acceptedRaw.join(","),
         depositPercent,
+        defaultExtraFee,
+        defaultExtraFeeNote: String(body.defaultExtraFeeNote ?? "").slice(0, 120),
         isFeatured: false,
         ownerId: body.ownerId ? Number(body.ownerId) : null,
       })

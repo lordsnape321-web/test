@@ -7,6 +7,7 @@ import { VenueCard, type VenueWithCourts } from "@/components/cards";
 import { useUser } from "@/components/UserProvider";
 import { CITY_OPTIONS } from "@/lib/futsal";
 import { validateSearch } from "@/lib/validation";
+import { apiFetch } from "@/lib/api";
 
 function VenuesInner() {
   const params = useSearchParams();
@@ -30,8 +31,8 @@ function VenuesInner() {
   useEffect(() => {
     (async () => {
       try {
-        await fetch("/api/seed", { method: "POST" });
-        const res = await fetch("/api/venues");
+        await apiFetch("/api/seed", { method: "POST" });
+        const res = await apiFetch("/api/venues");
         const data = await res.json();
         setVenues(data.venues ?? []);
       } finally {
@@ -66,17 +67,17 @@ function VenuesInner() {
         <p className="flex items-center gap-1.5 text-xs font-black uppercase tracking-[0.2em] text-orange-500 dark:text-orange-400">
           <HeartHandshake className="h-3.5 w-3.5" /> Pick your second home
         </p>
-        <h1 className="mt-1 text-3xl font-black text-stone-900 dark:text-stone-100">Courts near you</h1>
-        <p className="mt-1 text-sm text-stone-500 dark:text-stone-400">
+        <h1 className="mt-1 text-3xl font-black text-stone-900 dark:text-slate-100">Courts near you</h1>
+        <p className="mt-1 text-sm text-stone-500 dark:text-slate-400">
           {filtered.length} welcoming venues • honest prices • real people confirm your game
           {homeCity !== "All Cities" && ` • 🏠 home: ${homeCity}`}
         </p>
 
         {/* Filters */}
-        <div className="mt-5 rounded-3xl border border-[#F0E3CC] bg-white p-3 shadow-[0_10px_30px_rgba(180,120,60,0.08)] dark:border-white/10 dark:bg-stone-900">
+        <div className="mt-5 rounded-3xl border border-[#F0E3CC] bg-white p-3 shadow-[0_10px_30px_rgba(180,120,60,0.08)] dark:border-white/10 dark:bg-slate-900">
           <div className="flex flex-col gap-2 lg:flex-row">
             <label className="flex flex-1 items-center gap-2 rounded-2xl bg-[#FFF6E9] px-4 py-3 dark:bg-white/5">
-              <Search className="h-4 w-4 shrink-0 text-stone-400 dark:text-stone-500" />
+              <Search className="h-4 w-4 shrink-0 text-stone-400 dark:text-slate-500" />
               <input
                 value={q}
                 onChange={(e) => {
@@ -85,15 +86,15 @@ function VenuesInner() {
                 }}
                 placeholder="Try a neighbourhood or court name…"
                 maxLength={60}
-                className="w-full bg-transparent text-sm font-semibold text-stone-900 placeholder:text-stone-400 focus:outline-none dark:text-stone-100 dark:placeholder:text-stone-500"
+                className="w-full bg-transparent text-sm font-semibold text-stone-900 placeholder:text-stone-400 focus:outline-none dark:text-slate-100 dark:placeholder:text-slate-500"
               />
             </label>
             <label className="flex items-center gap-2 rounded-2xl bg-[#FFF6E9] px-4 py-3 lg:w-48 dark:bg-white/5">
-              <MapPin className="h-4 w-4 shrink-0 text-stone-400 dark:text-stone-500" />
+              <MapPin className="h-4 w-4 shrink-0 text-stone-400 dark:text-slate-500" />
               <select
                 value={city}
                 onChange={(e) => setCity(e.target.value)}
-                className="w-full bg-transparent text-sm font-semibold text-stone-900 focus:outline-none dark:text-stone-100 [&>option]:bg-white [&>option]:text-stone-900 dark:[&>option]:bg-stone-900 dark:[&>option]:text-stone-100"
+                className="w-full bg-transparent text-sm font-semibold text-stone-900 focus:outline-none dark:text-slate-100 [&>option]:bg-white [&>option]:text-stone-900 dark:[&>option]:bg-slate-900 dark:[&>option]:text-slate-100"
               >
                 {CITY_OPTIONS.map((c) => (
                   <option key={c}>
@@ -104,11 +105,11 @@ function VenuesInner() {
               </select>
             </label>
             <label className="flex items-center gap-2 rounded-2xl bg-[#FFF6E9] px-4 py-3 lg:w-52 dark:bg-white/5">
-              <SlidersHorizontal className="h-4 w-4 shrink-0 text-stone-400 dark:text-stone-500" />
+              <SlidersHorizontal className="h-4 w-4 shrink-0 text-stone-400 dark:text-slate-500" />
               <select
                 value={sort}
                 onChange={(e) => setSort(e.target.value)}
-                className="w-full bg-transparent text-sm font-semibold text-stone-900 focus:outline-none dark:text-stone-100 [&>option]:bg-white [&>option]:text-stone-900 dark:[&>option]:bg-stone-900 dark:[&>option]:text-stone-100"
+                className="w-full bg-transparent text-sm font-semibold text-stone-900 focus:outline-none dark:text-slate-100 [&>option]:bg-white [&>option]:text-stone-900 dark:[&>option]:bg-slate-900 dark:[&>option]:text-slate-100"
               >
                 <option value="rating">Most loved</option>
                 <option value="price-low">Price: low → high</option>
@@ -129,7 +130,7 @@ function VenuesInner() {
           <div className="mt-2 rounded-2xl bg-[#FFF6E9] px-4 py-2.5 dark:bg-white/5">
             <div className="flex items-center gap-2">
               <Banknote className="h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
-              <span className="whitespace-nowrap text-xs font-bold text-stone-600 dark:text-stone-300">
+              <span className="whitespace-nowrap text-xs font-bold text-stone-600 dark:text-slate-300">
                 Up to Rs. {maxPrice.toLocaleString()}/hr
               </span>
             </div>
@@ -155,7 +156,7 @@ function VenuesInner() {
               className={`shrink-0 rounded-full px-4 py-2 text-xs font-black transition ${
                 city === c
                   ? "bg-emerald-600 text-white shadow-md"
-                  : "border border-stone-200 bg-white text-stone-600 shadow-sm hover:bg-orange-50 dark:border-white/10 dark:bg-stone-900 dark:text-stone-300 dark:hover:bg-white/5"
+                  : "border border-stone-200 bg-white text-stone-600 shadow-sm hover:bg-orange-50 dark:border-white/10 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-white/5"
               }`}
             >
               {c}
@@ -166,14 +167,14 @@ function VenuesInner() {
         {loading ? (
           <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {[0, 1, 2, 3, 4, 5].map((i) => (
-              <div key={i} className="h-72 animate-pulse rounded-3xl bg-white dark:bg-stone-900" />
+              <div key={i} className="h-72 animate-pulse rounded-3xl bg-white dark:bg-slate-900" />
             ))}
           </div>
         ) : filtered.length === 0 ? (
-          <div className="mt-10 rounded-3xl border border-dashed border-stone-300 bg-white p-12 text-center dark:border-white/20 dark:bg-stone-900">
-            <Star className="mx-auto h-10 w-10 text-stone-300 dark:text-stone-600" />
-            <h3 className="mt-3 text-lg font-extrabold text-stone-900 dark:text-stone-100">Hmm, nothing found</h3>
-            <p className="mt-1 text-sm text-stone-500 dark:text-stone-400">
+          <div className="mt-10 rounded-3xl border border-dashed border-stone-300 bg-white p-12 text-center dark:border-white/20 dark:bg-slate-900">
+            <Star className="mx-auto h-10 w-10 text-stone-300 dark:text-slate-600" />
+            <h3 className="mt-3 text-lg font-extrabold text-stone-900 dark:text-slate-100">Hmm, nothing found</h3>
+            <p className="mt-1 text-sm text-stone-500 dark:text-slate-400">
               Try a different area or stretch the budget a little — your perfect court is out there!
             </p>
           </div>
@@ -191,7 +192,7 @@ function VenuesInner() {
 
 export default function VenuesPage() {
   return (
-    <Suspense fallback={<div className="min-h-screen bg-[#FFF9F0] dark:bg-stone-950" />}>
+    <Suspense fallback={<div className="min-h-screen bg-[#FFF9F0] dark:bg-slate-950" />}>
       <VenuesInner />
     </Suspense>
   );

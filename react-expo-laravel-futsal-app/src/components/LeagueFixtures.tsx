@@ -13,8 +13,9 @@ import {
   Trophy,
 } from "lucide-react";
 import type { LeagueDetail, LeagueMatchRow } from "@/lib/league-store";
-import { LEAGUE_ROUNDS, leagueDateLabel } from "@/lib/league";
+import { LEAGUE_ROUNDS, leagueDateLabel, leagueModeLabel, modeHasBracket } from "@/lib/league";
 import { formatTime12, initials } from "@/lib/futsal";
+import { apiFetch } from "@/lib/api";
 
 /**
  * Fixtures & results ⚽
@@ -49,6 +50,12 @@ export function LeagueFixtures({
   const [scores, setScores] = useState<Record<number, { home: string; away: string }>>({});
 
   const squads = league.teams;
+  const modeInfo = leagueModeLabel(league.mode);
+  const drawLabel = modeHasBracket(league.mode)
+    ? league.mode === "group_knockout"
+      ? "Draw groups + bracket"
+      : "Draw the bracket"
+    : "Draw the round robin";
   const { upcoming, results } = useMemo(() => {
     const played = league.matches.filter((m) => m.homeScore !== null && m.awayScore !== null);
     const rest = league.matches.filter((m) => m.homeScore === null || m.awayScore === null);
@@ -63,7 +70,7 @@ export function LeagueFixtures({
     setMsg("");
     setErr("");
     try {
-      const res = await fetch(`/api/tournaments/${league.id}/matches`, {
+      const res = await apiFetch(`/api/tournaments/${league.id}/matches`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ hostId, ...body }),
@@ -92,11 +99,14 @@ export function LeagueFixtures({
   }
 
   return (
-    <div className="rounded-3xl border border-[#F0E3CC] bg-white p-5 shadow-sm dark:border-white/10 dark:bg-stone-900">
+    <div className="rounded-3xl border border-[#F0E3CC] bg-white p-5 shadow-sm dark:border-white/10 dark:bg-slate-900">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="flex items-center gap-2 text-xs font-black uppercase tracking-widest text-emerald-700 dark:text-emerald-400">
           <Trophy className="h-3.5 w-3.5" /> Fixtures &amp; results
-          <span className="rounded-full bg-stone-100 px-2 py-0.5 text-[10px] font-black text-stone-500 dark:bg-white/10 dark:text-stone-300">
+          <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[10px] font-black text-orange-700 dark:bg-orange-500/15 dark:text-orange-300">
+            {modeInfo.emoji} {modeInfo.label}
+          </span>
+          <span className="rounded-full bg-stone-100 px-2 py-0.5 text-[10px] font-black text-stone-500 dark:bg-white/10 dark:text-slate-300">
             {league.playedMatches}/{league.totalMatches || 0} played
           </span>
         </h2>
@@ -112,7 +122,7 @@ export function LeagueFixtures({
               ) : (
                 <Shuffle className="h-3.5 w-3.5" />
               )}
-              Draw the round robin
+              {drawLabel}
             </button>
             <button
               onClick={() => setShowAdd((v) => !v)}
@@ -138,34 +148,41 @@ export function LeagueFixtures({
 
       {isHost && showAdd && (
         <div className="mt-3 grid gap-2 rounded-2xl border border-[#F0E3CC] bg-[#FFF6E9] p-3 dark:border-white/10 dark:bg-white/5 sm:grid-cols-2">
+          {/* A squad can't play itself, so each list hides whoever is already
+              picked on the other side — the server refuses it too, but the
+              option shouldn't have been there to click. */}
           <select
             value={homeTeamId}
             onChange={(e) => setHomeTeamId(e.target.value)}
-            className="rounded-xl border border-[#F0E3CC] bg-white px-3 py-2 text-xs font-bold dark:border-white/10 dark:bg-stone-950 dark:text-stone-100"
+            className="rounded-xl border border-[#F0E3CC] bg-white px-3 py-2 text-xs font-bold dark:border-white/10 dark:bg-slate-950 dark:text-slate-100"
           >
             <option value="">Home squad…</option>
-            {squads.map((s) => (
-              <option key={s.teamId} value={s.teamId}>
-                {s.name}
-              </option>
-            ))}
+            {squads
+              .filter((s) => String(s.teamId) !== awayTeamId)
+              .map((s) => (
+                <option key={s.teamId} value={s.teamId}>
+                  {s.name}
+                </option>
+              ))}
           </select>
           <select
             value={awayTeamId}
             onChange={(e) => setAwayTeamId(e.target.value)}
-            className="rounded-xl border border-[#F0E3CC] bg-white px-3 py-2 text-xs font-bold dark:border-white/10 dark:bg-stone-950 dark:text-stone-100"
+            className="rounded-xl border border-[#F0E3CC] bg-white px-3 py-2 text-xs font-bold dark:border-white/10 dark:bg-slate-950 dark:text-slate-100"
           >
             <option value="">Away squad…</option>
-            {squads.map((s) => (
-              <option key={s.teamId} value={s.teamId}>
-                {s.name}
-              </option>
-            ))}
+            {squads
+              .filter((s) => String(s.teamId) !== homeTeamId)
+              .map((s) => (
+                <option key={s.teamId} value={s.teamId}>
+                  {s.name}
+                </option>
+              ))}
           </select>
           <select
             value={round}
             onChange={(e) => setRound(e.target.value)}
-            className="rounded-xl border border-[#F0E3CC] bg-white px-3 py-2 text-xs font-bold dark:border-white/10 dark:bg-stone-950 dark:text-stone-100"
+            className="rounded-xl border border-[#F0E3CC] bg-white px-3 py-2 text-xs font-bold dark:border-white/10 dark:bg-slate-950 dark:text-slate-100"
           >
             {LEAGUE_ROUNDS.map((r) => (
               <option key={r} value={r}>
@@ -178,13 +195,13 @@ export function LeagueFixtures({
               type="date"
               value={date}
               onChange={(e) => setDate(e.target.value)}
-              className="rounded-xl border border-[#F0E3CC] bg-white px-3 py-2 text-xs font-bold dark:border-white/10 dark:bg-stone-950 dark:text-stone-100"
+              className="rounded-xl border border-[#F0E3CC] bg-white px-3 py-2 text-xs font-bold dark:border-white/10 dark:bg-slate-950 dark:text-slate-100"
             />
             <input
               type="time"
               value={startTime}
               onChange={(e) => setStartTime(e.target.value)}
-              className="rounded-xl border border-[#F0E3CC] bg-white px-3 py-2 text-xs font-bold dark:border-white/10 dark:bg-stone-950 dark:text-stone-100"
+              className="rounded-xl border border-[#F0E3CC] bg-white px-3 py-2 text-xs font-bold dark:border-white/10 dark:bg-slate-950 dark:text-slate-100"
             />
           </div>
           <button
@@ -201,19 +218,27 @@ export function LeagueFixtures({
                 "create"
               )
             }
-            disabled={busy !== "" || !homeTeamId || !awayTeamId}
-            className="rounded-xl bg-stone-900 px-4 py-2.5 text-xs font-black text-white transition hover:bg-stone-800 disabled:opacity-50 dark:bg-white dark:text-stone-900 sm:col-span-2"
+            disabled={busy !== "" || !homeTeamId || !awayTeamId || homeTeamId === awayTeamId}
+            className="rounded-xl bg-stone-900 px-4 py-2.5 text-xs font-black text-white transition hover:bg-stone-800 disabled:opacity-50 dark:bg-white dark:text-slate-900 sm:col-span-2"
           >
-            {busy === "create" ? "Adding…" : "Add fixture 📅"}
+            {busy === "create"
+              ? "Adding…"
+              : homeTeamId && homeTeamId === awayTeamId
+                ? "Pick two different squads 🙂"
+                : "Add fixture 📅"}
           </button>
         </div>
       )}
 
       {league.matches.length === 0 && (
-        <p className="mt-3 rounded-2xl border border-dashed border-stone-300 px-4 py-6 text-center text-xs font-bold text-stone-400 dark:border-white/10 dark:text-stone-500">
+        <p className="mt-3 rounded-2xl border border-dashed border-stone-300 px-4 py-6 text-center text-xs font-bold text-stone-400 dark:border-white/10 dark:text-slate-500">
           No fixtures yet.{" "}
           {isHost
-            ? "Draw the round robin and every squad plays every other once."
+            ? league.mode === "knockout"
+              ? "Draw the bracket and every round appears, byes included."
+              : league.mode === "group_knockout"
+                ? "Draw the groups and the bracket — the knockout fills itself as the groups finish."
+                : "Draw the round robin and every squad plays every other once."
             : "The host will publish the calendar soon."}
         </p>
       )}
@@ -227,7 +252,7 @@ export function LeagueFixtures({
                   {m.round} • {leagueDateLabel(m.date)}
                   {m.startTime ? ` • ${formatTime12(m.startTime)}` : ""}
                 </p>
-                <p className="mt-0.5 flex flex-wrap items-center gap-1.5 text-sm font-black text-stone-900 dark:text-stone-100">
+                <p className="mt-0.5 flex flex-wrap items-center gap-1.5 text-sm font-black text-stone-900 dark:text-slate-100">
                   <span className="flex items-center gap-1.5">
                     <span
                       className="grid h-6 w-6 place-items-center rounded-lg text-[9px] font-black text-white"
@@ -249,19 +274,35 @@ export function LeagueFixtures({
                   </span>
                 </p>
                 {m.notes && (
-                  <p className="mt-1 text-[11px] font-semibold text-stone-400 dark:text-stone-500">
+                  <p className="mt-1 text-[11px] font-semibold text-stone-400 dark:text-slate-500">
                     {m.notes}
                   </p>
                 )}
               </div>
               {!isHost && (
-                <span className="rounded-full bg-[#FFF6E9] px-3 py-1.5 text-[10px] font-black text-stone-500 dark:bg-white/5 dark:text-stone-400">
+                <span className="rounded-full bg-[#FFF6E9] px-3 py-1.5 text-[10px] font-black text-stone-500 dark:bg-white/5 dark:text-slate-400">
                   Awaiting kickoff
                 </span>
               )}
             </div>
 
-            {isHost && (
+            {isHost && m.bracketRound > 0 && (m.homeTeamId === 0 || m.awayTeamId === 0) && (
+              <p className="mt-2 rounded-xl bg-stone-50 px-3 py-2 text-[11px] font-bold text-stone-400 dark:bg-white/5 dark:text-slate-500">
+                ⏳ Waiting on the game before it — the squad lands here as soon as that result is in.
+              </p>
+            )}
+
+            {isHost && m.bracketRound > 0 && m.homeTeamId > 0 && m.awayTeamId > 0 && (
+              <ScheduleRow
+                match={m}
+                busy={busy === `schedule-${m.id}`}
+                onSave={(date, startTime) =>
+                  void post({ action: "schedule", matchId: m.id, date, startTime }, `schedule-${m.id}`)
+                }
+              />
+            )}
+
+            {isHost && m.homeTeamId > 0 && m.awayTeamId > 0 && (
               <div className="mt-2 flex flex-wrap items-center gap-2">
                 <input
                   type="number"
@@ -275,7 +316,7 @@ export function LeagueFixtures({
                     }))
                   }
                   placeholder="0"
-                  className="w-14 rounded-xl border border-[#F0E3CC] px-2 py-1.5 text-center text-sm font-black dark:border-white/10 dark:bg-stone-950 dark:text-stone-100"
+                  className="w-14 rounded-xl border border-[#F0E3CC] px-2 py-1.5 text-center text-sm font-black dark:border-white/10 dark:bg-slate-950 dark:text-slate-100"
                 />
                 <span className="text-xs font-black text-stone-400">–</span>
                 <input
@@ -290,7 +331,7 @@ export function LeagueFixtures({
                     }))
                   }
                   placeholder="0"
-                  className="w-14 rounded-xl border border-[#F0E3CC] px-2 py-1.5 text-center text-sm font-black dark:border-white/10 dark:bg-stone-950 dark:text-stone-100"
+                  className="w-14 rounded-xl border border-[#F0E3CC] px-2 py-1.5 text-center text-sm font-black dark:border-white/10 dark:bg-slate-950 dark:text-slate-100"
                 />
                 <button
                   onClick={() =>
@@ -317,14 +358,14 @@ export function LeagueFixtures({
                 <button
                   onClick={() => void post({ action: "delete", matchId: m.id }, `del-${m.id}`)}
                   disabled={busy !== ""}
-                  className="rounded-xl border border-stone-200 px-3 py-2 text-[11px] font-black text-stone-500 transition hover:bg-stone-100 dark:border-white/10 dark:text-stone-400"
+                  className="rounded-xl border border-stone-200 px-3 py-2 text-[11px] font-black text-stone-500 transition hover:bg-stone-100 dark:border-white/10 dark:text-slate-400"
                 >
                   <Trash2 className="h-3.5 w-3.5" />
                 </button>
                 {onOpenAlbum && (
                   <button
                     onClick={() => onOpenAlbum(m.id)}
-                    className="flex items-center gap-1 rounded-xl border border-stone-200 px-3 py-2 text-[11px] font-black text-stone-500 transition hover:bg-stone-100 dark:border-white/10 dark:text-stone-400"
+                    className="flex items-center gap-1 rounded-xl border border-stone-200 px-3 py-2 text-[11px] font-black text-stone-500 transition hover:bg-stone-100 dark:border-white/10 dark:text-slate-400"
                   >
                     <Camera className="h-3.5 w-3.5" /> Photos
                   </button>
@@ -337,7 +378,7 @@ export function LeagueFixtures({
 
       {results.length > 0 && (
         <>
-          <p className="mt-4 text-[10px] font-black uppercase tracking-widest text-stone-400 dark:text-stone-500">
+          <p className="mt-4 text-[10px] font-black uppercase tracking-widest text-stone-400 dark:text-slate-500">
             Results
           </p>
           <ul className="mt-2 space-y-2">
@@ -346,7 +387,7 @@ export function LeagueFixtures({
                 key={m.id}
                 className="flex flex-wrap items-center justify-between gap-2 rounded-2xl bg-[#FFF6E9] px-3.5 py-2.5 dark:bg-white/5"
               >
-                <span className="flex flex-wrap items-center gap-2 text-sm font-bold text-stone-800 dark:text-stone-100">
+                <span className="flex flex-wrap items-center gap-2 text-sm font-bold text-stone-800 dark:text-slate-100">
                   <span
                     className={`${
                       Number(m.homeScore) > Number(m.awayScore) ? "font-black text-emerald-700 dark:text-emerald-300" : ""
@@ -354,7 +395,7 @@ export function LeagueFixtures({
                   >
                     {m.homeTeamName}
                   </span>
-                  <span className="rounded-lg bg-white px-2.5 py-1 text-sm font-black text-stone-900 shadow-sm dark:bg-stone-900 dark:text-stone-100">
+                  <span className="rounded-lg bg-white px-2.5 py-1 text-sm font-black text-stone-900 shadow-sm dark:bg-slate-900 dark:text-slate-100">
                     {m.homeScore}–{m.awayScore}
                   </span>
                   <span
@@ -366,7 +407,7 @@ export function LeagueFixtures({
                   </span>
                 </span>
                 <span className="flex items-center gap-2">
-                  <span className="text-[10px] font-bold text-stone-400 dark:text-stone-500">
+                  <span className="text-[10px] font-bold text-stone-400 dark:text-slate-500">
                     {m.round} • {leagueDateLabel(m.date)}
                   </span>
                   {isHost && (
@@ -374,7 +415,7 @@ export function LeagueFixtures({
                       onClick={() => void post({ action: "score", matchId: m.id, homeScore: "", awayScore: "" }, `clear-${m.id}`)}
                       disabled={busy !== ""}
                       title="Clear the score (a mistake)"
-                      className="rounded-lg border border-stone-200 px-2 py-1 text-[10px] font-black text-stone-500 transition hover:bg-white dark:border-white/10 dark:text-stone-400"
+                      className="rounded-lg border border-stone-200 px-2 py-1 text-[10px] font-black text-stone-500 transition hover:bg-white dark:border-white/10 dark:text-slate-400"
                     >
                       Fix
                     </button>
@@ -382,7 +423,7 @@ export function LeagueFixtures({
                   {onOpenAlbum && m.mediaCount > 0 && (
                     <button
                       onClick={() => onOpenAlbum(m.id)}
-                      className="flex items-center gap-1 rounded-lg bg-white px-2 py-1 text-[10px] font-black text-emerald-700 shadow-sm dark:bg-stone-900 dark:text-emerald-300"
+                      className="flex items-center gap-1 rounded-lg bg-white px-2 py-1 text-[10px] font-black text-emerald-700 shadow-sm dark:bg-slate-900 dark:text-emerald-300"
                     >
                       <Camera className="h-3 w-3" /> {m.mediaCount}
                     </button>
@@ -395,7 +436,7 @@ export function LeagueFixtures({
       )}
 
       {league.venueName && (
-        <p className="mt-3 flex items-center gap-1.5 text-[11px] font-bold text-stone-400 dark:text-stone-500">
+        <p className="mt-3 flex items-center gap-1.5 text-[11px] font-bold text-stone-400 dark:text-slate-500">
           <MapPin className="h-3 w-3" /> All fixtures at{" "}
           <Link href={`/venues/${league.venueId}`} className="underline hover:text-emerald-600">
             {league.venueName}
@@ -403,6 +444,52 @@ export function LeagueFixtures({
           {league.matchDays ? ` • ${league.matchDays}` : ""}
         </p>
       )}
+    </div>
+  );
+}
+
+/**
+ * A kick-off time for one bracket game ⏰
+ *
+ * A drawn bracket arrives with the shape but no clock — the host decides which
+ * round plays on which Saturday, and can do it before the slots are full, so
+ * "Semi-final 2, Sunday 9 AM" can be on the fixture list while it still reads
+ * "Winner Group A".
+ */
+function ScheduleRow({
+  match,
+  busy,
+  onSave,
+}: {
+  match: LeagueMatchRow;
+  busy: boolean;
+  onSave: (date: string, startTime: string) => void;
+}) {
+  const [date, setDate] = useState(match.date);
+  const [startTime, setStartTime] = useState(match.startTime);
+  const changed = date !== match.date || startTime !== match.startTime;
+
+  return (
+    <div className="mt-2 flex flex-wrap items-center gap-1.5">
+      <input
+        type="date"
+        value={date}
+        onChange={(e) => setDate(e.target.value)}
+        className="rounded-xl border border-[#F0E3CC] px-2 py-1 text-[11px] font-bold dark:border-white/10 dark:bg-slate-950 dark:text-slate-100"
+      />
+      <input
+        type="time"
+        value={startTime}
+        onChange={(e) => setStartTime(e.target.value)}
+        className="rounded-xl border border-[#F0E3CC] px-2 py-1 text-[11px] font-bold dark:border-white/10 dark:bg-slate-950 dark:text-slate-100"
+      />
+      <button
+        onClick={() => onSave(date, startTime)}
+        disabled={busy || !changed || (!date && !startTime)}
+        className="rounded-xl border border-stone-200 px-3 py-1 text-[11px] font-black text-stone-600 transition hover:bg-stone-100 disabled:opacity-40 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/5"
+      >
+        {busy ? "Saving…" : changed ? "Set kick-off 📅" : "Kick-off set ✓"}
+      </button>
     </div>
   );
 }

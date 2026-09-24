@@ -1,5 +1,5 @@
 import { db } from "@/db";
-import { courts, tournamentTeams, tournaments, venues } from "@/db/schema";
+import { courts, tournamentMatches, tournamentTeams, tournaments, venues } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { leagueDetail } from "@/lib/league-store";
 import {
@@ -10,6 +10,10 @@ import {
   LEAGUE_VISIBILITIES,
   TEAM_APPROVED,
   depositPercentError,
+  groupSetupError,
+  leagueModeError,
+  leagueModeLabel,
+  modeHasBracket,
   refundPercentError,
 } from "@/lib/league";
 import {
@@ -92,6 +96,10 @@ export async function PATCH(
 
     const name = body.name === undefined ? current.name : String(body.name).trim();
     const format = body.format === undefined ? current.format : String(body.format);
+    const mode = body.mode === undefined ? current.mode : String(body.mode);
+    const thirdPlace =
+      body.thirdPlace === undefined ? current.thirdPlace : body.thirdPlace === true || body.thirdPlace === "true";
+    const groupSize = body.groupSize === undefined ? current.groupSize : Number(body.groupSize);
     const maxTeams = body.maxTeams === undefined ? current.maxTeams : Number(body.maxTeams);
     const entryFee = body.entryFee === undefined ? current.entryFee : Number(body.entryFee);
     const depositPercent =
@@ -128,6 +136,8 @@ export async function PATCH(
         ? null
         : `Format must be one of ${LEAGUE_FORMATS.join(", ")} 🥅`,
       validateMaxTeams(maxTeams),
+      leagueModeError(mode),
+      groupSetupError({ mode, groupSize, maxTeams }),
       maxTeams < approved
         ? `${approved} squads are already in — the league can't be smaller than that 👥`
         : null,
@@ -153,6 +163,29 @@ export async function PATCH(
     );
     if (err) return Response.json({ error: err }, { status: 400 });
 
+    /*
+     * The competition type is fixed once there is anything to play 🏆
+     *
+     * A bracket and a league table are not the same shape: switching a drawn
+     * round robin into a knockout would leave fixtures that belong to neither,
+     * and switching a bracket back would strand the slots waiting on winners.
+     * So the host picks the mode while entries are open, and after the first
+     * fixture the answer is no — cancel and re-host instead.
+     */
+    if (mode !== current.mode) {
+      const fixtures = await db
+        .select()
+        .from(tournamentMatches)
+        .where(eq(tournamentMatches.tournamentId, leagueId));
+      if (fixtures.length > 0)
+        return Response.json(
+          {
+            error: `Fixtures are already drawn, so the competition type can't change from ${leagueModeLabel(current.mode).label} to ${leagueModeLabel(mode).label} 🏆 Cancel this league and host a new one in the shape you want.`,
+          },
+          { status: 409 }
+        );
+    }
+
     const updated = await db
       .update(tournaments)
       .set({
@@ -160,6 +193,9 @@ export async function PATCH(
         venueId,
         courtId,
         format,
+        mode,
+        thirdPlace: modeHasBracket(mode) ? thirdPlace : false,
+        groupSize: Math.min(8, Math.max(2, Math.trunc(groupSize) || 4)),
         maxTeams,
         entryFee,
         depositPercent,

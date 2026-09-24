@@ -9,6 +9,8 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { apiFetch } from "@/lib/api";
+import { storage } from "@/lib/storage";
 
 export type AppUser = {
   id: number;
@@ -88,13 +90,13 @@ export function UserProvider({ children }: { children: ReactNode }) {
     try {
       const stored =
         typeof window !== "undefined"
-          ? Number(localStorage.getItem(SESSION_KEY) || "")
+          ? Number(storage.get(SESSION_KEY) || "")
           : 0;
       if (!stored) {
         setUser(null);
         return;
       }
-      const res = await fetch("/api/users");
+      const res = await apiFetch("/api/users");
       const data = await res.json();
       const found: AppUser | undefined = (data.users ?? []).find(
         (u: AppUser) => u.id === stored
@@ -102,7 +104,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
       if (found) setUser(normalizeUser(found));
       else {
         setUser(null);
-        localStorage.removeItem(SESSION_KEY);
+        storage.remove(SESSION_KEY);
       }
     } catch {
       // stay logged out on network error
@@ -119,12 +121,12 @@ export function UserProvider({ children }: { children: ReactNode }) {
   const persist = (u: AppUser) => {
     setUser(normalizeUser(u));
     try {
-      localStorage.setItem(SESSION_KEY, String(u.id));
+      storage.set(SESSION_KEY, String(u.id));
     } catch {}
   };
 
   const login = useCallback(async (email: string, password: string) => {
-    const res = await fetch("/api/auth/login", {
+    const res = await apiFetch("/api/auth/login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email, password }),
@@ -136,7 +138,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const signup = useCallback(async (form: SignupData) => {
-    const res = await fetch("/api/auth/signup", {
+    const res = await apiFetch("/api/auth/signup", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(form),
@@ -150,14 +152,14 @@ export function UserProvider({ children }: { children: ReactNode }) {
   const logout = useCallback(() => {
     setUser(null);
     try {
-      localStorage.removeItem(SESSION_KEY);
+      storage.remove(SESSION_KEY);
     } catch {}
   }, []);
 
   const updateProfile = useCallback(
     async (patch: Partial<AppUser>) => {
       if (!user) throw new Error("Not logged in");
-      const res = await fetch(`/api/users/${user.id}`, {
+      const res = await apiFetch(`/api/users/${user.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(patch),

@@ -80,7 +80,7 @@ export function AvatarUploader({
             type="button"
             onClick={() => inputRef.current?.click()}
             disabled={busy}
-            className="rounded-full bg-stone-900 px-3.5 py-2 text-[11px] font-black text-white transition hover:bg-stone-700 disabled:opacity-50 dark:bg-white dark:text-stone-900 dark:hover:bg-stone-200"
+            className="rounded-full bg-stone-900 px-3.5 py-2 text-[11px] font-black text-white transition hover:bg-stone-700 disabled:opacity-50 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-200"
           >
             {busy ? "Reading…" : value ? "Change photo 📸" : "Upload photo 📸"}
           </button>
@@ -88,7 +88,7 @@ export function AvatarUploader({
             type="button"
             onClick={() => setUrlMode((v) => !v)}
             title="Paste image link"
-            className="grid h-[34px] w-[34px] place-items-center rounded-full border border-stone-200 text-stone-500 dark:border-white/10 dark:text-stone-400"
+            className="grid h-[34px] w-[34px] place-items-center rounded-full border border-stone-200 text-stone-500 dark:border-white/10 dark:text-slate-400"
           >
             <LinkIcon className="h-3.5 w-3.5" />
           </button>
@@ -103,7 +103,7 @@ export function AvatarUploader({
             </button>
           )}
         </div>
-        <p className="mt-1.5 text-[11px] leading-snug text-stone-400 dark:text-stone-500">
+        <p className="mt-1.5 text-[11px] leading-snug text-stone-400 dark:text-slate-500">
           JPG/PNG up to 2.5MB — teammates see this everywhere ⚽
         </p>
         {urlMode && (
@@ -127,7 +127,7 @@ export function AvatarUploader({
                 setUrlMode(false);
                 setError("");
               }}
-              className="shrink-0 rounded-xl bg-stone-900 px-3.5 text-xs font-black text-white dark:bg-white dark:text-stone-900"
+              className="shrink-0 rounded-xl bg-stone-900 px-3.5 text-xs font-black text-white dark:bg-white dark:text-slate-900"
             >
               Use
             </button>

@@ -8,6 +8,9 @@ import { ReceiptViewer } from "@/components/ReceiptUploader";
 import { PlayerRatingBadge } from "@/components/PlayerRating";
 import type { PlayerStats } from "@/lib/loyalty";
 import { formatNPR, formatTime12, prettyDate } from "@/lib/futsal";
+import { BookingLedgerPanel } from "@/components/BookingLedgerPanel";
+import { SettleAmendButton } from "@/components/SettleAmendButton";
+import { apiFetch } from "@/lib/api";
 
 type Booking = {
   id: number;
@@ -32,6 +35,11 @@ type Booking = {
   depositStatus: string;
   paidAmount: number;
   gatewayTxnId: string;
+  /**
+   * When the owner marked this settled. Drives the correction window: the row
+   * can be amended for `SETTLE_EDIT_WINDOW_MS` after this, then it locks.
+   */
+  settledAt: string | null;
   court?: { id: number; name: string };
   venue?: { id: number; name: string };
   user?: { name: string };
@@ -67,11 +75,13 @@ export default function OwnerBookingsPage() {
   const [awayInput, setAwayInput] = useState("");
   const [savingScore, setSavingScore] = useState(false);
   const [scoreError, setScoreError] = useState("");
+  /** Which booking's payment desk is open — see `BookingLedgerPanel`. */
+  const [ledgerFor, setLedgerFor] = useState<Booking | null>(null);
 
   const load = async () => {
     const [bRes, vRes] = await Promise.all([
-      fetch("/api/bookings"),
-      fetch("/api/venues"),
+      apiFetch("/api/bookings"),
+      apiFetch("/api/venues"),
     ]);
     const b = await bRes.json();
     const v = await vRes.json();
@@ -105,19 +115,10 @@ export default function OwnerBookingsPage() {
   }, [bookings, myVenueIds, filter]);
 
   async function setStatus(id: number, status: string, actor: string = "owner") {
-    await fetch(`/api/bookings/${id}`, {
+    await apiFetch(`/api/bookings/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ status, actor }),
-    });
-    load();
-  }
-
-  async function markPaid(id: number) {
-    await fetch(`/api/bookings/${id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ paymentStatus: "paid" }),
     });
     load();
   }
@@ -145,7 +146,7 @@ export default function OwnerBookingsPage() {
     setSavingScore(true);
     setScoreError("");
     try {
-      const res = await fetch(`/api/bookings/${scoreFor.id}`, {
+      const res = await apiFetch(`/api/bookings/${scoreFor.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -303,11 +304,16 @@ export default function OwnerBookingsPage() {
                           🛡️ DEPOSIT {formatNPR(b.depositAmount)} ✓
                         </span>
                       ) : (
+                        // Not a one-click "paid" any more: a game is usually
+                        // settled in parts (some eSewa, some Khalti, some cash)
+                        // and the extras land during the match, so this opens
+                        // the ledger where each instalment is recorded.
                         <button
-                          onClick={() => markPaid(b.id)}
+                          onClick={() => setLedgerFor(b)}
+                          title="Record payments and extra charges"
                           className="rounded-full bg-amber-100 px-2.5 py-1 text-[11px] font-black text-amber-700 transition hover:bg-amber-200 dark:bg-amber-500/15 dark:text-amber-300 dark:hover:bg-amber-500/25"
                         >
-                          PENDING — collect
+                          💰 Collect
                         </button>
                       )}
                       {b.depositRequired && (
@@ -333,6 +339,15 @@ export default function OwnerBookingsPage() {
                     </td>
                     <td className="px-5 py-3">
                       <div className="flex justify-end gap-1.5">
+                        {/* Amending a settled game must not require opening the
+                            payment desk first: the owner needs to see from the
+                            list, at a glance, which ones are still fixable and
+                            how long is left. The countdown owns its own clock
+                            so ticking it doesn't re-render the whole table. */}
+                        <SettleAmendButton
+                          settledAt={b.settledAt}
+                          onOpen={() => setLedgerFor(b)}
+                        />
                         {b.status === "pending" && (
                           <>
                             <button
@@ -464,6 +479,18 @@ export default function OwnerBookingsPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {ledgerFor && (
+        <BookingLedgerPanel
+          bookingId={ledgerFor.id}
+          bookingLabel={`${prettyDate(ledgerFor.date)} • ${formatTime12(ledgerFor.startTime)} • ${
+            ledgerFor.venue?.name ?? "Venue"
+          } • ${formatNPR(ledgerFor.totalPrice)}`}
+          ownerId={user?.id ?? 0}
+          onClose={() => setLedgerFor(null)}
+          onSettled={load}
+        />
       )}
     </OwnerGuard>
   );

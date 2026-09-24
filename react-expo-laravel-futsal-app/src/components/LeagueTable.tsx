@@ -23,7 +23,7 @@ export function LeagueTable({
 }) {
   if (standings.length === 0)
     return (
-      <p className="rounded-2xl border border-dashed border-stone-300 px-4 py-8 text-center text-xs font-bold text-stone-400 dark:border-white/10 dark:text-stone-500">
+      <p className="rounded-2xl border border-dashed border-stone-300 px-4 py-8 text-center text-xs font-bold text-stone-400 dark:border-white/10 dark:text-slate-500">
         {emptyHint}
       </p>
     );
@@ -47,7 +47,7 @@ export function LeagueTable({
               <th className="px-3 py-2.5">Form</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-stone-100 bg-white dark:divide-white/5 dark:bg-stone-900">
+          <tbody className="divide-y divide-stone-100 bg-white dark:divide-white/5 dark:bg-slate-900">
             {standings.map((row, i) => {
               const mine = highlightTeamIds.includes(row.teamId);
               return (
@@ -64,7 +64,7 @@ export function LeagueTable({
                       ) : i === 2 ? (
                         <Medal className="h-3.5 w-3.5 text-orange-400" />
                       ) : null}
-                      <span className="text-xs font-black text-stone-500 dark:text-stone-400">
+                      <span className="text-xs font-black text-stone-500 dark:text-slate-400">
                         {i + 1}
                       </span>
                     </span>
@@ -80,7 +80,7 @@ export function LeagueTable({
                       >
                         {initials(row.name)}
                       </span>
-                      <span className="truncate text-xs font-bold text-stone-800 dark:text-stone-100">
+                      <span className="truncate text-xs font-bold text-stone-800 dark:text-slate-100">
                         {row.name}
                         {mine && (
                           <span className="ml-1.5 rounded-full bg-emerald-600 px-1.5 py-0.5 text-[9px] font-black text-white">
@@ -90,23 +90,23 @@ export function LeagueTable({
                       </span>
                     </Link>
                   </td>
-                  <td className="px-2 py-2 text-center text-xs font-bold text-stone-600 dark:text-stone-300">
+                  <td className="px-2 py-2 text-center text-xs font-bold text-stone-600 dark:text-slate-300">
                     {row.played}
                   </td>
                   <td className="px-2 py-2 text-center text-xs font-bold text-emerald-600 dark:text-emerald-400">
                     {row.won}
                   </td>
-                  <td className="px-2 py-2 text-center text-xs font-bold text-stone-500 dark:text-stone-400">
+                  <td className="px-2 py-2 text-center text-xs font-bold text-stone-500 dark:text-slate-400">
                     {row.drawn}
                   </td>
                   <td className="px-2 py-2 text-center text-xs font-bold text-red-500">{row.lost}</td>
-                  <td className="px-2 py-2 text-center text-xs font-bold text-stone-600 dark:text-stone-300">
+                  <td className="px-2 py-2 text-center text-xs font-bold text-stone-600 dark:text-slate-300">
                     {row.goalsFor}
                   </td>
-                  <td className="px-2 py-2 text-center text-xs font-bold text-stone-600 dark:text-stone-300">
+                  <td className="px-2 py-2 text-center text-xs font-bold text-stone-600 dark:text-slate-300">
                     {row.goalsAgainst}
                   </td>
-                  <td className="px-2 py-2 text-center text-xs font-bold text-stone-600 dark:text-stone-300">
+                  <td className="px-2 py-2 text-center text-xs font-bold text-stone-600 dark:text-slate-300">
                     {row.goalDiff > 0 ? `+${row.goalDiff}` : row.goalDiff}
                   </td>
                   <td className="px-3 py-2 text-center">
@@ -117,7 +117,7 @@ export function LeagueTable({
                   <td className="px-3 py-2">
                     <span className="flex gap-1">
                       {row.form.length === 0 && (
-                        <span className="text-[10px] font-bold text-stone-300 dark:text-stone-600">
+                        <span className="text-[10px] font-bold text-stone-300 dark:text-slate-600">
                           —
                         </span>
                       )}
@@ -159,7 +159,7 @@ export function PrizeBreakdown({
         <Target className="h-3.5 w-3.5" /> Prize pool
       </p>
       {lines.length === 0 ? (
-        <p className="mt-2 text-sm font-bold text-stone-600 dark:text-stone-300">
+        <p className="mt-2 text-sm font-bold text-stone-600 dark:text-slate-300">
           Bragging rights and a trophy 🏆
         </p>
       ) : (
@@ -169,7 +169,7 @@ export function PrizeBreakdown({
               key={`${l.place}-${i}`}
               className="flex items-baseline justify-between gap-3 border-b border-amber-200/60 pb-1 text-sm last:border-0 dark:border-amber-500/20"
             >
-              <span className="font-black text-stone-700 dark:text-stone-200">{l.place}</span>
+              <span className="font-black text-stone-700 dark:text-slate-200">{l.place}</span>
               <span className="font-bold text-amber-800 dark:text-amber-300">{l.prize}</span>
             </li>
           ))}

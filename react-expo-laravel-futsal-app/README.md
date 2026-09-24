@@ -48,6 +48,99 @@ All demo accounts use the password `futsal123`.
 
 ---
 
+## Porting this to React Native (Expo) and Laravel
+
+This app is written in Next.js, but it is meant to be carried over to an Expo
+frontend with a Laravel backend. Two things were done deliberately to make that
+port mechanical rather than archaeological.
+
+### Every network call goes through one module
+
+There is no `fetch("/api/...")` anywhere in `src/` — all 146 call sites go
+through `src/lib/api.ts`:
+
+```ts
+import { apiFetch, apiUrl, apiGet } from "@/lib/api";
+
+const res = await apiFetch("/api/bookings", { method: "POST", body });
+```
+
+`apiFetch` is a thin wrapper: it resolves the path against a base origin and
+forwards `init` untouched, so JSON bodies, `FormData` uploads, headers and
+abort signals all keep working.
+
+The base comes from one environment variable:
+
+```
+NEXT_PUBLIC_API_BASE=https://api.yourdomain.com
+```
+
+It must carry the `NEXT_PUBLIC_` prefix so the value is inlined into the client
+bundle. Unset, it is `""` and every call resolves to the same relative path it
+always did — which is how the app runs today.
+
+Why this matters: **React Native has no origin**, so a relative URL is not a
+valid URL there, and Laravel will be a different host anyway. Without this
+module both migrations would have meant hand-editing 146 call sites. With it,
+they are one line.
+
+### The domain logic is already React Native safe
+
+React Native provides no `window`, `document` or `localStorage`. Auditing
+`src/lib` for those globals: **14 of the 16 modules port as-is** —
+`booking-ledger`, `loyalty`, `league`, `teams`, `payments`, `promos`,
+`validation`, `futsal`, `auth` and the store modules. They are pure TypeScript
+with no DOM dependency, so they can be copied into an Expo project unchanged.
+
+The two that cannot:
+
+- `download.ts` — builds an `<a download>` and a blob URL to save a ZIP.
+  In Expo, use `expo-sharing` / `expo-file-system` instead.
+- `gateway-client.ts` — opens eSewa/Khalti by writing an auto-submitting form
+  into a popup. In Expo, use a `WebView` or the gateway's deep link.
+
+Both are genuinely browser-only tasks, not accidental coupling, so they are the
+only two files in the domain layer that need rewriting.
+
+### For the Laravel side
+
+The full endpoint inventory is in **[`docs/api-routes.md`](docs/api-routes.md)**
+— 44 route files, 77 endpoints, with the method and source file for each. It is
+generated from `src/app/api/**/route.ts` by `scripts/api-routes.mjs`, and
+`tests/portability.mjs` fails if it drifts from the routes on disk:
+
+```
+node scripts/api-routes.mjs --write   # regenerate after adding a route
+node scripts/api-routes.mjs --check   # what the test runs
+```
+
+The API routes under `src/app/api/` are the contract to reimplement. The
+six suites in `tests/api/` assert it end to end (161 assertions) over plain
+HTTP — they never import Drizzle — so they can double as an acceptance suite
+for the Laravel port:
+
+```
+BASE_URL=https://api.yourdomain.com npm run test:api
+```
+
+All six honour `BASE_URL`; it defaults to `http://127.0.0.1:3000`. Verified
+both directions: the correct host gives 6/6, and pointing at a dead port gives
+0/6, so the override really does reach every suite.
+
+Two honest caveats before you expect a green run against Laravel:
+
+- The suites assume seeded data — specific owner and player ids, an existing
+  venue and court. A fresh Laravel database needs equivalent fixtures, and the
+  expected ids can be overridden per suite via `PLAYER`, `PLAYER2`, `U`, `D1`,
+  `G1` and `G2`.
+- Two suites reach into Postgres directly, because the settlement lock can only
+  be tested by moving a timestamp into the past: `ledger.mjs` backdates
+  `settled_at` by 6 minutes and `settlement-lock.mjs` by 10, then assert every
+  write is refused. Both read their DSN from `DATABASE_URL`. They still need
+  rewriting against Laravel's database before they can run there, since they
+  assume Postgres `interval` syntax and the current table names.
+
+
 ## Database
 
 The app needs PostgreSQL 14+ and a database named in `DATABASE_URL`. Both the app
@@ -99,6 +192,47 @@ genuinely want the rows gone. A fresh clone never sees the prompt, because its t
 | `npm run db:push`       | Push `src/db/schema.ts` to the database (drizzle-kit)         |
 | `npm run typecheck`     | `tsc --noEmit`                                                |
 | `npm run lint`          | ESLint                                                        |
+| `npm test`              | Unit + rendered-component suites (no server needed)           |
+| `npm run test:api`      | Live API suites — needs `npm run dev` and a database          |
+| `npm run test:all`      | Both of the above                                             |
+
+---
+
+## Tests
+
+There is no test framework here. `tests/run.mjs` is about a hundred lines and
+does two things: it bundles the `.tsx` suites against `src/` with the esbuild
+that Next.js already ships, and it runs the `tests/api/*.mjs` suites as plain
+node scripts against a live dev server.
+
+```bash
+npm test          # 159 assertions — pure logic, components rendered in jsdom, responsive + portability guardrails
+npm run test:api  # 161 assertions — real HTTP against a running server + Postgres
+npm run test:all  # all 11 suites
+```
+
+| Suite                      | Covers                                                        |
+| -------------------------- | ------------------------------------------------------------- |
+| `ledger.unit.tsx`          | The money maths: splits, part payment, overpayment, voids, and the 5-minute settle window |
+| `amendrow.dom.tsx`         | The Amend button in the bookings row: countdown while the window is open, Locked after it closes |
+| `responsive.mjs`           | Static responsive guardrails: viewport-fit, pinned widths, scrollable tables, grid truncation, dark palette |
+| `paypanel.dom.tsx`         | The owner's payment panel, rendered: venue default prefill, walking a balance down, undo, settle |
+| `paysummary.dom.tsx`       | The player's read-only breakdown: lazy fetch, itemised mediums, voided rows excluded |
+| `api/ledger.mjs`           | Every ledger action over HTTP, including who is refused and what the database ends up holding |
+| `api/gateway.mjs`          | eSewa/Khalti verify landing in the ledger, and replays not double-counting |
+| `api/venue-defaults.mjs`   | The per-venue default extra fee on create and edit            |
+| `api/settlement-lock.mjs`  | The 5-minute window, and `PATCH /api/bookings/[id]` being locked once it closes |
+| `api/deposit-split.mjs`    | A deposit paid online, the balance collected at the desk      |
+| `api/court-delete.mjs`     | Retiring a single court                                       |
+
+The API suites need players, and the app caps a player at three cancellations a
+month. Rather than hard-code user ids — which made a later suite trip *"Whoa,
+slow down! 🛑"* and fail for reasons that had nothing to do with the code under
+test — the runner registers a fresh account per slot through the real signup
+route. A brand-new player also has no booking history, so `depositDecision`
+never surprises a suite by demanding a deposit mid-test.
+
+Set `VERBOSE=1` to see every assertion instead of only the failures.
 
 ---
 
@@ -170,6 +304,217 @@ Promos stack with loyalty free-play vouchers: free play is applied first, then t
 whatever balance remains. When free play covers the whole booking, promos are blocked.
 
 > Note: the separate `vouchers` table is the loyalty free-hour system — it is **not** promo codes.
+
+---
+
+## Leagues: three ways to decide a winner — and the money locks at kick-off
+
+**Picking the shape.** Hosting a league starts with one question: *how does this decide a
+winner?* (`mode` on `tournaments`, `LEAGUE_MODES` in `src/lib/league.ts`).
+
+| Mode | What the host gets | How the draw is built |
+| --- | --- | --- |
+| `round_robin` 🔄 | One table, everyone plays everyone once | Every pairing once, `round: "League"`, re-drawing skips pairs already on the book |
+| `knockout` 🥊 | A bracket: quarter-finals, semis, final (+ optional 🥉 third place) | `bracketSizeFor()` rounds the field up to 8/16/32, `seedOrder()` seeds 1-v-8 / 4-v-5 style, the surplus slots are **byes** for the top seeds |
+| `group_knockout` 🎯 | Groups first, then a bracket for the qualifiers | `makeGroups()` snake-drafts the squads into groups of `groupSize` (never a group of one); the top two of each group feed `knockoutFromGroups()` |
+
+The hosting form shows a live hint of what the draw will be — "a bracket of 8: 5 squads, 3 byes" —
+using the same arithmetic the server runs, so the promise and the fixture list cannot disagree.
+`groupSize` is bounded by `MIN_GROUP_SIZE`/`MAX_GROUP_SIZE` and checked by `groupSetupError()` on
+both sides.
+
+**The bracket is data, not decoration.** Each fixture carries `bracketRound`, `slot` and a
+*ref* per side — `W2-0` (winner of round 2 slot 0), `L2-1` (loser, for the bronze game), `G1W` /
+`G2R` (group 1 winner / group 2 runner-up). `advanceBracket()` walks those refs after every score
+and fills the downstream slots, so scoring the last group game promotes two squads into the
+semi-finals without anyone touching the fixture book. Refs are round-relative on purpose: the
+semi-final is round 1 in a 4-team bracket and round 2 in an 8-team one, so nothing is hardcoded.
+A knockout game cannot be drawn level (`400` — count the penalties), and `winnerOf()` returns 0
+for a level or voided game so a slot never fills with a guess. The host can also nudge it by hand
+with `action: "advance"`, set kick-offs with `action: "schedule"` (works on empty slots too, so
+"final, Saturday 7:30 PM" can be on the card before the finalists exist), and cannot delete a
+bracket game at all. `PATCH /api/tournaments/{id}` answers `409` if the host tries to change
+`mode` once fixtures are drawn.
+
+**The money lock 🔒.** The refund promise — "back out and a tenth of your entry fee comes back"
+— is true right up until the squad's **first kick-off**, and then it is over. `moneyLockedFor()`
+in `src/lib/league.ts` says a squad has played when it has a result on the board *or* one of its
+fixtures has a kick-off time behind it (a voided fixture does not count — nobody played it).
+That covers every way a season ends for a squad: knocked out in the quarter-final, last in the
+group, or champion. From that moment `withdraw` answers `409` with the reason spelled out,
+`refundable` is 0, and the captain's panel swaps the red **Withdraw** button for **Entry locked —
+you've played**. The host can still remove a squad, but with `refund: 0`, and the chip says so
+before they click. A fixture still in the future locks nothing — walking away before the first
+game works exactly as advertised.
+
+One wrinkle worth knowing: a squad that backs out, takes its refund and then re-enters keeps the
+old `refundedAmount` on its entry row, so `paymentState()` takes the entry `status` and only reads
+**Backed out — part refunded** when the squad really is withdrawn.
+
+**Paying the entry fee.** A squad entering a league picks a medium the same way a player booking a
+pitch does — 💚 eSewa, 💜 Khalti or 💵 Cash at venue (`payMethod` on `tournament_teams`). Online
+picks go out to a checkout: `action: "initiate"` on the payments route returns eSewa's signed
+form-post fields or Khalti's `payment_url`, with a league-aware reference (`LG-{league}-{team}-…`
+from `makeLeagueEsewaUuid`/`makeLeagueKhaltiOrder`, so a callback can never be confused with a
+booking's) and the same local-simulator fallback the booking gateways have. When the checkout comes
+back, `action: "verify"` writes the ledger row, stores the gateway txn, and — because paying the
+deposit *is* accepting an invitation — flips an invited squad to approved. Cash moves nothing here:
+the host records it, and the captain can attach a screenshot (`action: "receipt"`) that the host
+opens from the entry desk before approving.
+
+**No amount may exceed what is owed.** The entry fee is a ceiling in three places, because the
+ledger, the deposit gate and the 10% refund maths all believe whatever lands in `paidAmount`:
+`clampAmountInput()` in `src/lib/league.ts` keeps the host's "Record cash" box inside the remaining
+balance as you type, `action: "record"` refuses more than the squad owes (`400`), and
+`action: "pay"` has always refused it too. An entry that is settled has nothing left to record.
+
+**Adding a fixture.** The host's "Add a fixture" form lists the approved squads twice — home and
+away — and each list hides whoever is already picked on the other side, so a squad can't be
+selected against itself. The server refuses that anyway (`400 A squad can't play itself 🙂`), but
+the option shouldn't have been there to click.
+
+**Match photos.** Album photos are stored as data URLs on the league row, so there is no file on a
+server to link to — the bytes are already in the browser, and `src/lib/download.ts` does the rest.
+Each photo has its own download button (on the tile and in the preview), and **Download all**
+builds a single `.zip` in the browser: photos are already-compressed JPEGs, so the ZIP is *stored*
+rather than deflated, which loses nothing and needs no dependency — and one file beats firing
+twenty anchors at once, which Chrome blocks after the first couple. Album links can't be zipped,
+so they go in as `album-links.txt`.
+
+---
+
+## A booking's money, instalment by instalment
+
+**Why the one-click "paid" went away.** Marking a booking paid was a single button, and it lied
+about how money actually arrives at a futsal ground. A Rs 1,700 court is often settled as 700 from
+eSewa, 500 from Khalti and 500 in cash at the counter — and the final figure isn't even known
+until the players have bought their water. So **💰 Collect** on `/admin/bookings` now opens a
+payment desk instead of flipping a flag.
+
+**The ledger.** Two append-only tables, `booking_payments` and `booking_extras`. Every instalment
+is its own row — amount, medium, an optional note, who recorded it and when — so "how much did
+they owe, what did they pay it with, and how much of each" is a query rather than a memory. Owed,
+paid, balance and surplus are all *derived* from those rows; nothing trusts `booking.paidAmount`
+on its own. Paying over the total is allowed and reported as change due, because somebody handing
+over a Rs 2,000 note for a Rs 1,700 game is a Tuesday, not an error.
+
+**Extra charges.** The court fee is taken in advance; the water and spare balls aren't. Those are
+line items with their own description and amount, added as the game goes, and the total owed
+follows. Each venue can set a usual add-on (amount + what it's for) in the Owner Studio, which
+prefills the line — still editable per booking. An extra charge without a description is refused:
+an unnamed Rs 3,000 on somebody's bill is worse than no charge at all.
+
+**Corrections are voids, not deletions.** A mistake inside the window strikes the row through
+(`voidedAt`, `voidedBy`) and it drops out of the totals, but it stays in the history. Nothing is
+ever deleted, so the day can be reconciled against what was actually keyed in.
+
+**The five-minute window.** Marking a booking settled stamps `settledAt` and the ledger stays
+editable for `SETTLE_EDIT_WINDOW_MS` — five minutes — with the panel counting down. That covers the
+owner who typed 300 instead of 3,000. After it lapses every mutation is refused with `409
+ledger_locked`, including reopening, because a settled book is what the venue reconciles its
+takings against. Settling with nothing recorded is refused outright.
+
+**Amending is offered in the row, not only in the desk.** While that window is open, the All
+bookings table shows an **Amend 4:32** button on the settled row, counting down on a one-second
+clock, and it opens the payment desk. Once the window closes the row shows **Locked** instead, so
+the owner can see from the list which games are still fixable without opening each one. The row
+reads the same `settledAt` the server locks on, so the button and the API can never disagree about
+what is still editable. Undoing a settlement refreshes the list, or the row would keep showing a
+countdown for a state that no longer exists.
+
+The lock is enforced on `PATCH /api/bookings/[id]` too, not just the ledger route. That route writes
+`paymentStatus`, `paymentMethod`, `depositStatus` and `receiptUrl` — the same columns — so without
+the same check an owner could flip a locked booking back to "pending" through the side door and
+quietly undo a settlement. It now refuses those four fields with `409 ledger_locked` once the window
+closes. Inside the window they stay editable, unsettled bookings are never blocked, and the lock
+covers money only: marking the game itself completed still works.
+
+Everything is owner-only: a player pays through the gateway or hands cash over, and the owner is
+the one who writes it down (`403` otherwise). Settling pings the player, and mentions the change if
+they overpaid.
+
+**Players can see it too.** A booking card on `/bookings` has a **Payment details** expander that
+reads the same ledger, so a player isn't left with a bare "paid" badge when their Rs 1,700 game was
+actually 700 eSewa + 500 Khalti + 500 cash plus Rs 300 of water — and if they overpaid, it says the
+venue owes them the change. It fetches on first open and caches, because a bookings list is long and
+most cards never get opened.
+
+**The default add-on lives on the venue**, settable when you list it and changeable afterwards, so
+the desk prefills the right thing for that ground rather than a global guess.
+
+**Online money lands in the same ledger.** eSewa and Khalti already set `paidAmount` on the
+booking, but that says nothing about which medium it came by — so a booking paid in full online
+would have shown the desk "nothing received", which is the exact confusion the ledger exists to
+prevent. All four gateway paths (eSewa and Khalti, simulator and real) now write an instalment row
+too, `source: "gateway"`, carrying the gateway's transaction id in `reference`. That id is the
+idempotency key: a replayed verify callback — and they do get replayed — cannot turn one payment
+into two instalments. A gateway payment plus a cash top-up for the water is then just a normal
+split, and both mediums show side by side.
+
+---
+
+## The bell, and retiring a venue
+
+**Notifications.** The dropdown has two ways to clear it: a tick on each unread row, which marks
+just that one read without leaving the page, and **Mark all read** in the header for the
+after-a-week-away case. Both were already on the server (`PATCH /api/notifications/[id]` and
+`POST /api/notifications/read-all`) — the bell simply never offered them. The count on the icon
+drops optimistically and is re-read from the server afterwards, and the "Mark all read" button
+disappears once there is nothing left unread.
+
+**Retiring a venue.** The Owner Studio has always had an Edit button and no way out, so
+`DELETE /api/venues/[id]` exists now. It is the owner's call and nobody else's (`403`), and it is
+a **soft** delete: `deletedAt` is stamped, the venue leaves every listing, and its courts are set
+inactive so nothing new can be booked. The row itself stays, because bookings, payments, reviews
+and leagues all point at it — wiping it would erase the owner's own money history.
+
+It refuses while players still have a game to come (`409`, with the count), because someone who
+paid a deposit for Saturday shouldn't find the ground has quietly ceased to exist. Cancel or play
+those first. The studio asks for the venue name to be typed back before it will send the request,
+and retiring twice is a no-op.
+
+**Retiring a single court.** Same thing one level down, for the far more common case: you're
+resurfacing one pitch, not closing the ground. Each court row in the studio carries its own
+**Delete**, and `DELETE /api/courts/[id]` follows exactly the venue's rules — owner-only (`403`,
+ownership is read from the parent venue), soft (`deletedAt` stamped and the court deactivated),
+refused with `409` while a non-cancelled booking on that court is still ahead, and a typed-name
+confirmation before the studio will send it.
+
+A retired court drops out of the venue's `courts` array, its `courtCount`, and the `minPrice` the
+listings advertise — otherwise a venue would show off a pitch nobody can book. `POST /api/bookings`
+also rejects a retired court (`409`) even from a client holding a stale id. Pass
+`?includeDeletedCourts=1` to `GET /api/venues` to see them again; the history behind them is
+untouched either way. Retiring the last court shows an empty state rather than a blank panel, and
+the venue can still be retired afterwards.
+
+---
+
+## One review per player per venue — and a played game is locked
+
+**Reviews.** A player gets a single review at each venue, however many games they play there.
+The first one inserts a row; every later one *updates that same row* — rating, message and the
+game it was written from — so a venue page never shows an old and a new review from the same
+person (`POST /api/reviews` returns `200 { updated: true }` instead of `201`). Writing one still
+requires having actually played there. Once written it is **locked**: `DELETE /api/reviews`
+answers `403`, and the card shows a padlock instead of a bin. Playing another game at that venue
+reopens it for an update, which is why the bookings card says **Update review ⭐** rather than
+**Review ⭐** once you have reviewed that venue.
+
+**Played games.** "Played" has one definition, shared by the API and the UI as `gamePlayed()` in
+`src/lib/futsal.ts`: `completed`, or `confirmed` with the end time behind us. A `pending` or
+`rejected` request never counts — that game never happened, so it does not appear in the
+**Played** tab of *My games* either.
+
+A played booking is **locked**: the card drops the cancel / pay / add-receipt controls and shows
+**Game played • locked**, and the same rule is enforced server-side — `PATCH /api/bookings/{id}`
+and `DELETE /api/bookings/{id}` answer `409` for a player touching `status`, `paymentStatus`,
+`paymentMethod`, `depositStatus` or `receiptUrl`, and both gateway `initiate` routes refuse to
+start a payment. The **venue owner is exempt**, because marking a game completed, settling a
+payment and recording a competition score all happen *after* kickoff.
+
+The green "who's coming" panel (crew / joined / open spots, progress bar, link) no longer renders
+on booking cards — a finished game has nobody left to come. That live headcount belongs to the
+competition screen at `/matches`.
 
 ---
 

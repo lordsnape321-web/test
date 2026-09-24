@@ -1,0 +1,38 @@
+{
+  "expo": {
+    "name": "Futsal Nepal",
+    "slug": "futsal-nepal",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "scheme": "futsalnepal",
+    "userInterfaceStyle": "automatic",
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#0F172A",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "favicon": "./assets/favicon.png",
+      "bundler": "metro",
+      "output": "single"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-system-ui"
+    ],
+    "extra": {
+      "router": {
+        "origin": "https://8081-ifosys4azu9exm1gqq1f7.e2b.app",
+        "headOrigin": "https://8081-ifosys4azu9exm1gqq1f7.e2b.app"
+      }
+    }
+  }
+}

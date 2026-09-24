@@ -13,7 +13,12 @@ import {
   Users,
 } from "lucide-react";
 import type { LeagueSummary } from "@/lib/league-store";
-import { leagueStatusLabel, leagueVisibilityLabel, paymentState } from "@/lib/league";
+import {
+  leagueModeLabel,
+  leagueStatusLabel,
+  leagueVisibilityLabel,
+  paymentState,
+} from "@/lib/league";
 import { formatNPR, initials, prettyDate } from "@/lib/futsal";
 
 /**
@@ -28,6 +33,7 @@ import { formatNPR, initials, prettyDate } from "@/lib/futsal";
 export function LeagueCard({ league, compact = false }: { league: LeagueSummary; compact?: boolean }) {
   const status = leagueStatusLabel(league.status);
   const visibility = leagueVisibilityLabel(league.visibility);
+  const mode = leagueModeLabel(league.mode);
   const spotsLeft = Math.max(0, league.maxTeams - league.approvedTeams);
   const mine = league.viewer?.myTeams ?? [];
   const leading = mine.find((m) => m.status === "approved") ?? mine[0];
@@ -35,8 +41,10 @@ export function LeagueCard({ league, compact = false }: { league: LeagueSummary;
 
   return (
     <div
-      className={`group flex flex-col overflow-hidden rounded-3xl border border-[#F0E3CC] bg-white shadow-[0_10px_30px_rgba(180,120,60,0.08)] transition hover:border-emerald-300 dark:border-white/10 dark:bg-stone-900 dark:hover:border-emerald-500/50 ${
-        compact ? "w-[300px] shrink-0 sm:w-[340px]" : ""
+      className={`group flex flex-col overflow-hidden rounded-3xl border border-[#F0E3CC] bg-white shadow-[0_10px_30px_rgba(180,120,60,0.08)] transition hover:border-emerald-300 dark:border-white/10 dark:bg-slate-900 dark:hover:border-emerald-500/50 ${
+        // min() so a compact card can never be wider than its container: a
+        // pinned 300px overflows a 320px viewport once the gutters are counted.
+        compact ? "w-[min(300px,100%)] shrink-0 sm:w-[340px]" : ""
       }`}
     >
       <div className="relative h-32 shrink-0 overflow-hidden">
@@ -48,8 +56,13 @@ export function LeagueCard({ league, compact = false }: { league: LeagueSummary;
         )}
         <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/20 to-transparent" />
         <div className="absolute left-3 top-3 flex flex-wrap gap-1.5">
-          <span className="rounded-full bg-white/90 px-2.5 py-1 text-[10px] font-black text-stone-800 backdrop-blur dark:bg-stone-900/90 dark:text-stone-100">
+          <span className="rounded-full bg-white/90 px-2.5 py-1 text-[10px] font-black text-stone-800 backdrop-blur dark:bg-slate-900/90 dark:text-slate-100">
             {status.emoji} {status.label}
+          </span>
+          {/* How a winner gets decided, before the price does — a knockout
+              reads completely differently to a captain than a round robin. */}
+          <span className="rounded-full bg-orange-400/95 px-2.5 py-1 text-[10px] font-black text-orange-950 backdrop-blur">
+            {mode.emoji} {mode.label}
           </span>
           {league.visibility === "private" && (
             <span className="flex items-center gap-1 rounded-full bg-stone-900/85 px-2.5 py-1 text-[10px] font-black text-amber-200 backdrop-blur">
@@ -77,30 +90,30 @@ export function LeagueCard({ league, compact = false }: { league: LeagueSummary;
             viewport, which is what pushed the whole leagues grid sideways. */}
         <div className="grid grid-cols-3 gap-2 text-center">
           <div className="min-w-0 rounded-xl bg-[#FFF6E9] px-1 py-2 dark:bg-white/5">
-            <p className="truncate text-sm font-black text-stone-900 dark:text-stone-100">
+            <p className="truncate text-sm font-black text-stone-900 dark:text-slate-100">
               {league.approvedTeams}/{league.maxTeams}
             </p>
             <p className="text-[10px] font-bold uppercase leading-tight tracking-wider text-stone-400">Squads</p>
           </div>
           <div className="min-w-0 rounded-xl bg-[#FFF6E9] px-1 py-2 dark:bg-white/5">
-            <p className="truncate text-sm font-black text-stone-900 dark:text-stone-100">{league.format}</p>
+            <p className="truncate text-sm font-black text-stone-900 dark:text-slate-100">{league.format}</p>
             <p className="text-[10px] font-bold uppercase leading-tight tracking-wider text-stone-400">Format</p>
           </div>
           <div className="min-w-0 rounded-xl bg-[#FFF6E9] px-1 py-2 dark:bg-white/5">
-            <p className="truncate text-[13px] font-black text-stone-900 sm:text-sm dark:text-stone-100">
+            <p className="truncate text-[13px] font-black text-stone-900 sm:text-sm dark:text-slate-100">
               {league.prizePool > 0 ? formatNPR(league.prizePool) : "Cup"}
             </p>
             <p className="text-[10px] font-bold uppercase leading-tight tracking-wider text-stone-400">Prize</p>
           </div>
         </div>
 
-        <div className="mt-3 space-y-1.5 text-xs font-semibold text-stone-500 dark:text-stone-400">
+        <div className="mt-3 space-y-1.5 text-xs font-semibold text-stone-500 dark:text-slate-400">
           <p className="flex items-center gap-1.5">
             <Coins className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
             {league.entryFee > 0 ? (
               <>
                 {formatNPR(league.entryFee)} per squad •{" "}
-                <span className="font-black text-stone-700 dark:text-stone-200">
+                <span className="font-black text-stone-700 dark:text-slate-200">
                   {formatNPR(league.deposit)} to lock a place
                 </span>
               </>
@@ -120,7 +133,7 @@ export function LeagueCard({ league, compact = false }: { league: LeagueSummary;
             {league.hostRole === "owner" ? " 🏟️" : ""}
           </p>
           {league.entryFee > 0 && (
-            <p className="flex items-center gap-1.5 text-[11px] text-stone-400 dark:text-stone-500">
+            <p className="flex items-center gap-1.5 text-[11px] text-stone-400 dark:text-slate-500">
               <Shield className="h-3 w-3" /> Back out and {league.refundPercent}% of what you paid comes
               back
             </p>
@@ -153,7 +166,7 @@ export function LeagueCard({ league, compact = false }: { league: LeagueSummary;
         )}
 
         <div className="mt-auto flex items-center justify-between gap-2 pt-4">
-          <span className="text-[11px] font-bold text-stone-400 dark:text-stone-500">
+          <span className="text-[11px] font-bold text-stone-400 dark:text-slate-500">
             {isHost
               ? league.pendingTeams > 0
                 ? `${league.pendingTeams} waiting on you`
@@ -195,11 +208,11 @@ export function LeagueTeamChip({
         {initials(name)}
       </span>
       <span className="min-w-0">
-        <span className="block truncate text-xs font-bold text-stone-800 dark:text-stone-100">
+        <span className="block truncate text-xs font-bold text-stone-800 dark:text-slate-100">
           {name}
         </span>
         {teamCode && (
-          <span className="block truncate font-mono text-[10px] font-bold text-stone-400 dark:text-stone-500">
+          <span className="block truncate font-mono text-[10px] font-bold text-stone-400 dark:text-slate-500">
             {teamCode}
           </span>
         )}
@@ -222,21 +235,25 @@ export function PaymentLine({
   refundedAmount,
   depositPercent,
   refundPercent,
+  locked,
 }: {
   entryFee: number;
   paidAmount: number;
   refundedAmount?: number;
   depositPercent?: number;
   refundPercent?: number;
+  /** Set once the squad has played — their money is the league's from here on. */
+  locked?: boolean;
 }) {
   const state = paymentState({ entryFee, paidAmount, refundedAmount, depositPercent, refundPercent });
   return (
-    <span className="text-[11px] font-bold text-stone-500 dark:text-stone-400">
+    <span className="text-[11px] font-bold text-stone-500 dark:text-slate-400">
       {state.emoji} {entryFee > 0 ? `${formatNPR(state.paid)} of ${formatNPR(entryFee)}` : "Free entry"}
       {entryFee > 0 && state.deposit > 0 && !state.depositMet
         ? ` • deposit ${formatNPR(state.deposit)}`
         : ""}
       {entryFee > 0 && state.due > 0 && state.depositMet ? ` • ${formatNPR(state.due)} to settle` : ""}
+      {locked ? " • 🔒 locked in" : ""}
     </span>
   );
 }

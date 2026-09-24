@@ -22,6 +22,7 @@ import { useUser } from "./UserProvider";
 import { NotificationBell } from "./NotificationBell";
 import { ThemeToggle } from "./ThemeToggle";
 import { Avatar } from "./Avatar";
+import { apiFetch } from "@/lib/api";
 
 const NAV = [
   { href: "/admin", label: "Overview", icon: LayoutDashboard, exact: true },
@@ -66,9 +67,9 @@ export function OwnerShell({ children }: { children: ReactNode }) {
     (async () => {
       try {
         const [bRes, nRes, vRes] = await Promise.all([
-          fetch("/api/bookings"),
-          fetch(`/api/notifications?userId=${user.id}`),
-          fetch("/api/venues"),
+          apiFetch("/api/bookings"),
+          apiFetch(`/api/notifications?userId=${user.id}`),
+          apiFetch("/api/venues"),
         ]);
         const b = await bRes.json();
         const n = await nRes.json();
@@ -88,7 +89,7 @@ export function OwnerShell({ children }: { children: ReactNode }) {
     })();
     const t = setInterval(async () => {
       try {
-        const nRes = await fetch(`/api/notifications?userId=${user.id}`);
+        const nRes = await apiFetch(`/api/notifications?userId=${user.id}`);
         const n = await nRes.json();
         setUnread(n.unread ?? 0);
       } catch {}

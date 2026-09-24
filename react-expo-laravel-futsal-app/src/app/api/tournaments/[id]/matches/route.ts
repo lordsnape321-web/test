@@ -1,8 +1,24 @@
 import { db } from "@/db";
-import { bookings, tournamentMatches, tournaments, users } from "@/db/schema";
+import { bookings, teams, tournamentMatches, tournaments, users } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { sendNotification } from "@/lib/notify";
-import { recordFor, standingsFor } from "@/lib/league";
+import {
+  buildBracket,
+  groupLabel,
+  groupQualifiers,
+  knockoutFromGroups,
+  loserOf,
+  makeGroups,
+  modeHasBracket,
+  modeHasGroups,
+  parseGroupRef,
+  parseMatchRef,
+  recordFor,
+  standingsFor,
+  winnerOf,
+  type BracketMatch,
+  type BracketSlot,
+} from "@/lib/league";
 import { formatTime12, prettyDate } from "@/lib/futsal";
 import { approvedSquads, leagueAccess } from "@/lib/league-store";
 import {
@@ -18,6 +34,13 @@ export const dynamic = "force-dynamic";
 export type FixturePayload = {
   id: number;
   round: string;
+  /** 0 for a league or group game; 1..n inside a knockout bracket. */
+  bracketRound: number;
+  slot: number;
+  homeFrom: string;
+  awayFrom: string;
+  homeLabel: string;
+  awayLabel: string;
   homeTeamId: number;
   awayTeamId: number;
   homeTeamName: string;
@@ -63,17 +86,32 @@ export async function GET(
       .select()
       .from(tournamentMatches)
       .where(eq(tournamentMatches.tournamentId, leagueId));
-    const nameOf = (id2: number) => squads.find((s) => s.teamId === id2)?.name ?? "Squad";
+    // An empty bracket slot is named by where its squad comes from, so a card
+    // reads "Bye 🎟️" or "Winner Group A" rather than a meaningless "Squad".
+    const nameOf = (id2: number, label: string) =>
+      squads.find((s) => s.teamId === id2)?.name ?? (label || "TBD");
 
     const matches: FixturePayload[] = rows
-      .sort((a, b) => String(a.date).localeCompare(String(b.date)) || a.id - b.id)
+      .sort(
+        (a, b) =>
+          a.bracketRound - b.bracketRound ||
+          a.slot - b.slot ||
+          String(a.date).localeCompare(String(b.date)) ||
+          a.id - b.id
+      )
       .map((m) => ({
         id: m.id,
         round: m.round,
+        bracketRound: m.bracketRound,
+        slot: m.slot,
+        homeFrom: m.homeFrom,
+        awayFrom: m.awayFrom,
+        homeLabel: m.homeLabel,
+        awayLabel: m.awayLabel,
         homeTeamId: m.homeTeamId,
         awayTeamId: m.awayTeamId,
-        homeTeamName: nameOf(m.homeTeamId),
-        awayTeamName: nameOf(m.awayTeamId),
+        homeTeamName: nameOf(m.homeTeamId, m.homeLabel),
+        awayTeamName: nameOf(m.awayTeamId, m.awayLabel),
         date: m.date,
         startTime: m.startTime,
         homeScore: m.homeScore,
@@ -85,6 +123,11 @@ export async function GET(
 
     return Response.json({
       matches,
+      // The page picks its renderer from this: a table for a league, a bracket
+      // for a knockout, both for groups + knockout.
+      mode: access.tournament.mode,
+      thirdPlace: access.tournament.thirdPlace,
+      groupSize: access.tournament.groupSize,
       standings: standingsFor(
         squads.map((s) => ({ teamId: s.teamId, name: s.name, logoColor: s.logoColor, teamCode: s.teamCode })),
         matches
@@ -162,6 +205,110 @@ export async function POST(
           .select()
           .from(tournamentMatches)
           .where(eq(tournamentMatches.tournamentId, leagueId));
+
+        /* ------------------------------------------- knockout / groups draw */
+        if (modeHasBracket(league.mode)) {
+          // A bracket is drawn once, whole. Drawing it again over a half-played
+          // one would strand slots wired to games that no longer exist, so the
+          // host clears the fixture book first if the shape was wrong.
+          if (existing.length > 0)
+            return Response.json(
+              {
+                error:
+                  "This bracket is already drawn 🥊 Remove the fixtures first if the draw needs doing again.",
+              },
+              { status: 409 }
+            );
+
+          const teamIds = squads.map((x) => x.teamId);
+          let slots: BracketSlot[];
+          let created = 0;
+          let summary = "";
+
+          if (modeHasGroups(league.mode)) {
+            const groups = makeGroups(teamIds, league.groupSize);
+            if (groups.length < 2)
+              return Response.json(
+                {
+                  error: `Groups of ${league.groupSize} need at least two groups — let a couple more squads in, or drop the group size 🎯`,
+                },
+                { status: 409 }
+              );
+            // The group stage is a mini league inside each group.
+            for (let g = 0; g < groups.length; g++) {
+              for (let i = 0; i < groups[g].length; i++) {
+                for (let j = i + 1; j < groups[g].length; j++) {
+                  await db.insert(tournamentMatches).values({
+                    tournamentId: leagueId,
+                    round: groupLabel(g),
+                    homeTeamId: groups[g][i],
+                    awayTeamId: groups[g][j],
+                    date: "",
+                    startTime: "",
+                    courtId: league.courtId || null,
+                    updatedBy: hostId,
+                  });
+                  created += 1;
+                }
+              }
+            }
+            // ...and the knockout stage is created empty, waiting on the tables.
+            slots = knockoutFromGroups(groups.length, { thirdPlace: league.thirdPlace });
+            summary = `${groups.length} groups of ${groups.map((g) => g.length).join("/")} — top two of each go through`;
+          } else {
+            slots = buildBracket(teamIds, { thirdPlace: league.thirdPlace });
+            const byes = slots.filter(
+              (x) => x.roundIndex === 1 && (x.homeTeamId === 0 || x.awayTeamId === 0)
+            ).length;
+            summary = `a knockout bracket for ${teamIds.length} squads${
+              byes > 0 ? ` — top ${byes} seed${byes === 1 ? "" : "s"} get${byes === 1 ? "s" : ""} a bye` : ""
+            }`;
+          }
+
+          for (const slot of slots) {
+            await db.insert(tournamentMatches).values({
+              tournamentId: leagueId,
+              round: slot.round,
+              bracketRound: slot.roundIndex,
+              slot: slot.slot,
+              homeTeamId: slot.homeTeamId,
+              awayTeamId: slot.awayTeamId,
+              homeFrom: slot.homeFrom,
+              awayFrom: slot.awayFrom,
+              homeLabel: slot.homeLabel,
+              awayLabel: slot.awayLabel,
+              date: "",
+              startTime: "",
+              courtId: league.courtId || null,
+              updatedBy: hostId,
+            });
+            created += 1;
+          }
+
+          // Byes and already-decided group tables fill their slots at once.
+          await advanceBracket(leagueId);
+
+          await db
+            .update(tournaments)
+            .set({ status: league.status === "registration" ? "ongoing" : league.status })
+            .where(eq(tournaments.id, leagueId));
+          for (const s of squads) {
+            await sendNotification({
+              userId: s.captainId,
+              type: "league",
+              title: `📅 The draw is out — ${league.name}`,
+              message: `${created} ${created === 1 ? "game" : "games"} drawn — ${summary}. Open the league page to see your route to the final.`,
+              link: hostLink,
+            });
+          }
+          return Response.json({
+            ok: true,
+            created,
+            message: `${created} fixtures drawn — ${summary} 🗓️`,
+          });
+        }
+
+        /* ------------------------------------------------ round robin draw */
         const seen = new Set(
           existing.map((m) => [m.homeTeamId, m.awayTeamId].sort((a, b) => a - b).join("-"))
         );
@@ -177,6 +324,8 @@ export async function POST(
               awayTeamId: squads[j].teamId,
               date: "",
               startTime: "",
+              courtId: league.courtId || null,
+              updatedBy: hostId,
             });
             created += 1;
           }
@@ -280,6 +429,19 @@ export async function POST(
         );
 
       const played = homeScore !== null && awayScore !== null;
+
+      // A bracket game can't be level: the winner is who goes through, so a
+      // draw would leave the next round with an empty slot nobody can fill.
+      // The host counts the penalties and enters the shootout score.
+      if (played && match.bracketRound > 0 && homeScore === awayScore)
+        return Response.json(
+          {
+            error:
+              "A knockout game needs a winner — count the penalties and enter the shootout score 🥊",
+          },
+          { status: 400 }
+        );
+
       await db
         .update(tournamentMatches)
         .set({
@@ -306,8 +468,13 @@ export async function POST(
           })
           .where(eq(bookings.id, match.bookingId));
       }
+      let advanced = 0;
+      let championName = "";
       if (played) {
         await markOngoing();
+        // A result in a bracket or a finished group table sends somebody
+        // through — the next round fills itself instead of waiting on the host.
+        advanced = await advanceBracket(leagueId);
         const all = await db
           .select()
           .from(tournamentMatches)
@@ -332,12 +499,46 @@ export async function POST(
             link: hostLink,
           });
         }
+
+        // Winning the final makes a squad champion — say so, once.
+        if (match.bracketRound > 0 && match.round === "Final") {
+          const championId = winnerOf({
+            bracketRound: match.bracketRound,
+            slot: match.slot,
+            homeTeamId: match.homeTeamId,
+            awayTeamId: match.awayTeamId,
+            homeFrom: match.homeFrom,
+            awayFrom: match.awayFrom,
+            homeScore,
+            awayScore,
+            status: "played",
+          });
+          const champion = squads.find((x) => x.teamId === championId);
+          if (champion) {
+            championName = champion.name;
+            await sendNotification({
+              userId: champion.captainId,
+              type: "league",
+              title: `🏆 ${champion.name} won ${league.name}!`,
+              message: `Champions! The final is yours — ${homeName} ${homeScore}–${awayScore} ${awayName}. Tell the host where to send the trophy 🎉`,
+              link: hostLink,
+            });
+          }
+        }
       }
 
       return Response.json({
         ok: true,
+        advanced,
+        champion: championName,
         message: played
-          ? `Result saved — ${homeScore}–${awayScore} ⚽`
+          ? `Result saved — ${homeScore}–${awayScore} ⚽${
+              championName
+                ? ` — ${championName} are champions 🏆`
+                : advanced > 0
+                  ? ` • ${advanced} bracket ${advanced === 1 ? "slot" : "slots"} filled`
+                  : ""
+            }`
           : "Score cleared — the fixture is unplayed again",
       });
     }
@@ -355,17 +556,195 @@ export async function POST(
           { error: "That game has a result — clear the score first if it was a mistake ⚽" },
           { status: 409 }
         );
+      // Pulling one game out of a bracket leaves the round after it wired to
+      // nothing, so a bracket is redrawn whole rather than edited a game at a time.
+      if (match.bracketRound > 0)
+        return Response.json(
+          {
+            error:
+              "That game is part of the bracket 🥊 Delete the whole draw and generate it again if the shape is wrong.",
+          },
+          { status: 409 }
+        );
 
       await db.delete(tournamentMatches).where(eq(tournamentMatches.id, matchId));
       return Response.json({ ok: true, message: "Fixture removed 🗑️" });
     }
 
+    /* -------------------------------------------------------- schedule */
+    if (action === "schedule") {
+      // A drawn bracket arrives without times: the host knows which round plays
+      // on which Saturday, and this is where they say so — including on a slot
+      // that is still "Winner Group A", because the slot exists already.
+      const matchId = Number(body.matchId);
+      const match = (
+        await db.select().from(tournamentMatches).where(eq(tournamentMatches.id, matchId))
+      )[0];
+      if (!match || match.tournamentId !== leagueId)
+        return Response.json({ error: "That fixture isn't in this league 🛡️" }, { status: 404 });
+
+      const date = String(body.date ?? "").trim();
+      const startTime = String(body.startTime ?? "").trim();
+      if (!date && !startTime)
+        return Response.json({ error: "Pick a day or a kick-off time to save 📅" }, { status: 400 });
+      const err = firstError(
+        date ? validateDateISO(date, { label: "Fixture date", allowPast: true }) : null,
+        startTime ? validateTimeHM(startTime, "Kick-off time") : null
+      );
+      if (err) return Response.json({ error: err }, { status: 400 });
+
+      const updated = (
+        await db
+          .update(tournamentMatches)
+          .set({
+            ...(date ? { date } : {}),
+            ...(startTime ? { startTime } : {}),
+            ...(body.courtId === undefined ? {} : { courtId: Number(body.courtId) || null }),
+            updatedBy: hostId,
+            updatedAt: new Date(),
+          })
+          .where(eq(tournamentMatches.id, matchId))
+          .returning()
+      )[0];
+
+      return Response.json({
+        ok: true,
+        match: updated,
+        message: date
+          ? `${match.round} set for ${prettyDate(date)}${startTime ? ` at ${formatTime12(startTime)}` : ""} 📅`
+          : "Kick-off time saved 📅",
+      });
+    }
+
+    /* ---------------------------------------------------------- advance */
+    if (action === "advance") {
+      if (!modeHasBracket(league.mode))
+        return Response.json(
+          { error: "This league has no bracket to fill — it's a round robin 🔄" },
+          { status: 400 }
+        );
+      const advanced = await advanceBracket(leagueId);
+      return Response.json({
+        ok: true,
+        advanced,
+        message:
+          advanced > 0
+            ? `${advanced} bracket ${advanced === 1 ? "slot" : "slots"} filled 🥊`
+            : "Nothing to fill yet — the bracket moves when a game is decided ⏳",
+      });
+    }
+
     return Response.json(
-      { error: "Unknown action — try create, generate, score or delete 📖" },
+      { error: "Unknown action — try create, generate, schedule, advance, score or delete 📖" },
       { status: 400 }
     );
   } catch (e) {
     console.error(`[/api/tournaments/[id]/matches POST] failed:`, e);
     return Response.json({ error: String(e) }, { status: 500 });
   }
+}
+
+/**
+ * Fill the bracket 🥊
+ *
+ * Every empty slot in a knockout says where its squad will come from: the
+ * winner of round 1 slot 0, the loser of the second semi-final, or the runner-up
+ * of group C. This reads the fixtures, answers whichever of those questions the
+ * results can now answer, and writes the squad into the slot. It is idempotent —
+ * running it twice changes nothing the second time — so it can be called after
+ * every result, and on a fresh draw, where byes and finished groups have
+ * something to say straight away.
+ *
+ * A group only sends anybody through once *all* of its games are played: with a
+ * game left, the top two could still change, and a slot filled early would be
+ * wrong in a way nobody would notice until the final.
+ */
+async function advanceBracket(leagueId: number): Promise<number> {
+  const rows = await db
+    .select()
+    .from(tournamentMatches)
+    .where(eq(tournamentMatches.tournamentId, leagueId));
+
+  const asBracket = (m: (typeof rows)[number]): BracketMatch => ({
+    bracketRound: m.bracketRound,
+    slot: m.slot,
+    homeTeamId: m.homeTeamId,
+    awayTeamId: m.awayTeamId,
+    homeFrom: m.homeFrom,
+    awayFrom: m.awayFrom,
+    homeScore: m.homeScore,
+    awayScore: m.awayScore,
+    status: m.status,
+  });
+
+  // Group tables, but only for groups whose fixtures are all in.
+  const allTeams = await db.select().from(teams);
+  const groupTables = new Map<string, number[]>();
+  const groupRounds = [...new Set(rows.filter((m) => /^Group /.test(m.round)).map((m) => m.round))];
+  for (const round of groupRounds) {
+    const fixtures = rows.filter((m) => m.round === round);
+    if (fixtures.length === 0) continue;
+    if (fixtures.some((m) => m.homeScore === null || m.awayScore === null)) continue;
+    const ids = [...new Set(fixtures.flatMap((m) => [m.homeTeamId, m.awayTeamId]))];
+    const likes = ids.map((id) => {
+      const t = allTeams.find((x) => x.id === id);
+      return {
+        teamId: id,
+        name: t?.name ?? "Squad",
+        logoColor: t?.logoColor ?? "#16a34a",
+        teamCode: t?.teamCode ?? "",
+      };
+    });
+    const { winners } = groupQualifiers(likes, fixtures.map(asBracket));
+    // winners[0] is the group winner, winners[1] the runner-up.
+    groupTables.set(round, winners);
+  }
+  const groupsByIndex = new Map<number, number[]>();
+  for (const round of groupRounds) {
+    const letter = round.replace("Group ", "");
+    const index = letter.charCodeAt(0) - "A".charCodeAt(0);
+    const table = groupTables.get(round);
+    if (index >= 0 && table) groupsByIndex.set(index + 1, table);
+  }
+
+  const resolve = (ref: string): number => {
+    if (!ref) return 0;
+    const matchRef = parseMatchRef(ref);
+    if (matchRef) {
+      const source = rows.find(
+        (m) => m.bracketRound === matchRef.round && m.slot === matchRef.slot
+      );
+      if (!source) return 0;
+      return matchRef.outcome === "W" ? winnerOf(asBracket(source)) : loserOf(asBracket(source));
+    }
+    const groupRef = parseGroupRef(ref);
+    if (groupRef) {
+      const table = groupsByIndex.get(groupRef.group);
+      if (!table) return 0;
+      return groupRef.place === "W" ? table[0] ?? 0 : table[1] ?? 0;
+    }
+    return 0;
+  };
+
+  let filled = 0;
+  for (const m of rows) {
+    if (m.bracketRound <= 0) continue;
+    const changes: { homeTeamId?: number; awayTeamId?: number } = {};
+    if (m.homeTeamId === 0 && m.homeFrom) {
+      const teamId = resolve(m.homeFrom);
+      if (teamId > 0 && teamId !== m.awayTeamId) changes.homeTeamId = teamId;
+    }
+    if (m.awayTeamId === 0 && m.awayFrom) {
+      const teamId = resolve(m.awayFrom);
+      if (teamId > 0 && teamId !== m.homeTeamId) changes.awayTeamId = teamId;
+    }
+    if (Object.keys(changes).length > 0) {
+      await db
+        .update(tournamentMatches)
+        .set({ ...changes, updatedAt: new Date() })
+        .where(eq(tournamentMatches.id, m.id));
+      filled += 1;
+    }
+  }
+  return filled;
 }

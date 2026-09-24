@@ -40,7 +40,9 @@ import {
   formatTime12,
   prettyDate,
   rangeSlots,
+  gamePlayed,
 } from "@/lib/futsal";
+import { apiFetch } from "@/lib/api";
 
 type Court = {
   id: number;
@@ -184,7 +186,7 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
   useEffect(() => {
     (async () => {
       try {
-        const res = await fetch(`/api/venues/${id}`);
+        const res = await apiFetch(`/api/venues/${id}`);
         const data = await res.json();
         setVenue(data.venue ?? null);
         if (data.venue?.courts?.length > 0) setCourtId(data.venue.courts[0].id);
@@ -202,7 +204,7 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
       setPromoCode("");
       setPromoError("");
       try {
-        const res = await fetch(`/api/promos?venueId=${id}`);
+        const res = await apiFetch(`/api/promos?venueId=${id}`);
         const data = await res.json().catch(() => ({}));
         setVenuePromos(data.promos ?? []);
       } catch {
@@ -214,15 +216,13 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
   const loadLoyalty = useCallback(
     async (uid: number) => {
       try {
-        const [vRes, bRes, rRes, sRes] = await Promise.all([
-          fetch(`/api/vouchers?userId=${uid}`),
-          fetch(`/api/bookings?userId=${uid}`),
-          fetch(`/api/reviews?userId=${uid}`),
-          fetch(`/api/users/${uid}`),
+        const [vRes, bRes, sRes] = await Promise.all([
+          apiFetch(`/api/vouchers?userId=${uid}`),
+          apiFetch(`/api/bookings?userId=${uid}`),
+          apiFetch(`/api/users/${uid}`),
         ]);
         const vData = await vRes.json();
         const bData = await bRes.json();
-        const rData = await rRes.json();
         const sData = await sRes.json().catch(() => ({}));
         if (sData?.stats) setMyStats(sData.stats as PlayerStats);
         if (sData?.user && typeof sData.user.trustScore === "number") setMyTrust(sData.user.trustScore);
@@ -236,7 +236,9 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
           (p) => p.venueId === Number(id)
         );
         setLoyalty(prog ? { count: prog.count, target: prog.target, remaining: prog.remaining } : { count: 0, target: 7, remaining: 7 });
-        // Reviewable past games at this venue.
+        // Every game already played here. A player keeps one review per venue
+        // and updates it after a new game, so an already-reviewed game is still
+        // listed — that's the game the review gets rewritten from.
         const myBookings = (bData.bookings ?? []) as Array<{
           id: number;
           date: string;
@@ -246,28 +248,11 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
           court?: { name: string };
           venue?: { id: number };
         }>;
-        const reviewed = new Set(
-          ((rData.reviews ?? []) as Array<{ bookingId: number | null }>).map((r) => r.bookingId).filter(Boolean)
-        );
-        const today = new Date().toISOString().slice(0, 10);
         const eligible = myBookings
-          .filter((b) => {
-            if (!b.venue || b.venue.id !== Number(id)) return false;
-            if (reviewed.has(b.id)) return false;
-            if (b.status === "completed") return true;
-            if (b.status === "confirmed" && b.date < today) return true;
-            if (b.status === "confirmed" && b.date === today) {
-              try {
-                return new Date() > new Date(`${b.date}T${b.endTime || b.startTime}:00`);
-              } catch {
-                return false;
-              }
-            }
-            return false;
-          })
+          .filter((b) => b.venue?.id === Number(id) && gamePlayed(b))
           .map((b) => ({
             id: b.id,
-            label: `${b.date} • ${b.court?.name ?? ""} • ${b.startTime}`,
+            label: `${prettyDate(b.date)} • ${b.court?.name ?? ""} • ${formatTime12(b.startTime)}`,
           }));
         setMyVenueBookings(eligible);
       } catch {}
@@ -284,7 +269,7 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
         try {
           // ?userId= returns only this player's squads, membership already
           // verified server-side, so there is nothing to filter here.
-          const res = await fetch(`/api/teams?userId=${user.id}`);
+          const res = await apiFetch(`/api/teams?userId=${user.id}`);
           const data = await res.json();
           setUserTeams((data.teams ?? []) as UserTeam[]);
         } catch {
@@ -298,7 +283,7 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
       // the only ones who ever receive it.
       (async () => {
         try {
-          const res = await fetch(`/api/tournaments?viewerId=${user.id}&limit=60`);
+          const res = await apiFetch(`/api/tournaments?viewerId=${user.id}&limit=60`);
           const data = await res.json();
           setMyLeagues((data.leagues ?? []) as MyLeague[]);
         } catch {
@@ -315,7 +300,7 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
     if (visibility !== "competition" || allTeams.length > 0) return;
     (async () => {
       try {
-        const res = await fetch("/api/teams");
+        const res = await apiFetch("/api/teams");
         const data = await res.json();
         setAllTeams(
           ((data.teams ?? []) as Array<{ id: number; name: string; logoColor: string }>).map((t) => ({
@@ -345,7 +330,7 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
     if (!court) return;
     setLoadingSlots(true);
     try {
-      const res = await fetch(`/api/availability?courtId=${court.id}&date=${date}`);
+      const res = await apiFetch(`/api/availability?courtId=${court.id}&date=${date}`);
       const data = await res.json();
       setBooked(data.booked ?? []);
     } finally {
@@ -481,7 +466,7 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
         amount: String(Math.round(afterFreePlay)),
       });
       if (user) qs.set("userId", String(user.id));
-      const res = await fetch(`/api/promos?${qs.toString()}`);
+      const res = await apiFetch(`/api/promos?${qs.toString()}`);
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.valid) throw new Error(data.error || `"${code}" didn't work 🎟️`);
       setAppliedPromo({
@@ -627,7 +612,7 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
     setBooking(true);
     setError("");
     try {
-      const res = await fetch("/api/bookings", {
+      const res = await apiFetch("/api/bookings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -673,7 +658,7 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
         setPayRedirect(true);
         try {
           if (payMethod === "eSewa") {
-            const init = await fetch("/api/payments/esewa/initiate", {
+            const init = await apiFetch("/api/payments/esewa/initiate", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ bookingId: created.id }),
@@ -694,7 +679,7 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
             form.submit();
             return;
           } else {
-            const init = await fetch("/api/payments/khalti/initiate", {
+            const init = await apiFetch("/api/payments/khalti/initiate", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ bookingId: created.id }),
@@ -737,10 +722,10 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
 
   if (loading) {
     return (
-      <main className="min-h-screen bg-[#FFF9F0] dark:bg-stone-950">
+      <main className="min-h-screen bg-[#FFF9F0] dark:bg-slate-950">
         <div className="mx-auto max-w-7xl animate-pulse px-4 py-8 sm:px-6">
-          <div className="h-72 rounded-[2rem] bg-white dark:bg-stone-900" />
-          <div className="mt-4 h-10 w-64 rounded-xl bg-white dark:bg-stone-900" />
+          <div className="h-72 rounded-[2rem] bg-white dark:bg-slate-900" />
+          <div className="mt-4 h-10 w-64 rounded-xl bg-white dark:bg-slate-900" />
         </div>
       </main>
     );
@@ -748,9 +733,9 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
 
   if (!venue) {
     return (
-      <main className="grid min-h-screen place-items-center bg-[#FFF9F0] px-4 dark:bg-stone-950">
+      <main className="grid min-h-screen place-items-center bg-[#FFF9F0] px-4 dark:bg-slate-950">
         <div className="text-center">
-          <h1 className="text-2xl font-black text-stone-900 dark:text-stone-100">Hmm, this court seems to have moved 🏃</h1>
+          <h1 className="text-2xl font-black text-stone-900 dark:text-slate-100">Hmm, this court seems to have moved 🏃</h1>
           <Link href="/venues" className="mt-3 inline-block text-sm font-bold text-emerald-600 dark:text-emerald-400">
             ← Back to all courts
           </Link>
@@ -760,7 +745,7 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
   }
 
   return (
-    <main className="min-h-screen bg-[#FFF9F0] dark:bg-stone-950">
+    <main className="min-h-screen bg-[#FFF9F0] dark:bg-slate-950">
       {/* Cover */}
       <div className="relative h-64 sm:h-80">
         <img src={venue.imageUrl} alt={venue.name} className="h-full w-full object-cover" />
@@ -768,7 +753,7 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
         <div className="absolute inset-x-0 top-0 mx-auto max-w-7xl px-4 pt-5 sm:px-6">
           <Link
             href="/venues"
-            className="inline-flex items-center gap-1.5 rounded-full bg-white/90 px-4 py-2 text-xs font-black text-stone-800 shadow backdrop-blur transition hover:bg-white dark:bg-stone-900/90 dark:text-stone-100 dark:hover:bg-stone-900"
+            className="inline-flex items-center gap-1.5 rounded-full bg-white/90 px-4 py-2 text-xs font-black text-stone-800 shadow backdrop-blur transition hover:bg-white dark:bg-slate-900/90 dark:text-slate-100 dark:hover:bg-slate-900"
           >
             <ChevronLeft className="h-4 w-4" /> All courts
           </Link>
@@ -778,10 +763,10 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
             <span className="flex items-center gap-1 rounded-full bg-amber-400 px-2.5 py-1 text-xs font-black text-amber-950 shadow">
               <Star className="h-3 w-3 fill-amber-950" /> {venue.rating.toFixed(1)}
             </span>
-            <span className="rounded-full bg-white/90 px-2.5 py-1 text-xs font-bold text-stone-700 shadow backdrop-blur dark:bg-stone-900/90 dark:text-stone-200">
+            <span className="rounded-full bg-white/90 px-2.5 py-1 text-xs font-bold text-stone-700 shadow backdrop-blur dark:bg-slate-900/90 dark:text-slate-200">
               💬 {venue.totalReviews} happy reviews
             </span>
-            <span className="flex items-center gap-1 rounded-full bg-white/90 px-2.5 py-1 text-xs font-bold text-stone-700 shadow backdrop-blur dark:bg-stone-900/90 dark:text-stone-200">
+            <span className="flex items-center gap-1 rounded-full bg-white/90 px-2.5 py-1 text-xs font-bold text-stone-700 shadow backdrop-blur dark:bg-slate-900/90 dark:text-slate-200">
               <Clock className="h-3 w-3" /> Open {venue.openingHour}:00 – {venue.closingHour}:00
             </span>
           </div>
@@ -797,14 +782,14 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
       <div className="mx-auto grid max-w-7xl gap-6 px-4 py-6 sm:px-6 lg:grid-cols-[1fr_400px]">
         <div className="min-w-0 space-y-5">
           {/* About */}
-          <section className="rounded-3xl border border-[#F0E3CC] bg-white p-5 shadow-sm dark:border-white/10 dark:bg-stone-900">
+          <section className="rounded-3xl border border-[#F0E3CC] bg-white p-5 shadow-sm dark:border-white/10 dark:bg-slate-900">
             <h2 className="text-sm font-black uppercase tracking-widest text-orange-500 dark:text-orange-400">Get to know this place</h2>
-            <p className="mt-2 text-sm leading-relaxed text-stone-600 dark:text-stone-400">{venue.description}</p>
+            <p className="mt-2 text-sm leading-relaxed text-stone-600 dark:text-slate-400">{venue.description}</p>
             <div className="mt-3 flex flex-wrap gap-2">
               {venue.amenities.split(",").map((a) => (
                 <span
                   key={a}
-                  className="flex items-center gap-1 rounded-full bg-[#FFF6E9] px-3 py-1.5 text-[11px] font-bold text-stone-600 dark:bg-white/5 dark:text-stone-300"
+                  className="flex items-center gap-1 rounded-full bg-[#FFF6E9] px-3 py-1.5 text-[11px] font-bold text-stone-600 dark:bg-white/5 dark:text-slate-300"
                 >
                   <Check className="h-3 w-3 text-emerald-600 dark:text-emerald-400" /> {a.trim()}
                 </span>
@@ -826,7 +811,7 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
                 </div>
               ) : (
                 <div className="mt-2">
-                  <p className="text-xs font-bold text-stone-600 dark:text-stone-300">
+                  <p className="text-xs font-bold text-stone-600 dark:text-slate-300">
                     Play {loyalty.count}/{loyalty.target} this month {loyalty.remaining > 0 ? `• ${loyalty.remaining} more for a FREE hour! 🔥` : "• reward incoming! 🎉"}
                   </p>
                   <div className="mt-2 flex gap-1">
@@ -848,7 +833,7 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
             venueName={venue.name}
             eligibleBookings={myVenueBookings}
             onChanged={async () => {
-              const res = await fetch(`/api/venues/${id}`);
+              const res = await apiFetch(`/api/venues/${id}`);
               const data = await res.json();
               if (data.venue) {
                 setVenue((v) => (v ? { ...v, rating: data.venue.rating, totalReviews: data.venue.totalReviews } : v));
@@ -858,7 +843,7 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
           />
 
           {/* Courts */}
-          <section className="rounded-3xl border border-[#F0E3CC] bg-white p-5 shadow-sm dark:border-white/10 dark:bg-stone-900">
+          <section className="rounded-3xl border border-[#F0E3CC] bg-white p-5 shadow-sm dark:border-white/10 dark:bg-slate-900">
             <h2 className="text-sm font-black uppercase tracking-widest text-emerald-700 dark:text-emerald-400">
               Step 1 • Pick your court
             </h2>
@@ -876,7 +861,7 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
                     }`}
                   >
                     <div className="flex items-center justify-between">
-                      <span className="flex items-center gap-1.5 rounded-full bg-white px-2.5 py-1 text-[10px] font-black text-stone-700 shadow-sm dark:bg-white/10 dark:text-stone-200">
+                      <span className="flex items-center gap-1.5 rounded-full bg-white px-2.5 py-1 text-[10px] font-black text-stone-700 shadow-sm dark:bg-white/10 dark:text-slate-200">
                         <Users className="h-3 w-3" /> {c.format}
                       </span>
                       {active && (
@@ -885,14 +870,14 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
                         </span>
                       )}
                     </div>
-                    <p className="mt-2 text-[15px] font-extrabold text-stone-900 dark:text-stone-100">{c.name}</p>
-                    <p className="text-xs text-stone-500 dark:text-stone-400">{c.surface}</p>
+                    <p className="mt-2 text-[15px] font-extrabold text-stone-900 dark:text-slate-100">{c.name}</p>
+                    <p className="text-xs text-stone-500 dark:text-slate-400">{c.surface}</p>
                     <div className="mt-2 flex items-center justify-between">
                       <p className="text-sm font-black text-emerald-700 dark:text-emerald-300">
                         {formatNPR(c.pricePerHour)}
-                        <span className="text-[11px] font-bold text-stone-400 dark:text-stone-500">/hr</span>
+                        <span className="text-[11px] font-bold text-stone-400 dark:text-slate-500">/hr</span>
                       </p>
-                      <p className="text-[11px] font-bold text-stone-400 dark:text-stone-500">
+                      <p className="text-[11px] font-bold text-stone-400 dark:text-slate-500">
                         ☀️ Mornings {formatNPR(c.priceMorning)}
                       </p>
                     </div>
@@ -903,7 +888,7 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
           </section>
 
           {/* Date */}
-          <section className="rounded-3xl border border-[#F0E3CC] bg-white p-5 shadow-sm dark:border-white/10 dark:bg-stone-900">
+          <section className="rounded-3xl border border-[#F0E3CC] bg-white p-5 shadow-sm dark:border-white/10 dark:bg-slate-900">
             <h2 className="text-sm font-black uppercase tracking-widest text-emerald-700 dark:text-emerald-400">
               Step 2 • Which day suits you?
             </h2>
@@ -918,14 +903,14 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
                     className={`flex w-[68px] shrink-0 flex-col items-center rounded-2xl border py-2.5 transition ${
                       active
                         ? "border-emerald-600 bg-emerald-600 text-white shadow-md"
-                        : "border-stone-200 bg-stone-50 text-stone-800 hover:border-emerald-300 dark:border-white/10 dark:bg-white/5 dark:text-stone-200 dark:hover:border-emerald-500/50"
+                        : "border-stone-200 bg-stone-50 text-stone-800 hover:border-emerald-300 dark:border-white/10 dark:bg-white/5 dark:text-slate-200 dark:hover:border-emerald-500/50"
                     }`}
                   >
-                    <span className={`text-[10px] font-black uppercase ${active ? "text-emerald-100" : "text-stone-400 dark:text-stone-500"}`}>
+                    <span className={`text-[10px] font-black uppercase ${active ? "text-emerald-100" : "text-stone-400 dark:text-slate-500"}`}>
                       {p.dow}
                     </span>
                     <span className="text-xl font-black">{p.day}</span>
-                    <span className={`text-[10px] font-bold ${active ? "text-emerald-100" : "text-stone-400 dark:text-stone-500"}`}>
+                    <span className={`text-[10px] font-bold ${active ? "text-emerald-100" : "text-stone-400 dark:text-slate-500"}`}>
                       {p.month}
                     </span>
                   </button>
@@ -935,22 +920,22 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
           </section>
 
           {/* Slots + duration */}
-          <section className="rounded-3xl border border-[#F0E3CC] bg-white p-5 shadow-sm dark:border-white/10 dark:bg-stone-900">
+          <section className="rounded-3xl border border-[#F0E3CC] bg-white p-5 shadow-sm dark:border-white/10 dark:bg-slate-900">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <h2 className="text-sm font-black uppercase tracking-widest text-emerald-700 dark:text-emerald-400">
                 Step 3 • How long + when?
               </h2>
               {loadingSlots && (
-                <span className="animate-pulse text-xs font-bold text-stone-400 dark:text-stone-500">
+                <span className="animate-pulse text-xs font-bold text-stone-400 dark:text-slate-500">
                   Checking what&apos;s free…
                 </span>
               )}
             </div>
-            <p className="mt-1.5 text-xs text-stone-500 dark:text-stone-400">
+            <p className="mt-1.5 text-xs text-stone-500 dark:text-slate-400">
               Pick 1, 2 or 3 hours first — then tap a start time and we&apos;ll light up the whole block together. ✨
             </p>
             <div className="mt-3 flex flex-wrap items-center gap-2">
-              <span className="text-xs font-black text-stone-800 dark:text-stone-200">I need:</span>
+              <span className="text-xs font-black text-stone-800 dark:text-slate-200">I need:</span>
               {[1, 2, 3].map((h) => (
                 <button
                   key={h}
@@ -958,14 +943,14 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
                   className={`rounded-full px-5 py-2.5 text-xs font-black transition ${
                     hours === h
                       ? "bg-emerald-600 text-white shadow-md"
-                      : "border border-stone-200 bg-white text-stone-600 dark:border-white/10 dark:bg-white/5 dark:text-stone-300"
+                      : "border border-stone-200 bg-white text-stone-600 dark:border-white/10 dark:bg-white/5 dark:text-slate-300"
                   }`}
                 >
                   {h} hr{h > 1 ? "s" : ""} • {h} slot{h > 1 ? "s" : ""}
                 </button>
               ))}
             </div>
-            <div className="mt-3 flex flex-wrap items-center gap-4 text-[11px] font-bold text-stone-500 dark:text-stone-400">
+            <div className="mt-3 flex flex-wrap items-center gap-4 text-[11px] font-bold text-stone-500 dark:text-slate-400">
               <span className="flex items-center gap-1.5">
                 <span className="h-3 w-3 rounded-md bg-emerald-600" /> Your {hours}-hr block
               </span>
@@ -993,10 +978,10 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
                     }
                     className={`relative rounded-xl border px-2 py-2.5 text-xs font-extrabold transition ${
                       blocked
-                        ? "cursor-not-allowed border-stone-100 bg-stone-100 text-stone-300 line-through dark:border-white/5 dark:bg-white/5 dark:text-stone-600"
+                        ? "cursor-not-allowed border-stone-100 bg-stone-100 text-stone-300 line-through dark:border-white/5 dark:bg-white/5 dark:text-slate-600"
                         : inRange
                           ? "border-emerald-600 bg-emerald-600 text-white shadow-md"
-                          : "border-stone-200 bg-white text-stone-700 hover:border-emerald-400 dark:border-white/10 dark:bg-white/5 dark:text-stone-200 dark:hover:border-emerald-500"
+                          : "border-stone-200 bg-white text-stone-700 hover:border-emerald-400 dark:border-white/10 dark:bg-white/5 dark:text-slate-200 dark:hover:border-emerald-500"
                     }`}
                   >
                     {formatTime12(s)}
@@ -1033,7 +1018,7 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
           </section>
 
           {/* Match visibility */}
-          <section className="rounded-3xl border border-[#F0E3CC] bg-white p-5 shadow-sm dark:border-white/10 dark:bg-stone-900">
+          <section className="rounded-3xl border border-[#F0E3CC] bg-white p-5 shadow-sm dark:border-white/10 dark:bg-slate-900">
             <h2 className="text-sm font-black uppercase tracking-widest text-emerald-700 dark:text-emerald-400">
               Step 4 • Just your crew, an open invite, or a competition?
             </h2>
@@ -1046,7 +1031,7 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
                     : "border-stone-200 bg-stone-50 hover:border-stone-300 dark:border-white/10 dark:bg-white/5 dark:hover:border-white/20"
                 }`}
               >
-                <span className="flex items-center gap-2 text-sm font-black text-stone-900 dark:text-stone-100">
+                <span className="flex items-center gap-2 text-sm font-black text-stone-900 dark:text-slate-100">
                   <Lock className="h-4 w-4 text-emerald-600 dark:text-emerald-400" /> Just our gang
                   {visibility === "private" && (
                     <span className="ml-auto grid h-5 w-5 place-items-center rounded-full bg-emerald-600">
@@ -1054,7 +1039,7 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
                     </span>
                   )}
                 </span>
-                <span className="mt-1.5 block text-xs leading-relaxed text-stone-500 dark:text-stone-400">
+                <span className="mt-1.5 block text-xs leading-relaxed text-stone-500 dark:text-slate-400">
                   A cosy private game. Only people you invite will know about it.
                 </span>
               </button>
@@ -1066,7 +1051,7 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
                     : "border-stone-200 bg-stone-50 hover:border-stone-300 dark:border-white/10 dark:bg-white/5 dark:hover:border-white/20"
                 }`}
               >
-                <span className="flex items-center gap-2 text-sm font-black text-stone-900 dark:text-stone-100">
+                <span className="flex items-center gap-2 text-sm font-black text-stone-900 dark:text-slate-100">
                   <Globe className="h-4 w-4 text-orange-500 dark:text-orange-400" /> Invite everyone!
                   {visibility === "public" && (
                     <span className="ml-auto grid h-5 w-5 place-items-center rounded-full bg-orange-500">
@@ -1074,7 +1059,7 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
                     </span>
                   )}
                 </span>
-                <span className="mt-1.5 block text-xs leading-relaxed text-stone-500 dark:text-stone-400">
+                <span className="mt-1.5 block text-xs leading-relaxed text-stone-500 dark:text-slate-400">
                   Short on players? Tell us your crew + open spots — we&apos;ll help fill the rest.
                 </span>
               </button>
@@ -1086,7 +1071,7 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
                     : "border-stone-200 bg-stone-50 hover:border-stone-300 dark:border-white/10 dark:bg-white/5 dark:hover:border-white/20"
                 }`}
               >
-                <span className="flex items-center gap-2 text-sm font-black text-stone-900 dark:text-stone-100">
+                <span className="flex items-center gap-2 text-sm font-black text-stone-900 dark:text-slate-100">
                   <Swords className="h-4 w-4 text-sky-600 dark:text-sky-400" /> Competition
                   {visibility === "competition" && (
                     <span className="ml-auto grid h-5 w-5 place-items-center rounded-full bg-sky-600">
@@ -1094,7 +1079,7 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
                     </span>
                   )}
                 </span>
-                <span className="mt-1.5 block text-xs leading-relaxed text-stone-500 dark:text-stone-400">
+                <span className="mt-1.5 block text-xs leading-relaxed text-stone-500 dark:text-slate-400">
                   Two squads, one result. The venue records the score and it counts on both
                   teams&apos; profiles.
                 </span>
@@ -1125,10 +1110,10 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
                   </>
                 ) : (
                   <div>
-                    <span className="block text-xs font-black uppercase tracking-wider text-stone-400 dark:text-stone-500">
+                    <span className="block text-xs font-black uppercase tracking-wider text-stone-400 dark:text-slate-500">
                       Individual booking 🙋
                     </span>
-                    <p className="mt-1 text-[11px] leading-relaxed text-stone-500 dark:text-stone-400">
+                    <p className="mt-1 text-[11px] leading-relaxed text-stone-500 dark:text-slate-400">
                       You&apos;re not in a team yet, so this game is booked for you and whoever you
                       invite along.{" "}
                       <Link
@@ -1147,7 +1132,7 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
             {visibility === "public" && (
               <div className="mt-3 space-y-3 rounded-2xl border border-orange-200 bg-orange-50/60 p-4 dark:border-orange-500/25 dark:bg-orange-500/5">
                 <label className="block">
-                  <span className="mb-1.5 block text-xs font-black uppercase tracking-wider text-stone-400 dark:text-stone-500">
+                  <span className="mb-1.5 block text-xs font-black uppercase tracking-wider text-stone-400 dark:text-slate-500">
                     Name your game (make it fun!)
                   </span>
                   <input
@@ -1158,7 +1143,7 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
                     }}
                     placeholder={`⚡ Friendly kickabout at ${venue.name}`}
                     maxLength={60}
-                    className={`w-full rounded-xl border bg-white px-3.5 py-2.5 text-sm font-semibold text-stone-900 placeholder:text-stone-400 focus:outline-none dark:bg-stone-950 dark:text-stone-100 dark:placeholder:text-stone-500 ${
+                    className={`w-full rounded-xl border bg-white px-3.5 py-2.5 text-sm font-semibold text-stone-900 placeholder:text-stone-400 focus:outline-none dark:bg-slate-950 dark:text-slate-100 dark:placeholder:text-slate-500 ${
                       fieldErrors.matchTitle
                         ? "border-red-400 focus:border-red-400"
                         : "border-stone-200 focus:border-orange-400 dark:border-white/10 dark:focus:border-orange-500"
@@ -1190,11 +1175,11 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
                 )}
 
                 <div className="grid gap-3 sm:grid-cols-2">
-                  <div className="rounded-2xl border border-stone-200 bg-white p-3.5 dark:border-white/10 dark:bg-stone-950">
-                    <span className="block text-xs font-black uppercase tracking-wider text-stone-400 dark:text-stone-500">
+                  <div className="rounded-2xl border border-stone-200 bg-white p-3.5 dark:border-white/10 dark:bg-slate-950">
+                    <span className="block text-xs font-black uppercase tracking-wider text-stone-400 dark:text-slate-500">
                       👥 Our crew coming
                     </span>
-                    <span className="mt-0.5 block text-[11px] text-stone-400 dark:text-stone-500">
+                    <span className="mt-0.5 block text-[11px] text-stone-400 dark:text-slate-500">
                       Including you — already counted in
                     </span>
                     <div className="mt-2.5 flex items-center justify-between gap-2">
@@ -1203,12 +1188,12 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
                           setOurCrew((v) => Math.max(1, v - 1));
                           setSelectedTeam("");
                         }}
-                        className="grid h-9 w-9 place-items-center rounded-full border border-stone-200 text-stone-600 transition hover:bg-stone-100 dark:border-white/10 dark:text-stone-300 dark:hover:bg-white/10"
+                        className="grid h-9 w-9 place-items-center rounded-full border border-stone-200 text-stone-600 transition hover:bg-stone-100 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/10"
                         aria-label="Fewer crew"
                       >
                         <Minus className="h-4 w-4" />
                       </button>
-                      <span className="text-3xl font-black text-stone-900 dark:text-stone-100">{ourCrew}</span>
+                      <span className="text-3xl font-black text-stone-900 dark:text-slate-100">{ourCrew}</span>
                       <button
                         onClick={() => {
                           setOurCrew((v) => Math.min(21, v + 1));
@@ -1225,7 +1210,7 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
                     <span className="block text-xs font-black uppercase tracking-wider text-orange-600 dark:text-orange-300">
                       🙋 Open spots for others
                     </span>
-                    <span className="mt-0.5 block text-[11px] text-stone-400 dark:text-stone-500">
+                    <span className="mt-0.5 block text-[11px] text-stone-400 dark:text-slate-500">
                       Listed publicly for joiners
                     </span>
                     <div className="mt-2.5 flex items-center justify-between gap-2">
@@ -1248,9 +1233,9 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
                   </div>
                 </div>
 
-                <div className="rounded-xl bg-white px-4 py-3 shadow-sm dark:bg-stone-950">
+                <div className="rounded-xl bg-white px-4 py-3 shadow-sm dark:bg-slate-950">
                   <div className="flex items-center justify-between text-xs font-black">
-                    <span className="text-stone-500 dark:text-stone-400">
+                    <span className="text-stone-500 dark:text-slate-400">
                       👥 {ourCrew} crew + 🙋 {openSpots} open = {totalPlayers} total
                     </span>
                     <span className={totalPlayers >= 4 && totalPlayers <= 22 ? "text-emerald-600 dark:text-emerald-400" : "text-red-500"}>
@@ -1270,7 +1255,7 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
                 </div>
 
                 <div>
-                  <span className="mb-1.5 block text-xs font-black uppercase tracking-wider text-stone-400 dark:text-stone-500">
+                  <span className="mb-1.5 block text-xs font-black uppercase tracking-wider text-stone-400 dark:text-slate-500">
                     Who&apos;s welcome? 💛
                   </span>
                   <div className="grid grid-cols-2 gap-2">
@@ -1279,10 +1264,10 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
                       className={`rounded-2xl border p-3 text-left transition ${
                         welcomeMode === "any"
                           ? "border-emerald-500 bg-emerald-50 shadow dark:bg-emerald-500/10"
-                          : "border-stone-200 bg-white dark:border-white/10 dark:bg-stone-950"
+                          : "border-stone-200 bg-white dark:border-white/10 dark:bg-slate-950"
                       }`}
                     >
-                      <span className="flex items-center gap-1.5 text-sm font-black text-stone-900 dark:text-stone-100">
+                      <span className="flex items-center gap-1.5 text-sm font-black text-stone-900 dark:text-slate-100">
                         🌍 Anyone!
                         {welcomeMode === "any" && (
                           <span className="ml-auto grid h-5 w-5 place-items-center rounded-full bg-emerald-600">
@@ -1290,7 +1275,7 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
                           </span>
                         )}
                       </span>
-                      <span className="mt-1 block text-[11px] leading-snug text-stone-500 dark:text-stone-400">
+                      <span className="mt-1 block text-[11px] leading-snug text-stone-500 dark:text-slate-400">
                         All levels, maximum fun
                       </span>
                     </button>
@@ -1299,10 +1284,10 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
                       className={`rounded-2xl border p-3 text-left transition ${
                         welcomeMode === "specific"
                           ? "border-orange-400 bg-orange-50 shadow dark:border-orange-500/50 dark:bg-orange-500/10"
-                          : "border-stone-200 bg-white dark:border-white/10 dark:bg-stone-950"
+                          : "border-stone-200 bg-white dark:border-white/10 dark:bg-slate-950"
                       }`}
                     >
-                      <span className="flex items-center gap-1.5 text-sm font-black text-stone-900 dark:text-stone-100">
+                      <span className="flex items-center gap-1.5 text-sm font-black text-stone-900 dark:text-slate-100">
                         🎯 Specific levels
                         {welcomeMode === "specific" && (
                           <span className="ml-auto grid h-5 w-5 place-items-center rounded-full bg-orange-500">
@@ -1310,7 +1295,7 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
                           </span>
                         )}
                       </span>
-                      <span className="mt-1 block text-[11px] leading-snug text-stone-500 dark:text-stone-400">
+                      <span className="mt-1 block text-[11px] leading-snug text-stone-500 dark:text-slate-400">
                         Pick one or mix a few
                       </span>
                     </button>
@@ -1326,11 +1311,11 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
                             className={`min-w-0 rounded-2xl border px-1.5 py-2.5 text-center transition ${
                               on
                                 ? "border-orange-500 bg-orange-500 text-white shadow-md"
-                                : "border-stone-200 bg-white dark:border-white/10 dark:bg-stone-950"
+                                : "border-stone-200 bg-white dark:border-white/10 dark:bg-slate-950"
                             }`}
                           >
                             <span className="block text-lg leading-none">{l.emoji}</span>
-                            <span className={`mt-1 block truncate text-[11px] font-black sm:text-xs ${on ? "text-white" : "text-stone-800 dark:text-stone-200"}`}>
+                            <span className={`mt-1 block truncate text-[11px] font-black sm:text-xs ${on ? "text-white" : "text-stone-800 dark:text-slate-200"}`}>
                               {l.name}
                             </span>
                             <span className={`block truncate text-[10px] ${on ? "text-orange-100" : "text-stone-400"}`}>
@@ -1341,13 +1326,13 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
                       })}
                     </div>
                   )}
-                  <p className="mt-1.5 text-[11px] font-bold text-stone-400 dark:text-stone-500">
-                    Showing as: <span className="text-stone-600 dark:text-stone-300">{matchLevelString}</span>
+                  <p className="mt-1.5 text-[11px] font-bold text-stone-400 dark:text-slate-500">
+                    Showing as: <span className="text-stone-600 dark:text-slate-300">{matchLevelString}</span>
                   </p>
                 </div>
 
-                <div className="rounded-xl bg-white p-3.5 shadow-sm dark:bg-stone-950">
-                  <span className="mb-2 block text-xs font-black uppercase tracking-wider text-stone-400 dark:text-stone-500">
+                <div className="rounded-xl bg-white p-3.5 shadow-sm dark:bg-slate-950">
+                  <span className="mb-2 block text-xs font-black uppercase tracking-wider text-stone-400 dark:text-slate-500">
                     What should joiners pay? 💰
                   </span>
                   <div className="grid grid-cols-2 gap-2">
@@ -1359,7 +1344,7 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
                           : "border-stone-200 dark:border-white/10"
                       }`}
                     >
-                      <span className="flex items-center gap-1.5 text-[13px] font-black text-stone-900 dark:text-stone-100">
+                      <span className="flex items-center gap-1.5 text-[13px] font-black text-stone-900 dark:text-slate-100">
                         🤝 Fair split
                         {chargeMode === "split" && (
                           <span className="ml-auto grid h-5 w-5 place-items-center rounded-full bg-emerald-600">
@@ -1385,7 +1370,7 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
                           : "border-stone-200 dark:border-white/10"
                       }`}
                     >
-                      <span className="flex items-center gap-1.5 text-[13px] font-black text-stone-900 dark:text-stone-100">
+                      <span className="flex items-center gap-1.5 text-[13px] font-black text-stone-900 dark:text-slate-100">
                         ✨ Custom charge
                         {chargeMode === "custom" && (
                           <span className="ml-auto grid h-5 w-5 place-items-center rounded-full bg-violet-600">
@@ -1404,7 +1389,7 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
 
                   {chargeMode === "split" ? (
                     <div className="mt-2.5 flex flex-wrap items-center justify-between gap-2 rounded-xl bg-emerald-50 px-4 py-3 dark:bg-emerald-500/10">
-                      <span className="text-xs font-bold text-stone-500 dark:text-stone-400">
+                      <span className="text-xs font-bold text-stone-500 dark:text-slate-400">
                         Everyone chips in fairly
                       </span>
                       <span className="text-sm font-black text-emerald-700 dark:text-emerald-300">
@@ -1432,7 +1417,7 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
                               setFieldErrors((p) => ({ ...p, customPrice: "" }));
                             }}
                             placeholder={String(autoPerPlayer)}
-                            className="w-full rounded-xl border border-violet-300 bg-white px-3.5 py-2.5 text-lg font-black text-stone-900 focus:border-violet-500 focus:outline-none dark:border-violet-500/40 dark:bg-stone-950 dark:text-stone-100"
+                            className="w-full rounded-xl border border-violet-300 bg-white px-3.5 py-2.5 text-lg font-black text-stone-900 focus:border-violet-500 focus:outline-none dark:border-violet-500/40 dark:bg-slate-950 dark:text-slate-100"
                           />
                         </div>
                         <div className="mt-2 flex flex-wrap gap-1.5">
@@ -1444,7 +1429,7 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
                           </button>
                           <button
                             onClick={() => setCustomPrice(String(autoPerPlayer))}
-                            className="rounded-full bg-white px-3 py-1.5 text-[11px] font-black text-stone-600 shadow-sm dark:bg-white/10 dark:text-stone-300"
+                            className="rounded-full bg-white px-3 py-1.5 text-[11px] font-black text-stone-600 shadow-sm dark:bg-white/10 dark:text-slate-300"
                           >
                             ↩ Use fair split ({formatNPR(autoPerPlayer)})
                           </button>
@@ -1454,7 +1439,7 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
                         )}
                       </div>
                       {slot && customPrice !== "" && Number.isFinite(customNum) && (
-                        <div className="space-y-1.5 rounded-xl bg-white px-4 py-3 text-xs font-bold dark:bg-stone-950">
+                        <div className="space-y-1.5 rounded-xl bg-white px-4 py-3 text-xs font-bold dark:bg-slate-950">
                           <div className="flex justify-between">
                             <span className="text-stone-500">🙋 {openSpots} joiners × {formatNPR(customNum)}</span>
                             <span className="text-violet-700 dark:text-violet-300">{formatNPR(joinersTotal)}</span>
@@ -1491,7 +1476,7 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
                     </div>
                   )}
                 </div>
-                <p className="text-[11px] leading-relaxed text-stone-400 dark:text-stone-500">
+                <p className="text-[11px] leading-relaxed text-stone-400 dark:text-slate-500">
                   Your invite goes out once the venue gives a thumbs-up — friends
                   pay their share to you at the court. Simple! 🤝
                 </p>
@@ -1513,10 +1498,10 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
                   />
                 ) : (
                   <div>
-                    <span className="block text-xs font-black uppercase tracking-wider text-stone-400 dark:text-stone-500">
+                    <span className="block text-xs font-black uppercase tracking-wider text-stone-400 dark:text-slate-500">
                       A competition game needs a squad 🛡️
                     </span>
-                    <p className="mt-1 text-[11px] leading-relaxed text-stone-500 dark:text-stone-400">
+                    <p className="mt-1 text-[11px] leading-relaxed text-stone-500 dark:text-slate-400">
                       You&apos;re not in a team yet, so there&apos;s nobody to play for.{" "}
                       <Link
                         href="/teams"
@@ -1532,7 +1517,7 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
                 {selectedTeam && (
                   <>
                     <label className="block">
-                      <span className="mb-1.5 block text-xs font-black uppercase tracking-wider text-stone-400 dark:text-stone-500">
+                      <span className="mb-1.5 block text-xs font-black uppercase tracking-wider text-stone-400 dark:text-slate-500">
                         🏆 Does this count towards a league?
                       </span>
                       <select
@@ -1542,7 +1527,7 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
                           setOpponentTeamId("");
                           setOpponentQuery("");
                         }}
-                        className="w-full rounded-xl border border-stone-200 bg-white px-3.5 py-2.5 text-sm font-semibold text-stone-900 focus:border-sky-400 focus:outline-none dark:border-white/10 dark:bg-stone-950 dark:text-stone-100"
+                        className="w-full rounded-xl border border-stone-200 bg-white px-3.5 py-2.5 text-sm font-semibold text-stone-900 focus:border-sky-400 focus:outline-none dark:border-white/10 dark:bg-slate-950 dark:text-slate-100"
                       >
                         <option value="">Just a friendly — no league</option>
                         {squadLeagues.map((l) => (
@@ -1552,7 +1537,7 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
                           </option>
                         ))}
                       </select>
-                      <span className="mt-1 block text-[11px] text-stone-400 dark:text-stone-500">
+                      <span className="mt-1 block text-[11px] text-stone-400 dark:text-slate-500">
                         {squadLeagues.length > 0
                           ? "Only leagues your squad is already accepted into can be picked."
                           : "Your squad isn't in a league yet, so this will be a standalone competition game."}
@@ -1560,11 +1545,11 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
                     </label>
 
                     <div>
-                      <span className="mb-1.5 block text-xs font-black uppercase tracking-wider text-stone-400 dark:text-stone-500">
+                      <span className="mb-1.5 block text-xs font-black uppercase tracking-wider text-stone-400 dark:text-slate-500">
                         🆚 Who are you playing?
                       </span>
                       {chosenOpponent ? (
-                        <div className="flex items-center gap-2 rounded-2xl border border-sky-300 bg-white px-3.5 py-3 dark:border-sky-500/40 dark:bg-stone-950">
+                        <div className="flex items-center gap-2 rounded-2xl border border-sky-300 bg-white px-3.5 py-3 dark:border-sky-500/40 dark:bg-slate-950">
                           <span
                             className="grid h-6 w-6 shrink-0 place-items-center rounded-full text-white"
                             style={{ background: chosenOpponent.logoColor }}
@@ -1572,11 +1557,11 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
                             <Shield className="h-3 w-3" />
                           </span>
                           <span className="min-w-0 flex-1">
-                            <span className="block truncate text-sm font-black text-stone-900 dark:text-stone-100">
+                            <span className="block truncate text-sm font-black text-stone-900 dark:text-slate-100">
                               {selectedTeamName || "Your squad"} <span className="text-sky-600 dark:text-sky-400">vs</span>{" "}
                               {chosenOpponent.name}
                             </span>
-                            <span className="block text-[11px] text-stone-400 dark:text-stone-500">
+                            <span className="block text-[11px] text-stone-400 dark:text-slate-500">
                               {chosenLeague ? `🏆 ${chosenLeague.name}` : "Friendly competition"} •{" "}
                               {chosenOpponent.teamCode ? `code ${chosenOpponent.teamCode}` : "squad"}
                             </span>
@@ -1587,7 +1572,7 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
                               setOpponentTeamId("");
                               setOpponentQuery("");
                             }}
-                            className="rounded-full border border-stone-200 px-3 py-1.5 text-[11px] font-black text-stone-500 transition hover:bg-stone-100 dark:border-white/10 dark:text-stone-300 dark:hover:bg-white/10"
+                            className="rounded-full border border-stone-200 px-3 py-1.5 text-[11px] font-black text-stone-500 transition hover:bg-stone-100 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/10"
                           >
                             Change
                           </button>
@@ -1603,7 +1588,7 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
                                 chosenLeague ? `Search ${chosenLeague.name} squads…` : "Search squads by name…"
                               }
                               maxLength={40}
-                              className="w-full rounded-xl border border-stone-200 bg-white py-2.5 pl-9 pr-3.5 text-sm font-semibold text-stone-900 placeholder:text-stone-400 focus:border-sky-400 focus:outline-none dark:border-white/10 dark:bg-stone-950 dark:text-stone-100 dark:placeholder:text-stone-500"
+                              className="w-full rounded-xl border border-stone-200 bg-white py-2.5 pl-9 pr-3.5 text-sm font-semibold text-stone-900 placeholder:text-stone-400 focus:border-sky-400 focus:outline-none dark:border-white/10 dark:bg-slate-950 dark:text-slate-100 dark:placeholder:text-slate-500"
                             />
                           </div>
                           <div className="mt-2 flex flex-wrap gap-1.5">
@@ -1612,7 +1597,7 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
                                 type="button"
                                 key={t.teamId}
                                 onClick={() => setOpponentTeamId(String(t.teamId))}
-                                className="flex items-center gap-1.5 rounded-full border border-stone-200 bg-white px-3.5 py-2 text-xs font-black text-stone-600 transition hover:border-sky-400 hover:text-sky-700 dark:border-white/10 dark:bg-white/5 dark:text-stone-300 dark:hover:border-sky-500/50"
+                                className="flex items-center gap-1.5 rounded-full border border-stone-200 bg-white px-3.5 py-2 text-xs font-black text-stone-600 transition hover:border-sky-400 hover:text-sky-700 dark:border-white/10 dark:bg-white/5 dark:text-slate-300 dark:hover:border-sky-500/50"
                               >
                                 <span
                                   className="grid h-4 w-4 place-items-center rounded-full text-white"
@@ -1624,7 +1609,7 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
                               </button>
                             ))}
                             {opponentMatches.length === 0 && (
-                              <span className="text-[11px] font-bold text-stone-400 dark:text-stone-500">
+                              <span className="text-[11px] font-bold text-stone-400 dark:text-slate-500">
                                 {opponentPool.length === 0
                                   ? "No other squads to play yet — invite a team first 🆚"
                                   : "No squad matches that name."}
@@ -1649,7 +1634,7 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
 
         {/* Summary */}
         <aside className="lg:sticky lg:top-20 lg:self-start">
-          <div className="overflow-hidden rounded-3xl border border-[#F0E3CC] bg-white shadow-[0_16px_40px_rgba(180,120,60,0.12)] dark:border-white/10 dark:bg-stone-900">
+          <div className="overflow-hidden rounded-3xl border border-[#F0E3CC] bg-white shadow-[0_16px_40px_rgba(180,120,60,0.12)] dark:border-white/10 dark:bg-slate-900">
             <div className="flex items-center gap-2 border-b border-stone-100 bg-emerald-700 px-5 py-4 dark:border-white/5">
               <Zap className="h-4 w-4 text-amber-300" />
               <h2 className="text-sm font-black text-white">Your game plan</h2>
@@ -1715,7 +1700,7 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
                     🎁
                   </span>
                   <span className="min-w-0 flex-1">
-                    <span className="block text-[13px] font-black text-stone-900 dark:text-stone-100">
+                    <span className="block text-[13px] font-black text-stone-900 dark:text-slate-100">
                       Use my FREE hour {useFreePlay ? "✓" : ""}
                     </span>
                     <span className="block font-mono text-[11px] text-violet-600 dark:text-violet-300">
@@ -1734,7 +1719,7 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
               {/* Promo code 🎟️ — owner-set discount with an expiry date */}
               {afterFreePlay > 0 && (
                 <div className="rounded-2xl border border-dashed border-emerald-300 bg-emerald-50/50 p-3 dark:border-emerald-500/40 dark:bg-emerald-500/5">
-                  <p className="flex items-center gap-1.5 text-[11px] font-black uppercase tracking-wider text-stone-400 dark:text-stone-500">
+                  <p className="flex items-center gap-1.5 text-[11px] font-black uppercase tracking-wider text-stone-400 dark:text-slate-500">
                     <Ticket className="h-3.5 w-3.5" /> Promo code
                   </p>
                   {venuePromos.length > 0 && (
@@ -1796,7 +1781,7 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
                         maxLength={24}
                         autoCapitalize="characters"
                         spellCheck={false}
-                        className="min-w-0 flex-1 rounded-xl border border-emerald-200 bg-white px-3 py-2.5 font-mono text-sm font-black uppercase tracking-wider text-stone-900 placeholder:font-sans placeholder:font-semibold placeholder:normal-case placeholder:tracking-normal placeholder:text-stone-400 focus:border-emerald-500 focus:outline-none dark:border-emerald-500/30 dark:bg-stone-950 dark:text-stone-100"
+                        className="min-w-0 flex-1 rounded-xl border border-emerald-200 bg-white px-3 py-2.5 font-mono text-sm font-black uppercase tracking-wider text-stone-900 placeholder:font-sans placeholder:font-semibold placeholder:normal-case placeholder:tracking-normal placeholder:text-stone-400 focus:border-emerald-500 focus:outline-none dark:border-emerald-500/30 dark:bg-slate-950 dark:text-slate-100"
                       />
                       <button
                         type="button"
@@ -1822,7 +1807,7 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
               )}
               <div className="border-t border-dashed border-stone-200 pt-3 dark:border-white/10">
                 <div className="flex items-center justify-between">
-                  <span className="font-bold text-stone-500 dark:text-stone-400">Total</span>
+                  <span className="font-bold text-stone-500 dark:text-slate-400">Total</span>
                   <span className="text-right">
                     {total < fullTotal && (
                       <span className="mr-2 text-sm font-bold text-stone-400 line-through">
@@ -1848,7 +1833,7 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
               {total > 0 ? (
                 <>
                   <div>
-                    <p className="mb-2 text-xs font-black uppercase tracking-wider text-stone-400 dark:text-stone-500">
+                    <p className="mb-2 text-xs font-black uppercase tracking-wider text-stone-400 dark:text-slate-500">
                       Pay your way — {venue?.name ?? "venue"} accepts
                     </p>
                     <div className="grid grid-cols-2 gap-2">
@@ -1859,7 +1844,7 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
                           className={`flex items-center gap-1.5 rounded-xl border px-3 py-2.5 text-xs font-extrabold transition ${
                             payMethod === m
                               ? "border-emerald-500 bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300"
-                              : "border-stone-200 bg-stone-50 text-stone-500 dark:border-white/10 dark:bg-white/5 dark:text-stone-400"
+                              : "border-stone-200 bg-stone-50 text-stone-500 dark:border-white/10 dark:bg-white/5 dark:text-slate-400"
                           }`}
                         >
                           <Wallet className="h-3.5 w-3.5" /> {m}
@@ -1916,7 +1901,7 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
                 </p>
               )}
               <label className="block">
-                <span className="mb-1.5 block text-xs font-black uppercase tracking-wider text-stone-400 dark:text-stone-500">
+                <span className="mb-1.5 block text-xs font-black uppercase tracking-wider text-stone-400 dark:text-slate-500">
                   Your number (so the venue can reach you)
                 </span>
                 <input
@@ -1927,14 +1912,14 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
                   }}
                   placeholder="98XXXXXXXX"
                   maxLength={16}
-                  className={`w-full rounded-xl border bg-[#FFF6E9] px-3.5 py-2.5 text-sm font-semibold text-stone-900 placeholder:text-stone-400 focus:outline-none dark:bg-white/5 dark:text-stone-100 dark:placeholder:text-stone-500 ${
+                  className={`w-full rounded-xl border bg-[#FFF6E9] px-3.5 py-2.5 text-sm font-semibold text-stone-900 placeholder:text-stone-400 focus:outline-none dark:bg-white/5 dark:text-slate-100 dark:placeholder:text-slate-500 ${
                     fieldErrors.phone ? "border-red-400 focus:border-red-400" : "border-stone-200 focus:border-emerald-500 dark:border-white/10"
                   }`}
                 />
                 {fieldErrors.phone && <span className="mt-1 block text-[11px] font-bold text-red-500">{fieldErrors.phone}</span>}
               </label>
               <label className="block">
-                <span className="mb-1.5 block text-xs font-black uppercase tracking-wider text-stone-400 dark:text-stone-500">
+                <span className="mb-1.5 block text-xs font-black uppercase tracking-wider text-stone-400 dark:text-slate-500">
                   Anything we should know? (optional)
                 </span>
                 <textarea
@@ -1946,7 +1931,7 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
                   placeholder="Birthday game, need extra balls…"
                   rows={2}
                   maxLength={500}
-                  className={`w-full resize-none rounded-xl border bg-[#FFF6E9] px-3.5 py-2.5 text-sm font-semibold text-stone-900 placeholder:text-stone-400 focus:outline-none dark:bg-white/5 dark:text-stone-100 dark:placeholder:text-stone-500 ${
+                  className={`w-full resize-none rounded-xl border bg-[#FFF6E9] px-3.5 py-2.5 text-sm font-semibold text-stone-900 placeholder:text-stone-400 focus:outline-none dark:bg-white/5 dark:text-slate-100 dark:placeholder:text-slate-500 ${
                     fieldErrors.notes ? "border-red-400 focus:border-red-400" : "border-stone-200 focus:border-emerald-500 dark:border-white/10"
                   }`}
                 />
@@ -1989,7 +1974,7 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
                             : `Request ${hours} hr • ${formatNPR(total)}`}
                 </button>
               )}
-              <p className="flex items-center justify-center gap-1.5 text-[11px] font-semibold text-stone-400 dark:text-stone-500">
+              <p className="flex items-center justify-center gap-1.5 text-[11px] font-semibold text-stone-400 dark:text-slate-500">
                 <BadgeCheck className="h-3.5 w-3.5" /> Life happens — cancel free up to 6 hrs before
               </p>
             </div>
@@ -2000,12 +1985,12 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
       {/* Success modal */}
       {success && (
         <div className="fixed inset-0 z-[60] grid place-items-center bg-stone-900/50 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-sm rounded-[2rem] border border-stone-200 bg-white p-8 text-center shadow-2xl dark:border-white/10 dark:bg-stone-900">
+          <div className="w-full max-w-sm rounded-[2rem] border border-stone-200 bg-white p-8 text-center shadow-2xl dark:border-white/10 dark:bg-slate-900">
             <span className="mx-auto grid h-16 w-16 place-items-center rounded-full bg-emerald-600 shadow-lg">
               <PartyPopper className="h-8 w-8 text-white" />
             </span>
-            <h3 className="mt-4 text-xl font-black text-stone-900 dark:text-stone-100">Request sent! 🥳</h3>
-            <p className="mt-1.5 text-sm text-stone-500 dark:text-stone-400">
+            <h3 className="mt-4 text-xl font-black text-stone-900 dark:text-slate-100">Request sent! 🥳</h3>
+            <p className="mt-1.5 text-sm text-stone-500 dark:text-slate-400">
               {court?.name} • {prettyDate(date)} • {slot ? `${formatTime12(slot)} (${hours} hr)` : ""}
             </p>
             <p className="mt-1 text-sm font-bold text-emerald-700 dark:text-emerald-300">
@@ -2025,11 +2010,11 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
                 <Shield className="h-3.5 w-3.5" /> Booked for {success.teamName}
               </p>
             ) : (
-              <p className="mt-1 text-[11px] text-stone-400 dark:text-stone-500">
+              <p className="mt-1 text-[11px] text-stone-400 dark:text-slate-500">
                 🙋 Individual booking — no squad attached
               </p>
             )}
-            <p className="mt-1 text-[11px] text-stone-400 dark:text-stone-500">Booking ref: #FN-{success.id}</p>
+            <p className="mt-1 text-[11px] text-stone-400 dark:text-slate-500">Booking ref: #FN-{success.id}</p>
             <p className="mx-auto mt-3 max-w-[280px] rounded-xl bg-amber-50 px-3 py-2.5 text-xs font-bold leading-relaxed text-amber-700 dark:bg-amber-500/10 dark:text-amber-300">
               ⏳ The lovely folks at the venue are reviewing it — we&apos;ll
               notify you the second they confirm!
@@ -2049,7 +2034,7 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
             <div className="mt-5 grid grid-cols-2 gap-2">
               <button
                 onClick={() => setSuccess(null)}
-                className="rounded-2xl border border-stone-200 py-3 text-sm font-black text-stone-700 dark:border-white/10 dark:text-stone-200"
+                className="rounded-2xl border border-stone-200 py-3 text-sm font-black text-stone-700 dark:border-white/10 dark:text-slate-200"
               >
                 Book another
               </button>
@@ -2070,8 +2055,8 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
 function Row({ k, v }: { k: string; v: string }) {
   return (
     <div className="flex items-center justify-between gap-3">
-      <span className="text-[13px] font-semibold text-stone-400 dark:text-stone-500">{k}</span>
-      <span className="truncate text-[13px] font-extrabold text-stone-900 dark:text-stone-100">{v}</span>
+      <span className="text-[13px] font-semibold text-stone-400 dark:text-slate-500">{k}</span>
+      <span className="truncate text-[13px] font-extrabold text-stone-900 dark:text-slate-100">{v}</span>
     </div>
   );
 }
@@ -2112,7 +2097,7 @@ function TeamPicker({
         : "bg-orange-500 text-white shadow-md";
   return (
     <div>
-      <span className="mb-1.5 block text-xs font-black uppercase tracking-wider text-stone-400 dark:text-stone-500">
+      <span className="mb-1.5 block text-xs font-black uppercase tracking-wider text-stone-400 dark:text-slate-500">
         {title}
       </span>
       <div className="flex flex-wrap gap-1.5">
@@ -2122,8 +2107,8 @@ function TeamPicker({
             onClick={() => onPick("")}
             className={`rounded-full px-3.5 py-2 text-xs font-black transition ${
               selected === ""
-                ? "bg-stone-800 text-white dark:bg-white dark:text-stone-900"
-                : "border border-stone-200 bg-white text-stone-600 dark:border-white/10 dark:bg-white/5 dark:text-stone-300"
+                ? "bg-stone-800 text-white dark:bg-white dark:text-slate-900"
+                : "border border-stone-200 bg-white text-stone-600 dark:border-white/10 dark:bg-white/5 dark:text-slate-300"
             }`}
           >
             {idleLabel}
@@ -2142,7 +2127,7 @@ function TeamPicker({
             className={`flex items-center gap-1.5 rounded-full px-3.5 py-2 text-xs font-black transition ${
               selected === String(t.id)
                 ? activeChip
-                : "border border-stone-200 bg-white text-stone-600 dark:border-white/10 dark:bg-white/5 dark:text-stone-300"
+                : "border border-stone-200 bg-white text-stone-600 dark:border-white/10 dark:bg-white/5 dark:text-slate-300"
             }`}
           >
             <span

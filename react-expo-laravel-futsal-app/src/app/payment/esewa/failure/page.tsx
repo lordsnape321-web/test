@@ -10,7 +10,7 @@ function Inner() {
   const bookingId = params.get("bookingId");
   return (
     <main className="turf-pattern grid min-h-screen place-items-center px-4 py-12">
-      <div className="w-full max-w-md rounded-[2rem] border border-[#F0E3CC] bg-white p-8 text-center shadow-lg dark:border-white/10 dark:bg-stone-900">
+      <div className="w-full max-w-md rounded-[2rem] border border-[#F0E3CC] bg-white p-8 text-center shadow-lg dark:border-white/10 dark:bg-slate-900">
         <span className="mx-auto grid h-16 w-16 place-items-center rounded-full bg-amber-500 shadow-lg">
           <XCircle className="h-8 w-8 text-white" />
         </span>

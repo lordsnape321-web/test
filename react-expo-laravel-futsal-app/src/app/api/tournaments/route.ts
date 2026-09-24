@@ -7,6 +7,9 @@ import {
   LEAGUE_MAX_ENTRY_FEE,
   LEAGUE_VISIBILITIES,
   depositPercentError,
+  groupSetupError,
+  leagueModeError,
+  modeHasBracket,
   refundPercentError,
 } from "@/lib/league";
 import {
@@ -73,6 +76,11 @@ export async function POST(req: Request) {
     const venueId = Number(body.venueId);
     const courtId = Number(body.courtId) || 0;
     const format = String(body.format ?? "5v5");
+    // How the competition decides a winner — round robin by default, so an
+    // older client posting without `mode` gets exactly what it always got.
+    const mode = String(body.mode ?? "round_robin");
+    const thirdPlace = body.thirdPlace === true || body.thirdPlace === "true";
+    const groupSize = Number(body.groupSize ?? 4);
     const maxTeams = Number(body.maxTeams);
     const entryFee = body.entryFee === "" || body.entryFee === undefined ? 0 : Number(body.entryFee);
     const depositPercent = Number(body.depositPercent ?? 25);
@@ -97,6 +105,8 @@ export async function POST(req: Request) {
         ? null
         : `Format must be one of ${LEAGUE_FORMATS.join(", ")} 🥅`,
       validateMaxTeams(maxTeams),
+      leagueModeError(mode),
+      groupSetupError({ mode, groupSize, maxTeams }),
       validateEntryFee(entryFee),
       depositPercentError(depositPercent),
       refundPercentError(refundPercent),
@@ -131,6 +141,10 @@ export async function POST(req: Request) {
         venueId: venue.id,
         courtId: courtId > 0 ? courtId : null,
         format,
+        mode,
+        // A third-place game only means something in a mode that has a bracket.
+        thirdPlace: modeHasBracket(mode) ? thirdPlace : false,
+        groupSize: Math.min(8, Math.max(2, Math.trunc(groupSize) || 4)),
         maxTeams,
         entryFee,
         depositPercent,

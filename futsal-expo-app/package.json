@@ -1,0 +1,43 @@
+{
+  "name": "futsal-expo-app",
+  "version": "1.0.0",
+  "main": "expo-router/entry",
+  "dependencies": {
+    "@expo-google-fonts/plus-jakarta-sans": "^0.4.2",
+    "@react-native-async-storage/async-storage": "^3.1.1",
+    "@react-native-community/slider": "^5.2.1",
+    "@react-native-picker/picker": "^2.11.4",
+    "expo": "~57.0.24",
+    "expo-clipboard": "^57.0.2",
+    "expo-constants": "^57.0.19",
+    "expo-font": "^57.0.4",
+    "expo-image-picker": "^57.0.19",
+    "expo-linear-gradient": "^57.0.2",
+    "expo-linking": "^57.0.10",
+    "expo-router": "^57.0.22",
+    "expo-status-bar": "~57.0.1",
+    "expo-system-ui": "^57.0.4",
+    "lucide-react-native": "^1.47.0",
+    "react": "19.2.3",
+    "react-dom": "^19.2.3",
+    "react-native": "0.86.3",
+    "react-native-safe-area-context": "^5.10.0",
+    "react-native-screens": "^4.28.0",
+    "react-native-svg": "^15.15.5",
+    "react-native-web": "^0.21.2"
+  },
+  "devDependencies": {
+    "@types/react": "~19.2.2",
+    "typescript": "~6.0.3"
+  },
+  "scripts": {
+    "start": "expo start --clear",
+    "android": "expo start --clear --android",
+    "ios": "expo start --clear --ios",
+    "web": "expo start --clear --web",
+    "typecheck": "tsc --noEmit",
+    "smoke": "esbuild scripts/smoke.ts --bundle --platform=node --format=esm --tsconfig=tsconfig.json --outfile=scripts/.tmp/smoke.mjs && node scripts/.tmp/smoke.mjs",
+    "postinstall": "node scripts/patch-expo-cors.js"
+  },
+  "private": true
+}

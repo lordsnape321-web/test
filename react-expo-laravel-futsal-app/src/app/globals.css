@@ -24,8 +24,8 @@ body {
 }
 
 .dark body {
-  background: #0c0a09;
-  color: #f5f5f4;
+  background: #020617;
+  color: #f1f5f9;
 }
 
 ::selection {
@@ -52,15 +52,16 @@ body {
   background-size: auto, auto, auto, 26px 26px;
 }
 
-/* Cozy night-clubhouse backdrop for dark mode */
+/* Cool night backdrop for dark mode — matches Owner Studio's slate-950.
+   No dot texture here: light mode keeps it, but on a near-black base the
+   white speckles read as noise rather than a pitch. */
 .dark .turf-pattern {
-  background-color: #0c0a09;
+  background-color: #020617;
   background-image:
-    radial-gradient(circle at 12% 8%, rgba(249, 115, 22, 0.12) 0, transparent 34%),
+    radial-gradient(circle at 12% 8%, rgba(59, 130, 246, 0.12) 0, transparent 34%),
     radial-gradient(circle at 88% 12%, rgba(16, 185, 129, 0.12) 0, transparent 36%),
-    radial-gradient(circle at 50% 100%, rgba(251, 191, 36, 0.08) 0, transparent 42%),
-    radial-gradient(rgba(255, 255, 255, 0.055) 1.2px, transparent 1.2px);
-  background-size: auto, auto, auto, 26px 26px;
+    radial-gradient(circle at 50% 100%, rgba(99, 102, 241, 0.08) 0, transparent 42%);
+  background-size: auto, auto, auto;
 }
 
 .card-glow {
@@ -110,14 +111,33 @@ select option {
   color: #1c1917;
 }
 .dark select option {
-  background-color: #1c1917;
-  color: #f5f5f4;
+  background-color: #0f172a;
+  color: #f1f5f9;
 }
 select optgroup {
   background-color: #ffffff;
   color: #78716c;
 }
 .dark select optgroup {
-  background-color: #1c1917;
-  color: #a8a29e;
+  background-color: #0f172a;
+  color: #94a3b8;
+}
+
+/*
+ * iOS Safari force-zooms the entire page when a focused field's computed
+ * font-size is below 16px, and the page stays zoomed after blur. Most of the
+ * ~157 form controls here are text-sm or text-xs for density, so this was
+ * happening on every input on an iPhone.
+ *
+ * Bumping them at the widths where the zoom actually occurs fixes all of them
+ * at once without touching a single call site. Desktop typography is
+ * untouched, and the non-text input types are excluded — they don't trigger
+ * the zoom and a 16px checkbox is just wrong.
+ */
+@media (max-width: 640px) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="hidden"]):not([type="color"]):not([type="submit"]):not([type="button"]):not([type="file"]),
+  select,
+  textarea {
+    font-size: 16px;
+  }
 }

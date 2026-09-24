@@ -1,11 +1,12 @@
 import { db } from "@/db";
 import { bookings, openMatches, courts, teams, venues, vouchers, users } from "@/db/schema";
-import { prettyDate, formatTime12, formatNPR } from "@/lib/futsal";
+import { prettyDate, formatTime12, formatNPR, gamePlayed } from "@/lib/futsal";
 import { monthKey, hoursUntilGame, CANCEL_CUTOFF_HOURS, LOYALTY_TARGET, TRUST_START, TRUST_COMPLETE_BOOST, TRUST_CANCEL_PENALTY, trustAfterComplete, trustAfterCancel, trustLabel } from "@/lib/loyalty";
 import { sendNotification } from "@/lib/notify";
 import { and, eq } from "drizzle-orm";
 import { recordFor } from "@/lib/league";
 import { validateScore } from "@/lib/validation";
+import { settleWindow, SETTLE_EDIT_WINDOW_MS } from "@/lib/booking-ledger";
 
 export const dynamic = "force-dynamic";
 
@@ -121,8 +122,65 @@ export async function PATCH(
     const scoreResponse = await applyCompetitionScore(prev, body);
     if (scoreResponse) return scoreResponse;
 
-    // Fair-play: players can't cancel within 6h of the game.
     const actor = body.actor === "owner" ? "owner" : "player";
+
+    /*
+     * A played game is locked 🔒
+     *
+     * Once the whistle has gone the booking is history: a player can't cancel
+     * it, re-price it, change how it was paid, or attach a receipt to it. The
+     * UI hides those controls; this is the same rule enforced where it counts,
+     * so a replayed request gets the same answer. The venue owner is exempt —
+     * marking a game completed, settling a payment and recording a competition
+     * score all happen *after* kickoff and are the owner's job.
+     */
+    if (actor === "player" && gamePlayed(prev)) {
+      const PLAYER_EDITABLE = [
+        "status",
+        "paymentStatus",
+        "paymentMethod",
+        "depositStatus",
+        "receiptUrl",
+      ];
+      const touching = PLAYER_EDITABLE.filter((k) => body[k] !== undefined);
+      if (touching.length > 0) {
+        return Response.json(
+          {
+            error:
+              "That game is already played 🔒 — the booking is locked, so nothing on it can be changed now.",
+          },
+          { status: 409 }
+        );
+      }
+    }
+
+    /*
+     * A settled booking is final 🔒
+     *
+     * The payment ledger refuses changes once the five-minute correction window
+     * closes — but it isn't the only door onto these columns. Without this, an
+     * owner could flip `paymentStatus` back to "pending" or rewrite the medium
+     * through this route and quietly undo a settlement the ledger had locked,
+     * which is exactly the trust the lock exists to give the day's takings.
+     *
+     * Inside the window these stay editable, so the correction path still works.
+     */
+    const win = settleWindow(prev.settledAt);
+    if (win.settled && !win.editable) {
+      const MONEY_FIELDS = ["paymentStatus", "paymentMethod", "depositStatus", "receiptUrl"];
+      const touching = MONEY_FIELDS.filter((k) => body[k] !== undefined);
+      if (touching.length > 0)
+        return Response.json(
+          {
+            error: `This booking was settled more than ${SETTLE_EDIT_WINDOW_MS / 60000} minutes ago — its payment details are locked so the day's takings stay trustworthy 🔒`,
+            reason: "ledger_locked",
+            settledAt: prev.settledAt,
+          },
+          { status: 409 }
+        );
+    }
+
+    // Fair-play: players can't cancel within 6h of the game.
     if (body.status === "cancelled" && prev.status !== "cancelled" && actor === "player") {
       const hrsLeft = hoursUntilGame(prev.date, prev.startTime);
       if (hrsLeft < CANCEL_CUTOFF_HOURS && hrsLeft > -48) {
@@ -286,6 +344,18 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params;
+    const rows = await db.select().from(bookings).where(eq(bookings.id, Number(id)));
+    const prev = rows[0];
+    if (!prev) return Response.json({ error: "Booking not found" }, { status: 404 });
+    if (gamePlayed(prev)) {
+      return Response.json(
+        {
+          error:
+            "That game is already played 🔒 — the booking is locked and can't be cancelled.",
+        },
+        { status: 409 }
+      );
+    }
     await db
       .update(bookings)
       .set({ status: "cancelled" })
