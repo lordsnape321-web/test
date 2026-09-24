@@ -665,11 +665,19 @@ async function applyCompetitionScore(
           status: "played",
         }));
       const rec = recordFor(team.id, history);
+      const paymentOutcome =
+        prev.chargeMode === "loser_pays"
+          ? home === away
+            ? "It was a draw, so the court bill falls back to a fair split."
+            : team.id === (home! < away! ? prev.teamId : prev.opponentTeamId)
+              ? "Your squad is the losing side, so the saved policy assigns the court bill to you."
+              : "Your squad won, so the saved policy assigns the court bill to the opposition."
+          : "The saved policy is a fair split between both squads.";
       await sendNotification({
         userId: team.captainId,
         type: "competition",
         title: `⚽ Result in — ${line}`,
-        message: `${venue.name} recorded the final score. ${team.name} is now ${rec.won}W • ${rec.drawn}D • ${rec.lost}L (${rec.points} pts) in competition games — the record shows on your team profile. Send the host your photos for the album 📸`,
+        message: `${venue.name} recorded the final score. ${team.name} is now ${rec.won}W • ${rec.drawn}D • ${rec.lost}L (${rec.points} pts) in competition games — the record shows on your team profile. ${paymentOutcome} Send the host your photos for the album 📸`,
         link: `/teams/${team.id}`,
       });
     }
