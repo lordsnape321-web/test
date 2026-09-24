@@ -1,6 +1,6 @@
 import { LinearGradient } from "expo-linear-gradient";
 import { Link, useRouter } from "expo-router";
-import { Crown, Eye, EyeOff, Lock, LogIn, Mail, Trophy, Zap } from "lucide-react-native";
+import { ChevronLeft, Crown, Eye, EyeOff, Lock, LogIn, Mail, Trophy, Zap } from "lucide-react-native";
 import React, { useEffect, useState } from "react";
 import {
   KeyboardAvoidingView,
@@ -24,7 +24,7 @@ import { colors as tokens, fontSize, radius, space } from "@/theme";
 /** Sign in, with the same demo shortcuts and owner routing as the web page. */
 export default function Login() {
   const { colors: c, isDark } = useTheme();
-  const { signIn } = useAuth();
+  const { signIn, user, ready } = useAuth();
   const router = useRouter();
 
   const [email, setEmail] = useState("");
@@ -37,6 +37,10 @@ export default function Login() {
   useEffect(() => {
     void seedDemo().catch(() => undefined);
   }, []);
+
+  useEffect(() => {
+    if (ready && user) router.replace(user.role === "owner" ? "/admin" : "/");
+  }, [ready, user, router]);
 
   async function submit(demo?: { email: string; password: string }) {
     setTouched(true);
@@ -68,6 +72,12 @@ export default function Login() {
     <SafeAreaView style={[styles.flex, { backgroundColor: c.bg }]} edges={["bottom"]}>
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === "ios" ? "padding" : undefined}>
         <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
+          <Link href="/" asChild>
+            <Pressable style={[styles.back, { backgroundColor: c.surface, borderColor: c.border }]}>
+              <ChevronLeft size={16} color={c.text} />
+              <Text style={[styles.backText, { color: c.text }]}>Back home</Text>
+            </Pressable>
+          </Link>
           <View style={[styles.card, { backgroundColor: c.surface, borderColor: c.border }]}>
             <LinearGradient colors={isDark ? ["#065F46", "#14532D"] : ["#047857", "#166534"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.hero}>
               <View style={styles.heroIcon}><Trophy size={28} color={tokens.emerald700} strokeWidth={2.5} /></View>
@@ -92,7 +102,12 @@ export default function Login() {
               {touched && !password ? <Text style={styles.error}>Password is required 🔒</Text> : null}
 
               {error ? <Notice message={error} /> : null}
-              <Button label={busy ? "Getting you in…" : "Log in & play"} onPress={() => void submit()} loading={busy} />
+              <Button
+                label={busy ? "Getting you in…" : "Log in & play"}
+                onPress={() => void submit()}
+                loading={busy}
+                icon={<LogIn size={16} color={c.primaryText} />}
+              />
 
               <View style={styles.dividerRow}><View style={[styles.divider, { backgroundColor: c.border }]} /><Text style={[styles.dividerText, { color: c.textFaint }]}>Just looking around?</Text><View style={[styles.divider, { backgroundColor: c.border }]} /></View>
               <View style={styles.demoRow}>
@@ -113,7 +128,9 @@ export default function Login() {
 const styles = StyleSheet.create({
   flex: { flex: 1 },
   scroll: { padding: space[4], paddingBottom: space[10], justifyContent: "center", flexGrow: 1 },
-  card: { width: "100%", maxWidth: 520, alignSelf: "center", borderWidth: 1, borderRadius: 32, overflow: "hidden", shadowColor: "#B4783C", shadowOpacity: 0.14, shadowRadius: 30, shadowOffset: { width: 0, height: 12 }, elevation: 4 },
+  back: { width: "100%", maxWidth: 448, alignSelf: "center", flexDirection: "row", alignItems: "center", gap: 2, marginBottom: 12, paddingHorizontal: 16, paddingVertical: 10, borderWidth: 1, borderRadius: 999 },
+  backText: { fontSize: 12, fontWeight: "900" },
+  card: { width: "100%", maxWidth: 448, alignSelf: "center", borderWidth: 1, borderRadius: 32, overflow: "hidden", shadowColor: "#B4783C", shadowOpacity: 0.14, shadowRadius: 30, shadowOffset: { width: 0, height: 12 }, elevation: 4 },
   hero: { padding: space[7], alignItems: "center" },
   heroIcon: { width: 56, height: 56, borderRadius: radius["2xl"], backgroundColor: "#FFFFFF", alignItems: "center", justifyContent: "center" },
   heroTitle: { marginTop: space[3], color: "#FFFFFF", fontSize: fontSize["2xl"], fontWeight: "900", textAlign: "center" },

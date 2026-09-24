@@ -102,7 +102,7 @@ const styles = StyleSheet.create({
     height: 32,
     width: 48,
     maxWidth: "100%",
-    borderRadius: radius.full,
+    borderRadius: radius.xl,
     alignItems: "center",
     justifyContent: "center",
   },

@@ -516,7 +516,7 @@ const styles = StyleSheet.create({
   },
   brand: { flexDirection: "row", alignItems: "center", gap: 10, minWidth: 0 },
   desktopNav: { flexDirection: "row", alignItems: "center", gap: space[1], flex: 1, justifyContent: "center" },
-  desktopLink: { flexDirection: "row", alignItems: "center", gap: 6, borderRadius: radius.full, paddingHorizontal: space[4], paddingVertical: space[2] },
+  desktopLink: { flexDirection: "row", alignItems: "center", gap: 6, borderRadius: radius.xl, paddingHorizontal: space[4], paddingVertical: space[2] },
   desktopLinkText: { fontSize: fontSize.base, fontWeight: "600" },
   ownerLink: { marginLeft: space[1], backgroundColor: brand.orange500 },
   brandIcon: {

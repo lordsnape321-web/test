@@ -1,6 +1,6 @@
 import { LinearGradient } from "expo-linear-gradient";
 import { Link, useRouter } from "expo-router";
-import { Check, Crown, Eye, EyeOff, Lock, MapPin, Trophy, UserRound, Zap } from "lucide-react-native";
+import { Check, ChevronLeft, Crown, Eye, EyeOff, Lock, Trophy, Zap } from "lucide-react-native";
 import React, { useEffect, useMemo, useState } from "react";
 import {
   KeyboardAvoidingView,
@@ -18,6 +18,7 @@ import { seedDemo } from "@/api";
 import { Button, Field, Notice } from "@/components/ui";
 import { useAuth } from "@/context/AuthContext";
 import { useTheme } from "@/context/ThemeContext";
+import { useBreakpoints } from "@/lib/responsive";
 import { ApiError } from "@/lib/api";
 import { CITY_OPTIONS } from "@/lib/futsal";
 import {
@@ -49,8 +50,9 @@ const POSITIONS = [
  */
 export default function Signup() {
   const { colors: c, isDark } = useTheme();
-  const { signUp } = useAuth();
+  const { signUp, user, ready } = useAuth();
   const router = useRouter();
+  const { sm } = useBreakpoints();
 
   const [role, setRole] = useState<"player" | "owner">("player");
   const [name, setName] = useState("");
@@ -77,6 +79,10 @@ export default function Signup() {
   useEffect(() => {
     void seedDemo().catch(() => undefined);
   }, []);
+
+  useEffect(() => {
+    if (ready && user) router.replace(user.role === "owner" ? "/admin" : "/");
+  }, [ready, user, router]);
 
   async function submit() {
     setTouched(true);
@@ -115,7 +121,8 @@ export default function Signup() {
         <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
           <Link href="/" asChild>
             <Pressable style={[styles.back, { backgroundColor: c.surface, borderColor: c.border }]}>
-              <Text style={[styles.backText, { color: c.text }]}>‹  Back home</Text>
+              <ChevronLeft size={16} color={c.text} />
+              <Text style={[styles.backText, { color: c.text }]}>Back home</Text>
             </Pressable>
           </Link>
 
@@ -156,17 +163,30 @@ export default function Signup() {
               </View>
 
               <Field label="What should we call you?" value={name} onChangeText={setName} placeholder="Your name" error={touched ? nameError : null} />
-              <Field label="Email" value={email} onChangeText={setEmail} placeholder="you@mail.com" keyboardType="email-address" autoCapitalize="none" error={touched ? emailError : null} />
-              <Field label="Phone" value={phone} onChangeText={setPhone} placeholder="98XXXXXXXX" keyboardType="phone-pad" autoCapitalize="none" error={touched ? phoneError : null} />
+              {sm ? (
+                <View style={styles.twoCol}>
+                  <View style={styles.twoColItem}>
+                    <Field label="Email" value={email} onChangeText={setEmail} placeholder="you@mail.com" keyboardType="email-address" autoCapitalize="none" error={touched ? emailError : null} />
+                  </View>
+                  <View style={styles.twoColItem}>
+                    <Field label="Phone (one account per number)" value={phone} onChangeText={setPhone} placeholder="98XXXXXXXX" keyboardType="phone-pad" autoCapitalize="none" error={touched ? phoneError : null} />
+                  </View>
+                </View>
+              ) : (
+                <>
+                  <Field label="Email" value={email} onChangeText={setEmail} placeholder="you@mail.com" keyboardType="email-address" autoCapitalize="none" error={touched ? emailError : null} />
+                  <Field label="Phone (one account per number)" value={phone} onChangeText={setPhone} placeholder="98XXXXXXXX" keyboardType="phone-pad" autoCapitalize="none" error={touched ? phoneError : null} />
+                </>
+              )}
 
               <View style={styles.fieldBlock}>
-                <Text style={[styles.label, { color: c.textFaint }]}>Password</Text>
+                <Text style={[styles.label, { color: c.textFaint }]}>Pick a password (min 6 chars)</Text>
                 <View style={[styles.passwordWrap, { backgroundColor: inputFill, borderColor: touched && passwordError ? tokens.red400 : c.border }]}>
                   <Lock size={16} color={c.textFaint} />
                   <TextInput
                     value={password}
                     onChangeText={setPassword}
-                    placeholder="At least 8 characters"
+                    placeholder="Something you&apos;ll remember"
                     placeholderTextColor={c.textFaint}
                     secureTextEntry={!showPw}
                     autoCapitalize="none"
@@ -184,31 +204,34 @@ export default function Signup() {
                         <View key={i} style={[styles.strengthBar, { backgroundColor: i <= strength.score ? (strength.score <= 1 ? tokens.red400 : strength.score === 2 ? tokens.amber400 : tokens.emerald500) : c.border }]} />
                       ))}
                     </View>
-                    <Text style={[styles.strengthLabel, { color: c.textMuted }]}>{strength.emoji} {strength.label}</Text>
+                    <Text style={[styles.strengthLabel, { color: c.textMuted }]}>
+                      {strength.emoji} {strength.label}
+                      {strength.tips.length > 0 && password.length >= 6 ? ` • try: ${strength.tips.slice(0, 2).join(", ")}` : ""}
+                    </Text>
                   </View>
                 ) : null}
                 {touched && passwordError ? <Text style={styles.error}>{passwordError}</Text> : null}
               </View>
 
               <View style={styles.fieldBlock}>
-                <View style={styles.labelRow}>
-                  <MapPin size={14} color={c.textFaint} />
-                  <Text style={[styles.label, { color: c.textFaint }]}>Home city</Text>
-                </View>
+                <Text style={[styles.label, { color: c.textFaint }]}>Home city 🏠 — your search starts here</Text>
                 <View style={[styles.pickerWrap, { backgroundColor: inputFill, borderColor: touched && cityError ? tokens.red400 : c.border }]}>
                   <Picker selectedValue={defaultCity} onValueChange={(v) => setDefaultCity(String(v))} style={{ color: c.text }} dropdownIconColor={c.textMuted}>
-                    {CITY_OPTIONS.map((city) => <Picker.Item key={city} label={city} value={city} />)}
+                    {CITY_OPTIONS.filter((city) => city !== "All Cities").map((city) => <Picker.Item key={city} label={city} value={city} />)}
                   </Picker>
                 </View>
-                <Text style={[styles.hint, { color: c.textFaint }]}>Home tab search starts here — change it anytime 🏠</Text>
                 {touched && cityError ? <Text style={styles.error}>{cityError}</Text> : null}
               </View>
 
               {role === "player" ? (
-                <>
-                  <ChoiceRow label="Skill level" options={LEVELS} value={level} onChange={setLevel} />
-                  <ChoiceRow label="Preferred position" options={POSITIONS} value={position} onChange={setPosition} />
-                </>
+                <View style={[styles.preferenceGrid, sm ? styles.preferenceGridWide : null]}>
+                  <View style={sm ? styles.preferenceCell : null}>
+                    <ChoiceRow label="Your level" options={LEVELS} value={level} onChange={setLevel} />
+                  </View>
+                  <View style={sm ? styles.preferenceCell : null}>
+                    <ChoiceRow label="Favourite spot" options={POSITIONS} value={position} onChange={setPosition} />
+                  </View>
+                </View>
               ) : (
                 <View style={[styles.ownerNote, { backgroundColor: isDark ? "rgba(249,115,22,0.12)" : tokens.orange50, borderColor: isDark ? "rgba(249,115,22,0.3)" : tokens.orange100 }]}>
                   <Crown size={16} color={tokens.orange500} />
@@ -217,7 +240,11 @@ export default function Signup() {
               )}
 
               {error ? <Notice message={error} /> : null}
-              <Button label={busy ? "Getting you in…" : role === "owner" ? "Create owner account" : "Create account"} onPress={() => void submit()} loading={busy} />
+              <Button
+                label={busy ? "Setting things up…" : role === "owner" ? "List my court 🎉" : "Join & start playing 🎉"}
+                onPress={() => void submit()}
+                loading={busy}
+              />
 
               <View style={styles.footerRow}>
                 <Text style={{ color: c.textMuted, fontSize: fontSize.base }}>Already have an account? </Text>
@@ -247,11 +274,10 @@ function ChoiceRow({ label, options, value, onChange }: { label: string; options
   return (
     <View style={styles.fieldBlock}>
       <Text style={[styles.label, { color: c.textFaint }]}>{label}</Text>
-      <View style={styles.choiceRow}>
-        {options.map((option) => {
-          const active = option === value;
-          return <Pressable key={option} onPress={() => onChange(option)} style={[styles.choice, { backgroundColor: active ? c.primary : c.surface, borderColor: active ? c.primary : c.border }]}><Text style={{ color: active ? c.primaryText : c.text, fontSize: fontSize.base, fontWeight: "600" }}>{option}</Text></Pressable>;
-        })}
+      <View style={[styles.pickerWrap, { backgroundColor: c.inset, borderColor: c.border }]}>
+        <Picker selectedValue={value} onValueChange={(next) => onChange(String(next))} style={{ color: c.text }} dropdownIconColor={c.textMuted}>
+          {options.map((option) => <Picker.Item key={option} label={option} value={option} />)}
+        </Picker>
       </View>
     </View>
   );
@@ -259,10 +285,15 @@ function ChoiceRow({ label, options, value, onChange }: { label: string; options
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
-  scroll: { padding: space[4], paddingBottom: space[10] },
-  back: { alignSelf: "flex-start", borderWidth: 1, borderRadius: radius.full, paddingHorizontal: space[4], paddingVertical: space[2], marginBottom: space[4] },
+  scroll: { padding: space[4], paddingBottom: space[10], justifyContent: "center", flexGrow: 1 },
+  back: { width: "100%", maxWidth: 448, alignSelf: "center", flexDirection: "row", alignItems: "center", gap: 2, borderWidth: 1, borderRadius: radius.full, paddingHorizontal: space[4], paddingVertical: space[2], marginBottom: space[4] },
   backText: { fontSize: fontSize.sm, fontWeight: "900" },
-  card: { width: "100%", maxWidth: 520, alignSelf: "center", borderWidth: 1, borderRadius: 32, overflow: "hidden", shadowColor: "#B4783C", shadowOpacity: 0.14, shadowRadius: 30, shadowOffset: { width: 0, height: 12 }, elevation: 4 },
+  card: { width: "100%", maxWidth: 448, alignSelf: "center", borderWidth: 1, borderRadius: 32, overflow: "hidden", shadowColor: "#B4783C", shadowOpacity: 0.14, shadowRadius: 30, shadowOffset: { width: 0, height: 12 }, elevation: 4 },
+  twoCol: { flexDirection: "row", gap: space[3] },
+  twoColItem: { flex: 1 },
+  preferenceGrid: { gap: space[3] },
+  preferenceGridWide: { flexDirection: "row" },
+  preferenceCell: { flex: 1 },
   hero: { padding: space[7], alignItems: "center" },
   heroIcon: { width: 56, height: 56, borderRadius: radius["2xl"], backgroundColor: "#FFFFFF", alignItems: "center", justifyContent: "center" },
   heroTitle: { marginTop: space[3], color: "#FFFFFF", fontSize: fontSize["2xl"], fontWeight: "900", textAlign: "center" },
