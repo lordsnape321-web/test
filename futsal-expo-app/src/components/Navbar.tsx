@@ -1,3 +1,4 @@
+import { LinearGradient } from "expo-linear-gradient";
 import { usePathname, useRouter } from "expo-router";
 import {
   Bell,
@@ -72,7 +73,7 @@ export function Navbar() {
         },
       ]}
     >
-      <View style={styles.inner}>
+      <View style={[styles.inner, { paddingHorizontal: sm ? space[6] : space[4] }]}>
         {/* Brand */}
         <Pressable
           onPress={() => router.push("/")}
@@ -80,17 +81,22 @@ export function Navbar() {
           accessibilityRole="button"
           accessibilityLabel="FutsalNepal home"
         >
-          <View style={styles.brandIcon}>
+          <LinearGradient
+            colors={[brand.emerald500, brand.green700]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.brandIcon}
+          >
             <Trophy size={20} color="#FFFFFF" strokeWidth={2.5} />
-          </View>
+          </LinearGradient>
           <View style={styles.brandText}>
-            <Text style={[styles.wordmark, { color: c.text }]} numberOfLines={1}>
+            <Text style={[styles.wordmark, { color: c.text, fontSize: sm ? 17 : 15 }]} numberOfLines={1}>
               Futsal
               <Text style={{ color: isDark ? brand.emerald400 : brand.emerald600 }}>Nepal</Text>
             </Text>
-            <Text style={[styles.tagline, { color: c.textFaint }]}>
-              Friends • Fun • Football
-            </Text>
+            {sm ? (
+              <Text style={[styles.tagline, { color: c.textFaint }]}>Friends • Fun • Football</Text>
+            ) : null}
           </View>
         </Pressable>
 
@@ -131,7 +137,7 @@ export function Navbar() {
           </View>
         ) : null}
 
-        <View style={styles.actions}>
+        <View style={[styles.actions, { gap: sm ? space[2] : space[1.5] }]}>
           <ThemeToggle />
           {user ? <NotificationBell /> : null}
           {user && sm ? (

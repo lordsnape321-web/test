@@ -42,7 +42,7 @@ export function MobileNav({ isDark }: { isDark: boolean }) {
         {
           backgroundColor: bg,
           borderTopColor: border,
-          paddingBottom: Math.max(insets.bottom, space[1]),
+          paddingBottom: insets.bottom,
           shadowColor: "rgb(180,120,60)",
           shadowOpacity: isDark ? 0 : 0.1,
           shadowRadius: 15,
@@ -88,6 +88,7 @@ const styles = StyleSheet.create({
     width: "100%",
     alignSelf: "center",
     paddingHorizontal: space[2],
+    columnGap: space[1],
   },
   item: {
     flex: 1,
