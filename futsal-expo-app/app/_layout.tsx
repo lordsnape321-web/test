@@ -128,7 +128,9 @@ function Shell() {
             headerStyle: { backgroundColor: colors.surface },
             headerTintColor: colors.text,
             headerTitleStyle: { color: colors.text, fontFamily: APP_FONT_FAMILY },
-            contentStyle: { backgroundColor: "transparent" },
+            contentStyle: {
+              backgroundColor: isOwnerStudio ? shellBackground : "transparent",
+            },
           }}
         >
           <Stack.Screen name="index" options={{ headerShown: false }} />
