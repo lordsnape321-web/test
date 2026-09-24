@@ -23,7 +23,11 @@ export type Court = {
   priceMorning?: number | null;
   surface?: string | null;
   format?: string | null;
-  features?: string[] | null;
+  /**
+   * The admin write path sends a comma-joined string and older list responses
+   * echo it back that way; newer ones may already be an array. Handle both.
+   */
+  features?: string[] | string | null;
   imageUrl?: string | null;
   isActive?: boolean;
   deletedAt?: string | null;
@@ -42,7 +46,9 @@ export type Venue = {
   rating: number;
   totalReviews: number;
   isFeatured?: boolean;
-  amenities?: string[] | null;
+  /** Comma-joined string from the API (same as acceptedPayments). */
+  ownerId?: number | null;
+  amenities?: string[] | string | null;
   /**
    * Comma-separated list, e.g. "eSewa,Khalti,Cash at Venue" — the API returns a
    * string, not an array. Split on "," and trim before comparing.
@@ -73,8 +79,19 @@ export type User = {
   trustScore?: number;
 };
 
-export type BookingStatus = "pending" | "confirmed" | "cancelled" | "completed";
-export type PaymentStatus = "unpaid" | "deposit_paid" | "paid" | "overpaid";
+export type BookingStatus = "pending" | "confirmed" | "cancelled" | "completed" | "rejected";
+export type PaymentStatus = "pending" | "unpaid" | "deposit_paid" | "paid" | "overpaid";
+
+/** Present on competition bookings — who we played and the score so far. */
+export type BookingCompetition = {
+  opponentTeamId?: number | null;
+  opponentName: string;
+  leagueId?: number | null;
+  leagueName: string;
+  homeScore: number | null;
+  awayScore: number | null;
+  scoreStatus: string;
+};
 
 export type Booking = {
   id: number;
@@ -95,6 +112,23 @@ export type Booking = {
   notes?: string | null;
   createdAt: string;
   settledAt?: string | null;
+  visibility?: string;
+  playersNeeded?: number;
+  ourCrew?: number;
+  openSpots?: number;
+  /** Squad this booking was made for; "" = individual booking. */
+  teamName?: string;
+  receiptUrl?: string;
+  isFreePlay?: boolean;
+  promoCode?: string;
+  discountAmount?: number;
+  priceBeforeDiscount?: number;
+  depositRequired?: boolean;
+  depositAmount?: number;
+  depositStatus?: string;
+  gatewayTxnId?: string;
+  competition?: BookingCompetition | null;
+  playerStats?: import("./loyalty").PlayerStats;
   /** Nested by the API so a booking list can render without extra requests. */
   venue?: Pick<Venue, "id" | "name" | "address" | "city" | "imageUrl" | "phone"> | null;
   court?: Pick<Court, "id" | "name" | "pricePerHour" | "surface" | "format"> | null;

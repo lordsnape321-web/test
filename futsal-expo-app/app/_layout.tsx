@@ -50,6 +50,7 @@ function Shell() {
       <Stack.Screen name="teams/index" options={{ title: "Teams" }} />
       <Stack.Screen name="teams/[id]" options={{ title: "Squad" }} />
       <Stack.Screen name="players/[id]" options={{ title: "Player" }} />
+      <Stack.Screen name="admin" options={{ headerShown: false }} />
     </Stack>
   );
 }

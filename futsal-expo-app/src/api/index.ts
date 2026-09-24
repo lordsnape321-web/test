@@ -717,3 +717,130 @@ export function resetPassword(input: {
 }): Promise<Record<string, unknown>> {
   return apiJson("/api/auth/reset", { method: "POST", json: input });
 }
+
+/* ── reviews ─────────────────────────────────────────────────────────────── */
+
+/** One row of GET /api/reviews, enriched with the author's profile bits. */
+export type ReviewRow = {
+  id: number;
+  venueId: number;
+  userId: number;
+  bookingId: number | null;
+  rating: number;
+  message: string;
+  createdAt: string | null;
+  updatedAt?: string | null;
+  userName: string;
+  avatarColor: string;
+  avatarUrl?: string;
+  userLevel: string;
+};
+
+/** GET /api/reviews?venueId=&userId= → { reviews } */
+export function fetchReviews(params?: {
+  venueId?: number;
+  userId?: number;
+}): Promise<ReviewRow[]> {
+  const query = new URLSearchParams();
+  if (params?.venueId !== undefined) query.set("venueId", String(params.venueId));
+  if (params?.userId !== undefined) query.set("userId", String(params.userId));
+  const qs = query.toString();
+  return apiJson<{ reviews: ReviewRow[] }>(`/api/reviews${qs ? `?${qs}` : ""}`).then(
+    (d) => d.reviews ?? [],
+  );
+}
+
+/** POST /api/reviews — one review per player per venue (server enforces). */
+export function postReview(input: {
+  venueId: number;
+  userId: number;
+  bookingId?: number | null;
+  rating: number;
+  message: string;
+}): Promise<Record<string, unknown>> {
+  return apiJson("/api/reviews", { method: "POST", json: input });
+}
+
+/* ── bookings admin ──────────────────────────────────────────────────────── */
+
+/** PATCH /api/bookings/:id — status, receipt, scores, actor… */
+export function patchBooking(
+  id: number,
+  patch: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  return apiJson(`/api/bookings/${id}`, { method: "PATCH", json: patch });
+}
+
+/**
+ * POST /api/bookings/:id/ledger — instalments, extras, settle/unsettle.
+ * Returns { ledger?, message?, error? } depending on the action.
+ */
+export function ledgerAction(
+  bookingId: number,
+  body: Record<string, unknown>,
+): Promise<{ ledger?: unknown; message?: string; error?: string }> {
+  return apiJson(`/api/bookings/${bookingId}/ledger`, { method: "POST", json: body });
+}
+
+/* ── venues / courts owner CRUD ──────────────────────────────────────────── */
+
+/** POST /api/venues — owner lists a new arena (with its first court). */
+export function createVenue(input: Record<string, unknown>): Promise<Record<string, unknown>> {
+  return apiJson("/api/venues", { method: "POST", json: input });
+}
+
+/** PATCH /api/venues/:id — owner edits the venue profile. */
+export function updateVenue(id: number, patch: Record<string, unknown>): Promise<Record<string, unknown>> {
+  return apiJson(`/api/venues/${id}`, { method: "PATCH", json: patch });
+}
+
+/** DELETE /api/venues/:id — soft-retire; body carries ownerId for auth. */
+export function deleteVenue(id: number, ownerId: number): Promise<Record<string, unknown>> {
+  return apiJson(`/api/venues/${id}`, { method: "DELETE", json: { ownerId } });
+}
+
+/** POST /api/courts — add a court to a venue. */
+export function createCourt(input: Record<string, unknown>): Promise<Record<string, unknown>> {
+  return apiJson("/api/courts", { method: "POST", json: input });
+}
+
+/** PATCH /api/courts/:id — name, prices, photo, isActive… */
+export function updateCourt(id: number, patch: Record<string, unknown>): Promise<Record<string, unknown>> {
+  return apiJson(`/api/courts/${id}`, { method: "PATCH", json: patch });
+}
+
+/** DELETE /api/courts/:id — soft-retire one pitch. */
+export function deleteCourt(id: number, ownerId: number): Promise<Record<string, unknown>> {
+  return apiJson(`/api/courts/${id}`, { method: "DELETE", json: { ownerId } });
+}
+
+/* ── promos ──────────────────────────────────────────────────────────────── */
+
+/** GET /api/promos?ownerId= | venueId= → { promos } */
+export function fetchPromos(params?: {
+  ownerId?: number;
+  venueId?: number;
+}): Promise<Array<Record<string, unknown>>> {
+  const query = new URLSearchParams();
+  if (params?.ownerId !== undefined) query.set("ownerId", String(params.ownerId));
+  if (params?.venueId !== undefined) query.set("venueId", String(params.venueId));
+  const qs = query.toString();
+  return apiJson<{ promos: Array<Record<string, unknown>> }>(`/api/promos${qs ? `?${qs}` : ""}`).then(
+    (d) => d.promos ?? [],
+  );
+}
+
+/** POST /api/promos — create a code for a venue. */
+export function createPromo(input: Record<string, unknown>): Promise<Record<string, unknown>> {
+  return apiJson("/api/promos", { method: "POST", json: input });
+}
+
+/** PATCH /api/promos/:id — edit discount/window/limits or pause. */
+export function updatePromo(id: number, patch: Record<string, unknown>): Promise<Record<string, unknown>> {
+  return apiJson(`/api/promos/${id}`, { method: "PATCH", json: patch });
+}
+
+/** DELETE /api/promos/:id — remove (redeemed codes are paused server-side). */
+export function deletePromo(id: number, ownerId: number): Promise<Record<string, unknown>> {
+  return apiJson(`/api/promos/${id}?ownerId=${ownerId}`, { method: "DELETE" });
+}

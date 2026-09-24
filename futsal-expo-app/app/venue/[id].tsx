@@ -8,8 +8,9 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { ReviewsSection } from "@/components/Reviews";
 import { Button, Card, Notice, Pill, Spinner } from "@/components/ui";
-import { createBooking, fetchAvailability, fetchCourts, fetchVenue } from "@/api";
+import { createBooking, fetchAvailability, fetchBookings, fetchCourts, fetchVenue } from "@/api";
 import { useAuth } from "@/context/AuthContext";
 import { useTheme } from "@/context/ThemeContext";
 import { ApiError } from "@/lib/api";
@@ -17,7 +18,10 @@ import {
   addHours,
   expandBookingSlots,
   formatNPR,
+  formatTime12,
+  gamePlayed,
   next7Days,
+  prettyDate,
   prettyDayShort,
   timeSlots,
   todayISO,
@@ -53,6 +57,10 @@ export default function VenueDetail() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** Played bookings at this venue — which games may be reviewed. */
+  const [eligibleBookings, setEligibleBookings] = useState<
+    Array<{ id: number; label: string }>
+  >([]);
 
   /* Load the venue and its courts once. */
   useEffect(() => {
@@ -72,6 +80,26 @@ export default function VenueDetail() {
       }
     })();
   }, [venueId]);
+
+  /* Played bookings here → eligible chips for the review form. */
+  useEffect(() => {
+    if (!user) return;
+    (async () => {
+      try {
+        const list = await fetchBookings({ userId: user.id });
+        setEligibleBookings(
+          list
+            .filter((b) => b.venue?.id === venueId && gamePlayed(b))
+            .map((b) => ({
+              id: b.id,
+              label: `${prettyDate(b.date)} • ${b.court?.name ?? ""} • ${formatTime12(b.startTime)}`,
+            })),
+        );
+      } catch {
+        /* reviews stay closed rather than blocking the venue page */
+      }
+    })();
+  }, [user, venueId]);
 
   /* Re-check availability whenever the court or day changes. */
   useEffect(() => {
@@ -157,6 +185,16 @@ export default function VenueDetail() {
         <Text style={[styles.desc, { color: colors.textMuted }]}>{venue.description}</Text>
 
         {error ? <Notice message={error} /> : null}
+
+        {/* ── reviews ─────────────────────────────────────────────── */}
+        <ReviewsSection
+          venueId={venue.id}
+          venueName={venue.name}
+          eligibleBookings={eligibleBookings}
+          onChanged={() => {
+            void fetchVenue(venueId).then(setVenue).catch(() => undefined);
+          }}
+        />
 
         {/* ── court picker ─────────────────────────────────────────── */}
         <SectionTitle>Court</SectionTitle>
