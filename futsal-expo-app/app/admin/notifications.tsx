@@ -1,5 +1,5 @@
 import { useRouter } from "expo-router";
-import { Bell, CheckCheck, ChevronRight, Trash2 } from "lucide-react-native";
+import { Bell, Check, CheckCheck, ChevronRight, Trash2 } from "lucide-react-native";
 import React, { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
@@ -33,6 +33,18 @@ const TYPE_STYLE: Record<string, { bg: string; fg: string }> = {
   info: { bg: "#F1F5F9", fg: "#475569" },
 };
 
+const DARK_TYPE_TEXT: Record<string, string> = {
+  booking_request: "#FCD34D",
+  booking_confirmed: "#6EE7B7",
+  booking_rejected: "#FCA5A5",
+  booking_cancelled: "#FCA5A5",
+  payment: "#FDBA74",
+  match_join: "#7DD3FC",
+  free_play: "#C4B5FD",
+  review: "#FCD34D",
+  info: "#CBD5E1",
+};
+
 /** Owner Studio notifications — same markup/copy as the player page. */
 export default function OwnerNotifications() {
   const { user } = useAuth();
@@ -43,8 +55,11 @@ export default function OwnerNotifications() {
 
   const load = useCallback(async () => {
     if (!user) return;
-    const list = await fetchNotifications(user.id);
-    setItems(list);
+    try {
+      setItems(await fetchNotifications(user.id));
+    } catch {
+      setItems([]);
+    }
   }, [user]);
 
   useEffect(() => {
@@ -56,20 +71,90 @@ export default function OwnerNotifications() {
 
   async function markAll() {
     if (!user) return;
-    await markAllNotificationsRead(user.id);
-    await load();
+    try {
+      await markAllNotificationsRead(user.id);
+      await load();
+    } catch {
+      /* keep the inbox visible if the API is temporarily unavailable */
+    }
   }
 
   async function markOne(n: AppNotification) {
-    await markNotificationRead(n.id);
-    if (n.link) {
-      const path = n.link.replace(/^https?:\/\/[^/]+/, "");
-      if (path.startsWith("/")) {
-        router.push(path as never);
-        return;
+    // A notification should still open its target if the read mutation is
+    // temporarily unavailable. The old early return made the visible Open
+    // affordance appear broken whenever the API was slow.
+    try {
+      await markNotificationRead(n.id);
+    } catch {
+      // Continue to the destination; the next inbox refresh can reconcile read state.
+    }
+    setItems((prev) => prev.map((item) => (item.id === n.id ? { ...item, isRead: true } : item)));
+    const destination = ownerNotificationDestination(n.link);
+    if (destination) {
+      try {
+        router.push(destination);
+      } catch {
+        await load();
       }
+      return;
     }
     await load();
+  }
+
+  /** Keep notification deep links inside the Owner Studio route tree. */
+  function ownerNotificationDestination(link: string | null):
+    | "/admin/bookings"
+    | "/admin/requests"
+    | "/admin/leagues"
+    | `/admin/leagues/${string}`
+    | "/admin/notifications"
+    | "/admin/venues"
+    | null {
+    if (!link) return null;
+    // Links come from the API and may be a player path, an Owner Studio path,
+    // or an absolute web URL. Strip host/query/hash before mapping them so an
+    // alert can never accidentally send an owner through the player shell.
+    let path = link.replace(/^https?:\/\/[^/]+/, "");
+    path = path.split(/[?#]/, 1)[0] || "/";
+    try {
+      path = decodeURIComponent(path);
+    } catch {
+      // Keep the original path if a legacy payload contains malformed encoding.
+    }
+    if (!path.startsWith("/")) path = `/${path}`;
+    if (path.startsWith("/admin/leagues/")) {
+      const leagueId = path.slice("/admin/leagues/".length).split("/")[0];
+      return leagueId ? `/admin/leagues/${leagueId}` : "/admin/leagues";
+    }
+    if (path === "/admin/leagues" || path.startsWith("/admin/leagues/")) return "/admin/leagues";
+    if (path.startsWith("/leagues/")) {
+      const leagueId = path.slice("/leagues/".length).split("/")[0];
+      return leagueId ? `/admin/leagues/${leagueId}` : "/admin/leagues";
+    }
+    if (path === "/leagues" || path.startsWith("/leagues/")) return "/admin/leagues";
+    if (path.startsWith("/admin/requests") || path.startsWith("/request")) {
+      return "/admin/requests";
+    }
+    if (path.startsWith("/admin/booking") || path.startsWith("/booking") || path.startsWith("/bookings")) {
+      return "/admin/bookings";
+    }
+    if (path.startsWith("/admin/venue") || path.startsWith("/venue") || path.startsWith("/venues")) {
+      return "/admin/venues";
+    }
+    if (path.startsWith("/admin/notification") || path.startsWith("/notification")) {
+      return "/admin/notifications";
+    }
+    return null;
+  }
+
+  async function markReadOnly(n: AppNotification) {
+    if (n.isRead) return;
+    setItems((prev) => prev.map((item) => (item.id === n.id ? { ...item, isRead: true } : item)));
+    try {
+      await markNotificationRead(n.id);
+    } catch {
+      await load();
+    }
   }
 
   async function remove(id: number) {
@@ -92,17 +177,22 @@ export default function OwnerNotifications() {
             cancellations & payments.
           </Text>
         </View>
-        {unread > 0 ? (
-          <Pressable
-            onPress={() => void markAll()}
-            style={[styles.markAllBtn, { backgroundColor: isDark ? "#FFFFFF" : "#0F172A" }]}
-          >
-            <CheckCheck size={16} color={isDark ? "#0F172A" : "#FFFFFF"} />
-            <Text style={[styles.markAllText, { color: isDark ? "#0F172A" : "#FFFFFF" }]}>
-              Mark all read
-            </Text>
-          </Pressable>
-        ) : null}
+        <Pressable
+          onPress={() => void markAll()}
+          disabled={unread === 0}
+          style={[
+            styles.markAllBtn,
+            {
+              backgroundColor: isDark ? "#FFFFFF" : "#0F172A",
+              opacity: unread === 0 ? 0.45 : 1,
+            },
+          ]}
+          accessibilityRole="button"
+          accessibilityState={{ disabled: unread === 0 }}
+        >
+          <CheckCheck size={16} color={isDark ? "#0F172A" : "#FFFFFF"} />
+          <Text style={[styles.markAllText, { color: isDark ? "#0F172A" : "#FFFFFF" }]}>Mark all read</Text>
+        </Pressable>
       </View>
 
       {loading ? (
@@ -118,6 +208,8 @@ export default function OwnerNotifications() {
       ) : (
         items.map((n) => {
           const tone = TYPE_STYLE[n.type] ?? TYPE_STYLE.info!;
+          const toneBg = n.type === "info" && isDark ? "rgba(148,163,184,0.14)" : tone.bg;
+          const toneFg = isDark ? DARK_TYPE_TEXT[n.type] ?? c.textMuted : tone.fg;
           return (
             <View
               key={n.id}
@@ -130,38 +222,61 @@ export default function OwnerNotifications() {
                 },
               ]}
             >
-              <View style={[styles.typeChip, { backgroundColor: tone.bg }]}>
-                <Text style={[styles.typeText, { color: tone.fg }]}>
-                  {n.type.replace(/_/g, " ")}
-                </Text>
+              <View style={styles.typeColumn}>
+                <View style={[styles.typeChip, { backgroundColor: toneBg }]}>
+                  <Text style={[styles.typeText, { color: toneFg }]} numberOfLines={2}>
+                    {n.type.replace(/_/g, " ")}
+                  </Text>
+                </View>
               </View>
-              <Pressable onPress={() => void markOne(n)} style={styles.grow}>
+              <Pressable
+                onPress={() => void markOne(n)}
+                style={styles.contentColumn}
+                accessibilityRole="button"
+                accessibilityLabel={n.link ? `Open ${n.title}` : n.title}
+              >
                 <Text style={[styles.title, { color: c.text }]}>
                   {n.isRead ? "" : "● "}
                   {n.title}
                 </Text>
                 {n.message ? (
-                  <Text style={[styles.message, { color: c.textMuted }]}>{n.message}</Text>
+                  <Text style={[styles.message, { color: c.textMuted }]}>
+                    {n.message}
+                  </Text>
                 ) : null}
                 <View style={styles.metaRow}>
-                  <Text style={[styles.meta, { color: c.textFaint }]}>
-                    {timeAgo(n.createdAt)}
-                  </Text>
+                  <Text style={[styles.meta, { color: c.textFaint }]}>{timeAgo(n.createdAt)}</Text>
                   {n.link ? (
                     <View style={styles.openRow}>
-                      <Text style={[styles.openText, { color: colors.orange500 }]}>• Open</Text>
+                      <Text style={[styles.openText, { color: colors.orange500 }]}>Open</Text>
                       <ChevronRight size={12} color={colors.orange500} />
                     </View>
                   ) : null}
                 </View>
               </Pressable>
-              <Pressable
-                onPress={() => void remove(n.id)}
-                style={styles.deleteBtn}
-                accessibilityLabel="Delete"
-              >
-                <Trash2 size={16} color={c.textFaint} />
-              </Pressable>
+              <View style={styles.actionColumn}>
+                {!n.isRead ? (
+                  <Pressable
+                    onPress={() => void markReadOnly(n)}
+                    accessibilityRole="button"
+                    accessibilityLabel="Mark notification as read"
+                    style={[styles.readBtn, { borderColor: c.border, backgroundColor: c.surface }]}
+                  >
+                    <Check size={13} color={c.textMuted} />
+                    <Text style={[styles.readBtnText, { color: c.textMuted }]}>Mark read</Text>
+                  </Pressable>
+                ) : (
+                  <View style={styles.readPlaceholder} />
+                )}
+                <Pressable
+                  onPress={() => void remove(n.id)}
+                  style={[styles.deleteBtn, { borderColor: c.border, backgroundColor: c.inset }]}
+                  accessibilityRole="button"
+                  accessibilityLabel="Delete notification"
+                >
+                  <Trash2 size={16} color={c.textFaint} />
+                </Pressable>
+              </View>
             </View>
           );
         })
@@ -211,18 +326,48 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     padding: space[4],
   },
+  // Keep the type, body and actions in the same columns for every row. This
+  // prevents a long booking-request label from pushing its content/actions
+  // underneath a shorter payment row.
+  typeColumn: { width: 96, flexShrink: 0 },
+  contentColumn: { flex: 1, minWidth: 0 },
+  actionColumn: { width: 86, flexShrink: 0, alignItems: "stretch", gap: space[2] },
   typeChip: {
+    width: "100%",
+    minHeight: 32,
+    justifyContent: "center",
     borderRadius: radius.lg,
-    paddingHorizontal: space[2.5],
+    paddingHorizontal: space[2],
     paddingVertical: space[1.5],
-    marginTop: 2,
   },
-  typeText: { fontSize: 9, fontWeight: "900", textTransform: "uppercase" },
+  typeText: { fontSize: 9, lineHeight: 12, fontWeight: "900", textTransform: "uppercase", textAlign: "center" },
   title: { fontSize: fontSize.sm, fontWeight: "800", lineHeight: 19 },
   message: { fontSize: 13, lineHeight: 19, marginTop: space[1] },
   metaRow: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: space[2], marginTop: space[1.5] },
   meta: { fontSize: 11, fontWeight: "700" },
   openRow: { flexDirection: "row", alignItems: "center", gap: 1 },
   openText: { fontSize: 11, fontWeight: "900" },
-  deleteBtn: { padding: space[1.5], minHeight: 36, minWidth: 36, alignItems: "center", justifyContent: "center" },
+  readBtn: {
+    width: "100%",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 3,
+    borderWidth: 1,
+    borderRadius: radius.full,
+    paddingHorizontal: 4,
+    paddingVertical: space[1.5],
+    minHeight: 32,
+  },
+  readBtnText: { fontSize: 10, fontWeight: "900", flexShrink: 1 },
+  readPlaceholder: { minHeight: 32 },
+  deleteBtn: {
+    alignSelf: "center",
+    width: 36,
+    height: 36,
+    borderWidth: 1,
+    borderRadius: radius.lg,
+    alignItems: "center",
+    justifyContent: "center",
+  },
 });

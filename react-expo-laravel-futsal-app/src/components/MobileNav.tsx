@@ -48,7 +48,7 @@ export function MobileNav() {
               }`}
             >
               <span
-                className={`grid h-8 w-12 max-w-full place-items-center rounded-full transition ${
+                className={`grid h-8 w-12 max-w-full place-items-center rounded-xl transition ${
                   active ? "bg-emerald-100 dark:bg-emerald-500/15" : ""
                 }`}
               >
