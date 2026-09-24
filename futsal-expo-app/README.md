@@ -3,13 +3,16 @@
 The React Native (Expo) port of the Futsal Nepal web app. This is the **frontend
 half** of the migration; the Laravel backend comes later in its own directory.
 
-The first pass is a **vertical slice** — one complete flow end to end:
+The app is a **full player and owner implementation**, not a reduced vertical
+slice. It includes the same player-facing and Owner Studio routes as the web
+app: authentication and password reset, venue and court discovery, bookings and
+payments, open matches, leagues, teams, players, notifications, profile,
+settings, reviews, and the complete owner dashboard, bookings, venues, leagues,
+requests, alerts, and profile workflows.
 
-> sign up → browse venues → pick a court and slot → book → pay → see it settled
-
-That flow exercises every pattern the full app needs (navigation, API client,
-async storage, theming, form validation), so the remaining ~27 screens repeat a
-proven shape rather than inventing one.
+This frontend talks to the existing `react-expo-laravel-futsal-app` API during
+the migration. No second backend is bundled here; the same API contract can be
+pointed at Laravel later with the environment setting described below.
 
 ## Quick start
 

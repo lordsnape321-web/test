@@ -1,6 +1,7 @@
 import { useFocusEffect, useRouter } from "expo-router";
 import {
   CalendarCheck,
+  ChevronRight,
   Clock,
   Gift,
   Globe,
@@ -31,7 +32,7 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { fetchBookings, fetchReviews, patchBooking, postReview, seedDemo } from "@/api";
+import { fetchBookings, fetchReviews, fetchUserStats, patchBooking, postReview } from "@/api";
 import { BookingPaymentSummary } from "@/components/BookingPaymentSummary";
 import { PlayerRatingBadge } from "@/components/PlayerRating";
 import { ReceiptUploader, ReceiptViewer, isOnlineMethod } from "@/components/ReceiptUploader";
@@ -86,6 +87,7 @@ export default function BookingsScreen() {
   const router = useRouter();
 
   const [bookings, setBookings] = useState<DiaryBooking[]>([]);
+  const [playerStats, setPlayerStats] = useState<PlayerStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<"upcoming" | "past" | "cancelled">("upcoming");
   const [cancelling, setCancelling] = useState<number | null>(null);
@@ -107,8 +109,14 @@ export default function BookingsScreen() {
     if (!user) return;
     try {
       setLoadError(null);
-      const list = await fetchBookings({ userId: user.id });
+      const [list, stats] = await Promise.all([
+        fetchBookings({ userId: user.id }),
+        fetchUserStats(user.id).catch(() => null),
+      ]);
       setBookings(list);
+      setPlayerStats(
+        (list as DiaryBooking[]).find((b) => b.playerStats)?.playerStats ?? stats,
+      );
       try {
         const mine = await fetchReviews({ userId: user.id });
         setMyReviews(
@@ -135,12 +143,9 @@ export default function BookingsScreen() {
   useFocusEffect(
     useCallback(() => {
       (async () => {
-        // Seed is idempotent — same call the web page makes on mount.
-        try {
-          await seedDemo();
-        } catch {
-          /* a live backend may refuse; non-fatal */
-        }
+        // Do not block the diary on demo-data seeding. The booking API is the
+        // source of truth and a slow seed endpoint used to make this screen look
+        // frozen while the user was trying to review a game.
         if (user) await load();
         else setLoading(false);
       })();
@@ -184,31 +189,17 @@ export default function BookingsScreen() {
    * posts verify with mockApprove — the identical server path (signature check
    * skipped, ledger row appended, statuses updated).
    */
-  async function payNow(b: DiaryBooking) {
+  function payNow(b: DiaryBooking) {
     setPaying(b.id);
     setPayError("");
     setCancelError("");
-    try {
-      const method = String(b.paymentMethod ?? "");
-      const { initiateEsewa, verifyEsewa, initiateKhalti, verifyKhalti } = await import("@/api");
-      if (method === "eSewa") {
-        try {
-          await initiateEsewa(b.id);
-        } catch {
-          /* initiate is optional against mockApprove */
-        }
-        await verifyEsewa(b.id, true);
-      } else if (method === "Khalti") {
-        const init = await initiateKhalti(b.id);
-        const pidx = typeof init.pidx === "string" ? init.pidx : "mock-pidx";
-        await verifyKhalti(b.id, pidx, true);
-      }
-      await load();
-    } catch (e) {
-      setPayError(e instanceof Error ? e.message : "Payment failed");
-    } finally {
-      setPaying(null);
-    }
+    const method = String(b.paymentMethod ?? "");
+    const amount = Math.max(0, b.depositRequired && b.depositStatus !== "paid" ? b.depositAmount ?? 0 : b.totalPrice - b.paidAmount);
+    const path = method === "eSewa"
+      ? `/payment/esewa/mock?bookingId=${b.id}&amount=${encodeURIComponent(String(amount))}`
+      : `/payment/khalti/mock?bookingId=${b.id}&amount=${encodeURIComponent(String(amount))}&pidx=mock-pidx`;
+    setPaying(null);
+    router.push(path as never);
   }
 
   function needsOnlinePay(b: DiaryBooking) {
@@ -265,15 +256,13 @@ export default function BookingsScreen() {
   }
 
   /**
-   * Can this card open the review box? The game has to be played, and a player
-   * keeps one review per venue: an unreviewed venue starts it, and any *other*
-   * played game here updates the one that's already there.
+   * A played game can always open the one-review-per-venue editor. The API
+   * upserts that single review, so the same booking can be corrected later and
+   * a later booking at the venue can update the existing review without creating
+   * duplicates.
    */
   function reviewable(b: DiaryBooking) {
-    if (gone(b.status) || !played(b)) return false;
-    const mine = myReviewAt(b.venue?.id);
-    if (!mine) return true;
-    return mine.bookingId !== b.id;
+    return !gone(b.status) && played(b);
   }
 
   async function cancel(b: DiaryBooking) {
@@ -356,8 +345,16 @@ export default function BookingsScreen() {
         </View>
         <View style={styles.titleRow}>
           <Text style={[styles.h1, { color: c.text }]}>My games</Text>
-          {bookings[0]?.playerStats ? (
-            <PlayerRatingBadge stats={bookings[0].playerStats} />
+          {playerStats ? (
+            <View style={[styles.ratingSummary, { backgroundColor: c.surface, borderColor: c.border }]}>
+              <PlayerRatingBadge stats={playerStats} size="sm" />
+              <View style={styles.ratingSummaryCopy}>
+                <Text style={[styles.ratingSummaryTitle, { color: c.text }]}>Reliability</Text>
+                <Text style={[styles.ratingSummaryMeta, { color: c.textMuted }]}>
+                  {playerStats.label} • {playerStats.completed} played • {playerStats.cancelled} cancelled
+                </Text>
+              </View>
+            </View>
           ) : null}
         </View>
 
@@ -585,7 +582,7 @@ function BookingCard({
           : "danger";
 
   return (
-    <Pressable onPress={onOpenBooking} style={[styles.card, { backgroundColor: surface, borderColor: border }]}>
+    <View style={[styles.card, { backgroundColor: surface, borderColor: border }]}>
       <View style={styles.cardTop}>
         {b.venue?.imageUrl ? (
           <Image source={{ uri: b.venue.imageUrl }} style={styles.cardImg} />
@@ -616,6 +613,17 @@ function BookingCard({
               </Text>
             </View>
           </View>
+
+          <Pressable
+            onPress={onOpenBooking}
+            accessibilityRole="button"
+            style={[styles.openBooking, { borderColor: border }]}
+          >
+            <Text style={[styles.openBookingText, { color: isDark ? "#6EE7B7" : colors.emerald700 }]}>
+              View booking details
+            </Text>
+            <ChevronRight size={14} color={isDark ? "#6EE7B7" : colors.emerald700} />
+          </Pressable>
 
           {b.totalPrice > 0 ? <BookingPaymentSummary bookingId={b.id} /> : null}
 
@@ -840,7 +848,13 @@ function BookingCard({
               <Pressable onPress={onToggleReview} style={[styles.chip, { backgroundColor: colors.amber400 }]}>
                 <Star size={12} color="#78350F" fill="#78350F" />
                 <Text style={[styles.chipText, { color: "#78350F" }]}>
-                  {reviewFor ? "Close" : mine ? "Update review ⭐" : "Review ⭐"}
+                  {reviewFor
+                    ? "Close"
+                    : mine?.bookingId === b.id
+                      ? "Edit review"
+                      : mine
+                        ? "Update review ⭐"
+                        : "Review ⭐"}
                 </Text>
               </Pressable>
             ) : null}
@@ -890,7 +904,7 @@ function BookingCard({
           ) : null}
         </View>
       </View>
-    </Pressable>
+    </View>
   );
 }
 
@@ -912,6 +926,20 @@ const styles = StyleSheet.create({
   },
   titleRow: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: space[3] },
   h1: { fontSize: fontSize["3xl"], fontWeight: "900" },
+  ratingSummary: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: space[2],
+    borderWidth: 1,
+    borderRadius: radius["2xl"],
+    paddingHorizontal: space[2.5],
+    paddingVertical: space[1.5],
+    maxWidth: "100%",
+  },
+  ratingSummaryCopy: { minWidth: 0, flexShrink: 1 },
+  ratingSummaryTitle: { fontSize: fontSize.xs, fontWeight: "900" },
+  ratingSummaryMeta: { fontSize: fontSize["2xs"], fontWeight: "700", marginTop: 1 },
+
   pendingBanner: {
     flexDirection: "row",
     alignItems: "center",
@@ -982,6 +1010,16 @@ const styles = StyleSheet.create({
   venueName: { fontSize: fontSize.base, fontWeight: "800" },
   meta: { fontSize: fontSize.xs, marginTop: 2 },
   moneyCol: { alignItems: "flex-end" },
+  openBooking: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    paddingVertical: space[2],
+    marginTop: space[2],
+  },
+  openBookingText: { fontSize: fontSize.xs, fontWeight: "900" },
   strike: { fontSize: fontSize.xs, textDecorationLine: "line-through" },
   price: { fontSize: fontSize.xl, fontWeight: "900" },
   payMeta: { fontSize: fontSize.xs, fontWeight: "700" },

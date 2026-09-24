@@ -30,6 +30,7 @@ import { SettleAmendButton } from "@/components/SettleAmendButton";
 import { useAuth } from "@/context/AuthContext";
 import { useTheme } from "@/context/ThemeContext";
 import { formatNPR, formatTime12, prettyDate } from "@/lib/futsal";
+import { useBreakpoints } from "@/lib/responsive";
 import type { Booking } from "@/lib/types";
 import { colors, fontSize, radius, space } from "@/theme";
 
@@ -51,6 +52,7 @@ const FILTERS = [
 export default function OwnerBookings() {
   const { user } = useAuth();
   const { colors: c, isDark } = useTheme();
+  const { xl } = useBreakpoints();
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [venues, setVenues] = useState<Array<{ id: number; ownerId: number | null }>>([]);
   const [loading, setLoading] = useState(true);
@@ -202,8 +204,8 @@ export default function OwnerBookings() {
               key={b.id}
               style={[styles.card, { backgroundColor: c.surface, borderColor: c.border }]}
             >
-              <View style={styles.cardGrid}>
-                <View style={styles.colPlayer}>
+              <View style={[styles.cardGrid, xl && styles.cardGridWide]}>
+                <View style={[styles.colPlayer, !xl && styles.stackColumn]}>
                   <Text style={[styles.mono, { color: c.textFaint }]}>#FN-{b.id}</Text>
                   <View style={styles.nameRow}>
                     <Text style={[styles.bold, { color: c.text }]}>
@@ -273,19 +275,19 @@ export default function OwnerBookings() {
                   <Text style={[styles.meta, { color: c.textFaint }]}>{b.bookerPhone}</Text>
                 </View>
 
-                <View style={styles.colVenue}>
+                <View style={[styles.colVenue, !xl && styles.stackColumn]}>
                   <Text style={[styles.bold, { color: c.text }]}>{b.venue?.name}</Text>
                   <Text style={[styles.meta, { color: c.textMuted }]}>{b.court?.name}</Text>
                 </View>
 
-                <View style={styles.colSlot}>
+                <View style={[styles.colSlot, !xl && styles.stackColumn]}>
                   <Text style={[styles.meta, { color: c.textMuted }]}>{prettyDate(b.date)}</Text>
                   <Text style={[styles.meta, { color: c.textFaint }]}>
                     {formatTime12(b.startTime)} – {formatTime12(b.endTime || b.startTime)}
                   </Text>
                 </View>
 
-                <View style={styles.colAmount}>
+                <View style={[styles.colAmount, !xl && styles.stackColumn]}>
                   {(b.discountAmount ?? 0) > 0 &&
                   (b.priceBeforeDiscount ?? 0) > b.totalPrice ? (
                     <Text style={[styles.strike, { color: c.textFaint }]}>
@@ -304,7 +306,7 @@ export default function OwnerBookings() {
                   ) : null}
                 </View>
 
-                <View style={styles.colPay}>
+                <View style={[styles.colPay, !xl && styles.stackColumn]}>
                   {b.paymentStatus === "paid" ? (
                     <View style={[styles.chip, { backgroundColor: "rgba(16,185,129,0.15)" }]}>
                       <Text style={[styles.chipText, { color: "#047857" }]}>
@@ -343,7 +345,7 @@ export default function OwnerBookings() {
                   ) : null}
                 </View>
 
-                <View style={styles.colStatus}>
+                <View style={[styles.colStatus, !xl && styles.stackColumn]}>
                   <View style={[styles.chip, { backgroundColor: sc.bg }]}>
                     <Text style={[styles.chipText, { color: sc.fg, textTransform: "uppercase" }]}>
                       {b.status}
@@ -351,7 +353,7 @@ export default function OwnerBookings() {
                   </View>
                 </View>
 
-                <View style={styles.colActions}>
+                <View style={[styles.colActions, !xl && styles.stackColumn]}>
                   <SettleAmendButton settledAt={b.settledAt ?? null} onOpen={() => setLedgerFor(b)} />
                   {b.status === "pending" ? (
                     <>
@@ -364,7 +366,10 @@ export default function OwnerBookings() {
                       </Pressable>
                       <Pressable
                         onPress={() => void setStatus(b.id, "rejected")}
-                        style={[styles.iconAction, { backgroundColor: "#FEE2E2" }]}
+                        style={[
+                          styles.iconAction,
+                          { backgroundColor: isDark ? "rgba(239,68,68,0.15)" : "#FEE2E2" },
+                        ]}
                         accessibilityLabel="Decline"
                       >
                         <X size={14} color="#DC2626" />
@@ -404,7 +409,10 @@ export default function OwnerBookings() {
                   {b.status === "confirmed" || b.status === "pending" ? (
                     <Pressable
                       onPress={() => void setStatus(b.id, "cancelled")}
-                      style={[styles.iconAction, { backgroundColor: "#FEE2E2" }]}
+                      style={[
+                        styles.iconAction,
+                        { backgroundColor: isDark ? "rgba(239,68,68,0.15)" : "#FEE2E2" },
+                      ]}
                       accessibilityLabel="Cancel"
                     >
                       <X size={14} color="#DC2626" />
@@ -543,7 +551,15 @@ const styles = StyleSheet.create({
     marginTop: space[4],
   },
   card: { borderRadius: radius["2xl"], borderWidth: 1, padding: space[4], marginTop: space[2] },
-  cardGrid: { flexDirection: "row", flexWrap: "wrap", gap: space[3], alignItems: "flex-start" },
+  cardGrid: { flexDirection: "column", gap: space[4] },
+  cardGridWide: { flexDirection: "row", flexWrap: "wrap", gap: space[3], alignItems: "flex-start" },
+  stackColumn: {
+    width: "100%",
+    minWidth: 0,
+    flexBasis: "auto",
+    flexGrow: 0,
+    justifyContent: "flex-start",
+  },
   colPlayer: { flexBasis: 140, flexGrow: 1, minWidth: 120, gap: 4 },
   colVenue: { flexBasis: 100, flexGrow: 1, minWidth: 90, gap: 2 },
   colSlot: { flexBasis: 110, minWidth: 100, gap: 2 },

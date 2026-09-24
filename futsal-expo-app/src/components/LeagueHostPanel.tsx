@@ -55,11 +55,16 @@ export function LeagueHostPanel({
   hostId,
   onChanged,
   onEdit,
+  onOpenTeam,
+  showSettings = true,
 }: {
   league: LeagueDetail;
   hostId: number;
   onChanged: () => void;
   onEdit: () => void;
+  onOpenTeam?: (teamId: number) => void;
+  /** Owner Studio exposes its single edit action in the league header. */
+  showSettings?: boolean;
 }) {
   const { colors: c, isDark } = useTheme();
   const router = useRouter();
@@ -166,14 +171,16 @@ export function LeagueHostPanel({
               </View>
             ) : null}
           </View>
-          <Pressable
-            onPress={onEdit}
-            accessibilityRole="button"
-            style={[styles.settingsBtn, { borderColor: c.border }]}
-          >
-            <Settings size={14} color={c.textMuted} />
-            <Text style={[styles.settingsText, { color: c.textMuted }]}>League settings</Text>
-          </Pressable>
+          {showSettings ? (
+            <Pressable
+              onPress={onEdit}
+              accessibilityRole="button"
+              style={[styles.settingsBtn, { borderColor: c.border }]}
+            >
+              <Settings size={14} color={c.textMuted} />
+              <Text style={[styles.settingsText, { color: c.textMuted }]}>League settings</Text>
+            </Pressable>
+          ) : null}
         </View>
 
         {pending.length === 0 ? (
@@ -191,7 +198,9 @@ export function LeagueHostPanel({
                   <View style={styles.entryTop}>
                     <View style={styles.grow}>
                       <Pressable
-                        onPress={() => router.push(`/teams/${e.teamId}`)}
+                        onPress={() =>
+                          onOpenTeam ? onOpenTeam(e.teamId) : router.push(`/teams/${e.teamId}`)
+                        }
                         accessibilityRole="button"
                       >
                         <Text style={[styles.entryName, { color: c.text }]} numberOfLines={1}>
