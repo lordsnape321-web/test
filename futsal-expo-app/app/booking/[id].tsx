@@ -1,15 +1,9 @@
-import { useLocalSearchParams } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useCallback, useEffect, useState } from "react";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Button, Card, Notice, Pill, Spinner } from "@/components/ui";
-import {
-  fetchBooking,
-  fetchLedger,
-  initiateKhalti,
-  verifyEsewa,
-  verifyKhalti,
-} from "@/api";
+import { fetchBooking, fetchLedger } from "@/api";
 import { useAuth } from "@/context/AuthContext";
 import { useTheme } from "@/context/ThemeContext";
 import { ApiError } from "@/lib/api";
@@ -32,6 +26,7 @@ import { fontSize, space } from "@/theme";
  */
 export default function BookingDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
+  const router = useRouter();
   const bookingId = Number(id);
   const { colors } = useTheme();
   const { user } = useAuth();
@@ -75,29 +70,17 @@ export default function BookingDetail() {
    * check skipped, ledger row appended, statuses updated, audit trail written.
    * Swapping in a real gateway SDK later changes only this function.
    */
-  async function pay(method: "esewa" | "khalti") {
+  function pay(method: "esewa" | "khalti") {
     setBusy(method);
     setError(null);
     setSuccess(null);
-    try {
-      if (method === "esewa") {
-        await verifyEsewa(bookingId, true);
-      } else {
-        const init = await initiateKhalti(bookingId);
-        const pidx = typeof init.pidx === "string" ? init.pidx : "mock-pidx";
-        await verifyKhalti(bookingId, pidx, true);
-      }
-      setSuccess(
-        method === "esewa" ? "eSewa payment recorded ✅" : "Khalti payment recorded ✅",
-      );
-      await load();
-    } catch (e) {
-      setError(
-        e instanceof ApiError ? e.message : "Payment failed. Nothing was charged — try again.",
-      );
-    } finally {
-      setBusy(null);
-    }
+    // Keep the gateway step visible on native too. The mock screens call the
+    // same verify endpoints, then return through the success/callback route.
+    const path = method === "esewa"
+      ? `/payment/esewa/mock?bookingId=${bookingId}&amount=${encodeURIComponent(String(Math.max(0, ledger?.totals.balance ?? 0)))}`
+      : `/payment/khalti/mock?bookingId=${bookingId}&amount=${encodeURIComponent(String(Math.max(0, ledger?.totals.balance ?? 0)))}&pidx=mock-pidx`;
+    setBusy(null);
+    router.push(path as never);
   }
 
   if (loading) return <Spinner label="Loading booking…" />;
