@@ -113,12 +113,12 @@ export default function BookingsScreen() {
   const [competitionDecision, setCompetitionDecision] = useState<number | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (refresh = false) => {
     if (!user) return;
     try {
       setLoadError(null);
       const [list, stats] = await Promise.all([
-        fetchBookings({ userId: user.id }),
+        fetchBookings({ userId: user.id, refresh }),
         fetchUserStats(user.id).catch(() => null),
       ]);
       setBookings(list);
@@ -150,6 +150,7 @@ export default function BookingsScreen() {
 
   useFocusEffect(
     useCallback(() => {
+      let active = true;
       (async () => {
         // Do not block the diary on demo-data seeding. The booking API is the
         // source of truth and a slow seed endpoint used to make this screen look
@@ -157,6 +158,18 @@ export default function BookingsScreen() {
         if (user) await load();
         else setLoading(false);
       })();
+      // Keep both captains' feeds synchronized while this screen is focused.
+      // The server response is always authoritative; this is only a refresh
+      // loop, never a local status mutation.
+      const timer = user
+        ? setInterval(() => {
+            if (active) void load(true);
+          }, 4000)
+        : null;
+      return () => {
+        active = false;
+        if (timer) clearInterval(timer);
+      };
     }, [user, load]),
   );
 
@@ -317,7 +330,23 @@ export default function BookingsScreen() {
     setCompetitionDecision(b.id);
     setLoadError(null);
     try {
-      await decideCompetitionBooking(b.id, user.id, action);
+      const result = await decideCompetitionBooking(b.id, user.id, action);
+      const nextStatus = String(result.competitionStatus ?? result.booking?.competitionStatus ?? "");
+      if (nextStatus) {
+        setBookings((current) =>
+          current.map((row) =>
+            row.id !== b.id
+              ? row
+              : {
+                  ...row,
+                  status: action === "decline" ? "rejected" : row.status,
+                  competition: row.competition
+                    ? { ...row.competition, competitionStatus: nextStatus }
+                    : row.competition,
+                },
+          ),
+        );
+      }
       await load();
     } catch (e) {
       setLoadError(e instanceof Error ? e.message : "Couldn't update the competition request.");
@@ -771,9 +800,37 @@ function BookingCard({
                 {b.competition.leagueName ? ` 🏆 Counts towards ${b.competition.leagueName}.` : ""}
                 {b.competition.leagueId ? " Open the league (from Matches → Leagues)." : ""}
               </Text>
+              <View
+                style={[
+                  styles.competitionPaymentPill,
+                  {
+                    backgroundColor: isDark ? "rgba(255,255,255,0.10)" : "rgba(255,255,255,0.7)",
+                    borderColor: isDark ? "rgba(129,140,248,0.3)" : "rgba(99,102,241,0.25)",
+                  },
+                ]}
+              >
+                <Wallet size={13} color={isDark ? "#C7D2FE" : "#4338CA"} />
+                <Text style={[styles.competitionPaymentText, { color: isDark ? "#C7D2FE" : "#4338CA" }]}>
+                  {b.competition.paymentLabel ??
+                    (b.competition.paymentMode === "loser_pays"
+                      ? "Losing squad pays"
+                      : "Fair split between both squads")}
+                </Text>
+              </View>
+              {b.competition.paymentMode === "loser_pays" ? (
+                <Text style={styles.competitionPaymentHint}>The result decides who pays.</Text>
+              ) : null}
               {canDecideCompetition ? (
-                <View style={styles.competitionDecisionBox}>
-                  <Text style={styles.competitionDecisionHint}>
+                  <View
+                    style={[
+                      styles.competitionDecisionBox,
+                      {
+                        backgroundColor: isDark ? "rgba(15,23,42,0.72)" : "rgba(255,255,255,0.82)",
+                        borderColor: isDark ? "rgba(129,140,248,0.28)" : "#C7D2FE",
+                      },
+                    ]}
+                  >
+                    <Text style={[styles.competitionDecisionHint, { color: isDark ? "#C7D2FE" : "#3730A3" }]}>
                     Accept this fixture to release it to the venue owner. Declining keeps it out of
                     the owner's actionable bookings.
                   </Text>
@@ -787,7 +844,7 @@ function BookingCard({
                         <ActivityIndicator size="small" color="#FFFFFF" />
                       ) : null}
                       <Text style={styles.competitionAcceptText}>
-                        {competitionActing ? "Saving…" : "Accept request"}
+                        {competitionActing ? "Saving…" : "✓ Accept request"}
                       </Text>
                     </Pressable>
                     <Pressable
@@ -795,7 +852,7 @@ function BookingCard({
                       disabled={competitionActing}
                       style={[styles.competitionDecline, { opacity: competitionActing ? 0.55 : 1 }]}
                     >
-                      <Text style={styles.competitionDeclineText}>Decline</Text>
+                      <Text style={styles.competitionDeclineText}>× Decline request</Text>
                     </Pressable>
                   </View>
                 </View>
@@ -1144,14 +1201,29 @@ const styles = StyleSheet.create({
   compTitle: { fontSize: fontSize.xs, fontWeight: "900", color: "#4338CA", flex: 1 },
   compScore: { borderRadius: radius.full, paddingHorizontal: space[3], paddingVertical: space[1] },
   compBody: { marginTop: space[1], fontSize: fontSize.xs, color: "#4338CA", lineHeight: 16 },
+  competitionPaymentPill: {
+    alignSelf: "flex-start",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    marginTop: space[2],
+    borderRadius: radius.full,
+    borderWidth: 1,
+    borderColor: "rgba(99,102,241,0.25)",
+    backgroundColor: "rgba(255,255,255,0.7)",
+    paddingHorizontal: space[3],
+    paddingVertical: space[1.5],
+  },
+  competitionPaymentText: { color: "#4338CA", fontSize: fontSize.xs, fontWeight: "900" },
+  competitionPaymentHint: { marginTop: 3, color: "#6366F1", fontSize: 10, fontWeight: "700" },
   competitionDecisionBox: {
     marginTop: space[3],
     borderRadius: radius.xl,
+    borderWidth: 1,
     padding: space[3],
-    backgroundColor: "rgba(255,255,255,0.7)",
   },
-  competitionDecisionHint: { fontSize: fontSize.xs, color: "#3730A3", lineHeight: 16, fontWeight: "700" },
-  competitionDecisionRow: { flexDirection: "row", gap: space[2], marginTop: space[3] },
+  competitionDecisionHint: { fontSize: fontSize.xs, lineHeight: 16, fontWeight: "700" },
+  competitionDecisionRow: { flexDirection: "row", flexWrap: "wrap", gap: space[2], marginTop: space[3] },
   competitionAccept: {
     flex: 1,
     minHeight: 40,

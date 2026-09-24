@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { CalendarCheck, Check, X, ReceiptText, Gift, Ticket, Shield, Swords, Trophy } from "lucide-react";
+import { CalendarCheck, Check, X, ReceiptText, Gift, Ticket, Shield, Swords, Trophy, Wallet } from "lucide-react";
 import { useUser } from "@/components/UserProvider";
 import { OwnerGuard } from "@/components/OwnerGuard";
 import { ReceiptViewer } from "@/components/ReceiptUploader";
@@ -59,6 +59,8 @@ type Booking = {
     awayScore: number | null;
     scoreStatus: string;
     competitionStatus?: string;
+    paymentMode?: "split" | "loser_pays" | string;
+    paymentLabel?: string;
   } | null;
 };
 
@@ -267,6 +269,11 @@ export default function OwnerBookingsPage() {
                             {b.competition.scoreStatus === "recorded"
                               ? `⚽ ${b.competition.homeScore}–${b.competition.awayScore}`
                               : "score due"}
+                          </span>
+                          <span className="inline-flex items-center gap-1 rounded-full bg-sky-500/15 px-1.5 py-0.5 text-[9px] font-black text-sky-700 dark:text-sky-300">
+                            <Wallet className="h-2.5 w-2.5" />
+                            {b.competition.paymentLabel ??
+                              (b.competition.paymentMode === "loser_pays" ? "loser pays" : "fair split")}
                           </span>
                         </span>
                       )}

@@ -136,6 +136,11 @@ export async function GET(req: Request) {
                 awayScore: b.awayScore,
                 scoreStatus: b.scoreStatus,
                 competitionStatus: b.competitionStatus,
+                paymentMode: b.chargeMode === "loser_pays" ? "loser_pays" : "split",
+                paymentLabel:
+                  b.chargeMode === "loser_pays"
+                    ? "Losing squad pays"
+                    : "Fair split between both squads",
                 opponentCaptainId: opponent?.captainId ?? null,
                 isOpponentCaptain:
                   Boolean(userId) && opponent?.captainId === Number(userId),
@@ -158,7 +163,10 @@ export async function GET(req: Request) {
       };
     });
 
-    return Response.json({ bookings: enriched });
+    return Response.json(
+      { bookings: enriched },
+      { headers: { "Cache-Control": "no-store, no-cache, must-revalidate" } },
+    );
   } catch (e) {
     console.error(`[/api/bookings GET] failed:`, e);
     return Response.json({ bookings: [], error: String(e) }, { status: 500 });
@@ -255,8 +263,18 @@ export async function POST(req: Request) {
       }
     }
 
-    // Custom charge validation (public only).
-    const chargeMode: "split" | "custom" = body.chargeMode === "custom" ? "custom" : "split";
+    // Payment policy is durable on the existing `charge_mode` column. Public
+    // open games keep their original `split` / `custom` meanings; competition
+    // games use that same column for the two squad policies so old deployments
+    // do not need another schema column just to store this additive choice.
+    const competitionPaymentMode: "split" | "loser_pays" =
+      body.competitionPaymentMode === "loser_pays" ? "loser_pays" : "split";
+    const chargeMode: "split" | "custom" | "loser_pays" =
+      visibility === "competition"
+        ? competitionPaymentMode
+        : body.chargeMode === "custom"
+          ? "custom"
+          : "split";
     let customPrice = 0;
     if (visibility === "public" && chargeMode === "custom") {
       const cErr = validateCustomPrice(body.customPricePerPlayer, { total: 0, openSpots, max: 10000 });
@@ -533,7 +551,10 @@ export async function POST(req: Request) {
         opponentTeamId,
         scoreStatus,
         competitionStatus: visibility === "competition" ? "pending" : "none",
-        chargeMode: visibility === "public" ? chargeMode : "split",
+        // For competition bookings this stores the selected durable policy:
+        // `split` = both squads share; `loser_pays` = the losing squad covers
+        // the court. Normal/private/public booking semantics stay unchanged.
+        chargeMode,
         customPricePerPlayer: visibility === "public" && chargeMode === "custom" ? customPrice : 0,
         depositRequired,
         depositAmount,
@@ -641,7 +662,7 @@ export async function POST(req: Request) {
         userId: opponent?.captainId ?? 0,
         type: "info",
         title: `🆚 Competition request — ${teamName} vs ${opponentName}`,
-        message: `${booking.bookerName || "The other captain"} requested ${court?.name ?? "a court"} at ${venue?.name ?? "the venue"} for ${prettyDate(booking.date)} at ${formatTime12(booking.startTime)}.${tournamentName ? ` It counts towards ${tournamentName}.` : ""} Open My Bookings to accept or decline. The venue owner is only notified after you accept. ⚽`,
+        message: `${booking.bookerName || "The other captain"} requested ${court?.name ?? "a court"} at ${venue?.name ?? "the venue"} for ${prettyDate(booking.date)} at ${formatTime12(booking.startTime)}.${tournamentName ? ` It counts towards ${tournamentName}.` : ""} Payment policy: ${competitionPaymentMode === "loser_pays" ? "the losing squad pays" : "fair split between both squads"}. Open My Bookings to accept or decline. The venue owner is only notified after you accept. ⚽`,
         link: "/bookings",
       });
     }
@@ -652,7 +673,13 @@ export async function POST(req: Request) {
         match,
         freePlayUsed: useFreePlay,
         competition: opponentTeamId
-          ? { opponentId: opponentTeamId, opponentName, leagueId: tournamentId, leagueName: tournamentName }
+          ? {
+              opponentId: opponentTeamId,
+              opponentName,
+              leagueId: tournamentId,
+              leagueName: tournamentName,
+              paymentMode: competitionPaymentMode,
+            }
           : null,
         depositRequired,
         depositAmount,

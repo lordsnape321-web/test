@@ -95,6 +95,8 @@ export type BookingCompetition = {
   awayScore: number | null;
   scoreStatus: string;
   competitionStatus?: "none" | "pending" | "accepted" | "declined" | "cancelled" | string;
+  paymentMode?: "split" | "loser_pays" | string;
+  paymentLabel?: string;
   opponentCaptainId?: number | null;
   isOpponentCaptain?: boolean;
 };
@@ -133,6 +135,9 @@ export type Booking = {
   depositAmount?: number;
   depositStatus?: string;
   gatewayTxnId?: string;
+  /** Raw booking fields are also present on PATCH responses. */
+  competitionStatus?: "none" | "pending" | "accepted" | "declined" | "cancelled" | string;
+  chargeMode?: string | null;
   competition?: BookingCompetition | null;
   playerStats?: import("./loyalty").PlayerStats;
   /** Nested by the API so a booking list can render without extra requests. */

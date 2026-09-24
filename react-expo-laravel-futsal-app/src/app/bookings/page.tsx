@@ -51,6 +51,8 @@ type Booking = {
     awayScore: number | null;
     scoreStatus: string;
     competitionStatus?: string;
+    paymentMode?: "split" | "loser_pays" | string;
+    paymentLabel?: string;
     opponentCaptainId?: number | null;
     isOpponentCaptain?: boolean;
   } | null;
@@ -123,6 +125,32 @@ export default function BookingsPage() {
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
+
+  // The opposition captain and the requesting captain may have My Bookings
+  // open in different browser tabs/devices. There is no client-owned status to
+  // trust here: poll the database-backed feed while this screen is mounted so
+  // an accept/decline appears for the other captain without a manual refresh.
+  useEffect(() => {
+    if (!user?.id) return;
+    let stopped = false;
+    const refreshFeed = async () => {
+      try {
+        const res = await apiFetch(`/api/bookings?userId=${user.id}&_=${Date.now()}`, {
+          cache: "no-store",
+        });
+        if (!res.ok || stopped) return;
+        const data = await res.json();
+        if (!stopped) setBookings(data.bookings ?? []);
+      } catch {
+        // Keep the last confirmed feed visible during a transient poll failure.
+      }
+    };
+    const timer = window.setInterval(() => void refreshFeed(), 4000);
+    return () => {
+      stopped = true;
+      window.clearInterval(timer);
+    };
   }, [user?.id]);
 
   const today = new Date().toISOString().slice(0, 10);
@@ -306,6 +334,25 @@ export default function BookingsPage() {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "Couldn't update the competition request.");
+      const nextStatus = String(data.competitionStatus ?? data.booking?.competitionStatus ?? "");
+      // Paint the confirmed server response immediately, then re-read the
+      // enriched feed. This removes the stale "opponent pending" badge before
+      // the next poll and keeps the local card aligned with the database.
+      if (nextStatus) {
+        setBookings((current) =>
+          current.map((row) =>
+            row.id !== b.id
+              ? row
+              : {
+                  ...row,
+                  status: action === "decline" ? "rejected" : row.status,
+                  competition: row.competition
+                    ? { ...row.competition, competitionStatus: nextStatus }
+                    : row.competition,
+                },
+          ),
+        );
+      }
       await load(user.id);
     } catch (e) {
       setCancelError(e instanceof Error ? e.message : "Couldn't update the competition request.");
@@ -582,25 +629,43 @@ export default function BookingsPage() {
                             </>
                           ) : null}
                         </p>
+                        <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] font-black text-indigo-800 dark:text-indigo-200">
+                          <span className="inline-flex items-center gap-1.5 rounded-full border border-indigo-200 bg-white/75 px-2.5 py-1.5 dark:border-indigo-400/25 dark:bg-white/10">
+                            <Wallet className="h-3.5 w-3.5" />
+                            {b.competition.paymentLabel ??
+                              (b.competition.paymentMode === "loser_pays"
+                                ? "Losing squad pays"
+                                : "Fair split between both squads")}
+                          </span>
+                          {b.competition.paymentMode === "loser_pays" && (
+                            <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-300">
+                              The result decides who pays.
+                            </span>
+                          )}
+                        </div>
                         {canDecideCompetition && (
-                          <div className="mt-3 rounded-xl border border-indigo-200 bg-white/70 p-3 dark:border-indigo-500/20 dark:bg-white/5">
+                          <div className="mt-3 rounded-2xl border border-indigo-200 bg-white/80 p-3.5 shadow-sm dark:border-indigo-400/25 dark:bg-slate-950/45">
                             <p className="text-[11px] font-bold leading-relaxed text-indigo-700 dark:text-indigo-200">
                               Accept this fixture to release it to the venue owner. Declining keeps it out of the owner&apos;s actionable bookings.
                             </p>
-                            <div className="mt-2.5 flex flex-wrap gap-2">
+                            <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
                               <button
+                                type="button"
                                 onClick={() => void decideCompetition(b, "accept")}
                                 disabled={competitionDecision === b.id}
-                                className="rounded-xl bg-emerald-600 px-4 py-2 text-[11px] font-black text-white disabled:opacity-50"
+                                aria-busy={competitionDecision === b.id}
+                                className="inline-flex min-h-11 w-full items-center justify-center rounded-xl bg-emerald-600 px-4 py-3 text-xs font-black text-white shadow-sm transition hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:ring-offset-2 focus:ring-offset-white disabled:cursor-not-allowed disabled:opacity-55 dark:focus:ring-offset-slate-950"
                               >
-                                {competitionDecision === b.id ? "Saving…" : "Accept request"}
+                                {competitionDecision === b.id ? "Saving…" : "✓ Accept request"}
                               </button>
                               <button
+                                type="button"
                                 onClick={() => void decideCompetition(b, "decline")}
                                 disabled={competitionDecision === b.id}
-                                className="rounded-xl border border-red-200 px-4 py-2 text-[11px] font-black text-red-600 disabled:opacity-50 dark:border-red-500/30 dark:text-red-300"
+                                aria-busy={competitionDecision === b.id}
+                                className="inline-flex min-h-11 w-full items-center justify-center rounded-xl border border-red-300 bg-red-50 px-4 py-3 text-xs font-black text-red-700 shadow-sm transition hover:border-red-400 hover:bg-red-100 focus:outline-none focus:ring-2 focus:ring-red-400 focus:ring-offset-2 focus:ring-offset-white disabled:cursor-not-allowed disabled:opacity-55 dark:border-red-400/45 dark:bg-red-500/10 dark:text-red-300 dark:hover:bg-red-500/20 dark:focus:ring-offset-slate-950"
                               >
-                                Decline
+                                {competitionDecision === b.id ? "Saving…" : "× Decline request"}
                               </button>
                             </div>
                           </div>

@@ -166,7 +166,7 @@ async function handleCompetitionDecision(
         userId: venue.ownerId,
         type: "booking_request",
         title: `📩 Competition booking ready — ${where}`,
-        message: `${fixture} was accepted by ${opponentName}'s captain. Review ${court?.name ?? "the court"} for ${when} (${formatNPR(next.totalPrice)}). Tap to accept or decline.`,
+        message: `${fixture} was accepted by ${opponentName}'s captain. Payment policy: ${next.chargeMode === "loser_pays" ? "the losing squad pays" : "fair split between both squads"}. Review ${court?.name ?? "the court"} for ${when} (${formatNPR(next.totalPrice)}). Tap to accept or decline.`,
         link: "/admin/requests",
       });
     }
@@ -174,7 +174,7 @@ async function handleCompetitionDecision(
       userId: next.userId,
       type: "info",
       title: `✅ ${opponentName} accepted your competition request`,
-      message: `${fixture} at ${where} for ${when} is now with the venue owner for final approval.`,
+      message: `${fixture} at ${where} for ${when} is now with the venue owner for final approval. Payment policy: ${next.chargeMode === "loser_pays" ? "the losing squad pays" : "fair split between both squads"}.`,
       link: "/bookings",
     });
   } else {

@@ -134,6 +134,11 @@ export const bookings = pgTable("bookings", {
   competitionRespondedAt: timestamp("competition_responded_at"),
   scoreUpdatedBy: integer("score_updated_by"),
   scoreUpdatedAt: timestamp("score_updated_at"),
+  /**
+   * Public bookings use "split" / "custom". Competition bookings use this
+   * existing durable column for "split" (both squads share) or "loser_pays"
+   * (the losing squad covers the court after the result).
+   */
   chargeMode: text("charge_mode").notNull().default("split"),
   customPricePerPlayer: integer("custom_price_per_player").notNull().default(0),
   depositRequired: boolean("deposit_required").notNull().default(false),

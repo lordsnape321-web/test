@@ -267,10 +267,13 @@ export function createMatch(input: {
 export async function fetchBookings(params?: {
   userId?: number;
   status?: string;
+  /** Add a cache-busting query for live feed refreshes. */
+  refresh?: boolean;
 }): Promise<Booking[]> {
   const query = new URLSearchParams();
   if (params?.userId !== undefined) query.set("userId", String(params.userId));
   if (params?.status) query.set("status", params.status);
+  if (params?.refresh) query.set("_", String(Date.now()));
   const qs = query.toString();
   const data = await apiJson<{ bookings: Booking[] }>(`/api/bookings${qs ? `?${qs}` : ""}`);
   return data.bookings ?? [];
@@ -318,6 +321,7 @@ export function createBooking(input: {
   matchTitle?: string;
   level?: string;
   chargeMode?: "split" | "custom";
+  competitionPaymentMode?: "split" | "loser_pays";
   customPricePerPlayer?: number;
 }): Promise<{ booking: Booking; freePlayUsed?: boolean; promo?: unknown; competition?: unknown }> {
   return apiJson("/api/bookings", { method: "POST", json: input });

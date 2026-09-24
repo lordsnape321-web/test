@@ -93,6 +93,7 @@ import { colors, fontSize, radius, space } from "@/theme";
  */
 type Visibility = "private" | "public" | "competition";
 type ChargeMode = "split" | "custom";
+type CompetitionPaymentMode = "split" | "loser_pays";
 
 type PromoAd = {
   id: number;
@@ -114,6 +115,7 @@ type BookingSuccess = {
   visibility: Visibility;
   teamName: string;
   opponentName: string;
+  competitionPaymentMode: CompetitionPaymentMode;
 };
 
 export default function VenueDetail() {
@@ -150,6 +152,7 @@ export default function VenueDetail() {
   const [welcomeMode, setWelcomeMode] = useState<"any" | "specific">("any");
   const [welcomeLevels, setWelcomeLevels] = useState<string[]>([]);
   const [chargeMode, setChargeMode] = useState<ChargeMode>("split");
+  const [competitionPaymentMode, setCompetitionPaymentMode] = useState<CompetitionPaymentMode>("split");
   const [customPrice, setCustomPrice] = useState("");
   const [opponentQuery, setOpponentQuery] = useState("");
   const [opponentTeamId, setOpponentTeamId] = useState("");
@@ -508,6 +511,7 @@ export default function VenueDetail() {
         matchTitle: matchTitle.trim() || `⚡ Friendly game at ${venue?.name ?? "futsal"}`,
         level: visibility === "public" ? matchLevel : "All Levels",
         chargeMode: visibility === "public" ? chargeMode : "split",
+        competitionPaymentMode: visibility === "competition" ? competitionPaymentMode : "split",
         customPricePerPlayer: visibility === "public" && chargeMode === "custom" ? customValue : 0,
       });
       const created = response.booking;
@@ -531,6 +535,8 @@ export default function VenueDetail() {
         visibility,
         teamName: String(created.teamName ?? selectedTeamName),
         opponentName: opponent?.name ?? "",
+        competitionPaymentMode,
+
       });
       setReceipt("");
       setUseFreePlay(false);
@@ -681,6 +687,7 @@ export default function VenueDetail() {
             <SummaryRow label="Game type" value={visibility === "public" ? `🌍 Open • ${ourCrew} crew + ${openSpots} spots` : visibility === "competition" ? "🆚 Competition" : "🔒 Just our gang"} />
             <SummaryRow label="Squad" value={selectedTeamName ? `🛡️ ${selectedTeamName}` : "🙋 Individual booking"} />
             {visibility === "competition" ? <SummaryRow label="Opponent" value={opponent ? `🆚 ${opponent.name}` : "Pick an opponent"} /> : null}
+            {visibility === "competition" ? <SummaryRow label="Payment" value={competitionPaymentMode === "loser_pays" ? "🏁 Loser pays" : "🤝 Fair split"} /> : null}
             {visibility === "public" ? <SummaryRow label={chargeMode === "custom" ? "Joiners pay" : "Each pays"} value={start ? formatNPR(perPlayer) : "Pick a time"} /> : null}
 
             {freeVouchers.length > 0 ? <Pressable onPress={() => setUseFreePlay((value) => !value)} style={[styles.freeRow, { backgroundColor: useFreePlay ? (isDark ? "rgba(139,92,246,0.15)" : "#F5F3FF") : c.inset, borderColor: isDark ? "rgba(139,92,246,0.35)" : "#C4B5FD" }]}><Text style={styles.freeEmoji}>🎁</Text><View style={styles.grow}><Text style={[styles.smallStrong, { color: c.text }]}>Use my FREE hour {useFreePlay ? "✓" : ""}</Text><Text style={[styles.tiny, { color: isDark ? colors.violet300 : colors.violet700 }]}>{freeVouchers[0].code} • saves {formatNPR(rate)}</Text></View><Text style={styles.toggle}>{useFreePlay ? "ON" : "OFF"}</Text></Pressable> : null}
@@ -732,7 +739,7 @@ export default function VenueDetail() {
     return (
       <View style={[styles.subPanel, { backgroundColor: isDark ? "rgba(14,165,233,0.07)" : "#F0F9FF", borderColor: isDark ? "rgba(14,165,233,0.3)" : "#BAE6FD" }]}>
         <TeamPicker teams={userTeams} selected={selectedTeam} onPick={pickTeam} idleLabel="" title="Your squad 🛡️" accent="sky" hideIdle />
-        {selectedTeam ? <><Text style={[styles.label, { color: c.textFaint }]}>Counts towards a league?</Text><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.horizontalContent}><MiniChoice title="Friendly" active={!leagueId} onPress={() => setLeagueId("")} />{leagues.map((league) => <MiniChoice key={league.id} title={league.name} active={leagueId === String(league.id)} onPress={() => setLeagueId(String(league.id))} />)}</ScrollView><Text style={[styles.label, { color: c.textFaint }]}>Who are you playing?</Text><TextInput value={opponentQuery} onChangeText={setOpponentQuery} placeholder="Search squads by name…" placeholderTextColor={c.textFaint} style={[styles.input, { backgroundColor: c.surface, borderColor: c.border, color: c.text }]} /><View style={styles.wrapRow}>{filteredOpponents.map((team) => <Pressable key={team.id} onPress={() => setOpponentTeamId(String(team.id))} style={[styles.opponentChip, { backgroundColor: opponentTeamId === String(team.id) ? colors.sky500 : c.surface, borderColor: opponentTeamId === String(team.id) ? colors.sky500 : c.border }]}><Shield size={12} color={opponentTeamId === String(team.id) ? "#FFFFFF" : team.logoColor} /><Text style={[styles.smallStrong, { color: opponentTeamId === String(team.id) ? "#FFFFFF" : c.text }]}>{team.name}</Text></Pressable>)}</View><Text style={[styles.small, { color: c.textMuted }]}>{opponent ? `${selectedTeamName} vs ${opponent.name}` : "Pick an opponent"}</Text><View style={styles.infoBox}><Trophy size={15} color={colors.sky500} /><Text style={[styles.small, { color: c.textMuted }]}>The venue records the final score and it appears on both squads&apos; profiles.</Text></View></> : <Text style={[styles.small, { color: c.textMuted }]}>Join or create a squad first — competition bookings need two named squads.</Text>}
+        {selectedTeam ? <><Text style={[styles.label, { color: c.textFaint }]}>Counts towards a league?</Text><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.horizontalContent}><MiniChoice title="Friendly" active={!leagueId} onPress={() => setLeagueId("")} />{leagues.map((league) => <MiniChoice key={league.id} title={league.name} active={leagueId === String(league.id)} onPress={() => setLeagueId(String(league.id))} />)}</ScrollView><Text style={[styles.label, { color: c.textFaint }]}>Who are you playing?</Text><TextInput value={opponentQuery} onChangeText={setOpponentQuery} placeholder="Search squads by name…" placeholderTextColor={c.textFaint} style={[styles.input, { backgroundColor: c.surface, borderColor: c.border, color: c.text }]} /><View style={styles.wrapRow}>{filteredOpponents.map((team) => <Pressable key={team.id} onPress={() => setOpponentTeamId(String(team.id))} style={[styles.opponentChip, { backgroundColor: opponentTeamId === String(team.id) ? colors.sky500 : c.surface, borderColor: opponentTeamId === String(team.id) ? colors.sky500 : c.border }]}><Shield size={12} color={opponentTeamId === String(team.id) ? "#FFFFFF" : team.logoColor} /><Text style={[styles.smallStrong, { color: opponentTeamId === String(team.id) ? "#FFFFFF" : c.text }]}>{team.name}</Text></Pressable>)}</View><Text style={[styles.small, { color: c.textMuted }]}>{opponent ? `${selectedTeamName} vs ${opponent.name}` : "Pick an opponent"}</Text><Text style={[styles.label, { color: c.textFaint }]}>Competition payment policy</Text><View style={styles.twoCol}><MiniChoice title="🤝 Fair split" active={competitionPaymentMode === "split"} onPress={() => setCompetitionPaymentMode("split")} /><MiniChoice title="🏁 Loser pays" active={competitionPaymentMode === "loser_pays"} onPress={() => setCompetitionPaymentMode("loser_pays")} /></View><Text style={[styles.tiny, { color: c.textMuted }]}>{competitionPaymentMode === "loser_pays" ? "The losing squad covers the full court bill after the venue records the score. A draw falls back to a fair split." : "Both squads share the court cost equally."}</Text><View style={styles.infoBox}><Trophy size={15} color={colors.sky500} /><Text style={[styles.small, { color: c.textMuted }]}>The venue records the final score and it appears on both squads&apos; profiles.</Text></View></> : <Text style={[styles.small, { color: c.textMuted }]}>Join or create a squad first — competition bookings need two named squads.</Text>}
       </View>
     );
   }
@@ -825,7 +832,7 @@ function PaymentBox({ competition = false, methods, selected, onSelect, deposit,
 function SuccessModal({ success, venue, court, date, start, hours, onClose, onTrack }: { success: BookingSuccess | null; venue: Venue; court: Court | null; date: string; start: string | null; hours: number; onClose: () => void; onTrack: () => void }) {
   const { colors: c, isDark } = useTheme();
   if (!success) return null;
-  return <Modal visible transparent animationType="fade" onRequestClose={onClose}><Pressable style={styles.modalBackdrop} onPress={onClose}><View onStartShouldSetResponder={() => true} style={[styles.successCard, { backgroundColor: c.surface, borderColor: c.border }]}><Pressable onPress={onClose} style={styles.closeSuccess}><X size={17} color={c.textMuted} /></Pressable><View style={styles.successIcon}><PartyPopper size={30} color="#FFFFFF" /></View><Text style={[styles.successTitle, { color: c.text }]}>Request sent! 🥳</Text><Text style={[styles.body, { color: c.textMuted }]}>{court?.name} • {prettyDate(date)} • {start ? `${formatTime12(start)} (${hours} hr)` : ""}</Text><Text style={[styles.successPayment, { color: isDark ? colors.emerald300 : colors.emerald700 }]}>{success.total === 0 ? success.freePlay ? "FREE with your loyalty hour! 🎁" : "FREE with your promo code! 🎟️" : success.visibility === "competition" ? `${formatNPR(success.total)} held with the request — payment opens after captain acceptance` : `${formatNPR(success.total)} payment request recorded`}</Text>{success.saved > 0 ? <Text style={[styles.discountNote, { color: isDark ? colors.emerald300 : colors.emerald700 }]}>🎟️ {success.promoCode} saved you {formatNPR(success.saved)}</Text> : null}{success.teamName ? <Text style={[styles.smallStrong, { color: c.textMuted }]}>🛡️ Booked for {success.teamName}</Text> : null}<Text style={[styles.tiny, { color: c.textFaint }]}>Booking ref: #FN-{success.id}</Text><Text style={[styles.successNotice, { backgroundColor: isDark ? "rgba(245,158,11,0.12)" : "#FFFBEB", color: isDark ? colors.amber300 : "#92400E" }]}>{success.visibility === "competition" ? "🆚 Request sent to the opposition captain. The venue owner will only be notified after they accept." : "⏳ The venue is reviewing it — you&apos;ll be notified when it is confirmed."}</Text><View style={styles.twoCol}><Pressable onPress={onClose} style={[styles.secondaryAction, { borderColor: c.border }]}><Text style={[styles.smallStrong, { color: c.text }]}>Book another</Text></Pressable><Pressable onPress={onTrack} style={styles.primaryAction}><Text style={styles.primaryActionText}>Track it</Text></Pressable></View></View></Pressable></Modal>;
+  return <Modal visible transparent animationType="fade" onRequestClose={onClose}><Pressable style={styles.modalBackdrop} onPress={onClose}><View onStartShouldSetResponder={() => true} style={[styles.successCard, { backgroundColor: c.surface, borderColor: c.border }]}><Pressable onPress={onClose} style={styles.closeSuccess}><X size={17} color={c.textMuted} /></Pressable><View style={styles.successIcon}><PartyPopper size={30} color="#FFFFFF" /></View><Text style={[styles.successTitle, { color: c.text }]}>Request sent! 🥳</Text><Text style={[styles.body, { color: c.textMuted }]}>{court?.name} • {prettyDate(date)} • {start ? `${formatTime12(start)} (${hours} hr)` : ""}</Text><Text style={[styles.successPayment, { color: isDark ? colors.emerald300 : colors.emerald700 }]}>{success.total === 0 ? success.freePlay ? "FREE with your loyalty hour! 🎁" : "FREE with your promo code! 🎟️" : success.visibility === "competition" ? `${formatNPR(success.total)} held with the request — payment opens after captain acceptance` : `${formatNPR(success.total)} payment request recorded`}</Text>{success.saved > 0 ? <Text style={[styles.discountNote, { color: isDark ? colors.emerald300 : colors.emerald700 }]}>🎟️ {success.promoCode} saved you {formatNPR(success.saved)}</Text> : null}{success.teamName ? <Text style={[styles.smallStrong, { color: c.textMuted }]}>🛡️ Booked for {success.teamName}</Text> : null}<Text style={[styles.tiny, { color: c.textFaint }]}>Booking ref: #FN-{success.id}</Text>{success.visibility === "competition" ? <Text style={[styles.successNotice, { backgroundColor: isDark ? "rgba(245,158,11,0.12)" : "#FFFBEB", color: isDark ? colors.amber300 : "#92400E" }]}>🆚 {success.competitionPaymentMode === "loser_pays" ? "Loser pays" : "Fair split"} policy saved. The opposition captain must accept before the venue owner is notified.</Text> : <Text style={[styles.successNotice, { backgroundColor: isDark ? "rgba(245,158,11,0.12)" : "#FFFBEB", color: isDark ? colors.amber300 : "#92400E" }]}>⏳ The venue is reviewing it — you&apos;ll be notified when it is confirmed.</Text>}<View style={styles.twoCol}><Pressable onPress={onClose} style={[styles.secondaryAction, { borderColor: c.border }]}><Text style={[styles.smallStrong, { color: c.text }]}>Book another</Text></Pressable><Pressable onPress={onTrack} style={styles.primaryAction}><Text style={styles.primaryActionText}>Track it</Text></Pressable></View></View></Pressable></Modal>;
 }
 
 const styles = StyleSheet.create({

@@ -163,13 +163,14 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
   const [welcomeMode, setWelcomeMode] = useState<"any" | "specific">("any");
   const [welcomeLevels, setWelcomeLevels] = useState<string[]>([]);
   const [chargeMode, setChargeMode] = useState<"split" | "custom">("split");
+  const [competitionPaymentMode, setCompetitionPaymentMode] = useState<"split" | "loser_pays">("split");
   const [customPrice, setCustomPrice] = useState("");
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [userTeams, setUserTeams] = useState<UserTeam[]>([]);
   const [selectedTeam, setSelectedTeam] = useState("");
   const [booking, setBooking] = useState(false);
   const [payRedirect, setPayRedirect] = useState(false);
-  const [success, setSuccess] = useState<null | { id: number; total: number; isPublic: boolean; visibility: "private" | "public" | "competition"; freePlay: boolean; saved: number; promoCode: string; teamName: string; opponentName: string; leagueName: string }>(null);
+  const [success, setSuccess] = useState<null | { id: number; total: number; isPublic: boolean; visibility: "private" | "public" | "competition"; freePlay: boolean; saved: number; promoCode: string; teamName: string; opponentName: string; leagueName: string; competitionPaymentMode: "split" | "loser_pays" }>(null);
   const [error, setError] = useState("");
   const [myVouchers, setMyVouchers] = useState<Array<{ id: number; code: string; status: string }>>([]);
   const [loyalty, setLoyalty] = useState<{ count: number; target: number; remaining: number } | null>(null);
@@ -644,6 +645,7 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
           matchTitle: matchTitle.trim() || `⚡ Friendly game at ${venue?.name ?? "futsal"}`,
           level: visibility === "public" ? matchLevelString : "All Levels",
           chargeMode: visibility === "public" ? chargeMode : "split",
+          competitionPaymentMode: visibility === "competition" ? competitionPaymentMode : "split",
           customPricePerPlayer: visibility === "public" && chargeMode === "custom" ? Number(customPrice) : 0,
         }),
       });
@@ -710,6 +712,8 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
         teamName: String(created.teamName ?? ""),
         opponentName: String(data.competition?.opponentName ?? ""),
         leagueName: String(data.competition?.leagueName ?? ""),
+        competitionPaymentMode:
+          data.competition?.paymentMode === "loser_pays" ? "loser_pays" : "split",
       });
       setReceipt("");
       setUseFreePlay(false);
@@ -1625,6 +1629,54 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
                       )}
                     </div>
 
+                    <div className="rounded-2xl border border-sky-200 bg-white/75 p-3.5 dark:border-sky-500/25 dark:bg-slate-950/45">
+                      <p className="text-xs font-black uppercase tracking-wider text-sky-800 dark:text-sky-200">
+                        💳 Competition payment policy
+                      </p>
+                      <p className="mt-1 text-[11px] font-semibold leading-relaxed text-sky-700 dark:text-sky-300">
+                        Choose this before sending the fixture. It is saved on the booking and shown to both captains.
+                      </p>
+                      <div className="mt-2.5 grid gap-2 sm:grid-cols-2">
+                        <button
+                          type="button"
+                          onClick={() => setCompetitionPaymentMode("split")}
+                          className={`rounded-xl border px-3 py-3 text-left transition ${
+                            competitionPaymentMode === "split"
+                              ? "border-sky-500 bg-sky-100 shadow-sm dark:bg-sky-500/15"
+                              : "border-stone-200 bg-stone-50 hover:border-sky-300 dark:border-white/10 dark:bg-white/5"
+                          }`}
+                        >
+                          <span className="block text-xs font-black text-stone-900 dark:text-slate-100">
+                            🤝 Fair split {competitionPaymentMode === "split" ? "✓" : ""}
+                          </span>
+                          <span className="mt-1 block text-[11px] leading-relaxed text-stone-500 dark:text-slate-400">
+                            Both squads share the court cost equally.
+                          </span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setCompetitionPaymentMode("loser_pays")}
+                          className={`rounded-xl border px-3 py-3 text-left transition ${
+                            competitionPaymentMode === "loser_pays"
+                              ? "border-amber-500 bg-amber-50 shadow-sm dark:border-amber-400/60 dark:bg-amber-500/10"
+                              : "border-stone-200 bg-stone-50 hover:border-amber-300 dark:border-white/10 dark:bg-white/5"
+                          }`}
+                        >
+                          <span className="block text-xs font-black text-stone-900 dark:text-slate-100">
+                            🏁 Loser pays {competitionPaymentMode === "loser_pays" ? "✓" : ""}
+                          </span>
+                          <span className="mt-1 block text-[11px] leading-relaxed text-stone-500 dark:text-slate-400">
+                            The losing squad covers the full court bill after the score.
+                          </span>
+                        </button>
+                      </div>
+                      {competitionPaymentMode === "loser_pays" && (
+                        <p className="mt-2 rounded-xl bg-amber-100/70 px-3 py-2 text-[11px] font-bold leading-relaxed text-amber-800 dark:bg-amber-500/10 dark:text-amber-200">
+                          A draw falls back to a fair split. The venue records the result before the losing side is charged.
+                        </p>
+                      )}
+                    </div>
+
                     <p className="rounded-xl bg-sky-100/70 px-3 py-2 text-[11px] font-semibold leading-relaxed text-sky-800 dark:bg-sky-500/10 dark:text-sky-300">
                       🏆 The venue owner enters the final score and it lands on both squads&apos; profiles
                       {chosenLeague ? ` plus the ${chosenLeague.name} table` : ""}. Only the two squads
@@ -1678,6 +1730,12 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
               )}
               {visibility === "competition" && chosenLeague && (
                 <Row k="Counts towards" v={`🏆 ${chosenLeague.name}`} />
+              )}
+              {visibility === "competition" && (
+                <Row
+                  k="Payment"
+                  v={competitionPaymentMode === "loser_pays" ? "🏁 Loser pays" : "🤝 Fair split"}
+                />
               )}
               {visibility === "public" && (
                 <Row k="Welcome" v={matchLevelString} />
@@ -2041,7 +2099,7 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
             {success.opponentName && (
               <p className="mx-auto mt-2 max-w-[280px] rounded-xl bg-sky-50 px-3 py-2.5 text-xs font-bold leading-relaxed text-sky-700 dark:bg-sky-500/10 dark:text-sky-300">
                 🆚 {success.teamName || "Your squad"} vs {success.opponentName}
-                {success.leagueName ? ` • 🏆 ${success.leagueName}` : ""} — the opposition captain must accept first; then the venue owner reviews it and records the score on both squads&apos; profiles.
+                {success.leagueName ? ` • 🏆 ${success.leagueName}` : ""} • {success.competitionPaymentMode === "loser_pays" ? "loser pays" : "fair split"} — the opposition captain must accept first; then the venue owner reviews it and records the score on both squads&apos; profiles.
               </p>
             )}
             <div className="mt-5 grid grid-cols-2 gap-2">
