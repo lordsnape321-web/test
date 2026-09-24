@@ -55,7 +55,12 @@ export function Navbar() {
   const [open, setOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
 
-  const LINKS = !user ? PUBLIC_LINKS : isOwner ? PUBLIC_LINKS : PLAYER_LINKS;
+  // Owner Studio owns its entire authenticated navigation tree. Returning no
+  // player navbar here is a final guard for deep-link/back-stack transitions;
+  // the root shell also keeps owner accounts out of player routes.
+  if (isOwner) return null;
+
+  const LINKS = user ? PLAYER_LINKS : PUBLIC_LINKS;
 
   const isLight = !isDark;
   // sticky top-0 border-b border-[#F0E3CC] bg-[#FFFDF7]/90 | dark slate-950/90

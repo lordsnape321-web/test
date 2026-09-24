@@ -29,9 +29,15 @@ export default function AdminLayout() {
         <OwnerHeader />
         <View style={[styles.body, lg ? styles.bodyWide : null]}>
           {lg ? <OwnerSidebar /> : null}
-          <View style={styles.content}>
+          <View style={[styles.content, { backgroundColor: c.bg }]}>
             <Tabs
-              screenOptions={{ headerShown: false, sceneStyle: { backgroundColor: c.bg } }}
+              screenOptions={{
+                headerShown: false,
+                // Both keys matter across React Navigation versions: the scene
+                // wrapper and the navigator content must inherit Owner Studio's
+                // slate background instead of the platform default white.
+                sceneStyle: { backgroundColor: c.bg },
+              }}
               tabBar={
                 lg
                   ? () => null

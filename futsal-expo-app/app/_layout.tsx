@@ -90,6 +90,16 @@ function Shell() {
   const ownerOutsideStudio = ready && user?.role === "owner" && !isOwnerStudio;
   const showPlayerChrome = !isOwnerStudio && !ownerOutsideStudio;
   const showPlayerRail = showPlayerChrome && bp.width < 1024;
+  // Keep the native/web root surface deterministic even while Owner Studio is
+  // switching its palette after a route change. A transparent scene must never
+  // fall through to the browser's default white canvas.
+  const shellBackground = isOwnerStudio
+    ? isDark
+      ? "#020617"
+      : "#F1F5F9"
+    : isDark
+      ? "#020617"
+      : "#FFFFFF";
 
   React.useEffect(() => {
     if (ownerOutsideStudio) router.replace("/admin");
@@ -107,9 +117,9 @@ function Shell() {
   }
 
   return (
-    <View style={{ flex: 1, backgroundColor: isTransparent(colors.bg) ? undefined : colors.bg }}>
+    <View style={{ flex: 1, backgroundColor: shellBackground }}>
       {/* `.turf-pattern` — warm peach / night blobs behind every player route. */}
-      <TurfBackdrop />
+      <TurfBackdrop style={{ backgroundColor: shellBackground }} />
       {showPlayerChrome ? <Navbar /> : null}
       <View style={{ flex: 1 }}>
         <Stack
@@ -143,9 +153,4 @@ function Shell() {
       {showPlayerRail ? <MobileNav isDark={isDark} /> : null}
     </View>
   );
-}
-
-/** Palette bg may be transparent (player + turf) or a solid studio colour. */
-function isTransparent(bg: string) {
-  return bg === "transparent";
 }

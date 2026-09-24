@@ -1,6 +1,7 @@
-import { Tabs } from "expo-router";
-import React from "react";
-import { StyleSheet, View } from "react-native";
+import { Tabs, useRouter } from "expo-router";
+import React, { useEffect } from "react";
+import { ActivityIndicator, StyleSheet, View } from "react-native";
+import { useAuth } from "@/context/AuthContext";
 import { useTheme } from "@/context/ThemeContext";
 
 /**
@@ -10,7 +11,25 @@ import { useTheme } from "@/context/ThemeContext";
  * screens exactly as it does in the web AppShell.
  */
 export default function AppLayout() {
-  const { colors: c } = useTheme();
+  const { colors: c, isDark } = useTheme();
+  const { user, ready } = useAuth();
+  const router = useRouter();
+  const ownerInPlayerTree = ready && user?.role === "owner";
+
+  useEffect(() => {
+    if (ownerInPlayerTree) router.replace("/admin");
+  }, [ownerInPlayerTree, router]);
+
+  // This is a second boundary below the root shell. It prevents a stale back
+  // stack or a direct player-group deep link from ever mounting player tabs for
+  // an authenticated owner.
+  if (!ready || ownerInPlayerTree) {
+    return (
+      <View style={[styles.flex, styles.center, { backgroundColor: isDark ? "#020617" : "#F1F5F9" }]}>
+        <ActivityIndicator size="large" color={isDark ? "#FBBF24" : "#F97316"} />
+      </View>
+    );
+  }
 
   return (
     <View style={[styles.flex, { backgroundColor: c.bg }]}>
@@ -35,5 +54,6 @@ export default function AppLayout() {
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
+  center: { alignItems: "center", justifyContent: "center" },
   hiddenTabBar: { height: 0, display: "none" },
 });

@@ -1,7 +1,7 @@
 import { useRouter } from "expo-router";
 import { Bell, CheckCheck, ChevronRight, Heart, LogIn, Trash2 } from "lucide-react-native";
 import React, { useCallback, useEffect, useState } from "react";
-import { FlatList, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, FlatList, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { deleteNotification, fetchNotifications, markAllNotificationsRead, markNotificationRead } from "@/api";
 import { useAuth } from "@/context/AuthContext";
@@ -96,6 +96,10 @@ export default function NotificationsScreen() {
     })();
   }, [user, load]);
 
+  useEffect(() => {
+    if (ready && user?.role === "owner") router.replace("/admin/notifications");
+  }, [ready, user, router]);
+
   async function markAll() {
     if (!user) return;
     await markAllNotificationsRead(user.id);
@@ -118,6 +122,17 @@ export default function NotificationsScreen() {
   async function remove(id: number) {
     await deleteNotification(id);
     setItems((prev) => prev.filter((x) => x.id !== id));
+  }
+
+  // Defensive boundary for direct/deep links. The root shell also redirects
+  // owners, but this screen must never render player notifications while that
+  // redirect is being committed.
+  if (ready && user?.role === "owner") {
+    return (
+      <SafeAreaView style={[styles.flex, styles.center, { backgroundColor: c.bg }]} edges={["top"]}>
+        <ActivityIndicator size="large" color={c.textFaint} />
+      </SafeAreaView>
+    );
   }
 
   // Signed-out state: the web page shows a "your letters await" card. Reachable
@@ -170,15 +185,24 @@ export default function NotificationsScreen() {
           ) : null}
         </Text>
       </View>
-      {unread > 0 ? (
-        <Pressable
-          onPress={() => void markAll()}
-          style={[styles.catchUpBtn, { borderColor: c.border, backgroundColor: c.surface }]}
-        >
-          <CheckCheck size={16} color={c.text} />
-          <Text style={[styles.catchUpText, { color: c.text }]}>All caught up</Text>
-        </Pressable>
-      ) : null}
+      <Pressable
+        onPress={() => void markAll()}
+        disabled={unread === 0}
+        style={[
+          styles.catchUpBtn,
+          {
+            borderColor: c.border,
+            backgroundColor: c.surface,
+            opacity: unread === 0 ? 0.45 : 1,
+          },
+        ]}
+        accessibilityRole="button"
+        accessibilityLabel="Mark all notifications as read"
+        accessibilityState={{ disabled: unread === 0 }}
+      >
+        <CheckCheck size={16} color={c.text} />
+        <Text style={[styles.catchUpText, { color: c.text }]}>Mark all read</Text>
+      </Pressable>
     </View>
   );
 
@@ -220,7 +244,10 @@ export default function NotificationsScreen() {
                 styles.noteRow,
                 n.isRead
                   ? { backgroundColor: c.surface, borderColor: c.border }
-                  : { backgroundColor: colors.emerald50, borderColor: colors.emerald300 },
+                  : {
+                      backgroundColor: isDark ? "rgba(16,185,129,0.14)" : colors.emerald50,
+                      borderColor: isDark ? "rgba(110,231,183,0.45)" : colors.emerald300,
+                    },
               ]}
             >
               <View style={[styles.badge, { backgroundColor: badge.bg }]}>

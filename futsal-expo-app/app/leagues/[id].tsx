@@ -90,6 +90,20 @@ export function LeagueDetailScreen() {
     }
   }, [focusMatch]);
 
+  useEffect(() => {
+    if (user?.role === "owner" && !inOwnerStudio) router.replace("/admin/leagues");
+  }, [inOwnerStudio, router, user?.role]);
+
+  // A league deep link is a common way to enter the wrong shell. Do not render
+  // even the player league header while the owner redirect is being committed.
+  if (user?.role === "owner" && !inOwnerStudio) {
+    return (
+      <View style={[styles.stateBox, { backgroundColor: "#020617" }]}>
+        <ActivityIndicator size="large" color="#FBBF24" />
+      </View>
+    );
+  }
+
   if (loading) {
     return (
       <View style={[styles.stateBox, { backgroundColor: c.bg }]}>
