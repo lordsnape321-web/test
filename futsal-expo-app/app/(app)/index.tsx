@@ -3,6 +3,7 @@ import { useRouter } from "expo-router";
 import {
   ArrowRight,
   CalendarCheck,
+  ChevronDown,
   ChevronRight,
   Clock,
   CreditCard,
@@ -190,14 +191,21 @@ export default function HomeScreen() {
             </View>
             <View style={[styles.searchField, styles.cityField, bp.sm ? styles.cityFieldWide : null, { backgroundColor: c.inset }]}>
               <MapPin size={16} color={c.textFaint} />
+              <View style={styles.cityValue}>
+                <Text style={[styles.cityValueText, { color: c.text }]} numberOfLines={1}>
+                  {city}
+                  {city === homeCity && city !== "All Cities" ? " 🏠" : ""}
+                </Text>
+                <ChevronDown size={16} color={c.textMuted} />
+              </View>
               <Picker
                 selectedValue={city}
                 onValueChange={(next) => {
                   setCity(String(next));
                   setCityTouched(true);
                 }}
-                style={[styles.cityPicker, { color: c.text }]}
-                dropdownIconColor={c.textMuted}
+                accessibilityLabel="Pick a city"
+                style={styles.cityPickerOverlay}
               >
                 {CITY_OPTIONS.map((option) => (
                   <Picker.Item key={option} label={option === homeCity && option !== "All Cities" ? `${option} 🏠` : option} value={option} />
@@ -234,13 +242,16 @@ export default function HomeScreen() {
           {statRows.map((row, rowIndex) => (
             <View key={rowIndex} style={styles.statRow}>
               {row.map((s) => (
-                <View
+                <LinearGradient
                   key={s.l}
-                  style={[styles.statTile, { backgroundColor: c.surface, borderColor: c.border }]}
+                  colors={isDark ? ["#0F172A", "#132A3E"] : ["#FFFFFF", "#F0FDF4"]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={[styles.statTile, { borderColor: c.border }]}
                 >
                   <Text style={[styles.statValue, { color: c.text }]}>{s.n}</Text>
                   <Text style={[styles.statLabel, { color: c.textFaint }]}>{s.l}</Text>
-                </View>
+                </LinearGradient>
               ))}
             </View>
           ))}
@@ -402,14 +413,11 @@ export default function HomeScreen() {
         )}
 
         {/* ── COMMUNITY ────────────────────────────────────────────── */}
-        <View
-          style={[
-            styles.community,
-            {
-              backgroundColor: isDark ? "#022C22" : "#065F46",
-              padding: bp.sm ? space[12] : space[8],
-            },
-          ]}
+        <LinearGradient
+          colors={isDark ? ["#022C22", "#064E3B"] : ["#065F46", "#047857"]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={[styles.community, { padding: bp.sm ? space[12] : space[8] }]}
         >
           <View style={[styles.communityGrid, bp.lg ? styles.communityGridWide : null]}>
             <View style={styles.communityCopy}>
@@ -471,7 +479,7 @@ export default function HomeScreen() {
           ))}
             </View>
           </View>
-        </View>
+        </LinearGradient>
 
         {/* ── FOOTER ───────────────────────────────────────────────── */}
         <View
@@ -731,9 +739,11 @@ const styles = StyleSheet.create({
   },
   searchFieldWide: { flex: 1, width: 0 },
   searchInput: { flex: 1, minWidth: 0, height: 48, fontSize: fontSize.base, fontWeight: "600", paddingVertical: 0 },
-  cityField: { paddingRight: space[2] },
-  cityFieldWide: { width: 176, marginTop: 0 },
-  cityPicker: { flex: 1, minWidth: 0, height: 48, fontSize: fontSize.base, fontWeight: "600", padding: 0 },
+  cityField: { position: "relative", paddingRight: space[2] },
+  cityFieldWide: { width: 176, marginTop: 0, flexShrink: 0 },
+  cityValue: { flex: 1, minWidth: 0, height: 48, flexDirection: "row", alignItems: "center", gap: space[2] },
+  cityValueText: { flex: 1, minWidth: 0, fontSize: fontSize.base, fontWeight: "600" },
+  cityPickerOverlay: { position: "absolute", top: 0, right: 0, bottom: 0, left: 0, opacity: 0 },
   homeCityHint: { fontSize: fontSize.xs, fontWeight: "700", marginTop: space[2] },
   searchButton: {
     borderRadius: radius["2xl"],
@@ -847,9 +857,10 @@ const styles = StyleSheet.create({
   },
   stepNumber: {
     position: "absolute",
-    right: -8,
-    top: -16,
+    right: -6,
+    top: -10,
     fontSize: 88,
+    lineHeight: 96,
     fontWeight: "900",
   },
   stepIcon: {
