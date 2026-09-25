@@ -84,7 +84,9 @@ export default function MatchesScreen() {
     tabParam === "leagues" ? "leagues" : "open",
   );
   useEffect(() => {
-    if (tabParam === "leagues") setTab("leagues");
+    // Keep deep links and back/forward navigation authoritative. Without the
+    // open fallback, returning from `?tab=leagues` left the wrong toggle active.
+    setTab(tabParam === "leagues" ? "leagues" : "open");
   }, [tabParam]);
   const [matches, setMatches] = useState<Match[]>([]);
   const [venues, setVenues] = useState<Venue[]>([]);
@@ -103,7 +105,11 @@ export default function MatchesScreen() {
   useEffect(() => {
     (async () => {
       try {
+        // Loading the live matches directly keeps the navigation responsive; a
+        // demo seed is optional data setup, not a prerequisite for this screen.
         await load();
+      } catch {
+        // Keep the filters and empty state usable while the API is offline.
       } finally {
         setLoading(false);
       }

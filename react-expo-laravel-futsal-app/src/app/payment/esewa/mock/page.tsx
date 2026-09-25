@@ -17,6 +17,7 @@ function Inner() {
   const teamId = params.get("teamId") ?? "";
   const amount = Number(params.get("amount") ?? 0);
   const uuid = params.get("uuid") ?? "";
+  const paymentRequestId = params.get("paymentRequestId") ?? "";
   const reason = params.get("reason") ?? "";
   const isLeague = !!leagueId && !!teamId;
   const [busy, setBusy] = useState<"pay" | null>(null);
@@ -41,7 +42,14 @@ function Inner() {
                   amount,
                   method: "eSewa",
                 }
-              : { mockApprove: true, bookingId: Number(bookingId) }
+              : {
+                  mockApprove: true,
+                  bookingId: Number(bookingId),
+                  teamPaymentId: params.get("teamPaymentId") ? Number(params.get("teamPaymentId")) : undefined,
+                  paymentRequestId: paymentRequestId ? Number(paymentRequestId) : undefined,
+                  uuid,
+                  userId: params.get("userId") ? Number(params.get("userId")) : undefined,
+                }
           ),
         }
       );
@@ -51,7 +59,7 @@ function Inner() {
         router.push(`/leagues/${leagueId}?paid=1`);
         return;
       }
-      router.push(`/payment/esewa/success?mock=1&bookingId=${bookingId}`);
+      router.push(`/payment/esewa/success?mock=1&bookingId=${bookingId}${params.get("teamPaymentId") ? `&teamPaymentId=${params.get("teamPaymentId")}` : ""}${paymentRequestId ? `&paymentRequestId=${paymentRequestId}` : ""}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed");
       setBusy(null);
