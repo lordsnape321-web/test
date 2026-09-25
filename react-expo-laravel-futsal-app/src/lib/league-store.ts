@@ -9,7 +9,7 @@
  * every route asks the same question and gets the same answer, instead of each
  * handler inventing its own `if`.
  */
-import { db } from "@/db";
+import { db, ensureCompetitionBookingColumns } from "@/db";
 import {
   bookings,
   courts,
@@ -728,6 +728,7 @@ export type TeamCompetitionProfile = {
  * night shouldn't have to explain that it "wasn't a league game".
  */
 export async function teamCompetitionProfile(teamId: number): Promise<TeamCompetitionProfile> {
+  await ensureCompetitionBookingColumns();
   if (!Number.isInteger(teamId) || teamId <= 0)
     return { record: recordFor(0, []), leagues: [], results: [] };
 

@@ -104,23 +104,61 @@ input[type="time"]::-webkit-calendar-picker-indicator {
   opacity: 0.55;
 }
 
-/* Native dropdown options: keep readable in both modes.
-   Without this, dark-mode selects render white text on a white popup. */
+/*
+ * The browser owns the popup created by a native <select>, so styling only the
+ * option nodes is not enough: Chromium, Safari and mobile browsers also use the
+ * select's color-scheme when they paint the opened list. Keep both the closed
+ * control and its popup on the same palette, while leaving each screen's
+ * existing surface utility (warm inset, card white, slate-950, or transparent)
+ * in charge of the actual control background.
+ */
+select {
+  color-scheme: light;
+  accent-color: #059669;
+}
+.dark select {
+  color-scheme: dark;
+  accent-color: #34d399;
+}
+
 select option {
-  background-color: #ffffff;
-  color: #1c1917;
+  color-scheme: light;
+  background-color: #ffffff !important;
+  color: #1c1917 !important;
 }
 .dark select option {
-  background-color: #0f172a;
-  color: #f1f5f9;
+  color-scheme: dark;
+  background-color: #0f172a !important;
+  color: #f1f5f9 !important;
 }
 select optgroup {
-  background-color: #ffffff;
-  color: #78716c;
+  color-scheme: light;
+  background-color: #ffffff !important;
+  color: #57534e !important;
 }
 .dark select optgroup {
-  background-color: #0f172a;
-  color: #94a3b8;
+  color-scheme: dark;
+  background-color: #0f172a !important;
+  color: #cbd5e1 !important;
+}
+select option:checked {
+  background-color: #d1fae5 !important;
+  color: #065f46 !important;
+}
+.dark select option:checked {
+  background-color: #064e3b !important;
+  color: #d1fae5 !important;
+}
+
+/* A keyboard/mouse focus ring that remains visible on both warm and slate
+   surfaces. Native arrows are intentionally retained so each browser can use
+   its accessible, platform-correct affordance. */
+select:focus-visible {
+  outline: 2px solid #10b981;
+  outline-offset: 2px;
+}
+.dark select:focus-visible {
+  outline-color: #34d399;
 }
 
 /*

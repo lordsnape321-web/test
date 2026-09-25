@@ -1,9 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Bell, CheckCheck, Trash2, ChevronRight } from "lucide-react";
+import { Bell, CheckCheck } from "lucide-react";
+import { SwipeNotificationRow } from "@/components/SwipeNotificationRow";
 import { useUser } from "@/components/UserProvider";
-import { timeAgo } from "@/components/NotificationBell";
 import { apiFetch } from "@/lib/api";
 
 type N = {
@@ -35,9 +35,14 @@ export default function OwnerNotificationsPage() {
 
   const load = useCallback(async () => {
     if (!user) return;
-    const res = await apiFetch(`/api/notifications?userId=${user.id}`);
-    const data = await res.json();
-    setItems(data.notifications ?? []);
+    try {
+      const res = await apiFetch(`/api/notifications?userId=${user.id}`, { cache: "no-store" });
+      if (!res.ok) return;
+      const data = await res.json();
+      setItems(data.notifications ?? []);
+    } catch {
+      // Keep the last database-confirmed inbox visible during a brief outage.
+    }
   }, [user]);
 
   useEffect(() => {
@@ -45,6 +50,13 @@ export default function OwnerNotificationsPage() {
       if (user) await load();
       setLoading(false);
     })();
+  }, [user, load]);
+
+  // Keep the request/payment inbox live while it is open.
+  useEffect(() => {
+    if (!user) return;
+    const timer = window.setInterval(() => void load(), 4000);
+    return () => window.clearInterval(timer);
   }, [user, load]);
 
   async function markAll() {
@@ -58,17 +70,30 @@ export default function OwnerNotificationsPage() {
   }
 
   async function markOne(n: N) {
-    await apiFetch(`/api/notifications/${n.id}`, {
+    const res = await apiFetch(`/api/notifications/${n.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ isRead: true }),
     });
+    if (!res.ok) throw new Error("Could not mark notification read");
     if (n.link) window.location.href = n.link;
     else load();
   }
 
+  async function markReadOnly(n: N) {
+    if (n.isRead) return;
+    const res = await apiFetch(`/api/notifications/${n.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ isRead: true }),
+    });
+    if (!res.ok) throw new Error("Could not mark notification read");
+    setItems((prev) => prev.map((item) => (item.id === n.id ? { ...item, isRead: true } : item)));
+  }
+
   async function remove(id: number) {
-    await apiFetch(`/api/notifications/${id}`, { method: "DELETE" });
+    const res = await apiFetch(`/api/notifications/${id}`, { method: "DELETE" });
+    if (!res.ok) throw new Error("Could not delete notification");
     setItems((prev) => prev.filter((x) => x.id !== id));
   }
 
@@ -112,40 +137,15 @@ export default function OwnerNotificationsPage() {
       ) : (
         <div className="mt-5 space-y-2.5">
           {items.map((n) => (
-            <div
+            <SwipeNotificationRow
               key={n.id}
-              className={`flex items-start gap-3 rounded-2xl border bg-white p-4 shadow-sm transition dark:bg-slate-900 ${
-                n.isRead ? "border-slate-200 dark:border-slate-800" : "border-slate-900 ring-1 ring-slate-900 dark:border-white dark:ring-white"
-              }`}
-            >
-              <span className={`mt-0.5 shrink-0 rounded-lg px-2.5 py-1.5 text-[10px] font-black uppercase ${TYPE_STYLE[n.type] ?? TYPE_STYLE.info}`}>
-                {n.type.replace(/_/g, " ")}
-              </span>
-              <button onClick={() => markOne(n)} className="min-w-0 flex-1 text-left">
-                <p className="text-sm font-extrabold leading-snug text-slate-900 dark:text-slate-100">
-                  {!n.isRead && <span className="mr-1.5 inline-block h-2 w-2 rounded-full bg-red-500" />}
-                  {n.title}
-                </p>
-                {n.message && (
-                  <p className="mt-1 text-[13px] leading-relaxed text-slate-500 dark:text-slate-400">{n.message}</p>
-                )}
-                <p className="mt-1.5 flex items-center gap-1 text-[11px] font-bold text-slate-400 dark:text-slate-500">
-                  {timeAgo(n.createdAt)}
-                  {n.link && (
-                    <span className="flex items-center gap-0.5 text-orange-600 dark:text-orange-400">
-                      • Open <ChevronRight className="h-3 w-3" />
-                    </span>
-                  )}
-                </p>
-              </button>
-              <button
-                onClick={() => remove(n.id)}
-                title="Delete"
-                className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-slate-300 transition hover:bg-red-50 hover:text-red-500 dark:text-slate-600 dark:hover:bg-red-500/10 dark:hover:text-red-400"
-              >
-                <Trash2 className="h-4 w-4" />
-              </button>
-            </div>
+              notification={n}
+              typeClass={TYPE_STYLE[n.type] ?? TYPE_STYLE.info}
+              owner
+              onOpen={markOne}
+              onRead={markReadOnly}
+              onDelete={remove}
+            />
           ))}
         </div>
       )}

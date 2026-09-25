@@ -829,7 +829,7 @@ export default function OwnerVenuesPage() {
                 </div>
                 <div>
                   <span className={labelCls}>City</span>
-                  <select value={fCity} onChange={(e) => setFCity(e.target.value)} className={inputCls}>
+                  <select value={fCity} onChange={(e) => setFCity(e.target.value)} className={`${inputCls} bg-white text-slate-900 dark:bg-slate-950 dark:text-slate-100`}>
                     {["Kathmandu", "Lalitpur", "Bhaktapur", "Pokhara", "Chitwan"].map((c) => (
                       <option key={c}>{c}</option>
                     ))}
@@ -945,7 +945,7 @@ export default function OwnerVenuesPage() {
                 </div>
                 <div>
                   <span className={labelCls}>City</span>
-                  <select value={eCity} onChange={(e) => setECity(e.target.value)} className={inputCls}>
+                  <select value={eCity} onChange={(e) => setECity(e.target.value)} className={`${inputCls} bg-white text-slate-900 dark:bg-slate-950 dark:text-slate-100`}>
                     {["Kathmandu", "Lalitpur", "Bhaktapur", "Pokhara", "Chitwan"].map((c) => (
                       <option key={c}>{c}</option>
                     ))}
@@ -1055,7 +1055,7 @@ export default function OwnerVenuesPage() {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <span className={labelCls}>Format</span>
-                  <select value={cFormat} onChange={(e) => setCFormat(e.target.value)} className={inputCls}>
+                  <select value={cFormat} onChange={(e) => setCFormat(e.target.value)} className={`${inputCls} bg-white text-slate-900 dark:bg-slate-950 dark:text-slate-100`}>
                     {FORMATS.map((f) => (
                       <option key={f}>{f}</option>
                     ))}
@@ -1063,7 +1063,7 @@ export default function OwnerVenuesPage() {
                 </div>
                 <div>
                   <span className={labelCls}>Surface</span>
-                  <select value={cSurface} onChange={(e) => setCSurface(e.target.value)} className={inputCls}>
+                  <select value={cSurface} onChange={(e) => setCSurface(e.target.value)} className={`${inputCls} bg-white text-slate-900 dark:bg-slate-950 dark:text-slate-100`}>
                     {SURFACES.map((s) => (
                       <option key={s}>{s}</option>
                     ))}

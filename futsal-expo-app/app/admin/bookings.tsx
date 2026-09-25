@@ -9,8 +9,9 @@ import {
   Ticket,
   Trophy,
   X,
+  Lock,
 } from "lucide-react-native";
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -30,8 +31,20 @@ import { SettleAmendButton } from "@/components/SettleAmendButton";
 import { useAuth } from "@/context/AuthContext";
 import { useTheme } from "@/context/ThemeContext";
 import { formatNPR, formatTime12, prettyDate } from "@/lib/futsal";
+import { SETTLE_EDIT_WINDOW_MS, formatWindowLeft, settleWindow } from "@/lib/booking-ledger";
+import { useBreakpoints } from "@/lib/responsive";
 import type { Booking } from "@/lib/types";
 import { colors, fontSize, radius, space } from "@/theme";
+
+function paymentMethodLabel(method?: string | null) {
+  if (method === "Cash at Venue") return "Cash at venue";
+  if (method === "Free Play 🎁") return "Free play";
+  return method || "Not selected";
+}
+
+function paymentStatusLabel(status?: string | null) {
+  return String(status || "pending").replace(/_/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
 
 const FILTERS = [
   "all",
@@ -43,6 +56,24 @@ const FILTERS = [
   "rejected",
 ] as const;
 
+function ScoreWindowBadge({ settledAt }: { settledAt?: string | null }) {
+  const { colors: c } = useTheme();
+  const [now, setNow] = useState(() => Date.now());
+  const win = settleWindow(settledAt, now);
+
+  useEffect(() => {
+    if (!win.settled || !win.locksAt) return;
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [win.settled, win.locksAt]);
+
+  return (
+    <Text style={{ color: win.settled && !win.editable ? c.textMuted : "#B45309", fontSize: 10, fontWeight: "800" }}>
+      {win.settled ? (win.editable ? `🔒 score window ${formatWindowLeft(win.msLeft)}` : "🔒 score locked") : "score edits open"}
+    </Text>
+  );
+}
+
 /**
  * All bookings across the owner's venues — card rows (RN stand-in for the web
  * table), status filter chips, Collect → BookingLedgerPanel, SettleAmendButton,
@@ -51,6 +82,7 @@ const FILTERS = [
 export default function OwnerBookings() {
   const { user } = useAuth();
   const { colors: c, isDark } = useTheme();
+  const { xl } = useBreakpoints();
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [venues, setVenues] = useState<Array<{ id: number; ownerId: number | null }>>([]);
   const [loading, setLoading] = useState(true);
@@ -61,10 +93,11 @@ export default function OwnerBookings() {
   const [awayInput, setAwayInput] = useState("");
   const [savingScore, setSavingScore] = useState(false);
   const [scoreError, setScoreError] = useState("");
+  const [scoreNow, setScoreNow] = useState(() => Date.now());
   const [ledgerFor, setLedgerFor] = useState<Booking | null>(null);
 
   const load = useCallback(async () => {
-    const [b, v] = await Promise.all([fetchBookings(), fetchVenues()]);
+    const [b, v] = await Promise.all([fetchBookings({ refresh: true }), fetchVenues()]);
     setBookings(b);
     setVenues(v.map((x) => ({ id: x.id, ownerId: x.ownerId ?? null })));
   }, []);
@@ -81,13 +114,28 @@ export default function OwnerBookings() {
     }, [load]),
   );
 
+  useEffect(() => {
+    if (!scoreFor) return;
+    setScoreNow(Date.now());
+    const timer = setInterval(() => setScoreNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [scoreFor]);
+
   const myVenueIds = useMemo(
     () => new Set(venues.filter((v) => user && v.ownerId === user.id).map((v) => v.id)),
     [venues, user],
   );
 
   const filtered = useMemo(() => {
-    const mine = bookings.filter((b) => b.venue && myVenueIds.has(b.venue.id));
+    const mine = bookings
+      .filter((b) => b.venue && myVenueIds.has(b.venue.id))
+      .filter(
+        (b) =>
+          b.visibility !== "competition" ||
+          b.competition?.competitionStatus === "accepted" ||
+          !b.competition?.competitionStatus ||
+          b.competition.competitionStatus === "none",
+      );
     if (filter === "all") return mine;
     if (filter === "today") {
       const t = new Date().toISOString().slice(0, 10);
@@ -97,11 +145,12 @@ export default function OwnerBookings() {
   }, [bookings, myVenueIds, filter]);
 
   async function setStatus(id: number, status: string, actor: string = "owner") {
-    await patchBooking(id, { status, actor });
+    await patchBooking(id, { status, actor, actorId: user?.id });
     await load();
   }
 
   function openScore(b: Booking) {
+    setScoreNow(Date.now());
     setScoreFor(b);
     setHomeInput(
       b.competition?.homeScore === null || b.competition?.homeScore === undefined
@@ -127,11 +176,37 @@ export default function OwnerBookings() {
     setSavingScore(true);
     setScoreError("");
     try {
-      await patchBooking(scoreFor.id, {
+      const response = await patchBooking(scoreFor.id, {
         homeScore: home === "" ? "" : Number(home),
         awayScore: away === "" ? "" : Number(away),
         actorId: user.id,
       });
+      const confirmed = response.booking as
+        | { homeScore?: number | null; awayScore?: number | null; scoreStatus?: string; scoreUpdatedAt?: string | null }
+        | undefined;
+      const savedHome = confirmed && "homeScore" in confirmed
+        ? confirmed.homeScore ?? null
+        : home === "" ? null : Number(home);
+      const savedAway = confirmed && "awayScore" in confirmed
+        ? confirmed.awayScore ?? null
+        : away === "" ? null : Number(away);
+      setBookings((current) =>
+        current.map((row) =>
+          row.id !== scoreFor.id || !row.competition
+            ? row
+            : {
+                ...row,
+                competition: {
+                  ...row.competition,
+                  homeScore: savedHome,
+                  awayScore: savedAway,
+                  scoreStatus:
+                    confirmed?.scoreStatus ?? (savedHome !== null && savedAway !== null ? "recorded" : "awaiting"),
+                  scoreUpdatedAt: confirmed?.scoreUpdatedAt ?? new Date().toISOString(),
+                },
+              },
+        ),
+      );
       setScoreFor(null);
       await load();
     } catch (e) {
@@ -149,6 +224,8 @@ export default function OwnerBookings() {
         : s === "completed"
           ? { bg: isDark ? "#1E293B" : "#F1F5F9", fg: c.textMuted }
           : { bg: "rgba(239,68,68,0.15)", fg: "#DC2626" };
+  const scoreWindow = scoreFor ? settleWindow(scoreFor.settledAt, scoreNow) : null;
+  const scoreLocked = Boolean(scoreWindow?.settled && !scoreWindow.editable);
 
   return (
     <ScrollView contentContainerStyle={styles.scroll}>
@@ -159,6 +236,21 @@ export default function OwnerBookings() {
       <Text style={[styles.sub, { color: c.textMuted }]}>
         Every booking across your venues — collect payments, complete games.
       </Text>
+      <View
+        style={[
+          styles.windowNotice,
+          {
+            backgroundColor: isDark ? "rgba(245,158,11,0.12)" : "#FFFBEB",
+            borderColor: isDark ? "rgba(251,191,36,0.35)" : "#FDE68A",
+          },
+        ]}
+      >
+        <Text style={[styles.windowNoticeIcon, { color: isDark ? "#FCD34D" : "#92400E" }]}>⏱️</Text>
+        <Text style={[styles.windowNoticeText, { color: isDark ? "#FCD34D" : "#92400E" }]}>
+          Settled payments stay editable for {SETTLE_EDIT_WINDOW_MS / 60000} minutes. Every
+          payment, correction, and lock is saved through the server ledger.
+        </Text>
+      </View>
 
       <View style={styles.filterRow}>
         {FILTERS.map((f) => (
@@ -202,8 +294,8 @@ export default function OwnerBookings() {
               key={b.id}
               style={[styles.card, { backgroundColor: c.surface, borderColor: c.border }]}
             >
-              <View style={styles.cardGrid}>
-                <View style={styles.colPlayer}>
+              <View style={[styles.cardGrid, xl && styles.cardGridWide]}>
+                <View style={[styles.colPlayer, !xl && styles.stackColumn]}>
                   <Text style={[styles.mono, { color: c.textFaint }]}>#FN-{b.id}</Text>
                   <View style={styles.nameRow}>
                     <Text style={[styles.bold, { color: c.text }]}>
@@ -267,25 +359,26 @@ export default function OwnerBookings() {
                             : "score due"}
                         </Text>
                       </View>
+                      <ScoreWindowBadge settledAt={b.settledAt} />
                     </View>
                   ) : null}
                   {b.playerStats ? <PlayerRatingBadge stats={b.playerStats} /> : null}
                   <Text style={[styles.meta, { color: c.textFaint }]}>{b.bookerPhone}</Text>
                 </View>
 
-                <View style={styles.colVenue}>
+                <View style={[styles.colVenue, !xl && styles.stackColumn]}>
                   <Text style={[styles.bold, { color: c.text }]}>{b.venue?.name}</Text>
                   <Text style={[styles.meta, { color: c.textMuted }]}>{b.court?.name}</Text>
                 </View>
 
-                <View style={styles.colSlot}>
+                <View style={[styles.colSlot, !xl && styles.stackColumn]}>
                   <Text style={[styles.meta, { color: c.textMuted }]}>{prettyDate(b.date)}</Text>
                   <Text style={[styles.meta, { color: c.textFaint }]}>
                     {formatTime12(b.startTime)} – {formatTime12(b.endTime || b.startTime)}
                   </Text>
                 </View>
 
-                <View style={styles.colAmount}>
+                <View style={[styles.colAmount, !xl && styles.stackColumn]}>
                   {(b.discountAmount ?? 0) > 0 &&
                   (b.priceBeforeDiscount ?? 0) > b.totalPrice ? (
                     <Text style={[styles.strike, { color: c.textFaint }]}>
@@ -293,7 +386,7 @@ export default function OwnerBookings() {
                     </Text>
                   ) : null}
                   <Text style={[styles.amount, { color: c.text }]}>{formatNPR(b.totalPrice)}</Text>
-                  <Text style={[styles.meta, { color: c.textFaint }]}>{b.paymentMethod}</Text>
+                  <Text style={[styles.meta, { color: c.textFaint }]}>{paymentMethodLabel(b.paymentMethod)}</Text>
                   {b.promoCode && (b.discountAmount ?? 0) > 0 ? (
                     <View style={[styles.chip, { backgroundColor: "rgba(16,185,129,0.15)" }]}>
                       <Ticket size={9} color="#047857" />
@@ -304,7 +397,7 @@ export default function OwnerBookings() {
                   ) : null}
                 </View>
 
-                <View style={styles.colPay}>
+                <View style={[styles.colPay, !xl && styles.stackColumn]}>
                   {b.paymentStatus === "paid" ? (
                     <View style={[styles.chip, { backgroundColor: "rgba(16,185,129,0.15)" }]}>
                       <Text style={[styles.chipText, { color: "#047857" }]}>
@@ -343,7 +436,7 @@ export default function OwnerBookings() {
                   ) : null}
                 </View>
 
-                <View style={styles.colStatus}>
+                <View style={[styles.colStatus, !xl && styles.stackColumn]}>
                   <View style={[styles.chip, { backgroundColor: sc.bg }]}>
                     <Text style={[styles.chipText, { color: sc.fg, textTransform: "uppercase" }]}>
                       {b.status}
@@ -351,7 +444,7 @@ export default function OwnerBookings() {
                   </View>
                 </View>
 
-                <View style={styles.colActions}>
+                <View style={[styles.colActions, !xl && styles.stackColumn]}>
                   <SettleAmendButton settledAt={b.settledAt ?? null} onOpen={() => setLedgerFor(b)} />
                   {b.status === "pending" ? (
                     <>
@@ -364,7 +457,10 @@ export default function OwnerBookings() {
                       </Pressable>
                       <Pressable
                         onPress={() => void setStatus(b.id, "rejected")}
-                        style={[styles.iconAction, { backgroundColor: "#FEE2E2" }]}
+                        style={[
+                          styles.iconAction,
+                          { backgroundColor: isDark ? "rgba(239,68,68,0.15)" : "#FEE2E2" },
+                        ]}
                         accessibilityLabel="Decline"
                       >
                         <X size={14} color="#DC2626" />
@@ -404,7 +500,10 @@ export default function OwnerBookings() {
                   {b.status === "confirmed" || b.status === "pending" ? (
                     <Pressable
                       onPress={() => void setStatus(b.id, "cancelled")}
-                      style={[styles.iconAction, { backgroundColor: "#FEE2E2" }]}
+                      style={[
+                        styles.iconAction,
+                        { backgroundColor: isDark ? "rgba(239,68,68,0.15)" : "#FEE2E2" },
+                      ]}
                       accessibilityLabel="Cancel"
                     >
                       <X size={14} color="#DC2626" />
@@ -438,6 +537,15 @@ export default function OwnerBookings() {
                     ? ` • 🏆 ${scoreFor.competition.leagueName}`
                     : ""}
                 </Text>
+                <View style={[styles.scoreLockNotice, { backgroundColor: scoreLocked ? c.inset : "rgba(245,158,11,0.12)" }]}>
+                  <Lock size={14} color={scoreLocked ? c.textMuted : "#B45309"} />
+                  <Text style={[styles.scoreLockText, { color: scoreLocked ? c.textMuted : "#B45309" }]}>                    {scoreWindow?.settled
+                      ? scoreLocked
+                        ? "Score locked — the 5-minute correction window has closed."
+                        : `Score correction window open for ${formatWindowLeft(scoreWindow.msLeft)}.`
+                      : "Score edits open — the 5-minute correction window starts when payment is settled."}
+                  </Text>
+                </View>
                 <View style={styles.scoreRow}>
                   <View style={styles.scoreField}>
                     <Text style={[styles.scoreLabel, { color: c.textFaint }]}>
@@ -446,6 +554,7 @@ export default function OwnerBookings() {
                     <TextInput
                       value={homeInput}
                       onChangeText={(t) => setHomeInput(t.replace(/[^0-9]/g, "").slice(0, 2))}
+                      editable={!scoreLocked}
                       keyboardType="numeric"
                       placeholder="—"
                       placeholderTextColor={c.textFaint}
@@ -459,6 +568,7 @@ export default function OwnerBookings() {
                     <TextInput
                       value={awayInput}
                       onChangeText={(t) => setAwayInput(t.replace(/[^0-9]/g, "").slice(0, 2))}
+                      editable={!scoreLocked}
                       keyboardType="numeric"
                       placeholder="—"
                       placeholderTextColor={c.textFaint}
@@ -488,11 +598,10 @@ export default function OwnerBookings() {
                   </Pressable>
                   <Pressable
                     onPress={() => void saveScore()}
-                    disabled={savingScore}
-                    style={[styles.modalBtn, styles.modalBtnPrimary, { opacity: savingScore ? 0.5 : 1 }]}
+                    disabled={savingScore || scoreLocked}
+                    style={[styles.modalBtn, styles.modalBtnPrimary, { opacity: savingScore || scoreLocked ? 0.5 : 1 }]}
                   >
-                    <Text style={[styles.modalBtnText, { color: "#FFFFFF" }]}>
-                      {savingScore ? "Saving…" : "Save result"}
+                    <Text style={[styles.modalBtnText, { color: "#FFFFFF" }]}>                      {savingScore ? "Saving…" : scoreLocked ? "Score locked" : "Save result"}
                     </Text>
                   </Pressable>
                 </View>
@@ -524,6 +633,18 @@ const styles = StyleSheet.create({
   titleRow: { flexDirection: "row", alignItems: "center", gap: space[2] },
   h1: { fontSize: fontSize["2xl"], fontWeight: "900" },
   sub: { fontSize: fontSize.sm },
+  windowNotice: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: space[2],
+    borderWidth: 1,
+    borderRadius: radius.xl,
+    paddingHorizontal: space[3],
+    paddingVertical: space[2.5],
+    marginTop: space[2],
+  },
+  windowNoticeIcon: { fontSize: 14, lineHeight: 16 },
+  windowNoticeText: { flex: 1, fontSize: 11, fontWeight: "800", lineHeight: 16 },
   filterRow: { flexDirection: "row", flexWrap: "wrap", gap: space[2], marginTop: space[3] },
   filterChip: {
     borderRadius: radius.full,
@@ -543,7 +664,15 @@ const styles = StyleSheet.create({
     marginTop: space[4],
   },
   card: { borderRadius: radius["2xl"], borderWidth: 1, padding: space[4], marginTop: space[2] },
-  cardGrid: { flexDirection: "row", flexWrap: "wrap", gap: space[3], alignItems: "flex-start" },
+  cardGrid: { flexDirection: "column", gap: space[4] },
+  cardGridWide: { flexDirection: "row", flexWrap: "wrap", gap: space[3], alignItems: "flex-start" },
+  stackColumn: {
+    width: "100%",
+    minWidth: 0,
+    flexBasis: "auto",
+    flexGrow: 0,
+    justifyContent: "flex-start",
+  },
   colPlayer: { flexBasis: 140, flexGrow: 1, minWidth: 120, gap: 4 },
   colVenue: { flexBasis: 100, flexGrow: 1, minWidth: 90, gap: 2 },
   colSlot: { flexBasis: 110, minWidth: 100, gap: 2 },
@@ -611,6 +740,15 @@ const styles = StyleSheet.create({
     textAlign: "center",
     minHeight: 56,
   },
+  scoreLockNotice: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: space[2],
+    borderRadius: radius.xl,
+    paddingHorizontal: space[3],
+    paddingVertical: space[2.5],
+  },
+  scoreLockText: { flex: 1, fontSize: 11, fontWeight: "800", lineHeight: 16 },
   scoreHint: { borderRadius: radius.xl, padding: space[3] },
   scoreHintText: { fontSize: 11, fontWeight: "600", lineHeight: 16, color: "#4338CA" },
   modalActions: { flexDirection: "row", gap: space[2], marginTop: space[1] },

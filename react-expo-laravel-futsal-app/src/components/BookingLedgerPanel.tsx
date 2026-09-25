@@ -155,7 +155,7 @@ export function BookingLedgerPanel({
   }
 
   const inputCls =
-    "w-full rounded-xl border border-slate-200 px-3 py-2 text-sm font-bold focus:border-slate-900 focus:outline-none dark:border-slate-700 dark:bg-slate-950 [&>option]:bg-white [&>option]:text-slate-900 dark:[&>option]:bg-slate-900 dark:[&>option]:text-slate-100";
+    "w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-bold text-slate-900 focus:border-slate-900 focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 [&>option]:bg-white [&>option]:text-slate-900 dark:[&>option]:bg-slate-900 dark:[&>option]:text-slate-100";
   const labelCls = "mb-1 block text-[10px] font-black uppercase tracking-wider text-slate-400";
 
   if (!ledger) {

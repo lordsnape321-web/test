@@ -1,9 +1,10 @@
-import { db } from "@/db";
-import { bookings, courts, venues, bookingPayments, bookingExtras } from "@/db/schema";
+import { db, ensureCompetitionBookingColumns } from "@/db";
+import { bookings, courts, venues, bookingPayments, bookingExtras, bookingTeamPayments } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { parsePayments } from "@/lib/loyalty";
 import { sendNotification } from "@/lib/notify";
 import { formatNPR } from "@/lib/futsal";
+import { expireOverdueAdvanceRequests } from "@/lib/advance-payment";
 import {
   ledgerTotals,
   settleWindow,
@@ -25,16 +26,17 @@ async function venueOf(courtId: number) {
 }
 
 async function loadLedger(bookingId: number) {
-  const [payments, extras] = await Promise.all([
+  const [payments, extras, teamPayments] = await Promise.all([
     db.select().from(bookingPayments).where(eq(bookingPayments.bookingId, bookingId)),
     db.select().from(bookingExtras).where(eq(bookingExtras.bookingId, bookingId)),
+    db.select().from(bookingTeamPayments).where(eq(bookingTeamPayments.bookingId, bookingId)),
   ]);
-  return { payments, extras };
+  return { payments, extras, teamPayments };
 }
 
 /** Everything the payments panel needs in one shape. */
 async function payload(booking: typeof bookings.$inferSelect) {
-  const { payments, extras } = await loadLedger(booking.id);
+  const { payments, extras, teamPayments } = await loadLedger(booking.id);
   const { venue } = await venueOf(booking.courtId);
   const totals = ledgerTotals({
     courtPrice: booking.totalPrice,
@@ -78,6 +80,16 @@ async function payload(booking: typeof bookings.$inferSelect) {
       voidedAt: p.voidedAt,
       createdAt: p.createdAt,
     })),
+    teamPayments: teamPayments.map((payment) => ({
+      id: payment.id,
+      teamId: payment.teamId,
+      userId: payment.userId,
+      amountDue: payment.amountDue,
+      paymentMethod: payment.paymentMethod,
+      paymentStatus: payment.paymentStatus,
+      paidAmount: payment.paidAmount,
+      gatewayTxnId: payment.gatewayTxnId,
+    })),
   };
 }
 
@@ -86,6 +98,8 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    await ensureCompetitionBookingColumns();
+    await expireOverdueAdvanceRequests();
     const { id } = await params;
     const bookingId = Number(id);
     if (!Number.isInteger(bookingId) || bookingId <= 0)
@@ -126,6 +140,8 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    await ensureCompetitionBookingColumns();
+    await expireOverdueAdvanceRequests();
     const { id } = await params;
     const bookingId = Number(id);
     if (!Number.isInteger(bookingId) || bookingId <= 0)
@@ -171,6 +187,9 @@ export async function POST(
 
     /* ---------------------------------------------------------- addPayment */
     if (action === "addPayment") {
+      if (booking.advancePaymentRequired && booking.advancePaymentStatus !== "paid") {
+        return Response.json({ error: "Verify the requested eSewa or Khalti advance before recording any venue payment 💳" }, { status: 409 });
+      }
       const err = validateInstalment(body.amount, body.method, { allowed: accepted });
       if (err) return Response.json({ error: err }, { status: 400 });
       const note = String(body.note ?? "").slice(0, 200);
@@ -276,6 +295,9 @@ export async function POST(
 
     /* -------------------------------------------------------------- settle */
     if (action === "settle") {
+      if (booking.advancePaymentRequired && booking.advancePaymentStatus !== "paid") {
+        return Response.json({ error: "This booking cannot be settled until the requested advance is verified 💳" }, { status: 409 });
+      }
       const next0 = await payload(booking);
       if (booking.settledAt)
         return Response.json(
