@@ -816,15 +816,13 @@ export default function BookingsPage() {
                   </div>
                   <div className="min-w-0 flex-1 p-4 sm:p-5">
                     <div className="flex flex-wrap items-start justify-between gap-2">
-                      <div className="min-w-0 max-w-full">
-                        <div className="no-scrollbar max-w-full overflow-x-auto">
-                          <h3 className="w-max whitespace-nowrap text-base font-extrabold leading-tight text-stone-900 dark:text-slate-100">{b.venue?.name ?? "Venue"}</h3>
-                        </div>
-                        <div className="no-scrollbar mt-0.5 max-w-full overflow-x-auto">
-                          <p className="w-max whitespace-nowrap text-xs leading-relaxed text-stone-500 dark:text-slate-400">
-                            {b.court?.name ?? "Court"} • {b.court?.format ?? ""}
-                          </p>
-                        </div>
+                      <div className="min-w-0 flex-1">
+                        <h3 className="break-words text-base font-extrabold leading-tight text-stone-900 dark:text-slate-100">
+                          {b.venue?.name ?? "Venue"}
+                        </h3>
+                        <p className="mt-0.5 break-words text-xs leading-relaxed text-stone-500 dark:text-slate-400">
+                          {b.court?.name ?? "Court"} • {b.court?.format ?? ""}
+                        </p>
                       </div>
                       <span className="max-w-full shrink-0 text-right">
                         {b.discountAmount > 0 && b.priceBeforeDiscount > b.totalPrice && (
