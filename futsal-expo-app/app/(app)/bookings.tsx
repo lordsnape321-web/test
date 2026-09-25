@@ -1416,9 +1416,10 @@ const styles = StyleSheet.create({
     marginTop: space[2],
   },
   pendingText: { flex: 1, fontSize: 13, fontWeight: "700", color: "#92400E", lineHeight: 18 },
-  kpiRow: { flexDirection: "row", gap: space[2], marginTop: space[3] },
+  kpiRow: { flexDirection: "row", flexWrap: "wrap", gap: space[2], marginTop: space[3] },
   kpi: {
-    flex: 1,
+    flexGrow: 1,
+    flexBasis: 120,
     minWidth: 0,
     borderRadius: radius["2xl"],
     borderWidth: 1,
