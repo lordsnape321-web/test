@@ -27,6 +27,7 @@ Start Postgres (pick one — see [Database](#database) below), then:
 ```bash
 npm run db:check    # confirms Postgres is reachable and tells you what is missing
 npm run db:push     # create/refresh the schema — must print "[✓] Changes applied"
+npm run db:migrate  # applies additive production migrations (dev/start run this automatically)
 npm run dev         # http://localhost:3000
 ```
 

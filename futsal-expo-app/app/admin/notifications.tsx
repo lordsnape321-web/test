@@ -1,5 +1,5 @@
 import { useRouter } from "expo-router";
-import { Bell, CheckCheck, ChevronRight, Trash2 } from "lucide-react-native";
+import { Bell, CheckCheck } from "lucide-react-native";
 import React, { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
@@ -15,9 +15,9 @@ import {
   markAllNotificationsRead,
   markNotificationRead,
 } from "@/api";
+import { SwipeNotificationRow } from "@/components/SwipeNotificationRow";
 import { useAuth } from "@/context/AuthContext";
 import { useTheme } from "@/context/ThemeContext";
-import { timeAgo } from "@/lib/time";
 import { colors, fontSize, radius, space } from "@/theme";
 import type { AppNotification } from "@/lib/types";
 
@@ -33,6 +33,18 @@ const TYPE_STYLE: Record<string, { bg: string; fg: string }> = {
   info: { bg: "#F1F5F9", fg: "#475569" },
 };
 
+const DARK_TYPE_TEXT: Record<string, string> = {
+  booking_request: "#FCD34D",
+  booking_confirmed: "#6EE7B7",
+  booking_rejected: "#FCA5A5",
+  booking_cancelled: "#FCA5A5",
+  payment: "#FDBA74",
+  match_join: "#7DD3FC",
+  free_play: "#C4B5FD",
+  review: "#FCD34D",
+  info: "#CBD5E1",
+};
+
 /** Owner Studio notifications — same markup/copy as the player page. */
 export default function OwnerNotifications() {
   const { user } = useAuth();
@@ -43,8 +55,11 @@ export default function OwnerNotifications() {
 
   const load = useCallback(async () => {
     if (!user) return;
-    const list = await fetchNotifications(user.id);
-    setItems(list);
+    try {
+      setItems(await fetchNotifications(user.id));
+    } catch {
+      setItems([]);
+    }
   }, [user]);
 
   useEffect(() => {
@@ -54,22 +69,103 @@ export default function OwnerNotifications() {
     })();
   }, [user, load]);
 
+  // Owner notifications stay live while this screen is open so payment
+  // requests and verified advances appear without manual refresh.
+  useEffect(() => {
+    if (!user) return;
+    const timer = setInterval(() => void load(), 4000);
+    return () => clearInterval(timer);
+  }, [user, load]);
+
   async function markAll() {
     if (!user) return;
-    await markAllNotificationsRead(user.id);
-    await load();
+    try {
+      await markAllNotificationsRead(user.id);
+      await load();
+    } catch {
+      /* keep the inbox visible if the API is temporarily unavailable */
+    }
   }
 
   async function markOne(n: AppNotification) {
-    await markNotificationRead(n.id);
-    if (n.link) {
-      const path = n.link.replace(/^https?:\/\/[^/]+/, "");
-      if (path.startsWith("/")) {
-        router.push(path as never);
-        return;
+    // Opening remains available if the read mutation is temporarily unavailable,
+    // but the local read state only changes after the database confirms it.
+    let persistedRead = false;
+    try {
+      await markNotificationRead(n.id);
+      persistedRead = true;
+    } catch {
+      // Continue to the destination without pretending the read state was saved.
+    }
+    if (persistedRead) {
+      setItems((prev) => prev.map((item) => (item.id === n.id ? { ...item, isRead: true } : item)));
+    }
+    const destination = ownerNotificationDestination(n.link);
+    if (destination) {
+      try {
+        router.push(destination);
+      } catch {
+        await load();
       }
+      return;
     }
     await load();
+  }
+
+  /** Keep notification deep links inside the Owner Studio route tree. */
+  function ownerNotificationDestination(link: string | null):
+    | "/admin/bookings"
+    | "/admin/requests"
+    | "/admin/leagues"
+    | `/admin/leagues/${string}`
+    | "/admin/notifications"
+    | "/admin/venues"
+    | null {
+    if (!link) return null;
+    // Links come from the API and may be a player path, an Owner Studio path,
+    // or an absolute web URL. Strip host/query/hash before mapping them so an
+    // alert can never accidentally send an owner through the player shell.
+    let path = link.replace(/^https?:\/\/[^/]+/, "");
+    path = path.split(/[?#]/, 1)[0] || "/";
+    try {
+      path = decodeURIComponent(path);
+    } catch {
+      // Keep the original path if a legacy payload contains malformed encoding.
+    }
+    if (!path.startsWith("/")) path = `/${path}`;
+    if (path.startsWith("/admin/leagues/")) {
+      const leagueId = path.slice("/admin/leagues/".length).split("/")[0];
+      return leagueId ? `/admin/leagues/${leagueId}` : "/admin/leagues";
+    }
+    if (path === "/admin/leagues" || path.startsWith("/admin/leagues/")) return "/admin/leagues";
+    if (path.startsWith("/leagues/")) {
+      const leagueId = path.slice("/leagues/".length).split("/")[0];
+      return leagueId ? `/admin/leagues/${leagueId}` : "/admin/leagues";
+    }
+    if (path === "/leagues" || path.startsWith("/leagues/")) return "/admin/leagues";
+    if (path.startsWith("/admin/requests") || path.startsWith("/request")) {
+      return "/admin/requests";
+    }
+    if (path.startsWith("/admin/booking") || path.startsWith("/booking") || path.startsWith("/bookings")) {
+      return "/admin/bookings";
+    }
+    if (path.startsWith("/admin/venue") || path.startsWith("/venue") || path.startsWith("/venues")) {
+      return "/admin/venues";
+    }
+    if (path.startsWith("/admin/notification") || path.startsWith("/notification")) {
+      return "/admin/notifications";
+    }
+    return null;
+  }
+
+  async function markReadOnly(n: AppNotification) {
+    if (n.isRead) return;
+    try {
+      await markNotificationRead(n.id);
+      setItems((prev) => prev.map((item) => (item.id === n.id ? { ...item, isRead: true } : item)));
+    } catch {
+      await load();
+    }
   }
 
   async function remove(id: number) {
@@ -92,17 +188,22 @@ export default function OwnerNotifications() {
             cancellations & payments.
           </Text>
         </View>
-        {unread > 0 ? (
-          <Pressable
-            onPress={() => void markAll()}
-            style={[styles.markAllBtn, { backgroundColor: isDark ? "#FFFFFF" : "#0F172A" }]}
-          >
-            <CheckCheck size={16} color={isDark ? "#0F172A" : "#FFFFFF"} />
-            <Text style={[styles.markAllText, { color: isDark ? "#0F172A" : "#FFFFFF" }]}>
-              Mark all read
-            </Text>
-          </Pressable>
-        ) : null}
+        <Pressable
+          onPress={() => void markAll()}
+          disabled={unread === 0}
+          style={[
+            styles.markAllBtn,
+            {
+              backgroundColor: isDark ? "#FFFFFF" : "#0F172A",
+              opacity: unread === 0 ? 0.45 : 1,
+            },
+          ]}
+          accessibilityRole="button"
+          accessibilityState={{ disabled: unread === 0 }}
+        >
+          <CheckCheck size={16} color={isDark ? "#0F172A" : "#FFFFFF"} />
+          <Text style={[styles.markAllText, { color: isDark ? "#0F172A" : "#FFFFFF" }]}>Mark all read</Text>
+        </Pressable>
       </View>
 
       {loading ? (
@@ -118,51 +219,18 @@ export default function OwnerNotifications() {
       ) : (
         items.map((n) => {
           const tone = TYPE_STYLE[n.type] ?? TYPE_STYLE.info!;
+          const toneBg = n.type === "info" && isDark ? "rgba(148,163,184,0.14)" : tone.bg;
+          const toneFg = isDark ? DARK_TYPE_TEXT[n.type] ?? c.textMuted : tone.fg;
           return (
-            <View
+            <SwipeNotificationRow
               key={n.id}
-              style={[
-                styles.card,
-                {
-                  backgroundColor: c.surface,
-                  borderColor: n.isRead ? c.border : c.text,
-                  borderWidth: n.isRead ? 1 : 1.5,
-                },
-              ]}
-            >
-              <View style={[styles.typeChip, { backgroundColor: tone.bg }]}>
-                <Text style={[styles.typeText, { color: tone.fg }]}>
-                  {n.type.replace(/_/g, " ")}
-                </Text>
-              </View>
-              <Pressable onPress={() => void markOne(n)} style={styles.grow}>
-                <Text style={[styles.title, { color: c.text }]}>
-                  {n.isRead ? "" : "● "}
-                  {n.title}
-                </Text>
-                {n.message ? (
-                  <Text style={[styles.message, { color: c.textMuted }]}>{n.message}</Text>
-                ) : null}
-                <View style={styles.metaRow}>
-                  <Text style={[styles.meta, { color: c.textFaint }]}>
-                    {timeAgo(n.createdAt)}
-                  </Text>
-                  {n.link ? (
-                    <View style={styles.openRow}>
-                      <Text style={[styles.openText, { color: colors.orange500 }]}>• Open</Text>
-                      <ChevronRight size={12} color={colors.orange500} />
-                    </View>
-                  ) : null}
-                </View>
-              </Pressable>
-              <Pressable
-                onPress={() => void remove(n.id)}
-                style={styles.deleteBtn}
-                accessibilityLabel="Delete"
-              >
-                <Trash2 size={16} color={c.textFaint} />
-              </Pressable>
-            </View>
+              notification={n}
+              badge={{ bg: toneBg, text: toneFg }}
+              owner
+              onOpen={(item) => void markOne(item)}
+              onRead={(item) => void markReadOnly(item)}
+              onDelete={(id) => void remove(id)}
+            />
           );
         })
       )}
@@ -211,18 +279,22 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     padding: space[4],
   },
+  typeColumn: { width: 96, flexShrink: 0 },
+  contentColumn: { flex: 1, minWidth: 0 },
   typeChip: {
+    width: "100%",
+    minHeight: 32,
+    justifyContent: "center",
     borderRadius: radius.lg,
-    paddingHorizontal: space[2.5],
+    paddingHorizontal: space[2],
     paddingVertical: space[1.5],
-    marginTop: 2,
   },
-  typeText: { fontSize: 9, fontWeight: "900", textTransform: "uppercase" },
+  typeText: { fontSize: 9, lineHeight: 12, fontWeight: "900", textTransform: "uppercase", textAlign: "center" },
   title: { fontSize: fontSize.sm, fontWeight: "800", lineHeight: 19 },
   message: { fontSize: 13, lineHeight: 19, marginTop: space[1] },
   metaRow: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: space[2], marginTop: space[1.5] },
   meta: { fontSize: 11, fontWeight: "700" },
   openRow: { flexDirection: "row", alignItems: "center", gap: 1 },
   openText: { fontSize: 11, fontWeight: "900" },
-  deleteBtn: { padding: space[1.5], minHeight: 36, minWidth: 36, alignItems: "center", justifyContent: "center" },
+
 });

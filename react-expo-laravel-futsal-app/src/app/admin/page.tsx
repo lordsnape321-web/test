@@ -43,6 +43,18 @@ type Booking = {
   status: string;
   paymentStatus: string;
   paymentMethod: string;
+  paidAmount?: number;
+  paymentSummary?: {
+    received: number;
+    receivable: number;
+    advanceRequested: number;
+    advanceReceived: number;
+    advanceReceivable: number;
+  };
+  amountReceived?: number;
+  amountReceivable?: number;
+  advanceReceivedAmount?: number;
+  advanceReceivableAmount?: number;
   bookerName: string;
   bookerPhone: string;
   visibility: string;
@@ -55,6 +67,7 @@ type Booking = {
     homeScore: number | null;
     awayScore: number | null;
     scoreStatus: string;
+    competitionStatus?: string;
   } | null;
 };
 
@@ -71,6 +84,9 @@ export default function OwnerOverviewPage() {
         (b) =>
           b.visibility === "competition" &&
           b.competition &&
+          b.competition.competitionStatus !== "pending" &&
+          b.competition.competitionStatus !== "declined" &&
+          b.competition.competitionStatus !== "cancelled" &&
           b.competition.scoreStatus !== "recorded"
       ),
     [bookings]
@@ -104,7 +120,16 @@ export default function OwnerOverviewPage() {
   );
   const myVenueIds = useMemo(() => new Set(myVenues.map((v) => v.id)), [myVenues]);
   const myBookings = useMemo(
-    () => bookings.filter((b) => b.venue && myVenueIds.has(b.venue.id)),
+    () =>
+      bookings
+        .filter((b) => b.venue && myVenueIds.has(b.venue.id))
+        .filter(
+          (b) =>
+            b.visibility !== "competition" ||
+            b.competition?.competitionStatus === "accepted" ||
+            !b.competition?.competitionStatus ||
+            b.competition.competitionStatus === "none",
+        ),
     [bookings, myVenueIds]
   );
 
@@ -113,6 +138,19 @@ export default function OwnerOverviewPage() {
   const revenue = myBookings
     .filter((b) => b.status === "confirmed" || b.status === "completed")
     .reduce((s, b) => s + b.totalPrice, 0);
+  const activeMoney = myBookings.filter((b) => b.status !== "cancelled" && b.status !== "rejected");
+  const advanceReceived = activeMoney.reduce(
+    (sum, b) => sum + (b.paymentSummary?.advanceReceived ?? b.advanceReceivedAmount ?? 0),
+    0,
+  );
+  const advanceReceivable = activeMoney.reduce(
+    (sum, b) => sum + (b.paymentSummary?.advanceReceivable ?? b.advanceReceivableAmount ?? 0),
+    0,
+  );
+  const receivable = activeMoney.reduce(
+    (sum, b) => sum + (b.paymentSummary?.receivable ?? b.amountReceivable ?? Math.max(0, b.totalPrice - (b.paidAmount ?? 0))),
+    0,
+  );
   const today = new Date().toISOString().slice(0, 10);
   const todaysGames = myBookings.filter(
     (b) => b.date === today && (b.status === "confirmed" || b.status === "pending")
@@ -172,7 +210,7 @@ export default function OwnerOverviewPage() {
       await apiFetch(`/api/bookings/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: ok ? "confirmed" : "rejected" }),
+        body: JSON.stringify({ status: ok ? "confirmed" : "rejected", actor: "owner", actorId: user?.id }),
       });
       await load();
     } finally {
@@ -235,6 +273,21 @@ export default function OwnerOverviewPage() {
                 value: formatNPR(revenue),
                 sub: `${confirmed.length} confirmed bookings`,
                 href: "/admin/bookings",
+              },
+              {
+                icon: Banknote,
+                label: "Advance received",
+                value: formatNPR(advanceReceived),
+                sub: `${formatNPR(advanceReceivable)} advance receivable`,
+                href: "/admin/requests",
+              },
+              {
+                icon: Banknote,
+                label: "Receivable",
+                value: formatNPR(receivable),
+                sub: "still to collect",
+                hot: receivable > 0,
+                href: "/admin/requests",
               },
               {
                 icon: CalendarCheck,

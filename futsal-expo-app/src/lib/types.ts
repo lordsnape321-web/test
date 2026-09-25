@@ -71,9 +71,12 @@ export type User = {
   email: string;
   phone: string;
   role: "player" | "owner" | "admin";
+  /** The server returns these profile fields on every auth response. */
+  avatarColor?: string | null;
+  avatarUrl?: string | null;
+  defaultCity?: string;
   level?: string;
   position?: string;
-  avatarUrl?: string | null;
   matchesPlayed?: number;
   rating?: number;
   trustScore?: number;
@@ -91,6 +94,12 @@ export type BookingCompetition = {
   homeScore: number | null;
   awayScore: number | null;
   scoreStatus: string;
+  scoreUpdatedAt?: string | null;
+  competitionStatus?: "none" | "pending" | "accepted" | "declined" | "cancelled" | string;
+  paymentMode?: "split" | "loser_pays" | string;
+  paymentLabel?: string;
+  opponentCaptainId?: number | null;
+  isOpponentCaptain?: boolean;
 };
 
 export type Booking = {
@@ -117,7 +126,56 @@ export type Booking = {
   ourCrew?: number;
   openSpots?: number;
   /** Squad this booking was made for; "" = individual booking. */
+  teamId?: number | null;
   teamName?: string;
+  advancePaymentRequired?: boolean;
+  advancePaymentAmount?: number;
+  advancePaymentStatus?: string;
+  advancePaymentRequestedAt?: string | null;
+  amountReceived?: number;
+  amountReceivable?: number;
+  advanceReceivedAmount?: number;
+  advanceReceivableAmount?: number;
+  paymentSummary?: {
+    courtPrice: number;
+    extrasTotal: number;
+    owed: number;
+    received: number;
+    receivable: number;
+    surplus: number;
+    byMethod: Record<string, number>;
+    advanceRequested: number;
+    advanceReceived: number;
+    advanceReceivable: number;
+  };
+  teamPayments?: Array<{
+    id: number;
+    teamId: number;
+    userId: number;
+    payerName?: string;
+    amountDue: number;
+    paymentMethod: string;
+    paymentStatus: string;
+    paidAmount: number;
+    gatewayTxnId: string;
+  }>;
+  paymentRequests?: Array<{
+    id: number;
+    requestedBy: number;
+    requesterName: string;
+    payerId: number;
+    payerName: string;
+    amountDue: number;
+    purpose: string;
+    note: string;
+    paymentMethod: string;
+    status: string;
+    paidAmount: number;
+    gatewayTxnId?: string;
+    createdAt: string | null;
+    paidAt: string | null;
+  }>;
+  teamPlayers?: Array<{ id: number; name: string; role: string }>;
   receiptUrl?: string;
   isFreePlay?: boolean;
   promoCode?: string;
@@ -127,6 +185,10 @@ export type Booking = {
   depositAmount?: number;
   depositStatus?: string;
   gatewayTxnId?: string;
+  /** Raw booking fields are also present on PATCH responses. */
+  competitionStatus?: "none" | "pending" | "accepted" | "declined" | "cancelled" | string;
+  competitionPaymentPolicy?: "split" | "loser_pays" | null;
+  chargeMode?: string | null;
   competition?: BookingCompetition | null;
   playerStats?: import("./loyalty").PlayerStats;
   /** Nested by the API so a booking list can render without extra requests. */
@@ -222,6 +284,17 @@ export type LedgerExtra = {
   createdAt: string;
 };
 
+export type LedgerTeamPayment = {
+  id: number;
+  teamId: number;
+  userId: number;
+  amountDue: number;
+  paymentMethod: string;
+  paymentStatus: string;
+  paidAmount: number;
+  gatewayTxnId: string;
+};
+
 export type Ledger = {
   bookingId: number;
   status: BookingStatus;
@@ -245,9 +318,10 @@ export type Ledger = {
   acceptedMethods: string[];
   defaultExtraFee?: number | null;
   defaultExtraFeeNote?: string | null;
-    extras: LedgerExtra[];
-    payments: LedgerPayment[];
-  };
+  extras: LedgerExtra[];
+  payments: LedgerPayment[];
+  teamPayments?: LedgerTeamPayment[];
+};
 
 /**
  * GET /api/vouchers?userId= → { vouchers } (each enriched with its venue).
@@ -408,8 +482,11 @@ export type LeagueMediaRow = {
   uploadedBy: number;
   uploaderName: string;
   createdAt: string | null;
-  /** Who may see it, spelled out: "Semi-final • A vs B" or "Whole league". */
+  /** Who may see it, spelled out: "Semi-final • A vs B", "Squad A", or "Whole league". */
   scope: string;
+  /** Optional additive audience fields. Older APIs omit these and keep league/match scope. */
+  teamId?: number | null;
+  teamName?: string;
 };
 
 export type LeaguePaymentRow = {
