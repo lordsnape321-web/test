@@ -210,13 +210,27 @@ export default function BookingDetail() {
   return (
     <SafeAreaView style={[styles.flex, { backgroundColor: colors.bg }]} edges={["bottom"]}>
       <ScrollView contentContainerStyle={styles.scroll}>
-        <Text style={[styles.venue, { color: colors.text }]}>
-          {booking.venue?.name ?? "Venue"}
-        </Text>
-        <Text style={[styles.meta, { color: colors.textMuted }]}>
-          {booking.court?.name ?? "Court"} · {prettyDate(booking.date)} · {booking.startTime}–
-          {booking.endTime}
-        </Text>
+        <ScrollView
+          horizontal
+          nestedScrollEnabled
+          showsHorizontalScrollIndicator={false}
+          style={styles.titleRail}
+        >
+          <Text style={[styles.venue, { color: colors.text }]}>
+            {booking.venue?.name ?? "Venue"}
+          </Text>
+        </ScrollView>
+        <ScrollView
+          horizontal
+          nestedScrollEnabled
+          showsHorizontalScrollIndicator={false}
+          style={styles.titleRail}
+        >
+          <Text style={[styles.meta, { color: colors.textMuted }]}>
+            {booking.court?.name ?? "Court"} · {prettyDate(booking.date)} · {booking.startTime}–
+            {booking.endTime}
+          </Text>
+        </ScrollView>
 
         <View style={styles.pillRow}>
           <Pill label={booking.status} tone={booking.status === "confirmed" ? "success" : "warning"} />
@@ -511,6 +525,7 @@ const styles = StyleSheet.create({
   flex: { flex: 1 },
   scroll: { padding: space["4"], paddingBottom: space["12"] },
   pad: { padding: space["4"] },
+  titleRail: { maxWidth: "100%", flexShrink: 1 },
   venue: { fontSize: fontSize["3xl"], fontWeight: "700" },
   meta: { fontSize: fontSize.base, marginTop: 2, marginBottom: space["3"] },
   pillRow: { flexDirection: "row", gap: space["2"], marginBottom: space["2"] },
