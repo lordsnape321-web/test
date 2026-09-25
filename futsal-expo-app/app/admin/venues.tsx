@@ -13,7 +13,7 @@ import {
   View,
 } from "react-native";
 import Slider from "@react-native-community/slider";
-import { Picker } from "@react-native-picker/picker";
+import { Picker } from "@/components/ThemedPicker";
 import {
   Building2,
   MapPin,
@@ -36,7 +36,6 @@ import {
   deleteVenue,
   fetchReviews,
   fetchVenues,
-  seedDemo,
   updateCourt,
   updateVenue,
 } from "@/api";
@@ -44,6 +43,7 @@ import { ReviewRow } from "@/api";
 import { useAuth } from "@/context/AuthContext";
 import { useTheme } from "@/context/ThemeContext";
 import { formatNPR } from "@/lib/futsal";
+import { useBreakpoints } from "@/lib/responsive";
 import { PAYMENT_OPTIONS } from "@/lib/loyalty";
 import type { Court, Venue } from "@/lib/types";
 import {
@@ -103,15 +103,32 @@ function ChipPicker({
   options,
   selected,
   onToggle,
+  allowCustom = false,
+  customLabel = "Add custom option",
 }: {
   options: string[];
   selected: string[];
   onToggle: (v: string) => void;
+  allowCustom?: boolean;
+  customLabel?: string;
 }) {
-  const { colors: c, isDark } = useTheme();
+  const { colors: c } = useTheme();
+  const [customText, setCustomText] = useState("");
+  // Existing owner-created values must remain visible when a form is edited,
+  // even though they are not part of the predefined chip list.
+  const visibleOptions = [...options, ...selected.filter((value) => !options.includes(value))];
+
+  function addCustom() {
+    const value = customText.trim().replace(/,/g, " ").replace(/\s+/g, " ").slice(0, 48);
+    if (!value) return;
+    const existing = visibleOptions.find((option) => option.toLowerCase() === value.toLowerCase());
+    if (!existing) onToggle(value);
+    setCustomText("");
+  }
+
   return (
     <View style={styles.chipPicker}>
-      {options.map((o) => {
+      {visibleOptions.map((o) => {
         const on = selected.includes(o);
         return (
           <Pressable
@@ -136,6 +153,31 @@ function ChipPicker({
           </Pressable>
         );
       })}
+      {allowCustom ? (
+        <View style={styles.customChipRow}>
+          <TextInput
+            value={customText}
+            onChangeText={setCustomText}
+            onSubmitEditing={addCustom}
+            placeholder={customLabel}
+            placeholderTextColor={c.textFaint}
+            maxLength={48}
+            returnKeyType="done"
+            style={[styles.customChipInput, { color: c.text, backgroundColor: c.inset, borderColor: c.border }]}
+            accessibilityLabel={customLabel}
+          />
+          <Pressable
+            onPress={addCustom}
+            disabled={!customText.trim()}
+            accessibilityRole="button"
+            accessibilityLabel={customLabel}
+            style={[styles.customChipButton, { borderColor: c.border, opacity: customText.trim() ? 1 : 0.55 }]}
+          >
+            <Plus size={13} color={c.text} />
+            <Text style={[styles.customChipButtonText, { color: c.text }]}>{customLabel}</Text>
+          </Pressable>
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -153,6 +195,7 @@ function FieldLabel({ children }: { children: React.ReactNode }) {
 export default function OwnerVenues() {
   const { user } = useAuth();
   const { colors: c, isDark } = useTheme();
+  const { xl } = useBreakpoints();
   const [venues, setVenues] = useState<Venue[]>([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<number | null>(null);
@@ -271,7 +314,6 @@ export default function OwnerVenues() {
   useEffect(() => {
     (async () => {
       try {
-        await seedDemo();
         await load();
       } finally {
         setLoading(false);
@@ -648,8 +690,9 @@ export default function OwnerVenues() {
         </Pressable>
       </View>
 
-      {/* Venue picker rail */}
-      <View style={[styles.rail, { backgroundColor: c.surface, borderColor: c.border }]}>
+      <View style={[styles.venueLayout, xl && styles.venueLayoutWide]}>
+        {/* Venue picker rail */}
+        <View style={[styles.rail, xl && styles.railWide, { backgroundColor: c.surface, borderColor: c.border }]}>
         {myVenues.map((v) => {
           const isActive = active?.id === v.id;
           return (
@@ -677,7 +720,6 @@ export default function OwnerVenues() {
                     styles.railName,
                     { color: isActive ? (isDark ? "#0F172A" : "#FFFFFF") : c.text },
                   ]}
-                  numberOfLines={1}
                 >
                   {v.name}
                 </Text>
@@ -710,7 +752,7 @@ export default function OwnerVenues() {
                 <Text style={styles.heroTitle}>{active.name}</Text>
                 <View style={styles.heroMetaRow}>
                   <MapPin size={12} color="#E2E8F0" />
-                  <Text style={styles.heroMeta} numberOfLines={1}>
+                  <Text style={styles.heroMeta}>
                     {active.address} •
                   </Text>
                   <Star size={12} color={colors.amber400} fill={colors.amber400} />
@@ -724,7 +766,13 @@ export default function OwnerVenues() {
                   <Pencil size={12} color="#78350F" />
                   <Text style={styles.editHeroText}>Edit profile</Text>
                 </Pressable>
-                <Pressable onPress={openAddCourt} style={styles.addCourtBtn}>
+                <Pressable
+                  onPress={openAddCourt}
+                  style={[
+                    styles.addCourtBtn,
+                    { backgroundColor: isDark ? "#1E293B" : "rgba(255,255,255,0.9)" },
+                  ]}
+                >
                   <Plus size={12} color={c.text} strokeWidth={3} />
                   <Text style={[styles.addCourtText, { color: c.text }]}>Add court</Text>
                 </Pressable>
@@ -734,7 +782,13 @@ export default function OwnerVenues() {
                     setDeleteConfirm("");
                     setDeleteError("");
                   }}
-                  style={styles.retireBtn}
+                  style={[
+                    styles.retireBtn,
+                    {
+                      backgroundColor: isDark ? "rgba(239,68,68,0.15)" : "rgba(254,242,242,0.9)",
+                      borderColor: isDark ? "rgba(248,113,113,0.35)" : "#FCA5A5",
+                    },
+                  ]}
                   accessibilityLabel="Retire this venue"
                 >
                   <Trash2 size={12} color="#DC2626" />
@@ -807,14 +861,14 @@ export default function OwnerVenues() {
                           <Image source={{ uri: ct.imageUrl }} style={styles.courtImg} />
                         ) : null}
                         <View style={styles.grow}>
-                          <Text style={[styles.courtName, { color: c.text }]} numberOfLines={1}>
+                          <Text style={[styles.courtName, { color: c.text }]}>
                             {ct.name}
                           </Text>
                           <Text style={[styles.courtMeta, { color: c.textMuted }]}>
                             {ct.format ?? "5v5"} • {ct.surface ?? "Turf"} • ☀️ morning{" "}
                             {formatNPR(ct.priceMorning ?? Math.round(ct.pricePerHour * 0.75))}
                           </Text>
-                          <Text style={[styles.courtFeat, { color: c.textFaint }]} numberOfLines={1}>
+                          <Text style={[styles.courtFeat, { color: c.textFaint }]}>
                             ✨ {features || "No facilities listed"}
                           </Text>
                         </View>
@@ -839,52 +893,61 @@ export default function OwnerVenues() {
                             <Text style={styles.savePriceText}>Save</Text>
                           </Pressable>
                         ) : null}
-                        <Pressable
-                          onPress={() => openEditCourt(ct)}
-                          style={[styles.smallBtn, { backgroundColor: isDark ? "#FFFFFF" : "#0F172A" }]}
-                        >
-                          <Pencil size={12} color={isDark ? "#0F172A" : "#FFFFFF"} />
-                          <Text style={[styles.smallBtnText, { color: isDark ? "#0F172A" : "#FFFFFF" }]}>
-                            Edit
-                          </Text>
-                        </Pressable>
-                        <Pressable
-                          onPress={() => void toggleCourt(ct)}
-                          style={[
-                            styles.smallBtn,
-                            {
-                              backgroundColor: ct.isActive
-                                ? "rgba(16,185,129,0.15)"
-                                : isDark
-                                  ? "#1E293B"
-                                  : "#E2E8F0",
-                            },
-                          ]}
-                        >
-                          <Power
-                            size={12}
-                            color={ct.isActive ? "#047857" : c.textMuted}
-                          />
-                          <Text
+                        <View style={styles.courtActionGroup}>
+                          <Pressable
+                            onPress={() => openEditCourt(ct)}
+                            style={[styles.smallBtn, { backgroundColor: isDark ? "#FFFFFF" : "#0F172A" }]}
+                          >
+                            <Pencil size={12} color={isDark ? "#0F172A" : "#FFFFFF"} />
+                            <Text style={[styles.smallBtnText, { color: isDark ? "#0F172A" : "#FFFFFF" }]}>
+                              Edit
+                            </Text>
+                          </Pressable>
+                          <Pressable
+                            onPress={() => void toggleCourt(ct)}
                             style={[
-                              styles.smallBtnText,
-                              { color: ct.isActive ? "#047857" : c.textMuted },
+                              styles.smallBtn,
+                              {
+                                backgroundColor: ct.isActive
+                                  ? "rgba(16,185,129,0.15)"
+                                  : isDark
+                                    ? "#1E293B"
+                                    : "#E2E8F0",
+                              },
                             ]}
                           >
-                            {ct.isActive ? "Live" : "Off"}
-                          </Text>
-                        </Pressable>
-                        <Pressable
-                          onPress={() => {
-                            setCourtDeleteTarget(ct);
-                            setCourtDeleteConfirm("");
-                            setCourtDeleteError("");
-                          }}
-                          style={[styles.smallBtn, styles.dangerSmall]}
-                        >
-                          <Trash2 size={12} color="#DC2626" />
-                          <Text style={[styles.smallBtnText, { color: "#DC2626" }]}>Delete</Text>
-                        </Pressable>
+                            <Power
+                              size={12}
+                              color={ct.isActive ? "#047857" : c.textMuted}
+                            />
+                            <Text
+                              style={[
+                                styles.smallBtnText,
+                                { color: ct.isActive ? "#047857" : c.textMuted },
+                              ]}
+                            >
+                              {ct.isActive ? "Live" : "Off"}
+                            </Text>
+                          </Pressable>
+                          <Pressable
+                            onPress={() => {
+                              setCourtDeleteTarget(ct);
+                              setCourtDeleteConfirm("");
+                              setCourtDeleteError("");
+                            }}
+                            style={[
+                              styles.smallBtn,
+                              styles.dangerSmall,
+                              {
+                                backgroundColor: isDark ? "rgba(239,68,68,0.15)" : "#FEF2F2",
+                                borderColor: isDark ? "rgba(248,113,113,0.35)" : "#FCA5A5",
+                              },
+                            ]}
+                          >
+                            <Trash2 size={12} color="#DC2626" />
+                            <Text style={[styles.smallBtnText, { color: "#DC2626" }]}>Delete</Text>
+                          </Pressable>
+                        </View>
                       </View>
                     </View>
                   );
@@ -995,6 +1058,7 @@ export default function OwnerVenues() {
           </View>
         </View>
       ) : null}
+      </View>
 
       <AddVenueModal
         visible={showAdd}
@@ -1127,6 +1191,8 @@ export default function OwnerVenues() {
                 options={AMENITY_OPTIONS}
                 selected={eAmen}
                 onToggle={(v) => toggle(eAmen, v, setEAmen)}
+                allowCustom
+                customLabel="Add custom feature"
               />
 
               <FieldLabel>Accepted payments 💳 (players only see these)</FieldLabel>
@@ -1303,6 +1369,8 @@ export default function OwnerVenues() {
                 options={FEATURE_OPTIONS}
                 selected={cFeat}
                 onToggle={(v) => toggle(cFeat, v, setCFeat)}
+                allowCustom
+                customLabel="Add custom feature"
               />
 
               {courtError ? (
@@ -1655,6 +1723,8 @@ function AddVenueModal(props: {
               options={AMENITY_OPTIONS}
               selected={fAmen}
               onToggle={(v) => toggle(fAmen, v, setFAmen)}
+              allowCustom
+              customLabel="Add custom feature"
             />
 
             <FieldLabel>Accepted payments 💳 (players only see these)</FieldLabel>
@@ -1786,7 +1856,10 @@ const styles = StyleSheet.create({
   },
   emptyTitle: { fontSize: fontSize.lg, fontWeight: "800" },
   emptyBody: { fontSize: fontSize.sm, textAlign: "center" },
+  venueLayout: { gap: space[4] },
+  venueLayoutWide: { flexDirection: "row", alignItems: "flex-start" },
   rail: { borderRadius: radius["2xl"], borderWidth: 1, padding: space[3], gap: space[2] },
+  railWide: { width: 300, flexShrink: 0 },
   railItem: {
     flexDirection: "row",
     alignItems: "center",
@@ -1798,7 +1871,7 @@ const styles = StyleSheet.create({
   railImg: { width: 48, height: 48, borderRadius: radius.lg },
   railName: { fontSize: fontSize.sm, fontWeight: "800" },
   railMeta: { fontSize: 11, fontWeight: "600", marginTop: 1 },
-  detail: { gap: space[4] },
+  detail: { flexGrow: 1, minWidth: 0, gap: space[4] },
   hero: {
     borderRadius: radius["2xl"],
     borderWidth: 1,
@@ -1884,6 +1957,7 @@ const styles = StyleSheet.create({
   courtMeta: { fontSize: 11, fontWeight: "600", marginTop: 1 },
   courtFeat: { fontSize: 11, marginTop: 2 },
   courtActions: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: space[1.5] },
+  courtActionGroup: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: space[1.5] },
   priceEdit: { flexDirection: "row", alignItems: "center", gap: 4 },
   priceUnit: { fontSize: 11, fontWeight: "700" },
   priceInput: {
@@ -2003,6 +2077,10 @@ const styles = StyleSheet.create({
   twoCol: { flexDirection: "row", gap: space[3] },
   pickerWrap: { borderWidth: 1, borderRadius: radius.xl, overflow: "hidden", marginTop: 2 },
   chipPicker: { flexDirection: "row", flexWrap: "wrap", gap: space[1.5] },
+  customChipRow: { width: "100%", flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: space[2], marginTop: space[1] },
+  customChipInput: { flexGrow: 1, flexBasis: 150, minHeight: 40, borderWidth: 1, borderRadius: radius.lg, paddingHorizontal: space[3], paddingVertical: space[2], fontSize: 12, fontWeight: "600" },
+  customChipButton: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 5, minHeight: 40, borderWidth: 1, borderRadius: radius.lg, paddingHorizontal: space[3], paddingVertical: space[2] },
+  customChipButtonText: { fontSize: 11, fontWeight: "900" },
   pickChip: {
     borderRadius: radius.full,
     borderWidth: 1,

@@ -1,4 +1,5 @@
 "use client";
+import { ThemedSelect } from "@/components/ThemedSelect";
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
@@ -137,7 +138,7 @@ export default function HomePage() {
                 </label>
                 <label className="flex items-center gap-2 rounded-2xl bg-[#FFF6E9] px-4 py-3 sm:w-44 dark:bg-white/5">
                   <MapPin className="h-4 w-4 shrink-0 text-stone-400 dark:text-slate-500" />
-                  <select
+                  <ThemedSelect
                     value={city}
                     onChange={(e) => {
                       setCity(e.target.value);
@@ -147,12 +148,12 @@ export default function HomePage() {
                     className="w-full bg-transparent text-sm font-semibold text-stone-900 focus:outline-none dark:text-slate-100 [&>option]:bg-white [&>option]:text-stone-900 dark:[&>option]:bg-slate-900 dark:[&>option]:text-slate-100"
                   >
                     {CITY_OPTIONS.map((c) => (
-                      <option key={c}>
+                      <option key={c} value={c}>
                         {c}
                         {c === homeCity && c !== "All Cities" ? " 🏠" : ""}
                       </option>
                     ))}
-                  </select>
+                  </ThemedSelect>
                 </label>
                 <button
                   type="submit"

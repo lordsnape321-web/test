@@ -124,8 +124,22 @@ export const bookings = pgTable("bookings", {
   awayScore: integer("away_score"),
   /** "none" (not a competition game) | "awaiting" | "recorded". */
   scoreStatus: text("score_status").notNull().default("none"),
+  /**
+   * Opposition consent is its own lifecycle, separate from score recording.
+   * "pending" keeps the venue owner from receiving an actionable request;
+   * only "accepted" releases it. Existing non-competition rows remain "none".
+   */
+  competitionStatus: text("competition_status").notNull().default("none"),
+  competitionRespondedBy: integer("competition_responded_by"),
+  competitionRespondedAt: timestamp("competition_responded_at"),
   scoreUpdatedBy: integer("score_updated_by"),
   scoreUpdatedAt: timestamp("score_updated_at"),
+  /**
+   * Public/open bookings use chargeMode for "split" or "custom" pricing.
+   * Competition policy is deliberately separate: null means this is not a
+   * competition booking; competition rows carry "split" or "loser_pays" here.
+   */
+  competitionPaymentPolicy: text("competition_payment_policy"),
   chargeMode: text("charge_mode").notNull().default("split"),
   customPricePerPlayer: integer("custom_price_per_player").notNull().default(0),
   depositRequired: boolean("deposit_required").notNull().default(false),
@@ -142,7 +156,67 @@ export const bookings = pgTable("bookings", {
    */
   settledAt: timestamp("settled_at"),
   settledBy: integer("settled_by"),
+  /** An owner-requested advance, separate from the automatic fair-play deposit. */
+  advancePaymentRequired: boolean("advance_payment_required").notNull().default(false),
+  advancePaymentAmount: integer("advance_payment_amount").notNull().default(0),
+  advancePaymentStatus: text("advance_payment_status").notNull().default("none"),
+  advancePaymentRequestedBy: integer("advance_payment_requested_by"),
+  advancePaymentRequestedAt: timestamp("advance_payment_requested_at"),
+  /**
+   * Cancellation money is deliberately explicit: a cancelled booking can have
+   * money in the ledger, and the owner must record whether it was refunded or
+   * retained instead of the card silently looking unpaid.
+   */
+  cancellationMoneyStatus: text("cancellation_money_status").notNull().default("none"),
+  cancellationReceivedAmount: integer("cancellation_received_amount").notNull().default(0),
+  cancellationRefundedAmount: integer("cancellation_refunded_amount").notNull().default(0),
+  cancellationMoneyResolvedAt: timestamp("cancellation_money_resolved_at"),
+  cancellationMoneyResolvedBy: integer("cancellation_money_resolved_by"),
   createdAt: timestamp("created_at").defaultNow(),
+});
+
+/**
+ * One payment share per approved member when a player books for a team. The
+ * booking remains the parent record, while each member chooses their own
+ * accepted method and can pay only their server-calculated share.
+ */
+export const bookingTeamPayments = pgTable("booking_team_payments", {
+  id: serial("id").primaryKey(),
+  bookingId: integer("booking_id").notNull(),
+  teamId: integer("team_id").notNull(),
+  userId: integer("user_id").notNull(),
+  amountDue: integer("amount_due").notNull().default(0),
+  paymentMethod: text("payment_method").notNull().default(""),
+  paymentStatus: text("payment_status").notNull().default("pending"),
+  paidAmount: integer("paid_amount").notNull().default(0),
+  gatewayTxnId: text("gateway_txn_id").notNull().default(""),
+  esewaUuid: text("esewa_uuid").notNull().default(""),
+  khaltiPidx: text("khalti_pidx").notNull().default(""),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+/**
+ * A captain's directed request for one teammate to pay a specific amount into
+ * the booking ledger. This is separate from equal team shares: the recipient
+ * pays the venue through eSewa or Khalti, while the captain can ask for an
+ * advance or any remaining booking amount without changing the roster split.
+ */
+export const bookingPaymentRequests = pgTable("booking_payment_requests", {
+  id: serial("id").primaryKey(),
+  bookingId: integer("booking_id").notNull(),
+  requestedBy: integer("requested_by").notNull(),
+  payerId: integer("payer_id").notNull(),
+  amountDue: integer("amount_due").notNull().default(0),
+  purpose: text("purpose").notNull().default("booking"),
+  note: text("note").notNull().default(""),
+  paymentMethod: text("payment_method").notNull().default(""),
+  status: text("status").notNull().default("pending"),
+  paidAmount: integer("paid_amount").notNull().default(0),
+  gatewayTxnId: text("gateway_txn_id").notNull().default(""),
+  esewaUuid: text("esewa_uuid").notNull().default(""),
+  khaltiPidx: text("khalti_pidx").notNull().default(""),
+  createdAt: timestamp("created_at").defaultNow(),
+  paidAt: timestamp("paid_at"),
 });
 
 /**

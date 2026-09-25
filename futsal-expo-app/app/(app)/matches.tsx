@@ -1,5 +1,5 @@
 import Slider from "@react-native-community/slider";
-import { Picker } from "@react-native-picker/picker";
+import { Picker } from "@/components/ThemedPicker";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import {
@@ -84,7 +84,9 @@ export default function MatchesScreen() {
     tabParam === "leagues" ? "leagues" : "open",
   );
   useEffect(() => {
-    if (tabParam === "leagues") setTab("leagues");
+    // Keep deep links and back/forward navigation authoritative. Without the
+    // open fallback, returning from `?tab=leagues` left the wrong toggle active.
+    setTab(tabParam === "leagues" ? "leagues" : "open");
   }, [tabParam]);
   const [matches, setMatches] = useState<Match[]>([]);
   const [venues, setVenues] = useState<Venue[]>([]);
@@ -103,7 +105,11 @@ export default function MatchesScreen() {
   useEffect(() => {
     (async () => {
       try {
+        // Loading the live matches directly keeps the navigation responsive; a
+        // demo seed is optional data setup, not a prerequisite for this screen.
         await load();
+      } catch {
+        // Keep the filters and empty state usable while the API is offline.
       } finally {
         setLoading(false);
       }
@@ -176,11 +182,11 @@ export default function MatchesScreen() {
             accessibilityRole="button"
             style={({ pressed }) => [
               styles.startButton,
-              { backgroundColor: colors.emerald600, opacity: pressed ? 0.85 : 1 },
+              { backgroundColor: c.primary, opacity: pressed ? 0.85 : 1 },
             ]}
           >
-            <Plus size={16} color="#FFFFFF" strokeWidth={3} />
-            <Text style={styles.startButtonText}>Start a game</Text>
+            <Plus size={16} color={c.primaryText} strokeWidth={3} />
+            <Text style={[styles.startButtonText, { color: c.primaryText }]}>Start a game</Text>
           </Pressable>
         ) : null}
 
@@ -203,13 +209,12 @@ export default function MatchesScreen() {
                 accessibilityState={{ selected: active }}
                 style={[
                   styles.toggleButton,
-                  active ? { backgroundColor: colors.emerald600 } : null,
+                  active ? { backgroundColor: c.primary } : null,
                 ]}
               >
-                <t.icon size={16} color={active ? "#FFFFFF" : c.textMuted} strokeWidth={2.5} />
+                <t.icon size={16} color={active ? c.primaryText : c.textMuted} strokeWidth={2.5} />
                 <Text
-                  style={[styles.toggleText, { color: active ? "#FFFFFF" : c.textMuted }]}
-                  numberOfLines={1}
+                  style={[styles.toggleText, { color: active ? c.primaryText : c.textMuted }]}
                 >
                   {t.label}
                 </Text>
@@ -221,40 +226,55 @@ export default function MatchesScreen() {
         {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
         {tab === "leagues" ? (
-          <LeagueBrowser />
+          <View style={styles.leagueBrowserWrap}>
+            <LeagueBrowser />
+          </View>
         ) : (
           <>
             {/* Level filter */}
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              style={styles.filterRail}
-              contentContainerStyle={styles.filterRailContent}
-            >
-              {FILTERS.map((f) => {
-                const active = filter === f;
-                return (
-                  <Pressable
-                    key={f}
-                    onPress={() => setFilter(f)}
-                    accessibilityRole="button"
-                    accessibilityState={{ selected: active }}
-                    style={[
-                      styles.filterPill,
-                      active
-                        ? { backgroundColor: colors.emerald600 }
-                        : { backgroundColor: c.surface, borderColor: c.border, borderWidth: 1 },
-                    ]}
-                  >
-                    <Text style={[styles.filterPillText, { color: active ? "#FFFFFF" : c.textMuted }]}>
-                      {filterLabel(f)}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </ScrollView>
+            <View style={[styles.levelFilterCard, { backgroundColor: c.surface, borderColor: c.border }]}>
+              <View style={styles.levelFilterHeader}>
+                <View style={styles.levelFilterCopy}>
+                  <Text style={[styles.levelFilterTitle, { color: c.text }]}>Find your level</Text>
+                  <Text style={[styles.levelFilterHint, { color: c.textFaint }]}>Anyone welcome games always stay visible.</Text>
+                </View>
+                <Text style={[styles.levelFilterCount, { color: c.textFaint }]}>{filtered.length} games</Text>
+              </View>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                nestedScrollEnabled
+                contentContainerStyle={styles.levelFilterRail}
+              >
+                {FILTERS.map((f) => {
+                  const active = filter === f;
+                  return (
+                    <Pressable
+                      key={f}
+                      onPress={() => setFilter(f)}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: active }}
+                      style={[
+                        styles.levelFilterButton,
+                        active
+                          ? { backgroundColor: c.primary, borderColor: c.primary }
+                          : { backgroundColor: c.inset, borderColor: c.border },
+                      ]}
+                    >
+                      <Text style={[styles.levelFilterEmoji, { backgroundColor: active ? "rgba(255,255,255,0.20)" : c.surface }]}>
+                        {f === "All" ? "🌍" : f === "Beginner" ? "🌱" : f === "Intermediate" ? "⚡" : "🔥"}
+                      </Text>
+                      <View style={styles.levelFilterButtonCopy}>
+                        <Text numberOfLines={1} style={[styles.levelFilterButtonTitle, { color: active ? c.primaryText : c.text }]}>{f === "All" ? "Everyone" : f}</Text>
+                        <Text numberOfLines={1} style={[styles.levelFilterButtonHint, { color: active ? c.primaryText : c.textFaint }]}>{f === "All" ? "All games" : f === "Beginner" ? "Easy-going" : f === "Intermediate" ? "Balanced" : "High intensity"}</Text>
+                      </View>
+                    </Pressable>
+                  );
+                })}
+              </ScrollView>
+            </View>
             <Text style={[styles.tip, { color: c.textFaint }]}>
-              Tip: level filters also show “Anyone welcome” games — they're open to you too! 💛
+              Tip: choosing a level also shows “Anyone welcome” games — they're open to you too! 💛
             </Text>
 
             {!loading && filtered.length === 0 ? (
@@ -303,7 +323,7 @@ function OpenMatchCard({
   joining: boolean;
   onToggle: () => void;
 }) {
-  const { colors: c } = useTheme();
+  const { colors: c, isDark } = useTheme();
   const { user } = useAuth();
 
   const already = (m.players ?? []).some((p) => p.id === user?.id);
@@ -340,7 +360,18 @@ function OpenMatchCard({
               ]}
             >
               <Text
-                style={[styles.chipText, { color: isCustom ? colors.violet700 : colors.sky700 }]}
+                style={[
+                  styles.chipText,
+                  {
+                    color: isCustom
+                      ? isDark
+                        ? colors.violet300
+                        : colors.violet700
+                      : isDark
+                        ? colors.sky300
+                        : colors.sky700,
+                  },
+                ]}
               >
                 {isCustom ? `✨ Custom ${formatNPR(m.pricePerPlayer)}` : "🤝 Fair split"}
               </Text>
@@ -348,9 +379,25 @@ function OpenMatchCard({
           </View>
         </View>
         <View
-          style={[styles.spots, { backgroundColor: full ? colors.stone200 : colors.orange100 }]}
+          style={[
+            styles.spots,
+            {
+              backgroundColor: full
+                ? isDark
+                  ? "rgba(255,255,255,0.10)"
+                  : colors.stone200
+                : isDark
+                  ? "rgba(249,115,22,0.15)"
+                  : colors.orange100,
+            },
+          ]}
         >
-          <Text style={[styles.spotsText, { color: full ? colors.stone500 : colors.orange700 }]}>
+          <Text
+            style={[
+              styles.spotsText,
+              { color: full ? c.textFaint : isDark ? colors.orange300 : colors.orange700 },
+            ]}
+          >
             {full ? "Full house" : `${m.spotsLeft} left`}
           </Text>
         </View>
@@ -362,14 +409,14 @@ function OpenMatchCard({
 
       <View style={styles.metaBlock}>
         <View style={styles.metaRow}>
-          <MapPin size={16} color={colors.emerald600} />
-          <Text style={[styles.metaText, { color: c.textMuted }]} numberOfLines={1}>
+          <MapPin size={16} color={c.primary} />
+          <Text style={[styles.metaText, { color: c.textMuted }]}>
             {m.venue?.name} — {m.venue?.address}
           </Text>
         </View>
         <View style={styles.metaRow}>
-          <CalendarDays size={16} color={colors.emerald600} />
-          <Text style={[styles.metaText, { color: c.textMuted }]} numberOfLines={1}>
+          <CalendarDays size={16} color={c.primary} />
+          <Text style={[styles.metaText, { color: c.textMuted }]}>
             {prettyDate(m.date)} • {formatTime12(m.startTime)} –{" "}
             {formatTime12(m.endTime || m.startTime)}
           </Text>
@@ -419,24 +466,28 @@ function OpenMatchCard({
         style={({ pressed }) => [
           styles.joinButton,
           already
-            ? { backgroundColor: colors.red50, borderWidth: 1, borderColor: colors.red200 }
+            ? {
+                backgroundColor: isDark ? "rgba(239,68,68,0.12)" : colors.red50,
+                borderWidth: 1,
+                borderColor: isDark ? "rgba(248,113,113,0.35)" : colors.red200,
+              }
             : full
               ? { backgroundColor: c.inset }
-              : { backgroundColor: colors.emerald600 },
+              : { backgroundColor: c.primary },
           (joining || full) && !already ? { opacity: 0.6 } : null,
           pressed ? { opacity: 0.85 } : null,
         ]}
       >
         {already ? (
-          <Text style={[styles.joinText, { color: colors.red500 }]}>
+          <Text style={[styles.joinText, { color: isDark ? colors.red400 : colors.red500 }]}>
             Can't make it — leave game
           </Text>
         ) : full ? (
           <Text style={[styles.joinText, { color: c.textFaint }]}>This one's full</Text>
         ) : (
           <>
-            <Check size={16} color="#FFFFFF" strokeWidth={3} />
-            <Text style={[styles.joinText, { color: "#FFFFFF" }]}>
+            <Check size={16} color={c.primaryText} strokeWidth={3} />
+            <Text style={[styles.joinText, { color: c.primaryText }]}>
               {joining ? "Saving your spot…" : `Count me in • ${formatNPR(m.pricePerPlayer)}`}
             </Text>
           </>
@@ -459,7 +510,7 @@ function CreateGameModal({
   venues: Venue[];
   onCreated: () => void;
 }) {
-  const { colors: c } = useTheme();
+  const { colors: c, isDark } = useTheme();
   const { user } = useAuth();
 
   const [title, setTitle] = useState("");
@@ -646,11 +697,11 @@ function CreateGameModal({
                     style={[
                       styles.dayChip,
                       active
-                        ? { backgroundColor: colors.emerald600 }
+                        ? { backgroundColor: c.primary }
                         : { backgroundColor: c.inset, borderColor: c.border, borderWidth: 1 },
                     ]}
                   >
-                    <Text style={{ color: active ? "#FFFFFF" : c.textMuted, fontSize: fontSize.sm, fontWeight: "700" }}>
+                    <Text style={{ color: active ? c.primaryText : c.textMuted, fontSize: fontSize.sm, fontWeight: "700" }}>
                       {prettyDate(d)}
                     </Text>
                   </Pressable>
@@ -673,11 +724,11 @@ function CreateGameModal({
                     style={[
                       styles.dayChip,
                       active
-                        ? { backgroundColor: colors.emerald600 }
+                        ? { backgroundColor: c.primary }
                         : { backgroundColor: c.inset, borderColor: c.border, borderWidth: 1 },
                     ]}
                   >
-                    <Text style={{ color: active ? "#FFFFFF" : c.textMuted, fontSize: fontSize.sm, fontWeight: "700" }}>
+                    <Text style={{ color: active ? c.primaryText : c.textMuted, fontSize: fontSize.sm, fontWeight: "700" }}>
                       {formatTime12(s)}
                     </Text>
                   </Pressable>
@@ -702,23 +753,31 @@ function CreateGameModal({
                   <Pressable
                     onPress={() => setOurCrew((v) => Math.min(21, v + 1))}
                     accessibilityLabel="More crew"
-                    style={[styles.counterBtn, { backgroundColor: colors.emerald600 }]}
+                    style={[styles.counterBtn, { backgroundColor: c.primary }]}
                   >
                     <Plus size={16} color="#FFFFFF" />
                   </Pressable>
                 </View>
               </View>
-              <View style={[styles.counter, { borderColor: colors.orange300, backgroundColor: colors.orange50 }]}>
-                <Text style={[styles.counterLabel, { color: colors.orange700 }]}>🙋 Open spots</Text>
+              <View
+                style={[
+                  styles.counter,
+                  {
+                    borderColor: isDark ? "rgba(249,115,22,0.45)" : colors.orange300,
+                    backgroundColor: isDark ? "rgba(249,115,22,0.10)" : colors.orange50,
+                  },
+                ]}
+              >
+                <Text style={[styles.counterLabel, { color: isDark ? colors.orange300 : colors.orange700 }]}>🙋 Open spots</Text>
                 <View style={styles.counterControls}>
                   <Pressable
                     onPress={() => setOpenSpots((v) => Math.max(1, v - 1))}
                     accessibilityLabel="Fewer open spots"
-                    style={[styles.counterBtn, { borderColor: colors.orange300 }]}
+                    style={[styles.counterBtn, { borderColor: isDark ? "rgba(249,115,22,0.45)" : colors.orange300 }]}
                   >
-                    <Minus size={16} color={colors.orange600} />
+                    <Minus size={16} color={isDark ? colors.orange300 : colors.orange600} />
                   </Pressable>
-                  <Text style={[styles.counterValue, { color: colors.orange600 }]}>{openSpots}</Text>
+                  <Text style={[styles.counterValue, { color: isDark ? colors.orange300 : colors.orange600 }]}>{openSpots}</Text>
                   <Pressable
                     onPress={() => setOpenSpots((v) => Math.min(21, v + 1))}
                     accessibilityLabel="More open spots"
@@ -739,11 +798,13 @@ function CreateGameModal({
             <View style={styles.welcomeRow}>
               <Pressable
                 onPress={() => setWelcomeMode("any")}
+                accessibilityRole="button"
+                accessibilityState={{ selected: welcomeMode === "any" }}
                 style={[
                   styles.welcomeBox,
                   {
                     borderColor: welcomeMode === "any" ? colors.emerald500 : c.border,
-                    backgroundColor: welcomeMode === "any" ? colors.emerald50 : "transparent",
+                    backgroundColor: welcomeMode === "any" ? c.activeSoft : c.surface,
                   },
                 ]}
               >
@@ -752,11 +813,17 @@ function CreateGameModal({
               </Pressable>
               <Pressable
                 onPress={() => setWelcomeMode("specific")}
+                accessibilityRole="button"
+                accessibilityState={{ selected: welcomeMode === "specific" }}
                 style={[
                   styles.welcomeBox,
                   {
                     borderColor: welcomeMode === "specific" ? colors.orange400 : c.border,
-                    backgroundColor: welcomeMode === "specific" ? colors.orange50 : "transparent",
+                    backgroundColor: welcomeMode === "specific"
+                      ? isDark
+                        ? "rgba(249,115,22,0.10)"
+                        : colors.orange50
+                      : c.surface,
                   },
                 ]}
               >
@@ -783,7 +850,6 @@ function CreateGameModal({
                       <Text style={styles.levelEmoji}>{l.emoji}</Text>
                       <Text
                         style={[styles.levelName, { color: on ? "#FFFFFF" : c.text }]}
-                        numberOfLines={1}
                       >
                         {l.name}
                       </Text>
@@ -795,7 +861,7 @@ function CreateGameModal({
 
             {/* Custom charge */}
             <View style={[styles.chargeBox, { borderColor: "rgba(139,92,246,0.25)" }]}>
-              <Text style={styles.chargeLabel}>✨ Custom charge per joiner</Text>
+              <Text style={[styles.chargeLabel, { color: isDark ? colors.violet300 : colors.violet700 }]}>✨ Custom charge per joiner</Text>
               <View style={styles.chargeInputRow}>
                 <Text style={[styles.chargePrefix, { color: c.textFaint }]}>Rs.</Text>
                 <TextInput
@@ -872,7 +938,19 @@ function CreateGameModal({
             />
             {fieldErrors.desc ? <Text style={styles.fieldError}>{fieldErrors.desc}</Text> : null}
 
-            {formError ? <Text style={styles.formError}>{formError}</Text> : null}
+            {formError ? (
+              <Text
+                style={[
+                  styles.formError,
+                  {
+                    color: isDark ? colors.red400 : colors.red600,
+                    backgroundColor: isDark ? "rgba(239,68,68,0.12)" : colors.red50,
+                  },
+                ]}
+              >
+                {formError}
+              </Text>
+            ) : null}
 
             <Pressable
               onPress={submit}
@@ -880,12 +958,12 @@ function CreateGameModal({
               accessibilityRole="button"
               style={({ pressed }) => [
                 styles.submitButton,
-                { backgroundColor: colors.emerald600 },
+                { backgroundColor: c.primary },
                 creating || !title ? { opacity: 0.4 } : null,
                 pressed ? { opacity: 0.85 } : null,
               ]}
             >
-              <Text style={styles.submitText}>
+              <Text style={[styles.submitText, { color: c.primaryText }]}>
                 {creating ? "Inviting everyone…" : "Share my game 🎉"}
               </Text>
             </Pressable>
@@ -944,17 +1022,20 @@ const styles = StyleSheet.create({
   toggleText: { fontSize: fontSize.base, fontWeight: "900" },
 
   errorText: { marginTop: space[3], fontSize: fontSize.sm, fontWeight: "700", color: colors.red500 },
+  leagueBrowserWrap: { marginTop: space[4] },
 
-  filterRail: { flexGrow: 0, marginTop: space[5] },
-  filterRailContent: { gap: space[2], paddingRight: space[4] },
-  filterPill: {
-    borderRadius: radius.full,
-    paddingHorizontal: space[4],
-    paddingVertical: space[2],
-    minHeight: 36,
-    justifyContent: "center",
-  },
-  filterPillText: { fontSize: fontSize.sm, fontWeight: "900" },
+  levelFilterCard: { marginTop: space[5], borderRadius: radius["2xl"], borderWidth: 1, padding: space[2.5] },
+  levelFilterHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: space[2], paddingHorizontal: space[1], paddingBottom: space[2.5] },
+  levelFilterCopy: { flex: 1, minWidth: 0 },
+  levelFilterTitle: { fontSize: fontSize.xs, fontWeight: "900" },
+  levelFilterHint: { fontSize: 10, fontWeight: "600", marginTop: 1 },
+  levelFilterCount: { fontSize: 10, fontWeight: "900", textTransform: "uppercase", letterSpacing: 0.5 },
+  levelFilterRail: { gap: space[2], paddingRight: space[2] },
+  levelFilterButton: { minHeight: 58, flexShrink: 0, flexDirection: "row", alignItems: "center", gap: space[2], borderWidth: 1, borderRadius: radius.xl, paddingHorizontal: space[2.5], paddingVertical: space[2] },
+  levelFilterEmoji: { width: 30, height: 30, borderRadius: radius.lg, textAlign: "center", textAlignVertical: "center", fontSize: 15, overflow: "hidden" },
+  levelFilterButtonCopy: { flexShrink: 0 },
+  levelFilterButtonTitle: { fontSize: 11, fontWeight: "900", lineHeight: 14 },
+  levelFilterButtonHint: { fontSize: 9, fontWeight: "600", lineHeight: 12, marginTop: 2 },
   tip: { fontSize: fontSize.xs, fontWeight: "600", marginTop: 6 },
 
   empty: {
@@ -975,7 +1056,7 @@ const styles = StyleSheet.create({
     padding: space[5],
     marginTop: space[4],
   },
-  cardHead: { flexDirection: "row", justifyContent: "space-between", gap: space[3] },
+  cardHead: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: space[3] },
   cardTitle: { fontSize: fontSize.lg, fontWeight: "800" },
   cardSub: { fontSize: fontSize.sm, color: colors.stone500, marginTop: 2 },
   cardCrew: { fontSize: fontSize.xs, fontWeight: "700", marginTop: 4 },
@@ -987,17 +1068,19 @@ const styles = StyleSheet.create({
 
   desc: { fontSize: 13, lineHeight: 19, marginTop: space[2] },
   metaBlock: { marginTop: space[3], gap: 6 },
-  metaRow: { flexDirection: "row", alignItems: "center", gap: space[2] },
+  metaRow: { flexDirection: "row", flexWrap: "wrap", alignItems: "flex-start", gap: space[2] },
   metaText: { fontSize: 13, fontWeight: "600", flex: 1 },
-  metaPrice: { fontSize: 13, fontWeight: "900" },
+  metaPrice: { fontSize: 13, fontWeight: "900", marginLeft: "auto", flexShrink: 0 },
 
   track: { height: 8, borderRadius: radius.full, overflow: "hidden", marginTop: space[3] },
   fill: { height: "100%", borderRadius: radius.full },
 
   peopleRow: {
     flexDirection: "row",
+    flexWrap: "wrap",
     alignItems: "center",
     justifyContent: "space-between",
+    gap: space[2],
     marginTop: space[2],
   },
   stack: { flexDirection: "row", alignItems: "center" },
@@ -1010,7 +1093,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   moreText: { fontSize: fontSize["2xs"], fontWeight: "900" },
-  count: { fontSize: fontSize.sm, fontWeight: "700" },
+  count: { fontSize: fontSize.sm, fontWeight: "700", flexShrink: 1, textAlign: "right" },
 
   joinButton: {
     flexDirection: "row",
@@ -1076,8 +1159,8 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
 
-  counterRow: { flexDirection: "row", gap: space[3], marginTop: space[3] },
-  counter: { flex: 1, borderRadius: radius["2xl"], borderWidth: 1, padding: space[3] },
+  counterRow: { flexDirection: "row", flexWrap: "wrap", gap: space[3], marginTop: space[3] },
+  counter: { flexGrow: 1, flexBasis: 130, minWidth: 0, borderRadius: radius["2xl"], borderWidth: 1, padding: space[3] },
   counterLabel: { fontSize: fontSize.sm, fontWeight: "900" },
   counterControls: {
     flexDirection: "row",
@@ -1098,20 +1181,23 @@ const styles = StyleSheet.create({
   totalLine: { fontSize: fontSize.sm, fontWeight: "700", textAlign: "center", marginTop: space[2] },
 
   welcomeRow: { flexDirection: "row", gap: space[2] },
-  welcomeBox: { flex: 1, borderRadius: radius.xl, borderWidth: 1, padding: 10 },
-  welcomeTitle: { fontSize: fontSize.base, fontWeight: "900" },
-  welcomeSub: { fontSize: fontSize.xs, color: colors.stone500 },
+  welcomeBox: { flex: 1, minWidth: 0, minHeight: 68, borderRadius: radius.xl, borderWidth: 1, padding: 10, justifyContent: "center" },
+  welcomeTitle: { fontSize: fontSize.base, fontWeight: "900", lineHeight: 19 },
+  welcomeSub: { fontSize: fontSize.xs, lineHeight: 15, marginTop: 2 },
   levelRow: { flexDirection: "row", gap: space[2], marginTop: space[2] },
   levelBox: {
     flex: 1,
+    minWidth: 0,
+    minHeight: 66,
     borderRadius: radius.xl,
     borderWidth: 1,
     paddingVertical: space[2],
-    paddingHorizontal: 6,
+    paddingHorizontal: 4,
     alignItems: "center",
+    justifyContent: "center",
   },
-  levelEmoji: { fontSize: fontSize.lg },
-  levelName: { fontSize: fontSize["2xs"], fontWeight: "900" },
+  levelEmoji: { fontSize: fontSize.lg, lineHeight: 22 },
+  levelName: { fontSize: fontSize["2xs"], fontWeight: "900", textAlign: "center", lineHeight: 13 },
 
   chargeBox: {
     borderRadius: radius["2xl"],

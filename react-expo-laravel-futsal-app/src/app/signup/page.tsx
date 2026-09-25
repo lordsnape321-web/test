@@ -1,4 +1,5 @@
 "use client";
+import { ThemedSelect } from "@/components/ThemedSelect";
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
@@ -303,7 +304,7 @@ export default function SignupPage() {
               <span className="mb-1.5 block text-xs font-black uppercase tracking-wider text-stone-400 dark:text-slate-500">
                 Home city 🏠 — your search starts here
               </span>
-              <select
+              <ThemedSelect
                 value={defaultCity}
                 onChange={(e) => setDefaultCity(e.target.value)}
                 className="w-full rounded-2xl border border-stone-200 bg-[#FFF6E9] px-4 py-3 text-sm font-semibold text-stone-900 focus:border-emerald-500 focus:outline-none dark:border-white/10 dark:bg-white/5 dark:text-slate-100 [&>option]:bg-white [&>option]:text-stone-900 dark:[&>option]:bg-slate-900 dark:[&>option]:text-slate-100"
@@ -311,7 +312,7 @@ export default function SignupPage() {
                 {CITY_OPTIONS.filter((c) => c !== "All Cities").map((c) => (
                   <option key={c}>{c}</option>
                 ))}
-              </select>
+              </ThemedSelect>
             </label>
 
             {role === "player" && (
@@ -320,7 +321,7 @@ export default function SignupPage() {
                   <span className="mb-1.5 block text-xs font-black uppercase tracking-wider text-stone-400 dark:text-slate-500">
                     Your level
                   </span>
-                  <select
+                  <ThemedSelect
                     value={level}
                     onChange={(e) => setLevel(e.target.value)}
                     className="w-full rounded-2xl border border-stone-200 bg-[#FFF6E9] px-4 py-3 text-sm font-semibold text-stone-900 focus:border-emerald-500 focus:outline-none dark:border-white/10 dark:bg-white/5 dark:text-slate-100 [&>option]:bg-white [&>option]:text-stone-900 dark:[&>option]:bg-slate-900 dark:[&>option]:text-slate-100"
@@ -328,13 +329,13 @@ export default function SignupPage() {
                     {LEVELS.map((l) => (
                       <option key={l}>{l}</option>
                     ))}
-                  </select>
+                  </ThemedSelect>
                 </label>
                 <label className="block">
                   <span className="mb-1.5 block text-xs font-black uppercase tracking-wider text-stone-400 dark:text-slate-500">
                     Favourite spot
                   </span>
-                  <select
+                  <ThemedSelect
                     value={position}
                     onChange={(e) => setPosition(e.target.value)}
                     className="w-full rounded-2xl border border-stone-200 bg-[#FFF6E9] px-4 py-3 text-sm font-semibold text-stone-900 focus:border-emerald-500 focus:outline-none dark:border-white/10 dark:bg-white/5 dark:text-slate-100 [&>option]:bg-white [&>option]:text-stone-900 dark:[&>option]:bg-slate-900 dark:[&>option]:text-slate-100"
@@ -342,7 +343,7 @@ export default function SignupPage() {
                     {POSITIONS.map((p) => (
                       <option key={p}>{p}</option>
                     ))}
-                  </select>
+                  </ThemedSelect>
                 </label>
               </div>
             )}

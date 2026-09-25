@@ -1,4 +1,5 @@
 "use client";
+import { ThemedSelect } from "@/components/ThemedSelect";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
@@ -741,7 +742,7 @@ export function TeamManager({
                 </p>
               ) : (
                 <div className="mt-2.5 flex flex-wrap gap-2">
-                  <select
+                  <ThemedSelect
                     value={newCaptainId}
                     onChange={(e) => setNewCaptainId(e.target.value)}
                     className="min-w-[12rem] flex-1 rounded-xl border border-stone-200 bg-white px-3.5 py-2.5 text-sm font-semibold text-stone-900 focus:border-amber-500 focus:outline-none dark:border-white/10 dark:bg-slate-950 dark:text-slate-100 [&>option]:bg-white [&>option]:text-stone-900 dark:[&>option]:bg-slate-900 dark:[&>option]:text-slate-100"
@@ -752,7 +753,7 @@ export function TeamManager({
                         {m.name} — {m.level} • {m.position}
                       </option>
                     ))}
-                  </select>
+                  </ThemedSelect>
                   <button
                     onClick={() => {
                       const target = transferTargets.find((m) => String(m.userId) === newCaptainId);
@@ -878,7 +879,7 @@ export function TeamManager({
                     <span className="mb-1 block text-[11px] font-black uppercase tracking-wider text-stone-400 dark:text-slate-500">
                       Level
                     </span>
-                    <select
+                    <ThemedSelect
                       value={level}
                       onChange={(e) => setLevel(e.target.value)}
                       className="w-full rounded-xl border border-stone-200 bg-[#FFF6E9] px-3.5 py-2.5 text-sm font-semibold text-stone-900 focus:border-emerald-500 focus:outline-none dark:border-white/10 dark:bg-white/5 dark:text-slate-100 [&>option]:bg-white [&>option]:text-stone-900 dark:[&>option]:bg-slate-900 dark:[&>option]:text-slate-100"
@@ -886,7 +887,7 @@ export function TeamManager({
                       {LEVELS.map((l) => (
                         <option key={l}>{l}</option>
                       ))}
-                    </select>
+                    </ThemedSelect>
                   </label>
                   <label className="block">
                     <span className="mb-1 block text-[11px] font-black uppercase tracking-wider text-stone-400 dark:text-slate-500">
@@ -907,7 +908,7 @@ export function TeamManager({
                   <span className="mb-1 flex items-center gap-1 text-[11px] font-black uppercase tracking-wider text-stone-400 dark:text-slate-500">
                     <MapPin className="h-3 w-3" /> Home turf — venues on this platform
                   </span>
-                  <select
+                  <ThemedSelect
                     value={homeVenueId}
                     onChange={(e) => setHomeVenueId(e.target.value)}
                     className="w-full rounded-xl border border-stone-200 bg-[#FFF6E9] px-3.5 py-2.5 text-sm font-semibold text-stone-900 focus:border-emerald-500 focus:outline-none dark:border-white/10 dark:bg-white/5 dark:text-slate-100 [&>option]:bg-white [&>option]:text-stone-900 dark:[&>option]:bg-slate-900 dark:[&>option]:text-slate-100"
@@ -918,7 +919,7 @@ export function TeamManager({
                         {v.name} — {v.city}
                       </option>
                     ))}
-                  </select>
+                  </ThemedSelect>
                   <span className="mt-1 block text-[11px] text-stone-400">
                     {venueOptions.length} venues to pick from — no typing, so it always matches a real court 📍
                   </span>

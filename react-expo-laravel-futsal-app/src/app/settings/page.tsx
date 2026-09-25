@@ -1,4 +1,5 @@
 "use client";
+import { ThemedSelect } from "@/components/ThemedSelect";
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
@@ -289,7 +290,7 @@ export default function SettingsPage() {
                       Court searches start here — change it any time.
                     </span>
                   </span>
-                  <select
+                  <ThemedSelect
                     value={user.defaultCity ?? "All Cities"}
                     disabled={citySaving}
                     onChange={(e) => void saveCity(e.target.value)}
@@ -299,7 +300,7 @@ export default function SettingsPage() {
                     {CITY_OPTIONS.map((c) => (
                       <option key={c}>{c}</option>
                     ))}
-                  </select>
+                  </ThemedSelect>
                 </label>
 
                 <Link href={profileHref} className={ROW}>

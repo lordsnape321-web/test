@@ -2,9 +2,12 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { Bell, Check, CheckCheck, Loader2 } from "lucide-react";
+import { Bell, CheckCheck } from "lucide-react";
 import { useUser } from "./UserProvider";
 import { apiFetch } from "@/lib/api";
+import { SwipeNotificationRow } from "@/components/SwipeNotificationRow";
+
+export { timeAgo } from "@/lib/time";
 
 type N = {
   id: number;
@@ -15,20 +18,6 @@ type N = {
   isRead: boolean;
   createdAt: string | null;
 };
-
-export function timeAgo(iso: string | null) {
-  if (!iso) return "";
-  const t = new Date(iso).getTime();
-  const diff = Math.max(0, Date.now() - t);
-  const m = Math.floor(diff / 60000);
-  if (m < 1) return "Just now";
-  if (m < 60) return `${m}m ago`;
-  const h = Math.floor(m / 60);
-  if (h < 24) return `${h}h ago`;
-  const d = Math.floor(h / 24);
-  if (d < 7) return `${d}d ago`;
-  return new Date(iso).toLocaleDateString();
-}
 
 export function NotificationBell({ variant }: { variant: "dark" | "light" }) {
   const { user, isOwner } = useUser();
@@ -43,7 +32,7 @@ export function NotificationBell({ variant }: { variant: "dark" | "light" }) {
   const load = useCallback(async () => {
     if (!user) return;
     try {
-      const res = await apiFetch(`/api/notifications?userId=${user.id}`);
+      const res = await apiFetch(`/api/notifications?userId=${user.id}`, { cache: "no-store" });
       const data = await res.json();
       setItems((data.notifications ?? []).slice(0, 8));
       setUnread(data.unread ?? 0);
@@ -51,32 +40,59 @@ export function NotificationBell({ variant }: { variant: "dark" | "light" }) {
   }, [user]);
 
   useEffect(() => {
-    load();
+    const initial = window.setTimeout(() => void load(), 0);
     if (timer.current) clearInterval(timer.current);
-    timer.current = setInterval(load, 15000);
+    // Keep the compact inbox live while it is open; a slower badge refresh is
+    // enough when the popover is closed.
+    timer.current = setInterval(load, open ? 4000 : 15000);
     return () => {
+      window.clearTimeout(initial);
       if (timer.current) clearInterval(timer.current);
     };
-  }, [load]);
+  }, [load, open]);
 
   if (!user) return null;
 
   const allLink = isOwner ? "/admin/notifications" : "/notifications";
 
-  /** Tick one off without leaving the page — the dot goes, the bell count drops. */
-  async function markRead(id: number) {
-    setMarking(id);
-    setItems((list) => list.map((n) => (n.id === id ? { ...n, isRead: true } : n)));
-    setUnread((c) => Math.max(0, c - 1));
+  /** A right swipe marks one row read only after the API confirms it. */
+  async function markRead(n: N) {
+    if (n.isRead) return;
+    setMarking(n.id);
     try {
-      await apiFetch(`/api/notifications/${id}`, {
+      const res = await apiFetch(`/api/notifications/${n.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ isRead: true }),
       });
+      if (!res.ok) throw new Error("Could not mark notification read");
       await load();
     } catch {}
     setMarking(0);
+  }
+
+  /** A left swipe deletes one row through the database-backed endpoint. */
+  async function remove(id: number) {
+    setMarking(id);
+    try {
+      const res = await apiFetch(`/api/notifications/${id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("Could not delete notification");
+      await load();
+    } catch {}
+    setMarking(0);
+  }
+
+  async function openNotification(n: N) {
+    try {
+      const res = await apiFetch(`/api/notifications/${n.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isRead: true }),
+      });
+      if (!res.ok) throw new Error("Could not mark notification read");
+    } catch {}
+    setOpen(false);
+    window.location.href = n.link || allLink;
   }
 
   /** The whole lot at once — what you want after a week away. */
@@ -84,14 +100,13 @@ export function NotificationBell({ variant }: { variant: "dark" | "light" }) {
     const uid = user?.id ?? 0;
     if (!uid) return;
     setMarking(-1);
-    setItems((list) => list.map((n) => ({ ...n, isRead: true })));
-    setUnread(0);
     try {
-      await apiFetch(`/api/notifications/read-all`, {
+      const res = await apiFetch(`/api/notifications/read-all`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ userId: uid }),
       });
+      if (!res.ok) throw new Error("Could not mark notifications read");
       await load();
     } catch {}
     setMarking(0);
@@ -154,54 +169,15 @@ export function NotificationBell({ variant }: { variant: "dark" | "light" }) {
                 </p>
               )}
               {items.map((n) => (
-                // A row holds two actions — open it, or just tick it off — and a
-                // button inside a button is invalid HTML, so the tick sits beside
-                // the row rather than within it.
-                <div key={n.id} className="relative border-b border-stone-50 last:border-0 dark:border-white/5">
-                  <button
-                    onClick={async () => {
-                      try {
-                        await apiFetch(`/api/notifications/${n.id}`, {
-                          method: "PATCH",
-                          headers: { "Content-Type": "application/json" },
-                          body: JSON.stringify({ isRead: true }),
-                        });
-                      } catch {}
-                      setOpen(false);
-                      window.location.href = n.link || allLink;
-                    }}
-                    className={`block w-full py-3 pl-4 pr-11 text-left transition hover:bg-orange-50/60 dark:hover:bg-orange-500/10 ${
-                      n.isRead ? "" : "bg-orange-50/50 dark:bg-orange-500/10"
-                    }`}
-                  >
-                    <p className="text-[13px] font-bold leading-snug text-stone-900 dark:text-slate-100">
-                      {!n.isRead && <span className="mr-1.5 inline-block h-2 w-2 rounded-full bg-red-500" />}
-                      {n.title}
-                    </p>
-                    {n.message && (
-                      <p className="mt-0.5 line-clamp-2 text-xs leading-relaxed text-stone-500 dark:text-slate-400">
-                        {n.message}
-                      </p>
-                    )}
-                    <p className="mt-1 text-[11px] font-semibold text-stone-400 dark:text-slate-500">
-                      {timeAgo(n.createdAt)}
-                    </p>
-                  </button>
-                  {!n.isRead && (
-                    <button
-                      onClick={() => void markRead(n.id)}
-                      disabled={marking !== 0}
-                      title="Mark as read"
-                      aria-label={`Mark "${n.title}" as read`}
-                      className="absolute right-2.5 top-3 grid h-7 w-7 place-items-center rounded-lg text-stone-400 transition hover:bg-emerald-100 hover:text-emerald-700 disabled:opacity-50 dark:text-slate-500 dark:hover:bg-emerald-500/15 dark:hover:text-emerald-300"
-                    >
-                      {marking === n.id ? (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      ) : (
-                        <Check className="h-4 w-4" />
-                      )}
-                    </button>
-                  )}
+                <div key={n.id} className="border-b border-stone-50 py-1 last:border-0 dark:border-white/5">
+                  <SwipeNotificationRow
+                    notification={n}
+                    typeClass=""
+                    owner={isOwner}
+                    onOpen={openNotification}
+                    onRead={markRead}
+                    onDelete={remove}
+                  />
                 </div>
               ))}
             </div>
