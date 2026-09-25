@@ -44,6 +44,7 @@ import {
   postReview,
 } from "@/api";
 import { BookingPaymentSummary } from "@/components/BookingPaymentSummary";
+import { BookingVenueName } from "@/components/BookingVenueName";
 import { PlayerRatingBadge } from "@/components/PlayerRating";
 import { ReceiptUploader, ReceiptViewer, isOnlineMethod } from "@/components/ReceiptUploader";
 import { StarInput } from "@/components/Reviews";
@@ -835,14 +836,7 @@ function BookingCard({
           </View>
           <View style={styles.cardHeadRow}>
             <View style={styles.grow}>
-              <ScrollView
-                horizontal
-                nestedScrollEnabled
-                showsHorizontalScrollIndicator={false}
-                style={styles.nameScroll}
-              >
-                <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72} style={[styles.venueName, { color: text }]}>{b.venue?.name ?? "Venue"}</Text>
-              </ScrollView>
+              <BookingVenueName name={b.venue?.name} color={text} />
               <ScrollView
                 horizontal
                 nestedScrollEnabled
@@ -1484,7 +1478,6 @@ const styles = StyleSheet.create({
   cardHeadRow: { flexDirection: "row", flexWrap: "wrap", gap: space[2], alignItems: "flex-start" },
   grow: { flex: 1, minWidth: 0 },
   nameScroll: { maxWidth: "100%", flexShrink: 1 },
-  venueName: { fontSize: fontSize.base, fontWeight: "800" },
   meta: { fontSize: fontSize.xs, marginTop: 2 },
   moneyCol: { alignItems: "flex-end", maxWidth: "100%", flexShrink: 1 },
   openBooking: {

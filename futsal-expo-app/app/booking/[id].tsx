@@ -2,6 +2,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useCallback, useEffect, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { BookingVenueName } from "@/components/BookingVenueName";
 import { Button, Card, Field, Notice, Pill, Spinner } from "@/components/ui";
 import {
   chooseBookingPayment,
@@ -210,16 +211,7 @@ export default function BookingDetail() {
   return (
     <SafeAreaView style={[styles.flex, { backgroundColor: colors.bg }]} edges={["bottom"]}>
       <ScrollView contentContainerStyle={styles.scroll}>
-        <ScrollView
-          horizontal
-          nestedScrollEnabled
-          showsHorizontalScrollIndicator={false}
-          style={styles.titleRail}
-        >
-          <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72} style={[styles.venue, { color: colors.text }]}>
-            {booking.venue?.name ?? "Venue"}
-          </Text>
-        </ScrollView>
+        <BookingVenueName name={booking.venue?.name} color={colors.text} />
         <ScrollView
           horizontal
           nestedScrollEnabled
@@ -526,7 +518,7 @@ const styles = StyleSheet.create({
   scroll: { padding: space["4"], paddingBottom: space["12"] },
   pad: { padding: space["4"] },
   titleRail: { maxWidth: "100%", flexShrink: 1 },
-  venue: { fontSize: fontSize["3xl"], fontWeight: "700" },
+
   meta: { fontSize: fontSize.base, marginTop: 2, marginBottom: space["3"] },
   pillRow: { flexDirection: "row", gap: space["2"], marginBottom: space["2"] },
   paymentLabels: { flexDirection: "row", flexWrap: "wrap", gap: space["2"], marginBottom: space["2"] },
