@@ -1028,7 +1028,7 @@ const styles = StyleSheet.create({
   levelFilterHint: { fontSize: 10, fontWeight: "600", marginTop: 1 },
   levelFilterCount: { fontSize: 10, fontWeight: "900", textTransform: "uppercase", letterSpacing: 0.5 },
   levelFilterRail: { gap: space[2], paddingRight: space[2] },
-  levelFilterButton: { width: 148, minHeight: 58, flexShrink: 0, flexDirection: "row", alignItems: "center", gap: space[2], borderWidth: 1, borderRadius: radius.xl, paddingHorizontal: space[2.5], paddingVertical: space[2] },
+  levelFilterButton: { minWidth: 132, minHeight: 58, flexShrink: 0, flexDirection: "row", alignItems: "center", gap: space[2], borderWidth: 1, borderRadius: radius.xl, paddingHorizontal: space[2.5], paddingVertical: space[2] },
   levelFilterEmoji: { width: 30, height: 30, borderRadius: radius.lg, textAlign: "center", textAlignVertical: "center", fontSize: 15, overflow: "hidden" },
   levelFilterButtonCopy: { flex: 1, minWidth: 0 },
   levelFilterButtonTitle: { fontSize: 11, fontWeight: "900", lineHeight: 14 },
