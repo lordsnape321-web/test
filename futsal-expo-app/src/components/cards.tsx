@@ -29,12 +29,12 @@ export type VenueWithCourts = Venue;
 export type MatchItem = Match;
 
 export function VenueCard({ v }: { v: VenueWithCourts }) {
-  const { colors: c } = useTheme();
+  const { colors: c, isDark } = useTheme();
   const router = useRouter();
 
   return (
     <Pressable
-      onPress={() => router.push(`/venue/${v.id}`)}
+      onPress={() => router.push(`/venues/${v.id}`)}
       accessibilityRole="button"
       style={({ pressed }) => [
         styles.venueCard,
@@ -63,16 +63,16 @@ export function VenueCard({ v }: { v: VenueWithCourts }) {
           </View>
         ) : null}
 
-        <View style={[styles.badge, styles.badgeRating, { backgroundColor: c.surface }]}>
+        <View style={[styles.badge, styles.badgeRating, { backgroundColor: isDark ? "rgba(15,23,42,0.95)" : "rgba(255,255,255,0.95)" }]}>
           <Star size={12} color={colors.amber400} fill={colors.amber400} />
-          <Text style={[styles.badgeRatingText, { color: c.text }]}>
+          <Text style={[styles.badgeRatingText, { color: isDark ? colors.slate100 : colors.stone800 }]}>
             {v.rating.toFixed(1)}
             <Text style={{ color: c.textFaint, fontWeight: "500" }}> ({v.totalReviews})</Text>
           </Text>
         </View>
 
-        <View style={[styles.badge, styles.badgePrice, { backgroundColor: c.surface }]}>
-          <Text style={[styles.badgePriceText, { color: c.activeText }]}>
+        <View style={[styles.badge, styles.badgePrice, { backgroundColor: isDark ? "rgba(15,23,42,0.95)" : "rgba(255,255,255,0.95)" }]}>
+          <Text style={[styles.badgePriceText, { color: isDark ? colors.emerald300 : colors.emerald700 }]}>
             From {formatNPR(v.minPrice)}/hr
           </Text>
         </View>
@@ -89,7 +89,7 @@ export function VenueCard({ v }: { v: VenueWithCourts }) {
           </Text>
         </View>
 
-        <View style={[styles.venueFooter, { borderTopColor: c.border }]}>
+        <View style={[styles.venueFooter, { borderTopColor: isDark ? "rgba(255,255,255,0.05)" : colors.stone100 }]}>
           <View style={styles.venueStat}>
             <Users size={14} color={c.textMuted} />
             <Text style={[styles.venueStatText, { color: c.textMuted }]}>
@@ -103,10 +103,10 @@ export function VenueCard({ v }: { v: VenueWithCourts }) {
             </Text>
           </View>
           <View style={styles.venueStat}>
-            <Text style={[styles.venueStatText, { color: colors.emerald600, fontWeight: "900" }]}>
+            <Text style={[styles.venueStatText, { color: isDark ? colors.emerald400 : colors.emerald600, fontWeight: "900" }]}>
               Book
             </Text>
-            <ArrowRight size={14} color={colors.emerald600} />
+            <ArrowRight size={14} color={isDark ? colors.emerald400 : colors.emerald600} />
           </View>
         </View>
       </View>
@@ -139,21 +139,21 @@ export function MatchCard({ m }: { m: MatchItem }) {
           <View style={styles.matchChips}>
             {m.bookingId ? (
               <View style={[styles.chip, { backgroundColor: c.activeSoft }]}>
-                <BadgeCheck size={12} color={c.activeText} />
-                <Text style={[styles.chipText, { color: c.activeText }]}>
+                <BadgeCheck size={12} color={isDark ? colors.emerald300 : colors.emerald700} />
+                <Text style={[styles.chipText, { color: isDark ? colors.emerald300 : colors.emerald700 }]}>
                   Court already sorted
                 </Text>
               </View>
             ) : null}
             {m.chargeMode === "custom" ? (
               <View style={[styles.chip, { backgroundColor: "rgba(139,92,246,0.15)" }]}>
-                <Text style={[styles.chipText, { color: colors.violet700 }]}>
+                <Text style={[styles.chipText, { color: isDark ? colors.violet300 : colors.violet700 }]}>
                   ✨ Custom {formatNPR(m.pricePerPlayer)}
                 </Text>
               </View>
             ) : (
               <View style={[styles.chip, { backgroundColor: "rgba(14,165,233,0.10)" }]}>
-                <Text style={[styles.chipText, { color: colors.sky700 }]}>🤝 Fair split</Text>
+                <Text style={[styles.chipText, { color: isDark ? colors.sky300 : colors.sky700 }]}>🤝 Fair split</Text>
               </View>
             )}
           </View>
@@ -200,7 +200,7 @@ export function MatchCard({ m }: { m: MatchItem }) {
         </View>
         <View style={[styles.tile, { backgroundColor: c.activeSoft }]}>
           <Text style={[styles.tileLabel, { color: c.textFaint }]}>Share</Text>
-          <Text style={[styles.tileValue, { color: c.activeText }]} numberOfLines={1}>
+          <Text style={[styles.tileValue, { color: isDark ? colors.emerald300 : colors.emerald700 }]} numberOfLines={1}>
             {formatNPR(m.pricePerPlayer)}
           </Text>
         </View>
@@ -218,7 +218,7 @@ export function MatchCard({ m }: { m: MatchItem }) {
         <Text style={[styles.progressLabel, { color: c.textMuted }]}>
           {m.joinedCount}/{m.maxPlayers} friends in
         </Text>
-        <Text style={[styles.progressLabel, { color: colors.emerald600 }]}>{pct}% full</Text>
+        <Text style={[styles.progressLabel, { color: isDark ? colors.emerald400 : colors.emerald600 }]}>{pct}% full</Text>
       </View>
       <View style={[styles.progressTrack, { backgroundColor: c.inset }]}>
         <LinearGradient
@@ -279,7 +279,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: radius["3xl"],
     overflow: "hidden",
-    marginBottom: space[4],
+    // ResponsiveGrid supplies the same 16px row gap as the web grid.
     // shadow-[0_10px_30px_rgba(180,120,60,0.08)] — source card-glow base
     shadowColor: "rgb(180,120,60)",
     shadowOpacity: 0.08,
@@ -297,6 +297,11 @@ const styles = StyleSheet.create({
     borderRadius: radius.full,
     paddingHorizontal: 10,
     paddingVertical: 4,
+    shadowColor: "#000",
+    shadowOpacity: 0.12,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
   },
   badgeFeatured: {
     left: 12,
@@ -341,7 +346,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: radius["3xl"],
     padding: space[5],
-    marginBottom: space[4],
+    // ResponsiveGrid supplies the same 16px row gap as the web grid.
     shadowColor: "rgb(180,120,60)",
     shadowOpacity: 0.08,
     shadowRadius: 15,

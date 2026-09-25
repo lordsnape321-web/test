@@ -2,9 +2,9 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { Bell, CheckCheck, Trash2, LogIn, ChevronRight, Heart } from "lucide-react";
+import { Bell, CheckCheck, LogIn, Heart } from "lucide-react";
+import { SwipeNotificationRow } from "@/components/SwipeNotificationRow";
 import { useUser } from "@/components/UserProvider";
-import { timeAgo } from "@/components/NotificationBell";
 import { apiFetch } from "@/lib/api";
 
 type N = {
@@ -61,17 +61,30 @@ export default function NotificationsPage() {
   }
 
   async function markOne(n: N) {
-    await apiFetch(`/api/notifications/${n.id}`, {
+    const res = await apiFetch(`/api/notifications/${n.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ isRead: true }),
     });
+    if (!res.ok) throw new Error("Could not mark notification read");
     if (n.link) window.location.href = n.link;
     else load();
   }
 
+  async function markReadOnly(n: N) {
+    if (n.isRead) return;
+    const res = await apiFetch(`/api/notifications/${n.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ isRead: true }),
+    });
+    if (!res.ok) throw new Error("Could not mark notification read");
+    setItems((prev) => prev.map((item) => (item.id === n.id ? { ...item, isRead: true } : item)));
+  }
+
   async function remove(id: number) {
-    await apiFetch(`/api/notifications/${id}`, { method: "DELETE" });
+    const res = await apiFetch(`/api/notifications/${id}`, { method: "DELETE" });
+    if (!res.ok) throw new Error("Could not delete notification");
     setItems((prev) => prev.filter((x) => x.id !== id));
   }
 
@@ -143,41 +156,14 @@ export default function NotificationsPage() {
         ) : (
           <div className="mt-6 space-y-2.5">
             {items.map((n) => (
-              <div
+              <SwipeNotificationRow
                 key={n.id}
-                className={`group flex items-start gap-3 rounded-2xl border p-4 shadow-sm transition ${
-                  n.isRead
-                    ? "border-stone-200 bg-white dark:border-white/10 dark:bg-slate-900"
-                    : "border-emerald-300 bg-emerald-50/60 dark:border-emerald-500/40 dark:bg-emerald-500/10"
-                }`}
-              >
-                <span className={`mt-0.5 rounded-xl px-2.5 py-1.5 text-[10px] font-black uppercase ${TYPE_STYLE[n.type] ?? TYPE_STYLE.info}`}>
-                  {!n.isRead ? "● " : ""}{n.type.replace(/_/g, " ")}
-                </span>
-                <button onClick={() => markOne(n)} className="min-w-0 flex-1 text-left">
-                  <p className="text-sm font-extrabold leading-snug text-stone-900 dark:text-slate-100">{n.title}</p>
-                  {n.message && (
-                    <p className="mt-1 text-[13px] leading-relaxed text-stone-500 dark:text-slate-400">
-                      {n.message}
-                    </p>
-                  )}
-                  <p className="mt-1.5 flex items-center gap-1 text-[11px] font-bold text-stone-400 dark:text-slate-500">
-                    {timeAgo(n.createdAt)}
-                    {n.link && (
-                      <span className="flex items-center gap-0.5 text-emerald-600 dark:text-emerald-400">
-                        • Have a look <ChevronRight className="h-3 w-3" />
-                      </span>
-                    )}
-                  </p>
-                </button>
-                <button
-                  onClick={() => remove(n.id)}
-                  title="Delete"
-                  className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-stone-300 transition hover:bg-red-50 hover:text-red-500 dark:text-slate-600 dark:hover:bg-red-500/10 dark:hover:text-red-400"
-                >
-                  <Trash2 className="h-4 w-4" />
-                </button>
-              </div>
+                notification={n}
+                typeClass={TYPE_STYLE[n.type] ?? TYPE_STYLE.info}
+                onOpen={markOne}
+                onRead={markReadOnly}
+                onDelete={remove}
+              />
             ))}
           </div>
         )}

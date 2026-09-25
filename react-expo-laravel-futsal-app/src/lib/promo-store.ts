@@ -1,4 +1,4 @@
-import { db } from "@/db";
+import { db, ensureCompetitionBookingColumns } from "@/db";
 import { bookings, promos, venues } from "@/db/schema";
 import { eq, inArray } from "drizzle-orm";
 import {
@@ -25,6 +25,7 @@ export type PromoUsage = {
 };
 
 export async function promoUsage(promoIds: number[]): Promise<Map<number, PromoUsage>> {
+  await ensureCompetitionBookingColumns();
   const out = new Map<number, PromoUsage>();
   for (const id of promoIds) out.set(id, { used: 0, discountGiven: 0, byUser: new Map() });
   if (promoIds.length === 0) return out;

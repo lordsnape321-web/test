@@ -12,6 +12,8 @@ function Inner() {
   const router = useRouter();
   const pidx = params.get("pidx") ?? "";
   const bookingId = params.get("bookingId") ?? "";
+  const teamPaymentId = params.get("teamPaymentId") ?? "";
+  const paymentRequestId = params.get("paymentRequestId") ?? "";
   // League entries check out here too, carrying league + squad instead of a
   // booking.
   const leagueId = params.get("leagueId") ?? "";
@@ -41,7 +43,14 @@ function Inner() {
                   amount,
                   method: "Khalti",
                 }
-              : { pidx, bookingId: Number(bookingId), mockApprove: true }
+              : {
+                  pidx,
+                  bookingId: Number(bookingId),
+                  teamPaymentId: teamPaymentId ? Number(teamPaymentId) : undefined,
+                  paymentRequestId: paymentRequestId ? Number(paymentRequestId) : undefined,
+                  userId: params.get("userId") ? Number(params.get("userId")) : undefined,
+                  mockApprove: true,
+                }
           ),
         }
       );
@@ -51,7 +60,7 @@ function Inner() {
         router.push(`/leagues/${leagueId}?paid=1`);
         return;
       }
-      router.push(`/payment/khalti/callback?pidx=${encodeURIComponent(pidx)}&bookingId=${bookingId}&status=Completed&mock=1`);
+      router.push(`/payment/khalti/callback?pidx=${encodeURIComponent(pidx)}&bookingId=${bookingId}${teamPaymentId ? `&teamPaymentId=${teamPaymentId}` : ""}${paymentRequestId ? `&paymentRequestId=${paymentRequestId}` : ""}&status=Completed&mock=1`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed");
       setBusy(null);
