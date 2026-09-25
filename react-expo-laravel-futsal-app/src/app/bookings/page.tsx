@@ -818,7 +818,7 @@ export default function BookingsPage() {
                     <div className="flex flex-wrap items-start justify-between gap-2">
                       <div className="min-w-0 max-w-full">
                         <div className="no-scrollbar max-w-full overflow-x-auto">
-                          <h3 className="w-max min-w-full whitespace-nowrap text-base font-extrabold leading-tight text-stone-900 dark:text-slate-100">{b.venue?.name ?? "Venue"}</h3>
+                          <h3 className="w-max whitespace-nowrap text-base font-extrabold leading-tight text-stone-900 dark:text-slate-100">{b.venue?.name ?? "Venue"}</h3>
                         </div>
                         <div className="no-scrollbar mt-0.5 max-w-full overflow-x-auto">
                           <p className="w-max whitespace-nowrap text-xs leading-relaxed text-stone-500 dark:text-slate-400">

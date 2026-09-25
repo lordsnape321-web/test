@@ -474,7 +474,7 @@ export default function BookingsScreen() {
             showsHorizontalScrollIndicator={false}
             style={styles.eyebrowScroll}
           >
-            <Text style={styles.eyebrow}>{user?.name ?? "Player"}'s game diary</Text>
+            <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72} style={styles.eyebrow}>{user?.name ?? "Player"}'s game diary</Text>
           </ScrollView>
         </View>
         <View style={styles.titleRow}>
@@ -841,7 +841,7 @@ function BookingCard({
                 showsHorizontalScrollIndicator={false}
                 style={styles.nameScroll}
               >
-                <Text style={[styles.venueName, { color: text }]}>{b.venue?.name ?? "Venue"}</Text>
+                <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72} style={[styles.venueName, { color: text }]}>{b.venue?.name ?? "Venue"}</Text>
               </ScrollView>
               <ScrollView
                 horizontal
@@ -849,7 +849,7 @@ function BookingCard({
                 showsHorizontalScrollIndicator={false}
                 style={styles.nameScroll}
               >
-                <Text style={[styles.meta, { color: muted }]}>
+                <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72} style={[styles.meta, { color: muted }]}>
                   {b.court?.name ?? "Court"} • {b.court && "format" in b.court ? (b.court as { format?: string }).format : ""}
                 </Text>
               </ScrollView>

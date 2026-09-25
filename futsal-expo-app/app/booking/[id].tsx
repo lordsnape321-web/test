@@ -216,7 +216,7 @@ export default function BookingDetail() {
           showsHorizontalScrollIndicator={false}
           style={styles.titleRail}
         >
-          <Text style={[styles.venue, { color: colors.text }]}>
+          <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72} style={[styles.venue, { color: colors.text }]}>
             {booking.venue?.name ?? "Venue"}
           </Text>
         </ScrollView>
@@ -226,7 +226,7 @@ export default function BookingDetail() {
           showsHorizontalScrollIndicator={false}
           style={styles.titleRail}
         >
-          <Text style={[styles.meta, { color: colors.textMuted }]}>
+          <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72} style={[styles.meta, { color: colors.textMuted }]}>
             {booking.court?.name ?? "Court"} · {prettyDate(booking.date)} · {booking.startTime}–
             {booking.endTime}
           </Text>

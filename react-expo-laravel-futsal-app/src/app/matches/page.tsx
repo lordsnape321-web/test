@@ -324,7 +324,7 @@ function MatchesInner() {
         </div>
 
         {tab === "leagues" ? (
-          <div className="mt-0">
+          <div className="mt-4 sm:mt-5">
             <LeagueBrowser />
           </div>
         ) : (

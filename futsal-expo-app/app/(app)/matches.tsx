@@ -226,7 +226,9 @@ export default function MatchesScreen() {
         {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
         {tab === "leagues" ? (
-          <LeagueBrowser />
+          <View style={styles.leagueBrowserWrap}>
+            <LeagueBrowser />
+          </View>
         ) : (
           <>
             {/* Level filter */}
@@ -1020,6 +1022,7 @@ const styles = StyleSheet.create({
   toggleText: { fontSize: fontSize.base, fontWeight: "900" },
 
   errorText: { marginTop: space[3], fontSize: fontSize.sm, fontWeight: "700", color: colors.red500 },
+  leagueBrowserWrap: { marginTop: space[4] },
 
   levelFilterCard: { marginTop: space[5], borderRadius: radius["2xl"], borderWidth: 1, padding: space[2.5] },
   levelFilterHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: space[2], paddingHorizontal: space[1], paddingBottom: space[2.5] },
