@@ -1,4 +1,5 @@
 "use client";
+import { ThemedSelect } from "@/components/ThemedSelect";
 
 import { useEffect, useState } from "react";
 import { Star, MessageCircleHeart, Loader2, RotateCcw } from "lucide-react";
@@ -214,7 +215,7 @@ export function ReviewsSection({
           {eligibleBookings.length > 1 && (
             <label className="block">
               <span className="mb-1 block text-xs font-black uppercase tracking-wider text-stone-400">Which game?</span>
-              <select
+              <ThemedSelect
                 value={bookingId}
                 onChange={(e) => setBookingId(e.target.value)}
                 className="w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm font-semibold dark:border-white/10 dark:bg-slate-950 [&>option]:bg-white [&>option]:text-stone-900 dark:[&>option]:bg-slate-900 dark:[&>option]:text-slate-100"
@@ -225,7 +226,7 @@ export function ReviewsSection({
                     {b.label}
                   </option>
                 ))}
-              </select>
+              </ThemedSelect>
             </label>
           )}
           <div className="flex items-center gap-3">

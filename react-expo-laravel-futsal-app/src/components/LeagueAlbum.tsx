@@ -1,4 +1,5 @@
 "use client";
+import { ThemedSelect } from "@/components/ThemedSelect";
 
 import { useRef, useState } from "react";
 import {
@@ -222,7 +223,7 @@ export function LeagueAlbum({
                 </button>
               </div>
             )}
-            <select
+            <ThemedSelect
               value={matchId}
               onChange={(e) => setMatchId(e.target.value)}
               className="rounded-xl border border-[#F0E3CC] bg-[#FFFDF7] px-3 py-2 text-xs font-bold dark:border-white/10 dark:bg-slate-950 dark:text-slate-100"
@@ -233,7 +234,7 @@ export function LeagueAlbum({
                   {m.round}: {m.homeTeamName} {m.homeScore}–{m.awayScore} {m.awayTeamName}
                 </option>
               ))}
-            </select>
+            </ThemedSelect>
             <input
               value={caption}
               onChange={(e) => setCaption(e.target.value)}

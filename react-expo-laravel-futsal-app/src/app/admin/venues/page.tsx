@@ -1,4 +1,5 @@
 "use client";
+import { ThemedSelect } from "@/components/ThemedSelect";
 
 import { useEffect, useMemo, useState } from "react";
 import { Building2, Plus, Power, Star, MapPin, Pencil, MessageCircleHeart, Wallet, ShieldCheck, Trash2, Loader2 } from "lucide-react";
@@ -829,11 +830,11 @@ export default function OwnerVenuesPage() {
                 </div>
                 <div>
                   <span className={labelCls}>City</span>
-                  <select value={fCity} onChange={(e) => setFCity(e.target.value)} className={inputCls}>
+                  <ThemedSelect value={fCity} onChange={(e) => setFCity(e.target.value)} className={`${inputCls} bg-white text-slate-900 dark:bg-slate-950 dark:text-slate-100`}>
                     {["Kathmandu", "Lalitpur", "Bhaktapur", "Pokhara", "Chitwan"].map((c) => (
                       <option key={c}>{c}</option>
                     ))}
-                  </select>
+                  </ThemedSelect>
                 </div>
                 <div>
                   <span className={labelCls}>Phone</span>
@@ -945,11 +946,11 @@ export default function OwnerVenuesPage() {
                 </div>
                 <div>
                   <span className={labelCls}>City</span>
-                  <select value={eCity} onChange={(e) => setECity(e.target.value)} className={inputCls}>
+                  <ThemedSelect value={eCity} onChange={(e) => setECity(e.target.value)} className={`${inputCls} bg-white text-slate-900 dark:bg-slate-950 dark:text-slate-100`}>
                     {["Kathmandu", "Lalitpur", "Bhaktapur", "Pokhara", "Chitwan"].map((c) => (
                       <option key={c}>{c}</option>
                     ))}
-                  </select>
+                  </ThemedSelect>
                 </div>
                 <div>
                   <span className={labelCls}>Phone</span>
@@ -1055,19 +1056,19 @@ export default function OwnerVenuesPage() {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <span className={labelCls}>Format</span>
-                  <select value={cFormat} onChange={(e) => setCFormat(e.target.value)} className={inputCls}>
+                  <ThemedSelect value={cFormat} onChange={(e) => setCFormat(e.target.value)} className={`${inputCls} bg-white text-slate-900 dark:bg-slate-950 dark:text-slate-100`}>
                     {FORMATS.map((f) => (
                       <option key={f}>{f}</option>
                     ))}
-                  </select>
+                  </ThemedSelect>
                 </div>
                 <div>
                   <span className={labelCls}>Surface</span>
-                  <select value={cSurface} onChange={(e) => setCSurface(e.target.value)} className={inputCls}>
+                  <ThemedSelect value={cSurface} onChange={(e) => setCSurface(e.target.value)} className={`${inputCls} bg-white text-slate-900 dark:bg-slate-950 dark:text-slate-100`}>
                     {SURFACES.map((s) => (
                       <option key={s}>{s}</option>
                     ))}
-                  </select>
+                  </ThemedSelect>
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-3">

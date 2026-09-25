@@ -1,4 +1,5 @@
 "use client";
+import { ThemedSelect } from "@/components/ThemedSelect";
 
 import { useEffect, useState } from "react";
 import { Loader2, Plus, RotateCcw, Trash2, Wallet, CheckCheck, Lock, ReceiptText } from "lucide-react";
@@ -155,7 +156,7 @@ export function BookingLedgerPanel({
   }
 
   const inputCls =
-    "w-full rounded-xl border border-slate-200 px-3 py-2 text-sm font-bold focus:border-slate-900 focus:outline-none dark:border-slate-700 dark:bg-slate-950 [&>option]:bg-white [&>option]:text-slate-900 dark:[&>option]:bg-slate-900 dark:[&>option]:text-slate-100";
+    "w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-bold text-slate-900 focus:border-slate-900 focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 [&>option]:bg-white [&>option]:text-slate-900 dark:[&>option]:bg-slate-900 dark:[&>option]:text-slate-100";
   const labelCls = "mb-1 block text-[10px] font-black uppercase tracking-wider text-slate-400";
 
   if (!ledger) {
@@ -309,13 +310,13 @@ export function BookingLedgerPanel({
           {!locked && (
             <div className="mt-2 grid grid-cols-[1fr_5.5rem] gap-2">
               <div className="grid grid-cols-2 gap-2">
-                <select value={method} onChange={(e) => setMethod(e.target.value)} className={inputCls}>
+                <ThemedSelect value={method} onChange={(e) => setMethod(e.target.value)} className={inputCls}>
                   {ledger.acceptedMethods.map((m) => (
                     <option key={m} value={m}>
                       {m}
                     </option>
                   ))}
-                </select>
+                </ThemedSelect>
                 <input
                   type="number"
                   min={1}

@@ -16,6 +16,12 @@ type Line = {
   voidedAt: string | null;
 };
 
+function paymentMethodLabel(method?: string) {
+  if (method === "Cash at Venue") return "Cash at venue";
+  if (method === "Free Play 🎁") return "Free play";
+  return method || "Payment";
+}
+
 type Summary = {
   totals: {
     courtPrice: number;
@@ -96,7 +102,7 @@ export function BookingPaymentSummary({ bookingId }: { bookingId: number }) {
               <Text style={[styles.loadingText, { color: c.textFaint }]}>Loading…</Text>
             </View>
           ) : null}
-          {error ? <Text style={styles.error}>{error}</Text> : null}
+          {error ? <Text style={[styles.error, { color: isDark ? colors.red400 : colors.red600 }]}>{error}</Text> : null}
           {data ? (
             <>
               <View style={{ gap: space[1] }}>
@@ -115,8 +121,8 @@ export function BookingPaymentSummary({ bookingId }: { bookingId: number }) {
                   <Text style={[styles.totalValue, { color: c.text }]}>{formatNPR(data.totals.owed)}</Text>
                 </View>
                 <View style={styles.row}>
-                  <Text style={[styles.paidLabel, { color: colors.emerald700 }]}>Paid</Text>
-                  <Text style={[styles.paidValue, { color: colors.emerald700 }]}>
+                  <Text style={[styles.paidLabel, { color: isDark ? colors.emerald300 : colors.emerald700 }]}>Paid</Text>
+                  <Text style={[styles.paidValue, { color: isDark ? colors.emerald300 : colors.emerald700 }]}>
                     {formatNPR(data.totals.paid)}
                   </Text>
                 </View>
@@ -137,7 +143,16 @@ export function BookingPaymentSummary({ bookingId }: { bookingId: number }) {
                 </Text>
               ) : null}
               {data.totals.surplus > 0 ? (
-                <Text style={[styles.banner, styles.bannerSurplus]}>
+                <Text
+                  style={[
+                    styles.banner,
+                    styles.bannerSurplus,
+                    isDark && {
+                      backgroundColor: "rgba(14,165,233,0.12)",
+                      color: colors.sky300,
+                    },
+                  ]}
+                >
                   💵 You paid {formatNPR(data.totals.surplus)} more than owed — the venue owes you
                   the change
                 </Text>
@@ -149,8 +164,8 @@ export function BookingPaymentSummary({ bookingId }: { bookingId: number }) {
                     .filter((p) => !p.voidedAt)
                     .map((p) => (
                       <View key={p.id} style={styles.row}>
-                        <Text style={[styles.lineText, { color: c.textMuted }]} numberOfLines={1}>
-                          {p.method}
+                        <Text style={[styles.lineText, { color: c.textMuted }]}>
+                          {paymentMethodLabel(p.method)}
                           {p.reference ? (
                             <Text style={{ color: c.textFaint }}> • {p.reference.slice(0, 14)}</Text>
                           ) : p.note ? (
@@ -177,7 +192,7 @@ export function BookingPaymentSummary({ bookingId }: { bookingId: number }) {
                     .filter((x) => !x.voidedAt)
                     .map((x) => (
                       <View key={x.id} style={styles.row}>
-                        <Text style={[styles.lineText, { color: c.textMuted }]} numberOfLines={1}>
+                        <Text style={[styles.lineText, { color: c.textMuted }]}>
                           {x.label}
                         </Text>
                         <Text style={[styles.lineAmt, { color: c.text }]}>{formatNPR(x.amount)}</Text>
@@ -219,7 +234,7 @@ const styles = StyleSheet.create({
   loadingRow: { flexDirection: "row", alignItems: "center", gap: space[2] },
   loadingText: { fontSize: fontSize.xs, fontWeight: "700" },
   error: { fontSize: fontSize.xs, fontWeight: "700", color: "#DC2626" },
-  row: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: space[2] },
+  row: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", gap: space[2] },
   totalRow: { borderTopWidth: 1, paddingTop: space[1], marginTop: space[1] },
   totalLabel: { fontSize: fontSize.xs, fontWeight: "700" },
   totalValue: { fontSize: fontSize.xs, fontWeight: "900" },
@@ -232,11 +247,10 @@ const styles = StyleSheet.create({
     paddingVertical: space[2],
     fontSize: fontSize.xs,
     fontWeight: "900",
-    overflow: "hidden",
   },
   bannerDue: { backgroundColor: "#FFFBEB", color: "#B45309" },
   bannerSurplus: { backgroundColor: "#F0F9FF", color: "#0369A1" },
-  lineText: { flex: 1, minWidth: 0, fontSize: fontSize.xs, fontWeight: "700" },
-  lineAmt: { fontSize: fontSize.xs, fontWeight: "900" },
+  lineText: { flex: 1, minWidth: 0, fontSize: fontSize.xs, lineHeight: 16, fontWeight: "700" },
+  lineAmt: { flexShrink: 0, fontSize: fontSize.xs, fontWeight: "900" },
   noneYet: { marginTop: space[2], fontSize: fontSize.xs, fontWeight: "700" },
 });
