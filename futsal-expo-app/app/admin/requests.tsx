@@ -47,6 +47,22 @@ function paymentStatusLabel(status?: string | null) {
   return String(status || "pending").replace(/_/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
+function advanceReceivableFor(b: Booking) {
+  const requestedAndUnpaid =
+    b.status !== "cancelled" &&
+    b.status !== "rejected" &&
+    b.advancePaymentRequired &&
+    b.advancePaymentStatus !== "paid" &&
+    b.advancePaymentStatus !== "expired"
+      ? Math.max(0, Number(b.advancePaymentAmount) || 0)
+      : 0;
+  return Math.max(
+    0,
+    Number(b.paymentSummary?.advanceReceivable ?? b.advanceReceivableAmount ?? 0) || 0,
+    requestedAndUnpaid,
+  );
+}
+
 /**
  * Booking requests — pending vs decided tabs, full card rows with every chip
  * from the web admin/requests page, Accept / Decline (confirm → Alert).
@@ -102,18 +118,19 @@ export default function OwnerRequests() {
         ),
     [bookings, myVenueIds],
   );
-  const pending = mine.filter((b) => b.status === "pending");
-  const decided = mine.filter((b) => b.status === "confirmed" || b.status === "rejected");
+  // An unpaid advance remains a pending money item even if an older booking
+  // row was already marked confirmed.
+  const pending = mine.filter((b) => b.status === "pending" || advanceReceivableFor(b) > 0);
+  const decided = mine.filter(
+    (b) => (b.status === "confirmed" || b.status === "rejected") && advanceReceivableFor(b) === 0,
+  );
   const list = tab === "pending" ? pending : decided;
   const moneyMine = mine.filter((b) => b.status !== "cancelled" && b.status !== "rejected");
   const advanceReceivedTotal = moneyMine.reduce(
     (sum, b) => sum + (b.paymentSummary?.advanceReceived ?? b.advanceReceivedAmount ?? 0),
     0,
   );
-  const advanceReceivableTotal = moneyMine.reduce(
-    (sum, b) => sum + (b.paymentSummary?.advanceReceivable ?? b.advanceReceivableAmount ?? 0),
-    0,
-  );
+  const advanceReceivableTotal = mine.reduce((sum, b) => sum + advanceReceivableFor(b), 0);
   const receivableTotal = moneyMine.reduce(
     (sum, b) => sum + (b.paymentSummary?.receivable ?? b.amountReceivable ?? Math.max(0, b.totalPrice - (b.paidAmount ?? 0))),
     0,
@@ -345,7 +362,7 @@ export default function OwnerRequests() {
                     <Text style={[styles.snapshotKicker, { color: isDark ? "#6EE7B7" : "#047857" }]}>PAYMENT SNAPSHOT</Text>
                     <View style={styles.snapshotRows}>
                       <Text style={[styles.snapshotText, { color: c.text }]}>Advance received {formatNPR(b.paymentSummary.advanceReceived)}</Text>
-                      <Text style={[styles.snapshotText, { color: c.text }]}>Advance receivable {formatNPR(b.paymentSummary.advanceReceivable)}</Text>
+                      <Text style={[styles.snapshotText, { color: c.text }]}>Advance receivable {formatNPR(advanceReceivableFor(b))}</Text>
                       <Text style={[styles.snapshotText, { color: c.text }]}>Total received {formatNPR(b.paymentSummary.received)}</Text>
                       <Text style={[styles.snapshotText, { color: c.text }]}>Receivable {formatNPR(b.paymentSummary.receivable)}</Text>
                     </View>
@@ -392,7 +409,11 @@ export default function OwnerRequests() {
                       </Text>
                     </View>
                   ) : null}
-                  {b.advancePaymentRequired ? (
+                  {advanceReceivableFor(b) > 0 ? (
+                    <View style={[styles.chip, { backgroundColor: "rgba(249,115,22,0.15)" }]}>
+                      <Text style={[styles.chipText, { color: isDark ? "#FDBA74" : "#C2410C" }]}>💳 Advance receivable {formatNPR(advanceReceivableFor(b))} • awaiting player</Text>
+                    </View>
+                  ) : b.advancePaymentRequired ? (
                     <View style={[styles.chip, { backgroundColor: "rgba(14,165,233,0.15)" }]}>
                       <Text style={[styles.chipText, { color: "#0369A1" }]}>💳 Advance {formatNPR(b.advancePaymentAmount ?? 0)} • {paymentStatusLabel(b.advancePaymentStatus)}</Text>
                     </View>
@@ -528,15 +549,15 @@ export default function OwnerRequests() {
                   ) : null}
                   <Text style={[styles.price, { color: c.text }]}>{formatNPR(b.totalPrice)}</Text>
                 </View>
-                {tab === "pending" ? (
+                {tab === "pending" && b.status === "pending" ? (
                   <View style={styles.actionRow}>
                     <Pressable
                       onPress={() => decide(b.id, true)}
-                      disabled={acting === b.id}
-                      style={[styles.acceptBtn, { opacity: acting === b.id ? 0.5 : 1 }]}
+                      disabled={acting === b.id || advanceReceivableFor(b) > 0}
+                      style={[styles.acceptBtn, { opacity: acting === b.id || advanceReceivableFor(b) > 0 ? 0.5 : 1 }]}
                     >
                       <Check size={14} color="#FFFFFF" strokeWidth={3} />
-                      <Text style={styles.acceptText}>{acting === b.id ? "…" : "Accept"}</Text>
+                      <Text style={styles.acceptText}>{acting === b.id ? "…" : advanceReceivableFor(b) > 0 ? "Awaiting advance" : "Accept"}</Text>
                     </Pressable>
                     <Pressable
                       onPress={() => decide(b.id, false)}
@@ -554,6 +575,8 @@ export default function OwnerRequests() {
                       <Text style={styles.declineText}>Decline</Text>
                     </Pressable>
                   </View>
+                ) : tab === "pending" && advanceReceivableFor(b) > 0 ? (
+                  <Text style={[styles.metaSmall, { color: isDark ? "#FDBA74" : "#C2410C", fontWeight: "900" }]}>Advance payment pending</Text>
                 ) : (
                   <Text style={[styles.metaSmall, { color: c.textFaint }]}>
                     {b.createdAt ? new Date(b.createdAt).toLocaleDateString() : ""}

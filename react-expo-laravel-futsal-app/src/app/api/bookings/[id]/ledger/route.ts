@@ -185,6 +185,13 @@ export async function POST(
       (LEDGER_METHODS as readonly string[]).includes(m)
     );
 
+    // A cancelled or rejected event is history, not an open till. Keep the
+    // ledger readable for reconciliation, but never allow new money or extras
+    // to be collected against a slot that no longer exists.
+    if ((booking.status === "cancelled" || booking.status === "rejected") && ["addPayment", "addExtra", "settle"].includes(action)) {
+      return Response.json({ error: "This booking is cancelled, so no further collection is allowed." }, { status: 409 });
+    }
+
     /* ---------------------------------------------------------- addPayment */
     if (action === "addPayment") {
       if (booking.advancePaymentRequired && booking.advancePaymentStatus !== "paid") {

@@ -380,7 +380,11 @@ export default function OwnerBookingsPage() {
                       )}
                     </td>
                     <td className="px-3 py-3">
-                      {b.paymentStatus === "paid" ? (
+                      {b.status === "cancelled" || b.status === "rejected" ? (
+                        <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-black text-slate-500 dark:bg-slate-800 dark:text-slate-400">
+                          Cancelled — no collection
+                        </span>
+                      ) : b.paymentStatus === "paid" ? (
                         <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-[11px] font-black text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300">
                           PAID ✓ {b.gatewayTxnId ? `• ${b.gatewayTxnId.slice(0, 10)}` : ""}
                         </span>
@@ -429,10 +433,12 @@ export default function OwnerBookingsPage() {
                             list, at a glance, which ones are still fixable and
                             how long is left. The countdown owns its own clock
                             so ticking it doesn't re-render the whole table. */}
-                        <SettleAmendButton
-                          settledAt={b.settledAt}
-                          onOpen={() => setLedgerFor(b)}
-                        />
+                        {b.status !== "cancelled" && b.status !== "rejected" && (
+                          <SettleAmendButton
+                            settledAt={b.settledAt}
+                            onOpen={() => setLedgerFor(b)}
+                          />
+                        )}
                         {b.status === "pending" && (
                           <>
                             <button

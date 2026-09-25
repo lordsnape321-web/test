@@ -398,7 +398,11 @@ export default function OwnerBookings() {
                 </View>
 
                 <View style={[styles.colPay, !xl && styles.stackColumn]}>
-                  {b.paymentStatus === "paid" ? (
+                  {b.status === "cancelled" || b.status === "rejected" ? (
+                    <View style={[styles.chip, { backgroundColor: isDark ? "#1E293B" : "#F1F5F9" }]}>
+                      <Text style={[styles.chipText, { color: c.textMuted }]}>Cancelled — no collection</Text>
+                    </View>
+                  ) : b.paymentStatus === "paid" ? (
                     <View style={[styles.chip, { backgroundColor: "rgba(16,185,129,0.15)" }]}>
                       <Text style={[styles.chipText, { color: "#047857" }]}>
                         PAID ✓ {b.gatewayTxnId ? `• ${b.gatewayTxnId.slice(0, 10)}` : ""}
@@ -445,7 +449,9 @@ export default function OwnerBookings() {
                 </View>
 
                 <View style={[styles.colActions, !xl && styles.stackColumn]}>
-                  <SettleAmendButton settledAt={b.settledAt ?? null} onOpen={() => setLedgerFor(b)} />
+                  {b.status !== "cancelled" && b.status !== "rejected" ? (
+                    <SettleAmendButton settledAt={b.settledAt ?? null} onOpen={() => setLedgerFor(b)} />
+                  ) : null}
                   {b.status === "pending" ? (
                     <>
                       <Pressable

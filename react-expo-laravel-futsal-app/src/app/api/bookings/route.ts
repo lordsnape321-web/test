@@ -149,8 +149,12 @@ export async function GET(req: Request) {
         b.advancePaymentRequired && b.advancePaymentStatus === "paid"
           ? Math.min(Math.max(0, Number(b.advancePaymentAmount) || 0), totals.paid)
           : 0;
+      const bookingIsClosed = b.status === "cancelled" || b.status === "rejected";
       const advanceReceivableAmount =
-        b.advancePaymentRequired && b.advancePaymentStatus !== "paid" && b.advancePaymentStatus !== "expired"
+        !bookingIsClosed &&
+        b.advancePaymentRequired &&
+        b.advancePaymentStatus !== "paid" &&
+        b.advancePaymentStatus !== "expired"
           ? Math.max(0, Number(b.advancePaymentAmount) || 0)
           : 0;
       const paymentSummary = {

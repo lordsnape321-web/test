@@ -43,6 +43,9 @@ type Booking = {
   status: string;
   paymentStatus: string;
   paymentMethod: string;
+  advancePaymentRequired?: boolean;
+  advancePaymentAmount?: number;
+  advancePaymentStatus?: string;
   paidAmount?: number;
   paymentSummary?: {
     received: number;
@@ -70,6 +73,22 @@ type Booking = {
     competitionStatus?: string;
   } | null;
 };
+
+function advanceReceivableFor(b: Booking) {
+  const requestedAndUnpaid =
+    b.status !== "cancelled" &&
+    b.status !== "rejected" &&
+    b.advancePaymentRequired &&
+    b.advancePaymentStatus !== "paid" &&
+    b.advancePaymentStatus !== "expired"
+      ? Math.max(0, Number(b.advancePaymentAmount) || 0)
+      : 0;
+  return Math.max(
+    0,
+    Number(b.paymentSummary?.advanceReceivable ?? b.advanceReceivableAmount ?? 0) || 0,
+    requestedAndUnpaid,
+  );
+}
 
 export default function OwnerOverviewPage() {
   const { user } = useUser();
@@ -133,7 +152,7 @@ export default function OwnerOverviewPage() {
     [bookings, myVenueIds]
   );
 
-  const pending = myBookings.filter((b) => b.status === "pending");
+  const pending = myBookings.filter((b) => b.status === "pending" || advanceReceivableFor(b) > 0);
   const confirmed = myBookings.filter((b) => b.status === "confirmed");
   const revenue = myBookings
     .filter((b) => b.status === "confirmed" || b.status === "completed")
@@ -143,10 +162,7 @@ export default function OwnerOverviewPage() {
     (sum, b) => sum + (b.paymentSummary?.advanceReceived ?? b.advanceReceivedAmount ?? 0),
     0,
   );
-  const advanceReceivable = activeMoney.reduce(
-    (sum, b) => sum + (b.paymentSummary?.advanceReceivable ?? b.advanceReceivableAmount ?? 0),
-    0,
-  );
+  const advanceReceivable = myBookings.reduce((sum, b) => sum + advanceReceivableFor(b), 0);
   const receivable = activeMoney.reduce(
     (sum, b) => sum + (b.paymentSummary?.receivable ?? b.amountReceivable ?? Math.max(0, b.totalPrice - (b.paidAmount ?? 0))),
     0,
@@ -360,12 +376,17 @@ export default function OwnerOverviewPage() {
                         <p className="truncate text-xs text-slate-500 dark:text-slate-400">
                           {b.venue?.name} • {b.court?.name} • {prettyDate(b.date)} {formatTime12(b.startTime)}
                         </p>
+                        {advanceReceivableFor(b) > 0 && (
+                          <p className="mt-1 text-[11px] font-black text-orange-700 dark:text-orange-300">
+                            💳 Advance receivable {formatNPR(advanceReceivableFor(b))} • awaiting player
+                          </p>
+                        )}
                       </div>
                       <button
                         onClick={() => decide(b.id, true)}
-                        disabled={acting === b.id}
+                        disabled={acting === b.id || advanceReceivableFor(b) > 0}
+                        title={advanceReceivableFor(b) > 0 ? "Awaiting the requested advance" : "Accept"}
                         className="grid h-9 w-9 place-items-center rounded-xl bg-emerald-500 text-white transition hover:bg-emerald-600 disabled:opacity-50"
-                        title="Accept"
                       >
                         <Check className="h-4 w-4" strokeWidth={3} />
                       </button>

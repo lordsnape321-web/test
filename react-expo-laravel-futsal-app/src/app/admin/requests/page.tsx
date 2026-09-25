@@ -88,6 +88,22 @@ type Booking = {
   playerStats?: PlayerStats;
 };
 
+function advanceReceivableFor(b: Booking) {
+  const requestedAndUnpaid =
+    b.status !== "cancelled" &&
+    b.status !== "rejected" &&
+    b.advancePaymentRequired &&
+    b.advancePaymentStatus !== "paid" &&
+    b.advancePaymentStatus !== "expired"
+      ? Math.max(0, Number(b.advancePaymentAmount) || 0)
+      : 0;
+  return Math.max(
+    0,
+    Number(b.paymentSummary?.advanceReceivable ?? b.advanceReceivableAmount ?? 0) || 0,
+    requestedAndUnpaid,
+  );
+}
+
 export default function OwnerRequestsPage() {
   const { user } = useUser();
   const [bookings, setBookings] = useState<Booking[]>([]);
@@ -145,15 +161,18 @@ export default function OwnerRequestsPage() {
     !b.competition?.competitionStatus ||
     b.competition.competitionStatus === "none";
   const visibleToOwner = mine.filter(releasedToOwner);
-  const pending = visibleToOwner.filter((b) => b.status === "pending");
-  const decided = visibleToOwner.filter((b) => b.status === "confirmed" || b.status === "rejected");
+  // Keep an unpaid owner-requested advance visible in Pending even if an old
+  // booking row was already marked confirmed. It is still actionable money,
+  // not a completed request.
+  const pending = visibleToOwner.filter((b) => b.status === "pending" || advanceReceivableFor(b) > 0);
+  const decided = visibleToOwner.filter(
+    (b) => (b.status === "confirmed" || b.status === "rejected") && advanceReceivableFor(b) === 0,
+  );
   const list = tab === "pending" ? pending : decided;
   const advanceReceivedTotal = mine
     .filter((b) => b.status !== "cancelled" && b.status !== "rejected")
     .reduce((sum, b) => sum + (b.paymentSummary?.advanceReceived ?? b.advanceReceivedAmount ?? 0), 0);
-  const advanceReceivableTotal = mine
-    .filter((b) => b.status !== "cancelled" && b.status !== "rejected")
-    .reduce((sum, b) => sum + (b.paymentSummary?.advanceReceivable ?? b.advanceReceivableAmount ?? 0), 0);
+  const advanceReceivableTotal = mine.reduce((sum, b) => sum + advanceReceivableFor(b), 0);
   const receivableTotal = mine
     .filter((b) => b.status !== "cancelled" && b.status !== "rejected")
     .reduce((sum, b) => sum + (b.paymentSummary?.receivable ?? b.amountReceivable ?? Math.max(0, b.totalPrice - (b.paidAmount ?? 0))), 0);
@@ -285,7 +304,7 @@ export default function OwnerRequestsPage() {
       ) : (
         <div className="mt-5 space-y-3">
           {list.map((b) => {
-            const waitingForAdvance = b.advancePaymentRequired && b.advancePaymentStatus !== "paid";
+            const waitingForAdvance = advanceReceivableFor(b) > 0;
             return (
             <div
               key={b.id}
@@ -352,11 +371,15 @@ export default function OwnerRequestsPage() {
                           : " • score due"}
                       </span>
                     )}
-                    {b.advancePaymentRequired && (
+                    {advanceReceivableFor(b) > 0 ? (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-orange-500/15 px-2 py-0.5 text-[10px] font-black text-orange-700 dark:text-orange-300">
+                        💳 Advance receivable {formatNPR(advanceReceivableFor(b))} • awaiting player
+                      </span>
+                    ) : b.advancePaymentRequired ? (
                       <span className="inline-flex items-center gap-1 rounded-full bg-sky-500/15 px-2 py-0.5 text-[10px] font-black text-sky-700 dark:text-sky-300">
                         💳 Advance {formatNPR(b.advancePaymentAmount)} • {paymentStatusLabel(b.advancePaymentStatus)}
                       </span>
-                    )}
+                    ) : null}
                     {b.depositRequired && (
                       <span
                         className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-black ${
@@ -397,7 +420,7 @@ export default function OwnerRequestsPage() {
                       <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-[11px] font-bold text-emerald-900 dark:text-emerald-100">
                         <span>Advance requested {formatNPR(b.paymentSummary.advanceRequested)}</span>
                         <span>Advance received {formatNPR(b.paymentSummary.advanceReceived)}</span>
-                        <span>Advance receivable {formatNPR(b.paymentSummary.advanceReceivable)}</span>
+                        <span>Advance receivable {formatNPR(advanceReceivableFor(b))}</span>
                         <span>Total received {formatNPR(b.paymentSummary.received)}</span>
                         <span>Receivable {formatNPR(b.paymentSummary.receivable)}</span>
                       </div>
@@ -500,7 +523,7 @@ export default function OwnerRequestsPage() {
                     )}
                     {formatNPR(b.totalPrice)}
                   </p>
-                  {tab === "pending" ? (
+                  {tab === "pending" && b.status === "pending" ? (
                     <div className="flex gap-2">
                       <button
                         onClick={() => decide(b.id, true)}
@@ -519,6 +542,10 @@ export default function OwnerRequestsPage() {
                         <X className="h-4 w-4" strokeWidth={3} /> Decline
                       </button>
                     </div>
+                  ) : tab === "pending" && advanceReceivableFor(b) > 0 ? (
+                    <p className="text-xs font-black text-orange-600 dark:text-orange-300">
+                      Advance payment pending
+                    </p>
                   ) : (
                     <p className="text-xs font-bold text-slate-400 dark:text-slate-500">
                       {b.createdAt ? new Date(b.createdAt).toLocaleDateString() : ""}

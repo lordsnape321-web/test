@@ -34,6 +34,22 @@ import { formatNPR, formatTime12, prettyDate } from "@/lib/futsal";
 import type { Booking, Venue } from "@/lib/types";
 import { colors, fontSize, radius, space } from "@/theme";
 
+function advanceReceivableFor(b: Booking) {
+  const requestedAndUnpaid =
+    b.status !== "cancelled" &&
+    b.status !== "rejected" &&
+    b.advancePaymentRequired &&
+    b.advancePaymentStatus !== "paid" &&
+    b.advancePaymentStatus !== "expired"
+      ? Math.max(0, Number(b.advancePaymentAmount) || 0)
+      : 0;
+  return Math.max(
+    0,
+    Number(b.paymentSummary?.advanceReceivable ?? b.advanceReceivableAmount ?? 0) || 0,
+    requestedAndUnpaid,
+  );
+}
+
 /**
  * Owner Studio overview — KPI cards, awaiting-approval preview, four charts,
  * venues strip, and the league/score-desk entry points (admin/page.tsx).
@@ -84,7 +100,7 @@ export default function OwnerHome() {
     [bookings, myVenueIds],
   );
 
-  const pending = myBookings.filter((b) => b.status === "pending");
+  const pending = myBookings.filter((b) => b.status === "pending" || advanceReceivableFor(b) > 0);
   const confirmed = myBookings.filter((b) => b.status === "confirmed");
   const revenue = myBookings
     .filter((b) => b.status === "confirmed" || b.status === "completed")
@@ -94,10 +110,7 @@ export default function OwnerHome() {
     (sum, b) => sum + (b.paymentSummary?.advanceReceived ?? b.advanceReceivedAmount ?? 0),
     0,
   );
-  const advanceReceivable = activeMoney.reduce(
-    (sum, b) => sum + (b.paymentSummary?.advanceReceivable ?? b.advanceReceivableAmount ?? 0),
-    0,
-  );
+  const advanceReceivable = myBookings.reduce((sum, b) => sum + advanceReceivableFor(b), 0);
   const receivable = activeMoney.reduce(
     (sum, b) => sum + (b.paymentSummary?.receivable ?? b.amountReceivable ?? Math.max(0, b.totalPrice - (b.paidAmount ?? 0))),
     0,
@@ -337,11 +350,16 @@ export default function OwnerHome() {
                     {b.venue?.name} • {b.court?.name} • {prettyDate(b.date)}{" "}
                     {formatTime12(b.startTime)}
                   </Text>
+                  {advanceReceivableFor(b) > 0 ? (
+                    <Text style={[styles.approveAdvance, { color: isDark ? "#FDBA74" : "#C2410C" }]} numberOfLines={1}>
+                      💳 Advance receivable {formatNPR(advanceReceivableFor(b))} • awaiting player
+                    </Text>
+                  ) : null}
                 </View>
                 <Pressable
                   onPress={() => void decide(b.id, true)}
-                  disabled={acting === b.id}
-                  style={[styles.approveBtn, { opacity: acting === b.id ? 0.5 : 1 }]}
+                  disabled={acting === b.id || advanceReceivableFor(b) > 0}
+                  style={[styles.approveBtn, { opacity: acting === b.id || advanceReceivableFor(b) > 0 ? 0.5 : 1 }]}
                   accessibilityLabel="Accept"
                 >
                   <Check size={16} color="#FFFFFF" strokeWidth={3} />
@@ -529,6 +547,7 @@ const styles = StyleSheet.create({
   grow: { flex: 1, minWidth: 0 },
   approveName: { fontSize: fontSize.sm, fontWeight: "800" },
   approveMeta: { fontSize: fontSize.xs, marginTop: 2 },
+  approveAdvance: { fontSize: 10, fontWeight: "900", marginTop: 3 },
   approveBtn: {
     width: 36,
     height: 36,
