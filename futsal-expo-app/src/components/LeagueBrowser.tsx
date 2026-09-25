@@ -478,10 +478,10 @@ const styles = StyleSheet.create({
   filterHint: { fontSize: 10, fontWeight: "600", marginTop: 1 },
   filterShown: { fontSize: 10, fontWeight: "900", textTransform: "uppercase", letterSpacing: 0.5 },
   filterRail: { gap: space["2"], paddingRight: space["2"] },
-  filterChip: { minWidth: 140, minHeight: 58, flexShrink: 0, flexDirection: "row", alignItems: "center", gap: space["2"], borderWidth: 1, borderRadius: radius.xl, paddingHorizontal: space["2.5"], paddingVertical: space["2"] },
+  filterChip: { minHeight: 58, flexShrink: 0, flexDirection: "row", alignItems: "center", gap: space["2"], borderWidth: 1, borderRadius: radius.xl, paddingHorizontal: space["2.5"], paddingVertical: space["2"] },
   filterChipMark: { width: 26, height: 26, borderRadius: radius.lg, alignItems: "center", justifyContent: "center" },
   filterChipMarkText: { fontSize: 13, fontWeight: "900" },
-  filterChipCopy: { flex: 1, minWidth: 0 },
+  filterChipCopy: { flexShrink: 0 },
   filterChipText: { fontSize: 11, fontWeight: "900", lineHeight: 14 },
   filterChipHint: { fontSize: 9, fontWeight: "600", lineHeight: 12, marginTop: 2 },
   ownerBlurb: {

@@ -349,7 +349,7 @@ function MatchesInner() {
                       key={f}
                       onClick={() => setFilter(f)}
                       aria-pressed={active}
-                      className={`flex min-h-[3.75rem] min-w-[9rem] shrink-0 snap-start items-center gap-2 rounded-2xl border px-3 py-2 text-left transition ${
+                      className={`flex min-h-[3.75rem] w-max shrink-0 snap-start items-center gap-2 rounded-2xl border px-3 py-2 text-left transition ${
                         active
                           ? "border-emerald-600 bg-emerald-600 text-white shadow-sm"
                           : "border-stone-100 bg-stone-50/80 text-stone-700 hover:border-emerald-200 hover:bg-emerald-50 dark:border-white/5 dark:bg-white/[0.03] dark:text-slate-200 dark:hover:border-emerald-500/30 dark:hover:bg-emerald-500/10"
