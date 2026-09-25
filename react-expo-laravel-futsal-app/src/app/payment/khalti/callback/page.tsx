@@ -18,6 +18,7 @@ function Inner() {
       const status = params.get("status") ?? "";
       const txn = params.get("transaction_id") ?? "";
       const bid = params.get("bookingId") ? Number(params.get("bookingId")) : null;
+      const teamPaymentId = params.get("teamPaymentId") ? Number(params.get("teamPaymentId")) : null;
       if (bid) setBookingId(bid);
       if (!pidx) {
         setState("fail");
@@ -33,7 +34,13 @@ function Inner() {
         const res = await apiFetch("/api/payments/khalti/verify", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ pidx, bookingId: bid, transaction_id: txn, status }),
+          body: JSON.stringify({
+            pidx,
+            bookingId: bid,
+            teamPaymentId: teamPaymentId ?? undefined,
+            transaction_id: txn,
+            status,
+          }),
         });
         const j = await res.json();
         if (!res.ok || !j.ok) throw new Error(j.error || "Verification failed");
@@ -80,7 +87,7 @@ function Inner() {
             <span className="mx-auto grid h-16 w-16 place-items-center rounded-full bg-red-500 shadow-lg">
               <XCircle className="h-8 w-8 text-white" />
             </span>
-            <h1 className="mt-4 text-xl font-black">Couldn't verify 😢</h1>
+            <h1 className="mt-4 text-xl font-black">Couldn&apos;t verify 😢</h1>
             <p className="mt-2 text-sm text-stone-500">{msg}</p>
             <div className="mt-5 grid grid-cols-2 gap-2">
               <Link href="/bookings" className="rounded-2xl bg-emerald-600 py-3 text-sm font-black text-white">

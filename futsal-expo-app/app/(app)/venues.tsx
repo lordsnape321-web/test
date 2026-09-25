@@ -1,8 +1,8 @@
-import { Picker } from "@react-native-picker/picker";
 import Slider from "@react-native-community/slider";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams } from "expo-router";
 import {
   Banknote,
+  ChevronDown,
   HeartHandshake,
   MapPin,
   Search,
@@ -12,6 +12,7 @@ import {
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   FlatList,
+  Modal,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -39,34 +40,57 @@ import { colors, fontSize, radius, space } from "@/theme";
  * predicates and sort orders as the original so the two apps return the same
  * list for the same inputs.
  *
- * The web `<select>`s become @react-native-picker and the range input becomes
- * @react-native-community/slider, since RN has no native equivalent of either.
+ * The web `<select>`s become themed modal menus so every city and sort option
+ * stays readable on narrow screens and in dark mode. The range input becomes
+ * @react-native-community/slider, since RN has no native equivalent.
  */
+type OpenSelect = "city" | "sort" | null;
+
+type SelectOption = {
+  value: string;
+  label: string;
+};
+
 export default function VenuesScreen() {
-  const { colors: c } = useTheme();
+  const { colors: c, isDark } = useTheme();
   const { user } = useAuth();
-  const router = useRouter();
+  const { q: qParam, city: cityParam } = useLocalSearchParams<{ q?: string; city?: string }>();
   const bp = useBreakpoints();
 
   const [venues, setVenues] = useState<Venue[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [q, setQ] = useState("");
+  const [q, setQ] = useState(qParam ?? "");
   const [searchError, setSearchError] = useState("");
 
-  const homeCity = (user as { defaultCity?: string } | null)?.defaultCity ?? "All Cities";
-  const [city, setCity] = useState("All Cities");
+  const homeCity = user?.defaultCity ?? "All Cities";
+  const initialCity = cityParam && CITY_OPTIONS.includes(cityParam) ? cityParam : "All Cities";
+  const [city, setCity] = useState(initialCity);
+  const [cityTouched, setCityTouched] = useState(Boolean(cityParam));
   const [sort, setSort] = useState("rating");
   const [maxPrice, setMaxPrice] = useState(3000);
+  const [openSelect, setOpenSelect] = useState<OpenSelect>(null);
+
+  const cityOptions: SelectOption[] = CITY_OPTIONS.map((option) => ({
+    value: option,
+    label: option === homeCity && option !== "All Cities" ? `${option} 🏠` : option,
+  }));
+  const sortOptions: SelectOption[] = [
+    { value: "rating", label: "Most loved" },
+    { value: "price-low", label: "Price: low → high" },
+    { value: "price-high", label: "Price: high → low" },
+  ];
 
   // The web version seeds the city from the URL, then falls back to home city.
   useEffect(() => {
-    if (homeCity && CITY_OPTIONS.includes(homeCity)) setCity(homeCity);
-  }, [homeCity]);
+    if (!cityTouched && homeCity && CITY_OPTIONS.includes(homeCity)) setCity(homeCity);
+  }, [cityTouched, homeCity]);
 
   const load = useCallback(async () => {
     try {
       setVenues(await fetchVenues());
+    } catch {
+      // Keep the filters and empty state usable while the API is offline.
     } finally {
       setLoading(false);
     }
@@ -115,6 +139,7 @@ export default function VenuesScreen() {
         keyExtractor={(item) => String(item.id)}
         numColumns={cols}
         columnWrapperStyle={cols > 1 ? { gap: space[4] } : undefined}
+        ItemSeparatorComponent={() => <View style={styles.itemSeparator} />}
         refreshing={refreshing}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={c.primary} />
@@ -158,38 +183,34 @@ export default function VenuesScreen() {
                 />
               </View>
 
-              <View style={styles.pickerRow}>
-                <View style={[styles.field, styles.pickerField, { backgroundColor: c.inset }]}>
-                  <MapPin size={16} color={c.textFaint} />
-                  <Picker
-                    selectedValue={city}
-                    onValueChange={setCity}
-                    style={[styles.picker, { color: c.text }]}
-                    dropdownIconColor={c.textMuted}
-                  >
-                    {CITY_OPTIONS.map((opt) => (
-                      <Picker.Item
-                        key={opt}
-                        label={opt === homeCity && opt !== "All Cities" ? `${opt} 🏠` : opt}
-                        value={opt}
-                      />
-                    ))}
-                  </Picker>
-                </View>
-
-                <View style={[styles.field, styles.pickerField, { backgroundColor: c.inset }]}>
-                  <SlidersHorizontal size={16} color={c.textFaint} />
-                  <Picker
-                    selectedValue={sort}
-                    onValueChange={setSort}
-                    style={[styles.picker, { color: c.text }]}
-                    dropdownIconColor={c.textMuted}
-                  >
-                    <Picker.Item label="Most loved" value="rating" />
-                    <Picker.Item label="Price: low → high" value="price-low" />
-                    <Picker.Item label="Price: high → low" value="price-high" />
-                  </Picker>
-                </View>
+              <View style={[styles.pickerRow, bp.sm ? styles.pickerRowWide : null]}>
+                <FilterSelect
+                  label="City"
+                  icon={MapPin}
+                  value={city}
+                  options={cityOptions}
+                  open={openSelect === "city"}
+                  onOpen={() => setOpenSelect("city")}
+                  onClose={() => setOpenSelect(null)}
+                  onChange={(next) => {
+                    setCity(next);
+                    setCityTouched(true);
+                  }}
+                  colors={c}
+                  isDark={isDark}
+                />
+                <FilterSelect
+                  label="Sort courts"
+                  icon={SlidersHorizontal}
+                  value={sort}
+                  options={sortOptions}
+                  open={openSelect === "sort"}
+                  onOpen={() => setOpenSelect("sort")}
+                  onClose={() => setOpenSelect(null)}
+                  onChange={setSort}
+                  colors={c}
+                  isDark={isDark}
+                />
               </View>
 
               {searchError ? <Text style={styles.errorText}>{searchError}</Text> : null}
@@ -217,36 +238,42 @@ export default function VenuesScreen() {
             </View>
 
             {/* City pills */}
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              style={styles.pillRail}
-              contentContainerStyle={styles.pillRailContent}
-            >
-              {CITY_OPTIONS.map((opt) => {
-                const active = city === opt;
-                return (
-                  <Pressable
-                    key={opt}
-                    onPress={() => setCity(opt)}
-                    accessibilityRole="button"
-                    accessibilityState={{ selected: active }}
-                    style={[
-                      styles.pill,
-                      active
-                        ? { backgroundColor: colors.emerald600 }
-                        : { backgroundColor: c.surface, borderColor: c.border, borderWidth: 1 },
-                    ]}
-                  >
-                    <Text
-                      style={[styles.pillText, { color: active ? "#FFFFFF" : c.textMuted }]}
+            <View style={styles.citySection}>
+              <Text style={[styles.citySectionLabel, { color: c.textFaint }]}>Browse by city</Text>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                style={styles.pillRail}
+                contentContainerStyle={styles.pillRailContent}
+              >
+                {CITY_OPTIONS.map((opt) => {
+                  const active = city === opt;
+                  return (
+                    <Pressable
+                      key={opt}
+                      onPress={() => {
+                        setCity(opt);
+                        setCityTouched(true);
+                      }}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: active }}
+                      style={[
+                        styles.pill,
+                        active
+                          ? { backgroundColor: colors.emerald600 }
+                          : { backgroundColor: c.surface, borderColor: c.border, borderWidth: 1 },
+                      ]}
                     >
-                      {opt}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </ScrollView>
+                      <Text
+                        style={[styles.pillText, { color: active ? "#FFFFFF" : c.textMuted }]}
+                      >
+                        {opt}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </ScrollView>
+            </View>
           </>
         }
         ListEmptyComponent={
@@ -271,9 +298,101 @@ export default function VenuesScreen() {
   );
 }
 
+function FilterSelect({
+  label,
+  icon: Icon,
+  value,
+  options,
+  open,
+  onOpen,
+  onClose,
+  onChange,
+  colors: c,
+  isDark,
+}: {
+  label: string;
+  icon: typeof MapPin;
+  value: string;
+  options: readonly SelectOption[];
+  open: boolean;
+  onOpen: () => void;
+  onClose: () => void;
+  onChange: (value: string) => void;
+  colors: { inset: string; text: string; textMuted: string; textFaint: string; border: string; surface: string; activeSoft: string };
+  isDark: boolean;
+}) {
+  const selected = options.find((option) => option.value === value) ?? options[0];
+  const handleChange = (next: string) => {
+    onChange(next);
+    onClose();
+  };
+
+  return (
+    <>
+      <Pressable
+        onPress={onOpen}
+        accessibilityRole="button"
+        accessibilityLabel={label}
+        accessibilityState={{ expanded: open }}
+        style={[styles.field, styles.pickerField, styles.selectButton, { backgroundColor: c.inset }]}
+      >
+        <Icon size={16} color={c.textFaint} />
+        <Text style={[styles.selectValue, { color: c.text }]}>{selected?.label ?? "Select"}</Text>
+        <ChevronDown size={17} color={c.textMuted} style={styles.selectChevron} />
+      </Pressable>
+
+      <Modal
+        visible={open}
+        transparent
+        animationType="fade"
+        statusBarTranslucent
+        onRequestClose={onClose}
+      >
+        <Pressable style={styles.modalBackdrop} onPress={onClose}>
+          <View
+            style={[styles.optionSheet, { backgroundColor: c.surface, borderColor: c.border }]}
+            onStartShouldSetResponder={() => true}
+          >
+            <View style={[styles.optionHeader, { borderBottomColor: c.border }]}>
+              <Text style={[styles.optionHeaderText, { color: c.text }]}>{label}</Text>
+              <Pressable onPress={onClose} accessibilityLabel={`Close ${label} menu`} hitSlop={8}>
+                <Text style={{ color: c.textMuted, fontSize: 24, lineHeight: 24 }}>×</Text>
+              </Pressable>
+            </View>
+            <ScrollView style={styles.optionList} contentContainerStyle={{ paddingBottom: space[2] }}>
+              {options.map((option) => {
+                const selectedOption = option.value === value;
+                return (
+                  <Pressable
+                    key={option.value}
+                    onPress={() => handleChange(option.value)}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: selectedOption }}
+                    style={[
+                      styles.option,
+                      { borderBottomColor: c.border },
+                      selectedOption ? { backgroundColor: c.activeSoft } : null,
+                    ]}
+                  >
+                    <Text style={[styles.optionText, { color: c.text }]}>{option.label}</Text>
+                    {selectedOption ? (
+                      <Text style={[styles.optionCheck, { color: isDark ? colors.emerald300 : colors.emerald700 }]}>✓</Text>
+                    ) : null}
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+          </View>
+        </Pressable>
+      </Modal>
+    </>
+  );
+}
+
 const styles = StyleSheet.create({
   flex: { flex: 1 },
   listContent: { padding: space[4], paddingBottom: space[10] },
+  itemSeparator: { height: space[4] },
 
   eyebrowRow: { flexDirection: "row", alignItems: "center", gap: 6 },
   eyebrow: {
@@ -301,9 +420,20 @@ const styles = StyleSheet.create({
     minHeight: 48,
   },
   fieldInput: { flex: 1, fontSize: fontSize.base, fontWeight: "600", paddingVertical: 0 },
-  pickerRow: { flexDirection: "row", gap: space[2], marginTop: space[2] },
-  pickerField: { flex: 1, paddingRight: 0 },
-  picker: { flex: 1, marginLeft: -space[2], height: 44 },
+  pickerRow: { flexDirection: "column", gap: space[2], marginTop: space[2] },
+  pickerRowWide: { flexDirection: "row" },
+  pickerField: { flex: 1, width: "100%", minWidth: 0 },
+  selectButton: {
+    minHeight: 50,
+    width: "100%",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: space[2],
+    borderRadius: radius["2xl"],
+    paddingHorizontal: space[4],
+  },
+  selectValue: { flex: 1, minWidth: 0, color: colors.stone900, fontSize: fontSize.base, fontWeight: "700" },
+  selectChevron: { flexShrink: 0 },
 
   errorText: { marginTop: 6, fontSize: fontSize.xs, fontWeight: "700", color: colors.red500 },
 
@@ -316,16 +446,57 @@ const styles = StyleSheet.create({
   priceLabelRow: { flexDirection: "row", alignItems: "center", gap: space[2] },
   priceLabel: { fontSize: fontSize.sm, fontWeight: "700" },
 
-  pillRail: { flexGrow: 0, marginTop: space[4] },
-  pillRailContent: { gap: space[2], paddingRight: space[4] },
+  citySection: { width: "100%", marginTop: space[4], marginBottom: space[2] },
+  citySectionLabel: { fontSize: fontSize.xs, fontWeight: "900", textTransform: "uppercase", letterSpacing: 1.2, marginBottom: space[2] },
+  pillRail: { width: "100%", flexGrow: 0 },
+  pillRailContent: { gap: space[2], paddingRight: space[4], paddingVertical: 2, alignItems: "center" },
   pill: {
     borderRadius: radius.full,
     paddingHorizontal: space[4],
     paddingVertical: space[2],
-    minHeight: 36,
+    minHeight: 38,
     justifyContent: "center",
   },
   pillText: { fontSize: fontSize.sm, fontWeight: "900" },
+
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(2,6,23,0.68)",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: space[4],
+  },
+  optionSheet: {
+    width: "100%",
+    maxWidth: 460,
+    maxHeight: "82%",
+    borderWidth: 1,
+    borderRadius: radius["3xl"],
+    overflow: "hidden",
+    shadowColor: "#000",
+    shadowOpacity: 0.28,
+    shadowRadius: 24,
+    shadowOffset: { width: 0, height: 12 },
+    elevation: 14,
+  },
+  optionHeader: {
+    minHeight: 58,
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: space[5],
+    borderBottomWidth: 1,
+  },
+  optionHeaderText: { flex: 1, fontSize: fontSize.lg, fontWeight: "900" },
+  optionList: { flexGrow: 0 },
+  option: {
+    minHeight: 54,
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: space[5],
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  optionText: { flex: 1, minWidth: 0, fontSize: fontSize.base, fontWeight: "700" },
+  optionCheck: { fontSize: fontSize.lg, fontWeight: "900" },
 
   empty: {
     marginTop: space[10],

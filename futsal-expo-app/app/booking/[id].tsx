@@ -1,15 +1,9 @@
-import { useLocalSearchParams } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useCallback, useEffect, useState } from "react";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Button, Card, Notice, Pill, Spinner } from "@/components/ui";
-import {
-  fetchBooking,
-  fetchLedger,
-  initiateKhalti,
-  verifyEsewa,
-  verifyKhalti,
-} from "@/api";
+import { fetchBooking, fetchLedger } from "@/api";
 import { useAuth } from "@/context/AuthContext";
 import { useTheme } from "@/context/ThemeContext";
 import { ApiError } from "@/lib/api";
@@ -32,6 +26,7 @@ import { fontSize, space } from "@/theme";
  */
 export default function BookingDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
+  const router = useRouter();
   const bookingId = Number(id);
   const { colors } = useTheme();
   const { user } = useAuth();
@@ -75,29 +70,24 @@ export default function BookingDetail() {
    * check skipped, ledger row appended, statuses updated, audit trail written.
    * Swapping in a real gateway SDK later changes only this function.
    */
-  async function pay(method: "esewa" | "khalti") {
+  function pay(method: "esewa" | "khalti") {
     setBusy(method);
     setError(null);
     setSuccess(null);
-    try {
-      if (method === "esewa") {
-        await verifyEsewa(bookingId, true);
-      } else {
-        const init = await initiateKhalti(bookingId);
-        const pidx = typeof init.pidx === "string" ? init.pidx : "mock-pidx";
-        await verifyKhalti(bookingId, pidx, true);
-      }
-      setSuccess(
-        method === "esewa" ? "eSewa payment recorded ✅" : "Khalti payment recorded ✅",
-      );
-      await load();
-    } catch (e) {
-      setError(
-        e instanceof ApiError ? e.message : "Payment failed. Nothing was charged — try again.",
-      );
-    } finally {
-      setBusy(null);
-    }
+    // Keep the gateway step visible on native too. The mock screens call the
+    // same verify endpoints, then return through the success/callback route.
+    const teamShare = booking?.teamPayments?.find((share) => share.userId === user?.id);
+    const amount = teamShare && teamShare.paymentStatus !== "paid"
+      ? teamShare.amountDue
+      : booking?.advancePaymentRequired && booking.advancePaymentStatus !== "paid"
+        ? booking.advancePaymentAmount ?? 0
+        : Math.max(0, ledger?.totals.balance ?? 0);
+    const teamQuery = teamShare && teamShare.paymentStatus !== "paid" ? `&teamPaymentId=${teamShare.id}&userId=${user?.id ?? 0}` : "";
+    const path = method === "esewa"
+      ? `/payment/esewa/mock?bookingId=${bookingId}&amount=${encodeURIComponent(String(amount))}${teamQuery}`
+      : `/payment/khalti/mock?bookingId=${bookingId}&amount=${encodeURIComponent(String(amount))}${teamQuery}&pidx=mock-pidx`;
+    setBusy(null);
+    router.push(path as never);
   }
 
   if (loading) return <Spinner label="Loading booking…" />;
@@ -114,7 +104,21 @@ export default function BookingDetail() {
 
   const { totals, window: settleWin } = ledger;
   const balance = totals.balance;
-  const canPay = balance > 0 && booking.status !== "cancelled";
+  const teamShare = booking.teamPayments?.find((share) => share.userId === user?.id) ?? null;
+  const advanceDue = booking.advancePaymentRequired && booking.advancePaymentStatus !== "paid" ? booking.advancePaymentAmount ?? 0 : 0;
+  const competitionWaiting = booking.competition?.competitionStatus === "pending";
+  const payAmount = teamShare && teamShare.paymentStatus !== "paid"
+    ? teamShare.amountDue
+    : advanceDue > 0
+      ? advanceDue
+      : balance;
+  const canPay =
+    booking.status !== "cancelled" &&
+    booking.status !== "rejected" &&
+    !competitionWaiting &&
+    (teamShare
+      ? teamShare.paymentStatus !== "paid" && ["eSewa", "Khalti"].includes(teamShare.paymentMethod)
+      : balance > 0);
 
   return (
     <SafeAreaView style={[styles.flex, { backgroundColor: colors.bg }]} edges={["bottom"]}>
@@ -137,6 +141,8 @@ export default function BookingDetail() {
 
         {error ? <Notice message={error} /> : null}
         {success ? <Notice message={success} tone="success" /> : null}
+        {advanceDue > 0 ? <Notice message={`Venue advance requested: ${formatNPR(advanceDue)}. Pay this first through the selected gateway.`} /> : null}
+        {teamShare ? <Notice message={`Team share: ${formatNPR(teamShare.amountDue)} • ${teamShare.paymentStatus === "paid" ? `paid via ${teamShare.paymentMethod}` : teamShare.paymentMethod ? `chosen method: ${teamShare.paymentMethod}` : "choose a payment method from My Bookings"}`} /> : null}
 
         {/* ── ledger ───────────────────────────────────────────────── */}
         <Card style={{ marginTop: space["4"] }}>
@@ -198,22 +204,43 @@ export default function BookingDetail() {
         {canPay ? (
           <>
             <Text style={[styles.section, { color: colors.text }]}>
-              Pay {formatNPR(balance)}
+              Pay {formatNPR(payAmount)}
             </Text>
-            <Button
-              label="Pay with eSewa"
-              onPress={() => pay("esewa")}
-              loading={busy === "esewa"}
-              disabled={busy !== null}
-            />
-            <Button
-              label="Pay with Khalti"
-              variant="secondary"
-              onPress={() => pay("khalti")}
-              loading={busy === "khalti"}
-              disabled={busy !== null}
-              style={{ marginTop: space["2"] }}
-            />
+            {teamShare ? (
+              teamShare.paymentMethod === "eSewa" ? (
+                <Button
+                  label="Pay team share with eSewa"
+                  onPress={() => pay("esewa")}
+                  loading={busy === "esewa"}
+                  disabled={busy !== null}
+                />
+              ) : (
+                <Button
+                  label="Pay team share with Khalti"
+                  variant="secondary"
+                  onPress={() => pay("khalti")}
+                  loading={busy === "khalti"}
+                  disabled={busy !== null}
+                />
+              )
+            ) : (
+              <>
+                <Button
+                  label="Pay with eSewa"
+                  onPress={() => pay("esewa")}
+                  loading={busy === "esewa"}
+                  disabled={busy !== null}
+                />
+                <Button
+                  label="Pay with Khalti"
+                  variant="secondary"
+                  onPress={() => pay("khalti")}
+                  loading={busy === "khalti"}
+                  disabled={busy !== null}
+                  style={{ marginTop: space["2"] }}
+                />
+              </>
+            )}
             <Text style={[styles.hint, { color: colors.textFaint }]}>
               Sandbox mode — no real money moves. The ledger row, statuses and audit trail are the
               same as a live payment.
@@ -222,11 +249,15 @@ export default function BookingDetail() {
         ) : (
           <Notice
             message={
-              booking.status === "cancelled"
-                ? "This booking was cancelled."
-                : "This booking is fully paid. Enjoy the game! ⚽"
+              competitionWaiting
+                ? "Waiting for the opposition captain to accept this competition request. Payment opens only after acceptance."
+                : booking.status === "cancelled"
+                  ? "This booking was cancelled."
+                  : booking.status === "rejected"
+                    ? "This competition request was declined and was not sent to the venue owner."
+                    : "This booking is fully paid. Enjoy the game! ⚽"
             }
-            tone={booking.status === "cancelled" ? "error" : "success"}
+            tone={competitionWaiting || booking.status === "cancelled" || booking.status === "rejected" ? "error" : "success"}
           />
         )}
       </ScrollView>

@@ -28,7 +28,11 @@ type Booking = {
   ourCrew: number;
   openSpots: number;
   /** Squad this booking was made for; "" = individual booking. */
+  teamId: number | null;
   teamName: string;
+  advancePaymentRequired: boolean;
+  advancePaymentAmount: number;
+  advancePaymentStatus: string;
   /** Competition games carry the opponent and the score the owner will write. */
   competition?: {
     opponentName: string;
@@ -36,6 +40,8 @@ type Booking = {
     homeScore: number | null;
     awayScore: number | null;
     scoreStatus: string;
+    scoreUpdatedAt?: string | null;
+    competitionStatus?: string;
   } | null;
   receiptUrl: string;
   isFreePlay: boolean;
@@ -61,6 +67,9 @@ export default function OwnerRequestsPage() {
   const [acting, setActing] = useState<number | null>(null);
   const [tab, setTab] = useState<"pending" | "decided">("pending");
   const [viewReceipt, setViewReceipt] = useState<string | null>(null);
+  const [advanceChoice, setAdvanceChoice] = useState<Record<number, "none" | "full" | "custom">>({});
+  const [advanceCustom, setAdvanceCustom] = useState<Record<number, string>>({});
+  const [advanceSaving, setAdvanceSaving] = useState<number | null>(null);
 
   const load = async () => {
     const [bRes, vRes] = await Promise.all([
@@ -71,6 +80,12 @@ export default function OwnerRequestsPage() {
     const v = await vRes.json();
     setBookings(b.bookings ?? []);
     setVenues(v.venues ?? []);
+    // OwnerShell's desktop, drawer, and mobile request badges live above this
+    // route, so tell them after every authoritative refresh (including accept
+    // and decline) instead of waiting for a remount.
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new Event("owner-bookings-changed"));
+    }
   };
 
   useEffect(() => {
@@ -91,8 +106,17 @@ export default function OwnerRequestsPage() {
     () => bookings.filter((b) => b.venue && myVenueIds.has(b.venue.id)),
     [bookings, myVenueIds]
   );
-  const pending = mine.filter((b) => b.status === "pending");
-  const decided = mine.filter((b) => b.status === "confirmed" || b.status === "rejected");
+  // A competition row stays out of the owner queue while the opposition
+  // captain's durable consent is pending. Legacy competition rows have no
+  // competitionStatus and retain their existing owner workflow.
+  const releasedToOwner = (b: Booking) =>
+    b.visibility !== "competition" ||
+    b.competition?.competitionStatus === "accepted" ||
+    !b.competition?.competitionStatus ||
+    b.competition.competitionStatus === "none";
+  const visibleToOwner = mine.filter(releasedToOwner);
+  const pending = visibleToOwner.filter((b) => b.status === "pending");
+  const decided = visibleToOwner.filter((b) => b.status === "confirmed" || b.status === "rejected");
   const list = tab === "pending" ? pending : decided;
 
   async function decide(id: number, ok: boolean) {
@@ -102,14 +126,56 @@ export default function OwnerRequestsPage() {
       const res = await apiFetch(`/api/bookings/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: ok ? "confirmed" : "rejected" }),
+        body: JSON.stringify({ status: ok ? "confirmed" : "rejected", actor: "owner", actorId: user?.id }),
       });
       if (!res.ok) throw new Error("failed");
+      // Remove the actionable item immediately after the server confirms the
+      // decision; load() below then reconciles the whole list authoritatively.
+      setBookings((current) =>
+        current.map((booking) =>
+          booking.id === id ? { ...booking, status: ok ? "confirmed" : "rejected" } : booking,
+        ),
+      );
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new Event("owner-bookings-changed"));
+      }
       await load();
     } catch {
       alert("Something went wrong. Try again.");
     } finally {
       setActing(null);
+    }
+  }
+
+  function choiceFor(b: Booking) {
+    if (advanceChoice[b.id]) return advanceChoice[b.id];
+    if (!b.advancePaymentRequired) return "none" as const;
+    return b.advancePaymentAmount === b.totalPrice ? "full" as const : "custom" as const;
+  }
+
+  async function saveAdvance(b: Booking) {
+    if (!user) return;
+    const choice = choiceFor(b);
+    const amount = choice === "custom" ? Number(advanceCustom[b.id] ?? b.advancePaymentAmount ?? 0) : undefined;
+    setAdvanceSaving(b.id);
+    try {
+      const res = await apiFetch(`/api/bookings/${b.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          advancePayment: choice,
+          ...(amount !== undefined ? { advancePaymentAmount: amount } : {}),
+          actor: "owner",
+          actorId: user.id,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Couldn't save advance request");
+      await load();
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Couldn't save advance request");
+    } finally {
+      setAdvanceSaving(null);
     }
   }
 
@@ -225,6 +291,14 @@ export default function OwnerRequestsPage() {
                       <span className="inline-flex items-center gap-1 rounded-full bg-indigo-500/15 px-2 py-0.5 text-[10px] font-black text-indigo-700 dark:text-indigo-300">
                         🆚 vs {b.competition.opponentName || "opponent"}
                         {b.competition.leagueName ? ` • 🏆 ${b.competition.leagueName}` : ""}
+                        {b.competition.scoreStatus === "recorded"
+                          ? ` • ⚽ ${b.competition.homeScore}–${b.competition.awayScore}`
+                          : " • score due"}
+                      </span>
+                    )}
+                    {b.advancePaymentRequired && (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-sky-500/15 px-2 py-0.5 text-[10px] font-black text-sky-700 dark:text-sky-300">
+                        💳 Advance {formatNPR(b.advancePaymentAmount)} • {b.advancePaymentStatus}
                       </span>
                     )}
                     {b.depositRequired && (
@@ -246,6 +320,21 @@ export default function OwnerRequestsPage() {
                       </span>
                     )}
                   </h3>
+                  {b.playerStats && (
+                    <div className="mt-2 rounded-xl border border-violet-200 bg-violet-50/70 px-3 py-2.5 dark:border-violet-500/25 dark:bg-violet-500/10">
+                      <p className="text-[10px] font-black uppercase tracking-[0.14em] text-violet-700 dark:text-violet-300">Player trust profile</p>
+                      <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-[11px] font-bold text-violet-900 dark:text-violet-100">
+                        <span>{b.playerStats.rating.toFixed(1)}★ {b.playerStats.label}</span>
+                        <span>⚽ {b.playerStats.completed} games played</span>
+                        <span>↩ {b.playerStats.cancelled} cancellations all time</span>
+                        <span>↩ {b.playerStats.cancelsThisMonth} this month</span>
+                        <span>{b.playerStats.trustEmoji} Trust {b.playerStats.trustScore}/100 • {b.playerStats.trustLabel}</span>
+                      </div>
+                      <p className="mt-1 text-[10px] font-semibold text-violet-700/80 dark:text-violet-200/80">
+                        {b.depositRequired ? `Fair-play deposit applies: ${formatNPR(b.depositAmount)} due (${b.playerStats.depositReason || "trust/deposit safeguard"}).` : "No automatic fair-play deposit is currently required."}
+                      </p>
+                    </div>
+                  )}
                   <p className="mt-0.5 text-[13px] font-semibold text-slate-500 dark:text-slate-400">
                     {b.court?.name} ({b.court?.format}) • {prettyDate(b.date)} •{" "}
                     {formatTime12(b.startTime)} – {formatTime12(b.endTime || b.startTime)} •{" "}
@@ -274,6 +363,52 @@ export default function OwnerRequestsPage() {
                     )}
                     {b.notes && <span className="italic">“{b.notes}”</span>}
                   </div>
+                  {tab === "pending" && b.status === "pending" && (
+                    <div className="mt-3 rounded-2xl border border-sky-200 bg-sky-50/70 p-3 dark:border-sky-500/25 dark:bg-sky-500/10">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div>
+                          <p className="text-xs font-black text-sky-900 dark:text-sky-100">Request an advance</p>
+                          <p className="mt-0.5 text-[11px] font-semibold text-sky-800/80 dark:text-sky-200/80">Separate from any automatic fair-play deposit. The player will be notified and must pay through the verified gateway.</p>
+                        </div>
+                        {b.advancePaymentRequired && <span className="rounded-full bg-sky-600 px-2.5 py-1 text-[10px] font-black text-white">{b.advancePaymentStatus} • {formatNPR(b.advancePaymentAmount)}</span>}
+                      </div>
+                      <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-[1fr_1fr_1fr_auto]">
+                        {(["none", "full", "custom"] as const).map((choice) => (
+                          <button
+                            key={choice}
+                            type="button"
+                            onClick={() => setAdvanceChoice((current) => ({ ...current, [b.id]: choice }))}
+                            className={`rounded-xl border px-3 py-2 text-[11px] font-black ${choiceFor(b) === choice ? "border-sky-600 bg-sky-600 text-white" : "border-sky-200 bg-white text-sky-800 dark:border-white/10 dark:bg-slate-900 dark:text-sky-100"}`}
+                          >
+                            {choice === "none" ? "No advance" : choice === "full" ? `Full ${formatNPR(b.totalPrice)}` : "Custom amount"}
+                          </button>
+                        ))}
+                        <button
+                          type="button"
+                          onClick={() => void saveAdvance(b)}
+                          disabled={advanceSaving === b.id}
+                          className="rounded-xl bg-sky-700 px-3 py-2 text-[11px] font-black text-white disabled:opacity-50"
+                        >
+                          {advanceSaving === b.id ? "Saving…" : b.advancePaymentRequired ? "Update request" : "Save request"}
+                        </button>
+                      </div>
+                      {choiceFor(b) === "custom" && (
+                        <div className="mt-2 flex items-center gap-2">
+                          <span className="text-xs font-black text-sky-900 dark:text-sky-100">Rs.</span>
+                          <input
+                            type="number"
+                            min={1}
+                            max={b.totalPrice}
+                            value={advanceCustom[b.id] ?? (b.advancePaymentRequired && b.advancePaymentAmount < b.totalPrice ? b.advancePaymentAmount : "")}
+                            onChange={(event) => setAdvanceCustom((current) => ({ ...current, [b.id]: event.target.value }))}
+                            placeholder={`1–${b.totalPrice}`}
+                            className="w-32 rounded-xl border border-sky-200 bg-white px-3 py-2 text-xs font-black text-sky-900 outline-none focus:border-sky-500 dark:border-white/10 dark:bg-slate-900 dark:text-sky-100"
+                          />
+                          <span className="text-[10px] font-semibold text-sky-700 dark:text-sky-200">Maximum {formatNPR(b.totalPrice)}</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
                 <div className="flex shrink-0 items-center gap-3 sm:flex-col sm:items-end">
                   <p className="text-right text-xl font-black">

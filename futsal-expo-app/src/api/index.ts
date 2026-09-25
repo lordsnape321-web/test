@@ -10,6 +10,7 @@ import type {
   ManagedTeam,
   Match,
   LeagueDetail,
+  LeagueMediaRow,
   LeagueSummary,
   PlayerDossier,
   SiteStats,
@@ -27,7 +28,9 @@ import type {
 } from "@/lib/types";
 
 /**
- * Typed calls for the vertical slice: auth → venues → booking → payment.
+ * Typed calls for the complete player and Owner Studio experience: auth, courts,
+ * bookings, payments, matches, leagues, teams, players, notifications, reviews,
+ * and owner management.
  *
  * Each function is one route. Keeping them here rather than inline in screens
  * means the route paths and request shapes are written down exactly once, which
@@ -42,6 +45,8 @@ export function signup(input: {
   email: string;
   phone: string;
   password: string;
+  /** Player or venue-owner account; the web API defaults to player. */
+  role?: "player" | "owner";
   level?: string;
   position?: string;
   defaultCity?: string;
@@ -112,6 +117,12 @@ export async function fetchAvailability(
 }
 
 /* ── profile ─────────────────────────────────────────────────────────────── */
+
+/** GET /api/users/:id → { user, stats } — refresh the cached session profile. */
+export async function fetchUser(userId: number): Promise<User> {
+  const data = await apiJson<{ user: User }>(`/api/users/${userId}`);
+  return data.user;
+}
 
 /**
  * PATCH /api/users/:id → { user }
@@ -256,10 +267,13 @@ export function createMatch(input: {
 export async function fetchBookings(params?: {
   userId?: number;
   status?: string;
+  /** Add a cache-busting query for live feed refreshes. */
+  refresh?: boolean;
 }): Promise<Booking[]> {
   const query = new URLSearchParams();
   if (params?.userId !== undefined) query.set("userId", String(params.userId));
   if (params?.status) query.set("status", params.status);
+  if (params?.refresh) query.set("_", String(Date.now()));
   const qs = query.toString();
   const data = await apiJson<{ bookings: Booking[] }>(`/api/bookings${qs ? `?${qs}` : ""}`);
   return data.bookings ?? [];
@@ -269,9 +283,10 @@ export async function fetchBookings(params?: {
  * A single booking.
  *
  * There is no GET /api/bookings/:id — that route only accepts PATCH and DELETE.
- * The list route filters by userId (not id), so this reads the player's bookings
- * and picks the matching one. Passing userId keeps the response small; without
- * it the whole table is fetched, which still works but is wasteful.
+ * The list route filters by viewer userId (including competition requests sent
+ * to that viewer's opposition team), so this reads the player's or captain's
+ * booking inbox and picks the matching one. Passing userId keeps the response
+ * small; without it the whole table is fetched, which still works but is wasteful.
  */
 export async function fetchBooking(id: number, userId?: number): Promise<Booking> {
   const list = await fetchBookings(userId !== undefined ? { userId } : undefined);
@@ -291,8 +306,24 @@ export function createBooking(input: {
   bookerName: string;
   bookerPhone: string;
   paymentMethod?: string;
+  paymentStatus?: string;
+  receiptUrl?: string;
+  useFreePlay?: boolean;
+  promoCode?: string;
   notes?: string;
-}): Promise<{ booking: Booking }> {
+  visibility?: "private" | "public" | "competition";
+  teamId?: number;
+  opponentTeamId?: number;
+  tournamentId?: number;
+  playersNeeded?: number;
+  ourCrew?: number;
+  openSpots?: number;
+  matchTitle?: string;
+  level?: string;
+  chargeMode?: "split" | "custom";
+  competitionPaymentMode?: "split" | "loser_pays";
+  customPricePerPlayer?: number;
+}): Promise<{ booking: Booking; freePlayUsed?: boolean; promo?: unknown; competition?: unknown }> {
   return apiJson("/api/bookings", { method: "POST", json: input });
 }
 
@@ -311,24 +342,25 @@ export function fetchLedger(bookingId: number): Promise<Ledger> {
  * with mockApprove while the gateways are in sandbox mode — the ledger, the
  * statuses and the audit rows are identical either way.
  */
-export function initiateEsewa(bookingId: number): Promise<Record<string, unknown>> {
-  return apiJson("/api/payments/esewa/initiate", { method: "POST", json: { bookingId } });
+export function initiateEsewa(bookingId: number, teamPaymentId?: number, userId?: number): Promise<Record<string, unknown>> {
+  return apiJson("/api/payments/esewa/initiate", { method: "POST", json: { bookingId, teamPaymentId, userId } });
 }
 
 /** POST /api/payments/esewa/verify → { ok, ... } */
 export function verifyEsewa(
   bookingId: number,
   mockApprove = true,
+  teamPaymentId?: number,
 ): Promise<Record<string, unknown>> {
   return apiJson("/api/payments/esewa/verify", {
     method: "POST",
-    json: { bookingId, mockApprove },
+    json: { bookingId, mockApprove, teamPaymentId },
   });
 }
 
 /** POST /api/payments/khalti/initiate → { pidx, ... } */
-export function initiateKhalti(bookingId: number): Promise<Record<string, unknown>> {
-  return apiJson("/api/payments/khalti/initiate", { method: "POST", json: { bookingId } });
+export function initiateKhalti(bookingId: number, teamPaymentId?: number, userId?: number): Promise<Record<string, unknown>> {
+  return apiJson("/api/payments/khalti/initiate", { method: "POST", json: { bookingId, teamPaymentId, userId } });
 }
 
 /** POST /api/payments/khalti/verify → { ok, ... } */
@@ -336,10 +368,23 @@ export function verifyKhalti(
   bookingId: number,
   pidx: string,
   mockApprove = true,
+  teamPaymentId?: number,
 ): Promise<Record<string, unknown>> {
   return apiJson("/api/payments/khalti/verify", {
     method: "POST",
-    json: { bookingId, pidx, mockApprove },
+    json: { bookingId, pidx, mockApprove, teamPaymentId },
+  });
+}
+
+/** POST /api/bookings/:id/team-payments → save this member's method */
+export function chooseBookingTeamPayment(
+  bookingId: number,
+  userId: number,
+  paymentMethod: "eSewa" | "Khalti" | "Cash at Venue",
+): Promise<Record<string, unknown>> {
+  return apiJson(`/api/bookings/${bookingId}/team-payments`, {
+    method: "POST",
+    json: { userId, paymentMethod },
   });
 }
 
@@ -439,11 +484,16 @@ export function leagueMatchesAction(
   return apiJson(`/api/tournaments/${id}/matches`, { method: "POST", json: body });
 }
 
-/** POST /api/tournaments/:id/media — add / delete (kind: "link" | "file"). */
+/**
+ * POST /api/tournaments/:id/media — add / delete (kind: "link" | "file").
+ *
+ * `teamId` is additive: a newer API may use it for one-squad visibility while
+ * the existing matchId/null contract remains valid for older deployments.
+ */
 export function leagueMediaAction(
   id: number,
   body: Record<string, unknown>,
-): Promise<{ ok?: boolean; message?: string }> {
+): Promise<{ ok?: boolean; message?: string; media?: Partial<LeagueMediaRow> & { id?: number } }> {
   return apiJson(`/api/tournaments/${id}/media`, { method: "POST", json: body });
 }
 
@@ -769,6 +819,22 @@ export function patchBooking(
   patch: Record<string, unknown>,
 ): Promise<Record<string, unknown>> {
   return apiJson(`/api/bookings/${id}`, { method: "PATCH", json: patch });
+}
+
+/**
+ * PATCH /api/bookings/:id — the opposition captain's one-time competition
+ * consent. Authorization is checked again by the API against the selected
+ * team's captainId; the client never decides the outcome locally.
+ */
+export function decideCompetitionBooking(
+  id: number,
+  actorId: number,
+  action: "accept" | "decline",
+): Promise<{ booking: Booking; competitionStatus: string }> {
+  return apiJson(`/api/bookings/${id}`, {
+    method: "PATCH",
+    json: { competitionAction: action, actorId },
+  });
 }
 
 /**

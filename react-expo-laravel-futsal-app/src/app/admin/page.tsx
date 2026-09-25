@@ -55,6 +55,7 @@ type Booking = {
     homeScore: number | null;
     awayScore: number | null;
     scoreStatus: string;
+    competitionStatus?: string;
   } | null;
 };
 
@@ -71,6 +72,9 @@ export default function OwnerOverviewPage() {
         (b) =>
           b.visibility === "competition" &&
           b.competition &&
+          b.competition.competitionStatus !== "pending" &&
+          b.competition.competitionStatus !== "declined" &&
+          b.competition.competitionStatus !== "cancelled" &&
           b.competition.scoreStatus !== "recorded"
       ),
     [bookings]
@@ -104,7 +108,16 @@ export default function OwnerOverviewPage() {
   );
   const myVenueIds = useMemo(() => new Set(myVenues.map((v) => v.id)), [myVenues]);
   const myBookings = useMemo(
-    () => bookings.filter((b) => b.venue && myVenueIds.has(b.venue.id)),
+    () =>
+      bookings
+        .filter((b) => b.venue && myVenueIds.has(b.venue.id))
+        .filter(
+          (b) =>
+            b.visibility !== "competition" ||
+            b.competition?.competitionStatus === "accepted" ||
+            !b.competition?.competitionStatus ||
+            b.competition.competitionStatus === "none",
+        ),
     [bookings, myVenueIds]
   );
 
@@ -172,7 +185,7 @@ export default function OwnerOverviewPage() {
       await apiFetch(`/api/bookings/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: ok ? "confirmed" : "rejected" }),
+        body: JSON.stringify({ status: ok ? "confirmed" : "rejected", actor: "owner", actorId: user?.id }),
       });
       await load();
     } finally {

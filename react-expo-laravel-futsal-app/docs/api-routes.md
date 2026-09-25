@@ -2,7 +2,7 @@
 
 **Generated file — do not edit.** Run `node scripts/api-routes.mjs --write` instead.
 
-Every HTTP endpoint this app exposes: **44 route files, 77 endpoints**.
+Every HTTP endpoint this app exposes: **45 route files, 79 endpoints**.
 
 This is the contract a Laravel backend has to reimplement. It is generated
 from `src/app/api/**/route.ts` by `scripts/api-routes.mjs`, and
@@ -25,6 +25,8 @@ can be pointed at a Laravel host with `BASE_URL`.
 | `DELETE` | `/bookings/{id}` | `src/app/api/bookings/[id]/route.ts` |
 | `GET` | `/bookings/{id}/ledger` | `src/app/api/bookings/[id]/ledger/route.ts` |
 | `POST` | `/bookings/{id}/ledger` | `src/app/api/bookings/[id]/ledger/route.ts` |
+| `GET` | `/bookings/{id}/team-payments` | `src/app/api/bookings/[id]/team-payments/route.ts` |
+| `POST` | `/bookings/{id}/team-payments` | `src/app/api/bookings/[id]/team-payments/route.ts` |
 | `POST` | `/courts` | `src/app/api/courts/route.ts` |
 | `PATCH` | `/courts/{id}` | `src/app/api/courts/[id]/route.ts` |
 | `DELETE` | `/courts/{id}` | `src/app/api/courts/[id]/route.ts` |

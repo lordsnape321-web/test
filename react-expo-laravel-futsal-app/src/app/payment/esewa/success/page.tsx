@@ -16,6 +16,7 @@ function Inner() {
     (async () => {
       const data = params.get("data") ?? "";
       const hint = params.get("bookingId") ?? params.get("booking_id") ?? "";
+      const teamPaymentId = params.get("teamPaymentId") ?? "";
       const isMock = params.get("mock") === "1";
       if (isMock && hint) {
         // Came from the local simulator, already verified server-side.
@@ -32,7 +33,11 @@ function Inner() {
         const res = await apiFetch("/api/payments/esewa/verify", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ data, bookingId: hint ? Number(hint) : undefined }),
+          body: JSON.stringify({
+            data,
+            bookingId: hint ? Number(hint) : undefined,
+            teamPaymentId: teamPaymentId ? Number(teamPaymentId) : undefined,
+          }),
         });
         const j = await res.json();
         if (!res.ok || !j.ok) throw new Error(j.error || "Verification failed");
@@ -81,7 +86,7 @@ function Inner() {
             <span className="mx-auto grid h-16 w-16 place-items-center rounded-full bg-red-500 shadow-lg">
               <XCircle className="h-8 w-8 text-white" />
             </span>
-            <h1 className="mt-4 text-xl font-black">Couldn't verify 😢</h1>
+            <h1 className="mt-4 text-xl font-black">Couldn&apos;t verify 😢</h1>
             <p className="mt-2 text-sm text-stone-500">{msg}</p>
             <div className="mt-5 grid grid-cols-2 gap-2">
               <Link href="/bookings" className="rounded-2xl bg-emerald-600 py-3 text-sm font-black text-white">

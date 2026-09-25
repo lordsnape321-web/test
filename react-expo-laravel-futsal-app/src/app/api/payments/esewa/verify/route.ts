@@ -1,6 +1,6 @@
-import { db } from "@/db";
-import { bookings, courts, venues } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { db, ensureCompetitionBookingColumns } from "@/db";
+import { bookingTeamPayments, bookings, courts, venues } from "@/db/schema";
+import { and, eq } from "drizzle-orm";
 import {
   getEsewaConfig,
   decodeEsewaData,
@@ -14,8 +14,93 @@ import { formatNPR } from "@/lib/futsal";
 
 export const dynamic = "force-dynamic";
 
+function teamPaymentIdFromUuid(uuid: string) {
+  const match = /-TP-(\d+)(?:-|$)/.exec(uuid);
+  return match ? Number(match[1]) : null;
+}
+
+/** Update the member share and the aggregate booking without making the UI
+ * pretend a gateway payment happened. Every successful share also gets the
+ * normal append-only booking ledger row. */
+async function recordTeamEsewaPayment(
+  booking: typeof bookings.$inferSelect,
+  teamPayment: typeof bookingTeamPayments.$inferSelect,
+  amount: number,
+  reference: string,
+  note: string,
+) {
+  if (teamPayment.paymentStatus === "paid") return teamPayment;
+  const updatedRows = await db
+    .update(bookingTeamPayments)
+    .set({
+      paymentStatus: "paid",
+      paidAmount: amount,
+      gatewayTxnId: reference.slice(0, 100),
+    })
+    .where(eq(bookingTeamPayments.id, teamPayment.id))
+    .returning();
+  const updatedTeamPayment = updatedRows[0] ?? teamPayment;
+  await recordGatewayPayment({
+    bookingId: booking.id,
+    amount,
+    method: "eSewa",
+    reference,
+    userId: teamPayment.userId,
+    note,
+  });
+
+  const allShares = await db
+    .select()
+    .from(bookingTeamPayments)
+    .where(eq(bookingTeamPayments.bookingId, booking.id));
+  const paidTotal = allShares.reduce((sum, share) => sum + Number(share.paidAmount || 0), 0);
+  const advancePaid = booking.advancePaymentRequired && paidTotal >= Number(booking.advancePaymentAmount || 0);
+  await db
+    .update(bookings)
+    .set({
+      paidAmount: paidTotal,
+      paymentStatus:
+        paidTotal >= booking.totalPrice
+          ? "paid"
+          : booking.depositRequired && paidTotal >= Number(booking.depositAmount || 0)
+            ? "deposit_paid"
+            : "pending",
+      depositStatus:
+        booking.depositRequired && paidTotal >= Number(booking.depositAmount || 0) ? "paid" : booking.depositStatus,
+      advancePaymentStatus: booking.advancePaymentRequired ? (advancePaid ? "paid" : "pending") : "none",
+      gatewayTxnId: reference.slice(0, 100),
+    })
+    .where(eq(bookings.id, booking.id));
+
+  try {
+    const courtRows = await db.select().from(courts).where(eq(courts.id, booking.courtId));
+    const venueRows = courtRows[0]
+      ? await db.select().from(venues).where(eq(venues.id, courtRows[0].venueId))
+      : [];
+    const venue = venueRows[0];
+    if (venue?.ownerId) {
+      await sendNotification({
+        userId: venue.ownerId,
+        type: "payment",
+        title: `💰 Team eSewa share verified — ${venue.name}`,
+        message: `${booking.bookerName || "A team member"} paid ${formatNPR(amount)} via eSewa for team booking #FN-${booking.id}. ${formatNPR(paidTotal)} of ${formatNPR(booking.totalPrice)} is now in the ledger.`,
+        link: "/admin/bookings",
+      });
+    }
+    await sendNotification({
+      userId: teamPayment.userId,
+      type: "payment",
+      title: "✅ Team share paid",
+      message: `Your ${formatNPR(amount)} eSewa share for booking #FN-${booking.id} is confirmed and recorded in the booking ledger.`,
+      link: "/bookings",
+    });
+  } catch {}
+  return updatedTeamPayment;
+}
+
 export async function POST(req: Request) {
   try {
+    await ensureCompetitionBookingColumns();
     const body = await req.json();
     const dataB64 = String(body.data ?? "").trim();
     const hintBookingId = Number(body.bookingId ?? 0) || null;
@@ -28,33 +113,65 @@ export async function POST(req: Request) {
       const mRows = await db.select().from(bookings).where(eq(bookings.id, hintBookingId));
       const mBooking = mRows[0];
       if (!mBooking) return Response.json({ error: "Booking not found" }, { status: 404 });
-      const paidAmount = mBooking.depositRequired
-        ? Number(mBooking.depositAmount || 0)
-        : Number(mBooking.totalPrice || 0);
+      const mockTeamPaymentId =
+        Number(body.teamPaymentId ?? 0) || teamPaymentIdFromUuid(String(body.uuid ?? ""));
+      const mockTeamPayment = mockTeamPaymentId
+        ? (await db
+            .select()
+            .from(bookingTeamPayments)
+            .where(and(eq(bookingTeamPayments.id, mockTeamPaymentId), eq(bookingTeamPayments.bookingId, mBooking.id))))[0]
+        : null;
+      if (mockTeamPaymentId && !mockTeamPayment)
+        return Response.json({ error: "Team payment not found" }, { status: 404 });
+      if (mBooking.visibility === "competition" && mBooking.competitionStatus === "pending") {
+        return Response.json(
+          { error: "Payment opens after the opposition captain accepts this competition request 🆚" },
+          { status: 409 }
+        );
+      }
+      const payingAdvance = !mockTeamPayment && mBooking.advancePaymentRequired && mBooking.advancePaymentStatus !== "paid";
+      const payingDeposit = !mockTeamPayment && !payingAdvance && mBooking.depositRequired && mBooking.depositStatus !== "paid";
+      const paidAmount = mockTeamPayment
+        ? Number(mockTeamPayment.amountDue || 0)
+        : payingAdvance
+          ? Number(mBooking.advancePaymentAmount || 0)
+          : payingDeposit
+            ? Number(mBooking.depositAmount || 0)
+            : Math.max(0, Number(mBooking.totalPrice || 0) - Number(mBooking.paidAmount || 0));
       // Deterministic on purpose: this id is also the ledger's idempotency key,
-      // so a replayed verify callback can't turn one payment into two
-      // instalments. Deposit and balance stay distinguishable.
-      const mockTxn = `MOCK-ESEWA-${mBooking.id}${mBooking.depositRequired ? "-DEP" : ""}`.slice(0, 100);
+      // so a replayed verify callback can't turn one payment into two instalments.
+      const mockTxn = `MOCK-ESEWA-${mBooking.id}${mockTeamPayment ? `-TP-${mockTeamPayment.id}` : payingAdvance ? "-ADV" : payingDeposit ? "-DEP" : `-BAL-${mBooking.paidAmount}`}`.slice(0, 100);
+      if (mockTeamPayment) {
+        const paidTeam = await recordTeamEsewaPayment(mBooking, mockTeamPayment, paidAmount, mockTxn, "eSewa simulator");
+        const refreshed = await db.select().from(bookings).where(eq(bookings.id, mBooking.id));
+        return Response.json({ ok: true, mock: true, booking: refreshed[0], teamPayment: paidTeam, transactionCode: mockTxn });
+      }
+      const newPaid = Math.min(mBooking.totalPrice, Number(mBooking.paidAmount || 0) + paidAmount);
       const patch: Partial<typeof bookings.$inferInsert> = {
         gatewayTxnId: mockTxn,
-        paidAmount,
+        paidAmount: newPaid,
+        advancePaymentStatus: payingAdvance ? "paid" : mBooking.advancePaymentStatus,
+        depositStatus:
+          mBooking.depositRequired && newPaid >= Number(mBooking.depositAmount || 0)
+            ? "paid"
+            : mBooking.depositStatus,
       };
-      if (mBooking.depositRequired) {
-        patch.paymentStatus = "deposit_paid";
+      if (payingDeposit) {
+        patch.paymentStatus = newPaid >= mBooking.totalPrice ? "paid" : "deposit_paid";
         patch.depositStatus = "paid";
+      } else if (newPaid < mBooking.totalPrice) {
+        patch.paymentStatus = "pending";
       } else {
         patch.paymentStatus = "paid";
       }
       const updated = await db.update(bookings).set(patch).where(eq(bookings.id, mBooking.id)).returning();
-      // The ledger is the source of truth for which medium paid what, so an
-      // online payment has to land there too — not just in `paidAmount`.
       await recordGatewayPayment({
         bookingId: mBooking.id,
         amount: paidAmount,
         method: "eSewa",
         reference: mockTxn,
         userId: mBooking.userId,
-        note: "eSewa simulator",
+        note: mBooking.advancePaymentRequired ? "eSewa advance simulator" : "eSewa simulator",
       });
       try {
         const courtRows = await db.select().from(courts).where(eq(courts.id, mBooking.courtId));
@@ -66,7 +183,7 @@ export async function POST(req: Request) {
           await sendNotification({
             userId: venue.ownerId,
             type: "payment",
-            title: `💰 eSewa ${mBooking.depositRequired ? "deposit" : "payment"} verified — ${venue.name}`,
+            title: `💰 eSewa ${payingDeposit ? "deposit" : payingAdvance ? "advance" : "balance"} verified — ${venue.name}`,
             message: `${mBooking.bookerName || "Player"} paid ${formatNPR(paidAmount)} via eSewa simulator (txn ${mockTxn}). Booking #FN-${mBooking.id}.`,
             link: "/admin/bookings",
           });
@@ -92,21 +209,42 @@ export async function POST(req: Request) {
 
     const uuid = String(payload.transaction_uuid || "");
     const bookingId = hintBookingId || parseBookingIdFromEsewaUuid(uuid);
+    const teamPaymentId = Number(body.teamPaymentId ?? 0) || teamPaymentIdFromUuid(uuid);
     if (!bookingId) return Response.json({ error: "Can't link payment to booking" }, { status: 400 });
 
     const rows = await db.select().from(bookings).where(eq(bookings.id, bookingId));
     const booking = rows[0];
     if (!booking) return Response.json({ error: "Booking not found" }, { status: 404 });
-    if (booking.esewaUuid && booking.esewaUuid !== uuid) {
+    if (booking.visibility === "competition" && booking.competitionStatus === "pending") {
+      return Response.json(
+        { error: "Payment opens after the opposition captain accepts this competition request 🆚" },
+        { status: 409 }
+      );
+    }
+    const teamPayment = teamPaymentId
+      ? (await db
+          .select()
+          .from(bookingTeamPayments)
+          .where(and(eq(bookingTeamPayments.id, teamPaymentId), eq(bookingTeamPayments.bookingId, booking.id))))[0]
+      : null;
+    if (teamPaymentId && !teamPayment)
+      return Response.json({ error: "Team payment not found" }, { status: 404 });
+    if (!teamPayment && booking.esewaUuid && booking.esewaUuid !== uuid) {
       return Response.json(
         { error: "Transaction doesn't match this booking — please start payment again 🔄" },
         { status: 400 }
       );
     }
 
-    const expectedAmount = booking.depositRequired
-      ? Number(booking.depositAmount || 0)
-      : Number(booking.totalPrice || 0);
+    const payingAdvance = !teamPayment && booking.advancePaymentRequired && booking.advancePaymentStatus !== "paid";
+    const payingDeposit = !teamPayment && !payingAdvance && booking.depositRequired && booking.depositStatus !== "paid";
+    const expectedAmount = teamPayment
+      ? Number(teamPayment.amountDue || 0)
+      : payingAdvance
+        ? Number(booking.advancePaymentAmount || 0)
+        : payingDeposit
+          ? Number(booking.depositAmount || 0)
+          : Math.max(0, Number(booking.totalPrice || 0) - Number(booking.paidAmount || 0));
     const paidTotal = Number(String(payload.total_amount || "0").replace(/,/g, ""));
     if (Math.abs(paidTotal - expectedAmount) > 0.01) {
       return Response.json(
@@ -138,14 +276,33 @@ export async function POST(req: Request) {
       // If status API is unreachable in sandbox, trust verified signature + COMPLETE.
     }
 
-    const txnCode = String(payload.transaction_code || "");
+    const txnCode = String(payload.transaction_code || "") || uuid;
+    if (teamPayment) {
+      const paidTeam = await recordTeamEsewaPayment(
+        booking,
+        teamPayment,
+        Math.round(paidTotal),
+        txnCode,
+        "eSewa",
+      );
+      const refreshed = await db.select().from(bookings).where(eq(bookings.id, booking.id));
+      return Response.json({ ok: true, booking: refreshed[0], teamPayment: paidTeam, transactionCode: txnCode });
+    }
+    const newPaid = Math.min(booking.totalPrice, Number(booking.paidAmount || 0) + Math.round(paidTotal));
     const patch: Partial<typeof bookings.$inferInsert> = {
       gatewayTxnId: txnCode.slice(0, 100),
-      paidAmount: Math.round(paidTotal),
+      paidAmount: newPaid,
+      advancePaymentStatus: payingAdvance ? "paid" : booking.advancePaymentStatus,
+      depositStatus:
+        booking.depositRequired && newPaid >= Number(booking.depositAmount || 0)
+          ? "paid"
+          : booking.depositStatus,
     };
-    if (booking.depositRequired) {
-      patch.paymentStatus = "deposit_paid";
+    if (payingDeposit) {
+      patch.paymentStatus = newPaid >= booking.totalPrice ? "paid" : "deposit_paid";
       patch.depositStatus = "paid";
+    } else if (newPaid < booking.totalPrice) {
+      patch.paymentStatus = "pending";
     } else {
       patch.paymentStatus = "paid";
     }
@@ -170,7 +327,7 @@ export async function POST(req: Request) {
         await sendNotification({
           userId: venue.ownerId,
           type: "payment",
-          title: `💰 eSewa ${booking.depositRequired ? "deposit" : "payment"} verified — ${venue.name}`,
+          title: `💰 eSewa ${payingDeposit ? "deposit" : payingAdvance ? "advance" : "balance"} verified — ${venue.name}`,
           message: `${booking.bookerName || "Player"} paid ${formatNPR(Math.round(paidTotal))} via eSewa test (txn ${txnCode || uuid}). Booking #FN-${bookingId}.`,
           link: "/admin/bookings",
         });
