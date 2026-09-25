@@ -468,7 +468,14 @@ export default function BookingsScreen() {
       >
         <View style={styles.eyebrowRow}>
           <PartyPopper size={14} color={colors.orange500} />
-          <Text style={styles.eyebrow}>{user?.name?.split(" ")[0]}'s game diary</Text>
+          <ScrollView
+            horizontal
+            nestedScrollEnabled
+            showsHorizontalScrollIndicator={false}
+            style={styles.eyebrowScroll}
+          >
+            <Text style={styles.eyebrow}>{user?.name ?? "Player"}'s game diary</Text>
+          </ScrollView>
         </View>
         <View style={styles.titleRow}>
           <Text style={[styles.h1, { color: c.text }]}>My games</Text>
@@ -828,12 +835,24 @@ function BookingCard({
           </View>
           <View style={styles.cardHeadRow}>
             <View style={styles.grow}>
-              <Text style={[styles.venueName, { color: text }]}>
-                {b.venue?.name ?? "Venue"}
-              </Text>
-              <Text style={[styles.meta, { color: muted }]}>
-                {b.court?.name ?? "Court"} • {b.court && "format" in b.court ? (b.court as { format?: string }).format : ""}
-              </Text>
+              <ScrollView
+                horizontal
+                nestedScrollEnabled
+                showsHorizontalScrollIndicator={false}
+                style={styles.nameScroll}
+              >
+                <Text style={[styles.venueName, { color: text }]}>{b.venue?.name ?? "Venue"}</Text>
+              </ScrollView>
+              <ScrollView
+                horizontal
+                nestedScrollEnabled
+                showsHorizontalScrollIndicator={false}
+                style={styles.nameScroll}
+              >
+                <Text style={[styles.meta, { color: muted }]}>
+                  {b.court?.name ?? "Court"} • {b.court && "format" in b.court ? (b.court as { format?: string }).format : ""}
+                </Text>
+              </ScrollView>
             </View>
             <View style={styles.moneyCol}>
               {b.discountAmount && b.priceBeforeDiscount && b.priceBeforeDiscount > b.totalPrice ? (
@@ -1383,6 +1402,7 @@ const styles = StyleSheet.create({
   center: { alignItems: "center", justifyContent: "center", padding: space[4] },
   scroll: { padding: space[4], paddingBottom: space[16], gap: space[2] },
   eyebrowRow: { flexDirection: "row", alignItems: "center", gap: 6 },
+  eyebrowScroll: { flex: 1, minWidth: 0 },
   eyebrow: {
     fontSize: fontSize.xs,
     fontWeight: "900",
@@ -1463,6 +1483,7 @@ const styles = StyleSheet.create({
   statusRow: { flexDirection: "row", alignItems: "center", marginBottom: space[1] },
   cardHeadRow: { flexDirection: "row", flexWrap: "wrap", gap: space[2], alignItems: "flex-start" },
   grow: { flex: 1, minWidth: 0 },
+  nameScroll: { maxWidth: "100%", flexShrink: 1 },
   venueName: { fontSize: fontSize.base, fontWeight: "800" },
   meta: { fontSize: fontSize.xs, marginTop: 2 },
   moneyCol: { alignItems: "flex-end", maxWidth: "100%", flexShrink: 1 },

@@ -324,7 +324,7 @@ function MatchesInner() {
         </div>
 
         {tab === "leagues" ? (
-          <div className="mt-6">
+          <div className="mt-0">
             <LeagueBrowser />
           </div>
         ) : (
@@ -332,13 +332,13 @@ function MatchesInner() {
 
             <div className="mt-5 rounded-3xl border border-[#F0E3CC] bg-white p-2.5 shadow-sm dark:border-white/10 dark:bg-slate-900">
               <div className="flex items-center justify-between gap-3 px-1.5 pb-2.5">
-                <div>
+                <div className="min-w-0">
                   <p className="text-xs font-black text-stone-800 dark:text-slate-100">Find your level</p>
                   <p className="text-[11px] font-semibold text-stone-400 dark:text-slate-500">Anyone welcome games always stay visible.</p>
                 </div>
-                <span className="hidden text-[10px] font-black uppercase tracking-[0.12em] text-stone-400 sm:block dark:text-slate-500">{filtered.length} games</span>
+                <span className="hidden shrink-0 text-[10px] font-black uppercase tracking-[0.12em] text-stone-400 sm:block dark:text-slate-500">{filtered.length} games</span>
               </div>
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              <div className="no-scrollbar flex snap-x gap-2 overflow-x-auto pb-1" role="group" aria-label="Filter games by level">
                 {["All", "Beginner", "Intermediate", "Advanced"].map((f) => {
                   const active = filter === f;
                   const label = f === "All" ? "Everyone" : f;
@@ -349,7 +349,7 @@ function MatchesInner() {
                       key={f}
                       onClick={() => setFilter(f)}
                       aria-pressed={active}
-                      className={`flex min-h-[4.25rem] min-w-0 items-center gap-2 rounded-2xl border px-2.5 py-2 text-left transition sm:px-3 ${
+                      className={`flex min-h-[3.75rem] w-[9.5rem] shrink-0 snap-start items-center gap-2 rounded-2xl border px-3 py-2 text-left transition ${
                         active
                           ? "border-emerald-600 bg-emerald-600 text-white shadow-sm"
                           : "border-stone-100 bg-stone-50/80 text-stone-700 hover:border-emerald-200 hover:bg-emerald-50 dark:border-white/5 dark:bg-white/[0.03] dark:text-slate-200 dark:hover:border-emerald-500/30 dark:hover:bg-emerald-500/10"
@@ -357,8 +357,8 @@ function MatchesInner() {
                     >
                       <span className={`grid h-8 w-8 shrink-0 place-items-center rounded-xl text-base ${active ? "bg-white/20" : "bg-white dark:bg-white/10"}`}>{emoji}</span>
                       <span className="min-w-0">
-                        <span className="block break-words text-[11px] font-black leading-tight sm:text-xs">{label}</span>
-                        <span className={`mt-0.5 block break-words text-[10px] font-semibold leading-tight ${active ? "text-emerald-50" : "text-stone-400 dark:text-slate-500"}`}>{hint}</span>
+                        <span className="block whitespace-nowrap text-[11px] font-black leading-tight sm:text-xs">{label}</span>
+                        <span className={`mt-0.5 block whitespace-nowrap text-[10px] font-semibold leading-tight ${active ? "text-emerald-50" : "text-stone-400 dark:text-slate-500"}`}>{hint}</span>
                       </span>
                     </button>
                   );

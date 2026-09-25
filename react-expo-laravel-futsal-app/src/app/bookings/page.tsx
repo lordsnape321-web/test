@@ -653,8 +653,11 @@ export default function BookingsPage() {
   return (
     <main className="turf-pattern min-h-screen">
       <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6">
-        <p className="flex items-center gap-1.5 text-xs font-black uppercase tracking-[0.2em] text-orange-500 dark:text-orange-400">
-          <PartyPopper className="h-3.5 w-3.5" /> {user?.name?.split(" ")[0]}&apos;s game diary
+        <p className="flex min-w-0 items-center gap-1.5 text-xs font-black uppercase tracking-[0.2em] text-orange-500 dark:text-orange-400">
+          <PartyPopper className="h-3.5 w-3.5 shrink-0" />
+          <span className="no-scrollbar min-w-0 max-w-full overflow-x-auto whitespace-nowrap">
+            {user?.name ?? "Player"}&apos;s game diary
+          </span>
         </p>
         <div className="mt-1 flex flex-wrap items-center gap-3">
           <h1 className="text-3xl font-black text-stone-900 dark:text-slate-100">My games</h1>
@@ -813,11 +816,15 @@ export default function BookingsPage() {
                   </div>
                   <div className="min-w-0 flex-1 p-4 sm:p-5">
                     <div className="flex flex-wrap items-start justify-between gap-2">
-                      <div className="min-w-0">
-                        <h3 className="break-words text-base font-extrabold leading-tight text-stone-900 dark:text-slate-100">{b.venue?.name}</h3>
-                        <p className="mt-0.5 break-words text-xs leading-relaxed text-stone-500 dark:text-slate-400">
-                          {b.court?.name} • {b.court?.format}
-                        </p>
+                      <div className="min-w-0 max-w-full">
+                        <div className="no-scrollbar max-w-full overflow-x-auto">
+                          <h3 className="w-max min-w-full whitespace-nowrap text-base font-extrabold leading-tight text-stone-900 dark:text-slate-100">{b.venue?.name ?? "Venue"}</h3>
+                        </div>
+                        <div className="no-scrollbar mt-0.5 max-w-full overflow-x-auto">
+                          <p className="w-max whitespace-nowrap text-xs leading-relaxed text-stone-500 dark:text-slate-400">
+                            {b.court?.name ?? "Court"} • {b.court?.format ?? ""}
+                          </p>
+                        </div>
                       </div>
                       <span className="max-w-full shrink-0 text-right">
                         {b.discountAmount > 0 && b.priceBeforeDiscount > b.totalPrice && (

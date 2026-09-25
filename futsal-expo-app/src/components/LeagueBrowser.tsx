@@ -16,6 +16,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -216,7 +217,12 @@ export function LeagueBrowser() {
           </View>
           <Text style={[styles.filterShown, { color: c.textFaint }]}>{shown.length} shown</Text>
         </View>
-        <View style={styles.filterGrid}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          nestedScrollEnabled
+          contentContainerStyle={styles.filterRail}
+        >
           {FILTERS.map((f) => {
             const on = filter === f.id;
             const hint = f.id === "all" ? "Every league" : f.id === "open" ? "Spaces available" : f.id === "mine" ? "Squads you joined" : "Your hosted boards";
@@ -237,13 +243,13 @@ export function LeagueBrowser() {
                   <Text style={[styles.filterChipMarkText, { color: on ? c.primaryText : c.primary }]}>{on ? "✓" : "•"}</Text>
                 </View>
                 <View style={styles.filterChipCopy}>
-                  <Text style={[styles.filterChipText, { color: on ? c.primaryText : c.text }]}>{f.label}</Text>
-                  <Text style={[styles.filterChipHint, { color: on ? c.primaryText : c.textFaint }]}>{hint}</Text>
+                  <Text numberOfLines={1} style={[styles.filterChipText, { color: on ? c.primaryText : c.text }]}>{f.label}</Text>
+                  <Text numberOfLines={1} style={[styles.filterChipHint, { color: on ? c.primaryText : c.textFaint }]}>{hint}</Text>
                 </View>
               </Pressable>
             );
           })}
-        </View>
+        </ScrollView>
       </View>
 
       {/* Hosting blurb for owners */}
@@ -471,8 +477,8 @@ const styles = StyleSheet.create({
   filterHeading: { fontSize: fontSize.xs, fontWeight: "900" },
   filterHint: { fontSize: 10, fontWeight: "600", marginTop: 1 },
   filterShown: { fontSize: 10, fontWeight: "900", textTransform: "uppercase", letterSpacing: 0.5 },
-  filterGrid: { flexDirection: "row", flexWrap: "wrap", gap: space["2"] },
-  filterChip: { flexGrow: 1, flexBasis: 140, minWidth: 132, minHeight: 58, flexDirection: "row", alignItems: "center", gap: space["2"], borderWidth: 1, borderRadius: radius.xl, paddingHorizontal: space["2.5"], paddingVertical: space["2"] },
+  filterRail: { gap: space["2"], paddingRight: space["2"] },
+  filterChip: { width: 156, minHeight: 58, flexShrink: 0, flexDirection: "row", alignItems: "center", gap: space["2"], borderWidth: 1, borderRadius: radius.xl, paddingHorizontal: space["2.5"], paddingVertical: space["2"] },
   filterChipMark: { width: 26, height: 26, borderRadius: radius.lg, alignItems: "center", justifyContent: "center" },
   filterChipMarkText: { fontSize: 13, fontWeight: "900" },
   filterChipCopy: { flex: 1, minWidth: 0 },

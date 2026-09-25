@@ -238,7 +238,12 @@ export default function MatchesScreen() {
                 </View>
                 <Text style={[styles.levelFilterCount, { color: c.textFaint }]}>{filtered.length} games</Text>
               </View>
-              <View style={styles.levelFilterGrid}>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                nestedScrollEnabled
+                contentContainerStyle={styles.levelFilterRail}
+              >
                 {FILTERS.map((f) => {
                   const active = filter === f;
                   return (
@@ -258,13 +263,13 @@ export default function MatchesScreen() {
                         {f === "All" ? "🌍" : f === "Beginner" ? "🌱" : f === "Intermediate" ? "⚡" : "🔥"}
                       </Text>
                       <View style={styles.levelFilterButtonCopy}>
-                        <Text style={[styles.levelFilterButtonTitle, { color: active ? c.primaryText : c.text }]}>{f === "All" ? "Everyone" : f}</Text>
-                        <Text style={[styles.levelFilterButtonHint, { color: active ? c.primaryText : c.textFaint }]}>{f === "All" ? "All games" : f === "Beginner" ? "Easy-going" : f === "Intermediate" ? "Balanced" : "High intensity"}</Text>
+                        <Text numberOfLines={1} style={[styles.levelFilterButtonTitle, { color: active ? c.primaryText : c.text }]}>{f === "All" ? "Everyone" : f}</Text>
+                        <Text numberOfLines={1} style={[styles.levelFilterButtonHint, { color: active ? c.primaryText : c.textFaint }]}>{f === "All" ? "All games" : f === "Beginner" ? "Easy-going" : f === "Intermediate" ? "Balanced" : "High intensity"}</Text>
                       </View>
                     </Pressable>
                   );
                 })}
-              </View>
+              </ScrollView>
             </View>
             <Text style={[styles.tip, { color: c.textFaint }]}>
               Tip: choosing a level also shows “Anyone welcome” games — they're open to you too! 💛
@@ -1022,8 +1027,8 @@ const styles = StyleSheet.create({
   levelFilterTitle: { fontSize: fontSize.xs, fontWeight: "900" },
   levelFilterHint: { fontSize: 10, fontWeight: "600", marginTop: 1 },
   levelFilterCount: { fontSize: 10, fontWeight: "900", textTransform: "uppercase", letterSpacing: 0.5 },
-  levelFilterGrid: { flexDirection: "row", flexWrap: "wrap", gap: space[2] },
-  levelFilterButton: { flexGrow: 1, flexBasis: 140, minWidth: 132, minHeight: 58, flexDirection: "row", alignItems: "center", gap: space[2], borderWidth: 1, borderRadius: radius.xl, paddingHorizontal: space[2.5], paddingVertical: space[2] },
+  levelFilterRail: { gap: space[2], paddingRight: space[2] },
+  levelFilterButton: { width: 148, minHeight: 58, flexShrink: 0, flexDirection: "row", alignItems: "center", gap: space[2], borderWidth: 1, borderRadius: radius.xl, paddingHorizontal: space[2.5], paddingVertical: space[2] },
   levelFilterEmoji: { width: 30, height: 30, borderRadius: radius.lg, textAlign: "center", textAlignVertical: "center", fontSize: 15, overflow: "hidden" },
   levelFilterButtonCopy: { flex: 1, minWidth: 0 },
   levelFilterButtonTitle: { fontSize: 11, fontWeight: "900", lineHeight: 14 },
