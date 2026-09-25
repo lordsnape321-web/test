@@ -834,30 +834,15 @@ function BookingCard({
               tone={statusTone}
             />
           </View>
-          <View style={styles.cardHeadRow}>
-            <View style={styles.grow}>
-              <BookingVenueName name={b.venue?.name} color={text} />
-              <ScrollView
-                horizontal
-                nestedScrollEnabled
-                showsHorizontalScrollIndicator={false}
-                style={styles.nameScroll}
-              >
-                <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72} style={[styles.meta, { color: muted }]}>
-                  {b.court?.name ?? "Court"} • {b.court && "format" in b.court ? (b.court as { format?: string }).format : ""}
-                </Text>
-              </ScrollView>
-            </View>
-            <View style={styles.moneyCol}>
-              {b.discountAmount && b.priceBeforeDiscount && b.priceBeforeDiscount > b.totalPrice ? (
-                <Text style={[styles.strike, { color: textFaint(muted) }]}>
-                  {formatNPR(b.priceBeforeDiscount)}
-                </Text>
-              ) : null}
-              <Text style={[styles.price, { color: isDark ? colors.emerald300 : colors.emerald700 }]}>
-                {b.totalPrice === 0 ? "FREE 🎁" : formatNPR(b.totalPrice)}
-              </Text>
-              <View style={styles.paymentMetaRow}>
+          <View style={styles.nameBlock}>
+            <BookingVenueName name={b.venue?.name} color={text} />
+            <Text style={[styles.meta, { color: muted }]}>
+              {b.court?.name ?? "Court"} • {b.court && "format" in b.court ? (b.court as { format?: string }).format : ""}
+            </Text>
+          </View>
+          <View style={[styles.priceSummaryRow, { borderColor: border }]}>
+            <View style={styles.paymentSummaryCopy}>
+              <View style={[styles.paymentMetaRow, { justifyContent: "flex-start", marginTop: 0 }]}>
                 <Text style={[styles.payMeta, { color: textFaint(muted) }]}>Payment: {paymentMethodLabel(method)}</Text>
                 <Text
                   style={[
@@ -875,6 +860,16 @@ function BookingCard({
                   {paymentStatusLabel(b.paymentStatus)}
                 </Text>
               </View>
+            </View>
+            <View style={styles.moneyCol}>
+              {b.discountAmount && b.priceBeforeDiscount && b.priceBeforeDiscount > b.totalPrice ? (
+                <Text style={[styles.strike, { color: textFaint(muted) }]}>
+                  {formatNPR(b.priceBeforeDiscount)}
+                </Text>
+              ) : null}
+              <Text style={[styles.price, { color: isDark ? colors.emerald300 : colors.emerald700 }]}>
+                {b.totalPrice === 0 ? "FREE 🎁" : formatNPR(b.totalPrice)}
+              </Text>
             </View>
           </View>
 
@@ -1475,7 +1470,9 @@ const styles = StyleSheet.create({
   cardImg: { width: 96, minHeight: 132, alignSelf: "stretch" },
   cardBody: { flex: 1, minWidth: 0, padding: space[4] },
   statusRow: { flexDirection: "row", alignItems: "center", marginBottom: space[1] },
-  cardHeadRow: { flexDirection: "row", flexWrap: "wrap", gap: space[2], alignItems: "flex-start" },
+  nameBlock: { minHeight: 66 },
+  priceSummaryRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: space[2], borderTopWidth: 1, borderBottomWidth: 1, paddingVertical: space[2], marginTop: space[2] },
+  paymentSummaryCopy: { flex: 1, minWidth: 0 },
   grow: { flex: 1, minWidth: 0 },
   nameScroll: { maxWidth: "100%", flexShrink: 1 },
   meta: { fontSize: fontSize.xs, marginTop: 2 },

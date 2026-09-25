@@ -1,5 +1,5 @@
 import React from "react";
-import { ScrollView, StyleSheet, Text } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 import { fontSize } from "@/theme";
 
 type BookingVenueNameProps = {
@@ -9,27 +9,19 @@ type BookingVenueNameProps = {
 
 /**
  * One consistent venue-name treatment for the player booking list and detail
- * screen. The name stays on one line at its natural size; a long venue name is
- * horizontally scrollable rather than ellipsized or squeezed into a different
- * font size in each screen.
+ * screen. The name gets the full available width and wraps naturally, so it is
+ * never ellipsized, hidden in a marquee, or squeezed differently by payment
+ * status.
  */
 export function BookingVenueName({ name, color }: BookingVenueNameProps) {
   return (
-    <ScrollView
-      horizontal
-      nestedScrollEnabled
-      showsHorizontalScrollIndicator={false}
-      style={styles.rail}
-      contentContainerStyle={styles.content}
-      accessibilityLabel={name ?? "Venue"}
-    >
+    <View style={styles.rail} accessibilityLabel={name ?? "Venue"}>
       <Text style={[styles.text, { color }]}>{name?.trim() || "Venue"}</Text>
-    </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  rail: { width: "100%", flexShrink: 1 },
-  content: { flexDirection: "row", alignItems: "center" },
-  text: { fontSize: fontSize.lg, lineHeight: 22, fontWeight: "800", flexShrink: 0 },
+  rail: { width: "100%", minHeight: 44, justifyContent: "center" },
+  text: { fontSize: fontSize.lg, lineHeight: 22, fontWeight: "800", flexShrink: 1 },
 });

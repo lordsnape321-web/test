@@ -815,16 +815,30 @@ export default function BookingsPage() {
                     </span>
                   </div>
                   <div className="min-w-0 flex-1 p-4 sm:p-5">
-                    <div className="flex flex-wrap items-start justify-between gap-2">
-                      <div className="min-w-0 flex-1">
-                        <h3 className="break-words text-base font-extrabold leading-tight text-stone-900 dark:text-slate-100">
-                          {b.venue?.name ?? "Venue"}
-                        </h3>
-                        <p className="mt-0.5 break-words text-xs leading-relaxed text-stone-500 dark:text-slate-400">
-                          {b.court?.name ?? "Court"} • {b.court?.format ?? ""}
-                        </p>
+                    <div className="min-w-0 min-h-[3.25rem]">
+                      <h3 className="break-words text-base font-extrabold leading-tight text-stone-900 dark:text-slate-100">
+                        {b.venue?.name ?? "Venue"}
+                      </h3>
+                      <p className="mt-0.5 break-words text-xs leading-relaxed text-stone-500 dark:text-slate-400">
+                        {b.court?.name ?? "Court"} • {b.court?.format ?? ""}
+                      </p>
+                    </div>
+                    <div className="mt-3 flex min-w-0 flex-wrap items-center justify-between gap-3 border-t border-stone-100 pt-3 dark:border-white/5">
+                      <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5 text-[11px] font-bold text-stone-400 dark:text-slate-500">
+                        <span className="inline-flex min-w-0 items-center gap-1">
+                          <Wallet className="h-3 w-3 shrink-0" /> Payment: {paymentMethodLabel(b.paymentMethod)}
+                        </span>
+                        <span className={`rounded-full px-2 py-0.5 text-[10px] font-black uppercase ${
+                          b.paymentStatus === "paid"
+                            ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300"
+                            : b.paymentStatus === "pending"
+                              ? "bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300"
+                              : "bg-slate-100 text-slate-600 dark:bg-white/10 dark:text-slate-300"
+                        }`}>
+                          {paymentStatusLabel(b.paymentStatus)}
+                        </span>
                       </div>
-                      <span className="max-w-full shrink-0 text-right">
+                      <span className="shrink-0 text-right">
                         {b.discountAmount > 0 && b.priceBeforeDiscount > b.totalPrice && (
                           <span className="block text-xs font-bold text-stone-400 line-through dark:text-slate-500">
                             {formatNPR(b.priceBeforeDiscount)}
@@ -832,20 +846,6 @@ export default function BookingsPage() {
                         )}
                         <span className="block text-lg font-black text-emerald-700 dark:text-emerald-300">
                           {b.totalPrice === 0 ? "FREE 🎁" : formatNPR(b.totalPrice)}
-                        </span>
-                        <span className="mt-1 flex flex-wrap items-center justify-end gap-1.5 text-[11px] font-bold text-stone-400 dark:text-slate-500">
-                          <span className="inline-flex items-center gap-1">
-                            <Wallet className="h-3 w-3" /> Payment: {paymentMethodLabel(b.paymentMethod)}
-                          </span>
-                          <span className={`rounded-full px-2 py-0.5 text-[10px] font-black uppercase ${
-                            b.paymentStatus === "paid"
-                              ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300"
-                              : b.paymentStatus === "pending"
-                                ? "bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300"
-                                : "bg-slate-100 text-slate-600 dark:bg-white/10 dark:text-slate-300"
-                          }`}>
-                            {paymentStatusLabel(b.paymentStatus)}
-                          </span>
                         </span>
                       </span>
                     </div>
