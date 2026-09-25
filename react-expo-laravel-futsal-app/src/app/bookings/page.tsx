@@ -683,31 +683,63 @@ export default function BookingsPage() {
           </div>
         )}
 
-        <div className="mt-5 grid grid-cols-3 gap-2 sm:gap-3">
+        <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3">
           {[
-            { l: "Coming up", v: bookings.filter((b) => !gone(b.status) && !played(b) && b.date >= today).length },
-            { l: "Memories made", v: bookings.filter(played).length },
-            { l: "Invested in fun", v: formatNPR(totalSpent) },
-          ].map((s) => (
-            <div key={s.l} className="min-w-0 rounded-2xl border border-[#F0E3CC] bg-white px-2.5 py-3.5 text-center shadow-sm dark:border-white/10 dark:bg-slate-900 sm:px-3">
-              <p className="break-words text-base font-black leading-tight text-stone-900 sm:text-xl dark:text-slate-100">{s.v}</p>
-              <p className="break-words text-[10px] font-bold uppercase leading-tight tracking-wide text-stone-400 dark:text-slate-500">{s.l}</p>
-            </div>
-          ))}
+            { l: "Coming up", v: bookings.filter((b) => !gone(b.status) && !played(b) && b.date >= today).length, icon: CalendarCheck, tone: "emerald" },
+            { l: "Memories made", v: bookings.filter(played).length, icon: Clock, tone: "sky" },
+            { l: "Invested in fun", v: formatNPR(totalSpent), icon: Wallet, tone: "violet" },
+          ].map((s) => {
+            const Icon = s.icon;
+            const tone =
+              s.tone === "emerald"
+                ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300"
+                : s.tone === "sky"
+                  ? "bg-sky-50 text-sky-700 dark:bg-sky-500/10 dark:text-sky-300"
+                  : "bg-violet-50 text-violet-700 dark:bg-violet-500/10 dark:text-violet-300";
+            return (
+              <div
+                key={s.l}
+                className={`min-w-0 rounded-2xl border border-[#F0E3CC] bg-white p-3.5 shadow-sm dark:border-white/10 dark:bg-slate-900 sm:p-4 ${s.l === "Invested in fun" ? "col-span-2 sm:col-span-1" : ""}`}
+              >
+                <div className="flex items-center gap-3">
+                  <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-xl ${tone}`}>
+                    <Icon className="h-4 w-4" />
+                  </span>
+                  <div className="min-w-0">
+                    <p className="break-words text-lg font-black leading-tight text-stone-900 dark:text-slate-100">{s.v}</p>
+                    <p className="mt-0.5 break-words text-[10px] font-black uppercase leading-tight tracking-[0.12em] text-stone-400 dark:text-slate-500">{s.l}</p>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
         </div>
 
-        <div className="mt-5 flex flex-wrap gap-2">
-          {(["upcoming", "past", "cancelled"] as const).map((t) => (
-            <button
-              key={t}
-              onClick={() => setTab(t)}
-              className={`min-w-0 flex-1 rounded-2xl px-2 py-2.5 text-xs font-black uppercase leading-tight tracking-wider transition sm:flex-none sm:px-6 ${
-                tab === t ? "bg-emerald-600 text-white shadow-md" : "border border-stone-200 bg-white text-stone-600 shadow-sm dark:border-white/10 dark:bg-slate-900 dark:text-slate-300"
-              }`}
-            >
-              {t === "upcoming" ? "Coming up" : t === "past" ? "Played" : "Cancelled"}
-            </button>
-          ))}
+        <div className="mt-5 flex w-full gap-1 rounded-2xl border border-[#F0E3CC] bg-white p-1 shadow-sm dark:border-white/10 dark:bg-slate-900">
+          {(["upcoming", "past", "cancelled"] as const).map((t) => {
+            const label = t === "upcoming" ? "Coming up" : t === "past" ? "Played" : "Cancelled";
+            const count = t === "upcoming"
+              ? bookings.filter((b) => !gone(b.status) && !played(b) && b.date >= today).length
+              : t === "past"
+                ? bookings.filter(played).length
+                : bookings.filter((b) => gone(b.status)).length;
+            return (
+              <button
+                key={t}
+                onClick={() => setTab(t)}
+                className={`flex min-w-0 flex-1 items-center justify-center gap-1.5 rounded-xl px-2 py-2.5 text-[12px] font-black transition ${
+                  tab === t
+                    ? "bg-emerald-600 text-white shadow-sm"
+                    : "text-stone-500 hover:bg-orange-50 dark:text-slate-400 dark:hover:bg-white/5"
+                }`}
+              >
+                <span className="truncate">{label}</span>
+                <span className={`rounded-full px-1.5 py-0.5 text-[10px] leading-none ${tab === t ? "bg-white/20 text-white" : "bg-stone-100 text-stone-500 dark:bg-white/10 dark:text-slate-400"}`}>
+                  {count}
+                </span>
+              </button>
+            );
+          })}
         </div>
 
         {loading ? (
@@ -757,7 +789,7 @@ export default function BookingsPage() {
                 className="min-w-0 overflow-hidden rounded-3xl border border-[#F0E3CC] bg-white shadow-[0_10px_30px_rgba(180,120,60,0.08)] dark:border-white/10 dark:bg-slate-900"
               >
                 <div className="flex flex-col sm:flex-row">
-                  <div className="relative h-36 sm:h-auto sm:w-52 sm:shrink-0">
+                  <div className="relative h-28 sm:h-auto sm:w-36 sm:shrink-0">
                     <img
                       src={b.venue?.imageUrl}
                       alt=""
@@ -812,6 +844,32 @@ export default function BookingsPage() {
                         </span>
                       </span>
                     </div>
+                    <div className="mt-3 flex min-w-0 flex-wrap items-start gap-x-4 gap-y-1.5 border-b border-stone-100 pb-3 text-[12px] font-bold leading-relaxed text-stone-500 dark:border-white/5 dark:text-slate-400">
+                      <span className="flex items-start gap-1.5">
+                        <CalendarCheck className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-600 dark:text-emerald-400" />
+                        {prettyDate(b.date)} · {formatTime12(b.startTime)}–{formatTime12(b.endTime || b.startTime)}
+                      </span>
+                      <span className="flex min-w-0 items-start gap-1.5 break-words">
+                        <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-600 dark:text-emerald-400" />
+                        <span className="break-words">{b.venue?.address || "Venue address unavailable"}</span>
+                      </span>
+                    </div>
+                    {b.advancePaymentRequired && b.advancePaymentStatus !== "paid" && (
+                      <p className="mt-3 rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-[11px] font-black leading-relaxed text-sky-800 dark:border-sky-500/25 dark:bg-sky-500/10 dark:text-sky-200">
+                        💳 Venue advance {formatNPR(b.advancePaymentAmount)} needs attention — open payment actions below.
+                      </p>
+                    )}
+                    {canDecideCompetition && (
+                      <p className="mt-3 rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-2 text-[11px] font-black leading-relaxed text-indigo-700 dark:border-indigo-500/25 dark:bg-indigo-500/10 dark:text-indigo-200">
+                        🆚 Opposition decision needed — open booking actions to accept or decline.
+                      </p>
+                    )}
+                    <details className="group mt-3 overflow-hidden rounded-2xl border border-stone-200 bg-stone-50/70 dark:border-white/10 dark:bg-white/[0.03]">
+                      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-3.5 py-3 text-xs font-black text-stone-700 marker:hidden dark:text-slate-200">
+                        <span>Payment, team &amp; booking actions</span>
+                        <span className="text-[11px] font-bold text-stone-400 transition group-open:rotate-180 dark:text-slate-500">⌄</span>
+                      </summary>
+                      <div className="border-t border-stone-200 px-3.5 pb-3.5 dark:border-white/10">
                     {/* The badge above only says "paid" — this shows how it was
                         actually paid, since a game is often part eSewa, part
                         Khalti, part cash, with the water added on afterwards. */}
@@ -1315,6 +1373,8 @@ export default function BookingsPage() {
                         )}
                       </div>
                     )}
+                      </div>
+                    </details>
                   </div>
                 </div>
               </div>

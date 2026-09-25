@@ -182,7 +182,7 @@ export function LeagueBrowser() {
         </View>
       ) : null}
 
-      {/* Controls — stack on a phone, one row on wide screens */}
+      {/* Controls: search is separate from the four-view league browser. */}
       <View style={styles.controls}>
         <View style={[styles.searchWrap, { backgroundColor: c.surface, borderColor: c.border }]}>
           <Search size={16} color={c.textFaint} style={styles.searchIcon} />
@@ -204,34 +204,45 @@ export function LeagueBrowser() {
         >
           <Text style={[styles.searchBtnText, { color: c.primaryText }]}>Search</Text>
         </Pressable>
-        {/* Keep every filter readable without making the whole screen wider.
-            Chips wrap to a second row on a very narrow phone rather than
-            hiding “Taking entries”, “My squads” or “I host” off-screen. */}
-        <View style={[styles.filterBar, { backgroundColor: c.surface, borderColor: c.border }]}>
-          <View style={styles.filterBarInner}>
-            <ListFilter size={14} color={c.textFaint} style={styles.filterIcon} />
-            {FILTERS.map((f) => {
-              const on = filter === f.id;
-              return (
-                <Pressable
-                  key={f.id}
-                  onPress={() => setFilter(f.id)}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: on }}
-                  style={[
-                    styles.filterChip,
-                    on ? { backgroundColor: c.primary } : { backgroundColor: c.inset },
-                  ]}
-                >
-                  <Text
-                    style={[styles.filterChipText, { color: on ? c.primaryText : c.textMuted }]}
-                  >
-                    {f.label}
-                  </Text>
-                </Pressable>
-              );
-            })}
+      </View>
+      <View style={[styles.filterBar, { backgroundColor: c.surface, borderColor: c.border }]}>
+        <View style={styles.filterHeader}>
+          <View style={[styles.filterIconBox, { backgroundColor: c.activeSoft }]}>
+            <ListFilter size={15} color={c.primary} />
           </View>
+          <View style={styles.filterHeaderCopy}>
+            <Text style={[styles.filterHeading, { color: c.text }]}>Browse leagues</Text>
+            <Text style={[styles.filterHint, { color: c.textFaint }]}>Choose one view — your place is remembered.</Text>
+          </View>
+          <Text style={[styles.filterShown, { color: c.textFaint }]}>{shown.length} shown</Text>
+        </View>
+        <View style={styles.filterGrid}>
+          {FILTERS.map((f) => {
+            const on = filter === f.id;
+            const hint = f.id === "all" ? "Every league" : f.id === "open" ? "Spaces available" : f.id === "mine" ? "Squads you joined" : "Your hosted boards";
+            return (
+              <Pressable
+                key={f.id}
+                onPress={() => setFilter(f.id)}
+                accessibilityRole="button"
+                accessibilityState={{ selected: on }}
+                style={[
+                  styles.filterChip,
+                  on
+                    ? { backgroundColor: c.primary, borderColor: c.primary }
+                    : { backgroundColor: c.inset, borderColor: c.border },
+                ]}
+              >
+                <View style={[styles.filterChipMark, { backgroundColor: on ? "rgba(255,255,255,0.20)" : c.surface }]}>
+                  <Text style={[styles.filterChipMarkText, { color: on ? c.primaryText : c.primary }]}>{on ? "✓" : "•"}</Text>
+                </View>
+                <View style={styles.filterChipCopy}>
+                  <Text style={[styles.filterChipText, { color: on ? c.primaryText : c.text }]}>{f.label}</Text>
+                  <Text style={[styles.filterChipHint, { color: on ? c.primaryText : c.textFaint }]}>{hint}</Text>
+                </View>
+              </Pressable>
+            );
+          })}
         </View>
       </View>
 
@@ -453,32 +464,20 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   searchBtnText: { color: "#FFFFFF", fontSize: fontSize.base, fontWeight: "900" },
-  filterBar: {
-    borderRadius: radius.xl,
-    borderWidth: 1,
-    flexGrow: 0,
-  },
-  filterBarInner: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    alignItems: "center",
-    gap: 4,
-    padding: 4,
-    borderRadius: radius.xl,
-  },
-  filterIcon: { marginLeft: 4, marginRight: 2 },
-  filterChip: {
-    flexGrow: 1,
-    flexBasis: 72,
-    minWidth: 72,
-    paddingHorizontal: 8,
-    paddingVertical: 8,
-    minHeight: 38,
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: radius.lg,
-  },
-  filterChipText: { fontSize: 11, fontWeight: "900", lineHeight: 14, textAlign: "center" },
+  filterBar: { borderRadius: radius["2xl"], borderWidth: 1, padding: space["2.5"], marginTop: space["1"] },
+  filterHeader: { flexDirection: "row", alignItems: "center", gap: space["2"], paddingHorizontal: space["1"], paddingBottom: space["2.5"] },
+  filterIconBox: { width: 32, height: 32, borderRadius: radius.xl, alignItems: "center", justifyContent: "center" },
+  filterHeaderCopy: { flex: 1, minWidth: 0 },
+  filterHeading: { fontSize: fontSize.xs, fontWeight: "900" },
+  filterHint: { fontSize: 10, fontWeight: "600", marginTop: 1 },
+  filterShown: { fontSize: 10, fontWeight: "900", textTransform: "uppercase", letterSpacing: 0.5 },
+  filterGrid: { flexDirection: "row", flexWrap: "wrap", gap: space["2"] },
+  filterChip: { flexGrow: 1, flexBasis: 140, minWidth: 132, minHeight: 58, flexDirection: "row", alignItems: "center", gap: space["2"], borderWidth: 1, borderRadius: radius.xl, paddingHorizontal: space["2.5"], paddingVertical: space["2"] },
+  filterChipMark: { width: 26, height: 26, borderRadius: radius.lg, alignItems: "center", justifyContent: "center" },
+  filterChipMarkText: { fontSize: 13, fontWeight: "900" },
+  filterChipCopy: { flex: 1, minWidth: 0 },
+  filterChipText: { fontSize: 11, fontWeight: "900", lineHeight: 14 },
+  filterChipHint: { fontSize: 9, fontWeight: "600", lineHeight: 12, marginTop: 2 },
   ownerBlurb: {
     marginTop: space["3"],
     flexDirection: "row",

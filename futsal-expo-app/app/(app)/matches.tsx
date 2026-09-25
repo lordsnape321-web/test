@@ -230,36 +230,44 @@ export default function MatchesScreen() {
         ) : (
           <>
             {/* Level filter */}
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              style={styles.filterRail}
-              contentContainerStyle={styles.filterRailContent}
-            >
-              {FILTERS.map((f) => {
-                const active = filter === f;
-                return (
-                  <Pressable
-                    key={f}
-                    onPress={() => setFilter(f)}
-                    accessibilityRole="button"
-                    accessibilityState={{ selected: active }}
-                    style={[
-                      styles.filterPill,
-                      active
-                        ? { backgroundColor: c.primary }
-                        : { backgroundColor: c.surface, borderColor: c.border, borderWidth: 1 },
-                    ]}
-                  >
-                    <Text style={[styles.filterPillText, { color: active ? c.primaryText : c.textMuted }]}>
-                      {filterLabel(f)}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </ScrollView>
+            <View style={[styles.levelFilterCard, { backgroundColor: c.surface, borderColor: c.border }]}>
+              <View style={styles.levelFilterHeader}>
+                <View style={styles.levelFilterCopy}>
+                  <Text style={[styles.levelFilterTitle, { color: c.text }]}>Find your level</Text>
+                  <Text style={[styles.levelFilterHint, { color: c.textFaint }]}>Anyone welcome games always stay visible.</Text>
+                </View>
+                <Text style={[styles.levelFilterCount, { color: c.textFaint }]}>{filtered.length} games</Text>
+              </View>
+              <View style={styles.levelFilterGrid}>
+                {FILTERS.map((f) => {
+                  const active = filter === f;
+                  return (
+                    <Pressable
+                      key={f}
+                      onPress={() => setFilter(f)}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: active }}
+                      style={[
+                        styles.levelFilterButton,
+                        active
+                          ? { backgroundColor: c.primary, borderColor: c.primary }
+                          : { backgroundColor: c.inset, borderColor: c.border },
+                      ]}
+                    >
+                      <Text style={[styles.levelFilterEmoji, { backgroundColor: active ? "rgba(255,255,255,0.20)" : c.surface }]}>
+                        {f === "All" ? "🌍" : f === "Beginner" ? "🌱" : f === "Intermediate" ? "⚡" : "🔥"}
+                      </Text>
+                      <View style={styles.levelFilterButtonCopy}>
+                        <Text style={[styles.levelFilterButtonTitle, { color: active ? c.primaryText : c.text }]}>{f === "All" ? "Everyone" : f}</Text>
+                        <Text style={[styles.levelFilterButtonHint, { color: active ? c.primaryText : c.textFaint }]}>{f === "All" ? "All games" : f === "Beginner" ? "Easy-going" : f === "Intermediate" ? "Balanced" : "High intensity"}</Text>
+                      </View>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </View>
             <Text style={[styles.tip, { color: c.textFaint }]}>
-              Tip: level filters also show “Anyone welcome” games — they're open to you too! 💛
+              Tip: choosing a level also shows “Anyone welcome” games — they're open to you too! 💛
             </Text>
 
             {!loading && filtered.length === 0 ? (
@@ -783,6 +791,8 @@ function CreateGameModal({
             <View style={styles.welcomeRow}>
               <Pressable
                 onPress={() => setWelcomeMode("any")}
+                accessibilityRole="button"
+                accessibilityState={{ selected: welcomeMode === "any" }}
                 style={[
                   styles.welcomeBox,
                   {
@@ -796,6 +806,8 @@ function CreateGameModal({
               </Pressable>
               <Pressable
                 onPress={() => setWelcomeMode("specific")}
+                accessibilityRole="button"
+                accessibilityState={{ selected: welcomeMode === "specific" }}
                 style={[
                   styles.welcomeBox,
                   {
@@ -1004,16 +1016,18 @@ const styles = StyleSheet.create({
 
   errorText: { marginTop: space[3], fontSize: fontSize.sm, fontWeight: "700", color: colors.red500 },
 
-  filterRail: { flexGrow: 0, marginTop: space[5] },
-  filterRailContent: { gap: space[2], paddingRight: space[4] },
-  filterPill: {
-    borderRadius: radius.full,
-    paddingHorizontal: space[4],
-    paddingVertical: space[2],
-    minHeight: 36,
-    justifyContent: "center",
-  },
-  filterPillText: { fontSize: fontSize.sm, fontWeight: "900" },
+  levelFilterCard: { marginTop: space[5], borderRadius: radius["2xl"], borderWidth: 1, padding: space[2.5] },
+  levelFilterHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: space[2], paddingHorizontal: space[1], paddingBottom: space[2.5] },
+  levelFilterCopy: { flex: 1, minWidth: 0 },
+  levelFilterTitle: { fontSize: fontSize.xs, fontWeight: "900" },
+  levelFilterHint: { fontSize: 10, fontWeight: "600", marginTop: 1 },
+  levelFilterCount: { fontSize: 10, fontWeight: "900", textTransform: "uppercase", letterSpacing: 0.5 },
+  levelFilterGrid: { flexDirection: "row", flexWrap: "wrap", gap: space[2] },
+  levelFilterButton: { flexGrow: 1, flexBasis: 140, minWidth: 132, minHeight: 58, flexDirection: "row", alignItems: "center", gap: space[2], borderWidth: 1, borderRadius: radius.xl, paddingHorizontal: space[2.5], paddingVertical: space[2] },
+  levelFilterEmoji: { width: 30, height: 30, borderRadius: radius.lg, textAlign: "center", textAlignVertical: "center", fontSize: 15, overflow: "hidden" },
+  levelFilterButtonCopy: { flex: 1, minWidth: 0 },
+  levelFilterButtonTitle: { fontSize: 11, fontWeight: "900", lineHeight: 14 },
+  levelFilterButtonHint: { fontSize: 9, fontWeight: "600", lineHeight: 12, marginTop: 2 },
   tip: { fontSize: fontSize.xs, fontWeight: "600", marginTop: 6 },
 
   empty: {
@@ -1159,20 +1173,22 @@ const styles = StyleSheet.create({
   totalLine: { fontSize: fontSize.sm, fontWeight: "700", textAlign: "center", marginTop: space[2] },
 
   welcomeRow: { flexDirection: "row", gap: space[2] },
-  welcomeBox: { flex: 1, borderRadius: radius.xl, borderWidth: 1, padding: 10 },
-  welcomeTitle: { fontSize: fontSize.base, fontWeight: "900" },
-  welcomeSub: { fontSize: fontSize.xs, color: colors.stone500 },
-  levelRow: { flexDirection: "row", flexWrap: "wrap", gap: space[2], marginTop: space[2] },
+  welcomeBox: { flex: 1, minWidth: 0, minHeight: 68, borderRadius: radius.xl, borderWidth: 1, padding: 10, justifyContent: "center" },
+  welcomeTitle: { fontSize: fontSize.base, fontWeight: "900", lineHeight: 19 },
+  welcomeSub: { fontSize: fontSize.xs, lineHeight: 15, marginTop: 2 },
+  levelRow: { flexDirection: "row", gap: space[2], marginTop: space[2] },
   levelBox: {
-    flexGrow: 1,
-    flexBasis: 88,
+    flex: 1,
+    minWidth: 0,
+    minHeight: 66,
     borderRadius: radius.xl,
     borderWidth: 1,
     paddingVertical: space[2],
-    paddingHorizontal: 6,
+    paddingHorizontal: 4,
     alignItems: "center",
+    justifyContent: "center",
   },
-  levelEmoji: { fontSize: fontSize.lg },
+  levelEmoji: { fontSize: fontSize.lg, lineHeight: 22 },
   levelName: { fontSize: fontSize["2xs"], fontWeight: "900", textAlign: "center", lineHeight: 13 },
 
   chargeBox: {

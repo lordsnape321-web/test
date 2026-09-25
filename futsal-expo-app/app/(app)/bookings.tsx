@@ -1,7 +1,9 @@
 import { useFocusEffect, useRouter } from "expo-router";
 import {
   CalendarCheck,
+  ChevronDown,
   ChevronRight,
+  ChevronUp,
   Clock,
   Gift,
   Globe,
@@ -511,38 +513,65 @@ export default function BookingsScreen() {
             {
               l: "Coming up",
               v: String(bookings.filter((b) => !gone(b.status) && !played(b) && b.date >= today).length),
+              icon: CalendarCheck,
+              iconBg: isDark ? "rgba(16,185,129,0.16)" : "#ECFDF5",
+              iconColor: isDark ? colors.emerald300 : colors.emerald700,
             },
-            { l: "Memories made", v: String(bookings.filter(played).length) },
-            { l: "Invested in fun", v: formatNPR(totalSpent) },
-          ].map((s) => (
-            <View key={s.l} style={[styles.kpi, { backgroundColor: c.surface, borderColor: c.border }]}>
-              <Text style={[styles.kpiValue, { color: c.text }]}>
-                {s.v}
-              </Text>
-              <Text style={[styles.kpiLabel, { color: c.textFaint }]}>{s.l}</Text>
-            </View>
-          ))}
+            {
+              l: "Memories made",
+              v: String(bookings.filter(played).length),
+              icon: Clock,
+              iconBg: isDark ? "rgba(14,165,233,0.16)" : "#F0F9FF",
+              iconColor: isDark ? colors.sky300 : colors.sky700,
+            },
+            {
+              l: "Invested in fun",
+              v: formatNPR(totalSpent),
+              icon: Wallet,
+              iconBg: isDark ? "rgba(139,92,246,0.16)" : "#F5F3FF",
+              iconColor: isDark ? colors.violet300 : colors.violet700,
+            },
+          ].map((s) => {
+            const Icon = s.icon;
+            return (
+              <View key={s.l} style={[styles.kpi, { backgroundColor: c.surface, borderColor: c.border }]}>
+                <View style={styles.kpiTop}>
+                  <View style={[styles.kpiIcon, { backgroundColor: s.iconBg }]}>
+                    <Icon size={15} color={s.iconColor} />
+                  </View>
+                  <Text style={[styles.kpiValue, { color: c.text }]}>{s.v}</Text>
+                </View>
+                <Text style={[styles.kpiLabel, { color: c.textFaint }]}>{s.l}</Text>
+              </View>
+            );
+          })}
         </View>
 
-        <View style={styles.tabRow}>
-          {(["upcoming", "past", "cancelled"] as const).map((t) => (
-            <Pressable
-              key={t}
-              onPress={() => setTab(t)}
-              style={[
-                styles.tabBtn,
-                tab === t
-                  ? { backgroundColor: c.primary, borderColor: c.primary }
-                  : { backgroundColor: c.surface, borderColor: c.border },
-              ]}
-              accessibilityRole="button"
-              accessibilityState={{ selected: tab === t }}
-            >
-              <Text style={[styles.tabText, { color: tab === t ? c.primaryText : c.textMuted }]}>
-                {t === "upcoming" ? "Coming up" : t === "past" ? "Played" : "Cancelled"}
-              </Text>
-            </Pressable>
-          ))}
+        <View style={[styles.tabShell, { backgroundColor: c.surface, borderColor: c.border }]}>
+          {(["upcoming", "past", "cancelled"] as const).map((t) => {
+            const label = t === "upcoming" ? "Coming up" : t === "past" ? "Played" : "Cancelled";
+            const count = t === "upcoming"
+              ? bookings.filter((b) => !gone(b.status) && !played(b) && b.date >= today).length
+              : t === "past"
+                ? bookings.filter(played).length
+                : bookings.filter((b) => gone(b.status)).length;
+            return (
+              <Pressable
+                key={t}
+                onPress={() => setTab(t)}
+                style={[styles.tabBtn, tab === t ? { backgroundColor: c.primary } : null]}
+                accessibilityRole="button"
+                accessibilityState={{ selected: tab === t }}
+              >
+                <Text style={[styles.tabText, { color: tab === t ? c.primaryText : c.textMuted }]} numberOfLines={1}>
+                  {label}
+                </Text>
+                <Text style={[styles.tabCount, { color: tab === t ? c.primaryText : c.textFaint, backgroundColor: tab === t ? "rgba(255,255,255,0.20)" : c.inset }]}>
+                  {count}
+                </Text>
+              </Pressable>
+            );
+          })}
         </View>
 
         {loading ? (
@@ -743,6 +772,7 @@ function BookingCard({
   const canDecideCompetition = Boolean(
     b.status === "pending" && competitionPending && b.competition?.isOpponentCaptain,
   );
+  const [moreOpen, setMoreOpen] = useState(false);
   const semantic = {
     orange: isDark ? colors.orange300 : colors.orange700,
     indigo: isDark ? "#C7D2FE" : "#4338CA",
@@ -780,6 +810,22 @@ function BookingCard({
           <View style={[styles.cardImg, { backgroundColor: muted + "33" }]} />
         )}
         <View style={styles.cardBody}>
+          <View style={styles.statusRow}>
+            <Pill
+              label={
+                isPlayed
+                  ? "Played"
+                  : b.status === "pending"
+                    ? canDecideCompetition
+                      ? "Decision needed"
+                      : "Awaiting confirmation"
+                    : b.status === "confirmed"
+                      ? "Confirmed"
+                      : b.status
+              }
+              tone={statusTone}
+            />
+          </View>
           <View style={styles.cardHeadRow}>
             <View style={styles.grow}>
               <Text style={[styles.venueName, { color: text }]}>
@@ -830,7 +876,41 @@ function BookingCard({
             <ChevronRight size={14} color={isDark ? "#6EE7B7" : colors.emerald700} />
           </Pressable>
 
-          {b.totalPrice > 0 ? <BookingPaymentSummary bookingId={b.id} /> : null}
+          <View style={[styles.compactFacts, { borderColor: border }]}>
+            <View style={styles.compactFact}>
+              <CalendarCheck size={14} color={isDark ? colors.emerald300 : colors.emerald700} />
+              <Text style={[styles.compactFactText, { color: muted }]}>{prettyDate(b.date)}</Text>
+            </View>
+            <View style={styles.compactFact}>
+              <Clock size={14} color={isDark ? colors.emerald300 : colors.emerald700} />
+              <Text style={[styles.compactFactText, { color: muted }]}>{formatTime12(b.startTime)} – {formatTime12(b.endTime || b.startTime)}</Text>
+            </View>
+            <View style={[styles.compactFact, styles.compactFactWide]}>
+              <MapPin size={14} color={isDark ? colors.emerald300 : colors.emerald700} />
+              <Text style={[styles.compactFactText, styles.compactFactWrap, { color: muted }]}>{b.venue?.address ?? "Venue address unavailable"}</Text>
+            </View>
+          </View>
+
+          <Pressable
+            onPress={() => setMoreOpen((value) => !value)}
+            accessibilityRole="button"
+            accessibilityState={{ expanded: moreOpen }}
+            style={[styles.moreToggle, { backgroundColor: cInset(surface, isDark), borderColor: border }]}
+          >
+            <View style={styles.grow}>
+              <Text style={[styles.moreToggleTitle, { color: text }]}>
+                {moreOpen ? "Hide payment & booking actions" : "Payment & booking actions"}
+              </Text>
+              <Text style={[styles.moreToggleHint, { color: muted }]}>
+                {canDecideCompetition ? "Decision needed" : b.advancePaymentRequired && b.advancePaymentStatus !== "paid" ? "Venue advance needs attention" : isPlayed ? "Payment history and review" : "Receipts, payment and cancellation"}
+              </Text>
+            </View>
+            {moreOpen ? <ChevronUp size={16} color={muted} /> : <ChevronDown size={16} color={muted} />}
+          </Pressable>
+
+          {moreOpen ? (
+            <View style={[styles.morePanel, { borderColor: border }]}>
+              {b.totalPrice > 0 ? <BookingPaymentSummary bookingId={b.id} /> : null}
           {b.advancePaymentRequired ? (
             <View style={[styles.advanceCard, { backgroundColor: isDark ? "rgba(14,165,233,0.12)" : "#F0F9FF", borderColor: isDark ? "rgba(56,189,248,0.25)" : "#BAE6FD" }]}>
               <Text style={[styles.noteText, { color: isDark ? "#BAE6FD" : "#075985" }]}>
@@ -1282,10 +1362,16 @@ function BookingCard({
               {uploading ? <Text style={[styles.uploading, { color: isDark ? colors.orange300 : colors.orange600 }]}>Saving…</Text> : null}
             </View>
           ) : null}
+            </View>
+          ) : null}
         </View>
       </View>
     </View>
   );
+}
+
+function cInset(surface: string, isDark: boolean) {
+  return isDark ? "rgba(255,255,255,0.04)" : surface;
 }
 
 function textFaint(muted: string) {
@@ -1330,38 +1416,23 @@ const styles = StyleSheet.create({
     marginTop: space[2],
   },
   pendingText: { flex: 1, fontSize: 13, fontWeight: "700", color: "#92400E", lineHeight: 18 },
-  kpiRow: { flexDirection: "row", flexWrap: "wrap", gap: space[2], marginTop: space[3] },
+  kpiRow: { flexDirection: "row", gap: space[2], marginTop: space[3] },
   kpi: {
     flex: 1,
     minWidth: 0,
     borderRadius: radius["2xl"],
     borderWidth: 1,
-    paddingHorizontal: space[3],
-    paddingVertical: space[3.5],
-    alignItems: "center",
+    paddingHorizontal: space[2.5],
+    paddingVertical: space[3],
   },
-  kpiValue: { fontSize: fontSize.xl, lineHeight: 24, fontWeight: "900", textAlign: "center" },
-  kpiLabel: {
-    fontSize: 10,
-    fontWeight: "700",
-    textTransform: "uppercase",
-    textAlign: "center",
-    letterSpacing: 0.5,
-    lineHeight: 13,
-    marginTop: 2,
-  },
-  tabRow: { flexDirection: "row", flexWrap: "wrap", gap: space[2], marginTop: space[4] },
-  tabBtn: {
-    flex: 1,
-    minWidth: 0,
-    borderRadius: radius["2xl"],
-    borderWidth: 1,
-    paddingVertical: space[2.5],
-    alignItems: "center",
-  },
-  tabOn: { backgroundColor: colors.emerald600, borderColor: colors.emerald600 },
-  tabText: { fontSize: fontSize.xs, fontWeight: "900", lineHeight: 14, textAlign: "center", textTransform: "uppercase" },
-  tabTextOn: { color: "#FFFFFF" },
+  kpiTop: { flexDirection: "row", alignItems: "center", gap: space[2], minWidth: 0 },
+  kpiIcon: { width: 30, height: 30, borderRadius: radius.xl, alignItems: "center", justifyContent: "center" },
+  kpiValue: { flex: 1, minWidth: 0, fontSize: fontSize.lg, lineHeight: 22, fontWeight: "900" },
+  kpiLabel: { fontSize: 9, fontWeight: "900", textTransform: "uppercase", letterSpacing: 0.35, lineHeight: 12, marginTop: space[2] },
+  tabShell: { flexDirection: "row", gap: 4, borderRadius: radius["2xl"], borderWidth: 1, padding: 4, marginTop: space[4] },
+  tabBtn: { flex: 1, minWidth: 0, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 4, borderRadius: radius.xl, paddingHorizontal: 4, paddingVertical: space[2.5] },
+  tabText: { flexShrink: 1, fontSize: fontSize.xs, fontWeight: "900", lineHeight: 14, textAlign: "center" },
+  tabCount: { minWidth: 18, overflow: "hidden", borderRadius: radius.full, paddingHorizontal: 5, paddingVertical: 2, fontSize: 9, fontWeight: "900", textAlign: "center" },
   emptyCard: {
     borderRadius: radius["3xl"],
     borderWidth: 1,
@@ -1386,8 +1457,9 @@ const styles = StyleSheet.create({
     overflow: "hidden",
   },
   cardTop: { flexDirection: "row", alignItems: "stretch" },
-  cardImg: { width: 120, minHeight: 140, alignSelf: "stretch" },
+  cardImg: { width: 96, minHeight: 132, alignSelf: "stretch" },
   cardBody: { flex: 1, minWidth: 0, padding: space[4] },
+  statusRow: { flexDirection: "row", alignItems: "center", marginBottom: space[1] },
   cardHeadRow: { flexDirection: "row", flexWrap: "wrap", gap: space[2], alignItems: "flex-start" },
   grow: { flex: 1, minWidth: 0 },
   venueName: { fontSize: fontSize.base, fontWeight: "800" },
@@ -1403,6 +1475,15 @@ const styles = StyleSheet.create({
     marginTop: space[2],
   },
   openBookingText: { fontSize: fontSize.xs, fontWeight: "900" },
+  compactFacts: { flexDirection: "row", flexWrap: "wrap", gap: space[2], borderBottomWidth: 1, paddingBottom: space[2], marginTop: space[2] },
+  compactFact: { flexDirection: "row", alignItems: "flex-start", gap: 5, maxWidth: "100%" },
+  compactFactWide: { flexBasis: "100%" },
+  compactFactText: { fontSize: fontSize.xs, fontWeight: "700", lineHeight: 16 },
+  compactFactWrap: { flexShrink: 1 },
+  moreToggle: { flexDirection: "row", alignItems: "center", gap: space[2], borderWidth: 1, borderRadius: radius.xl, paddingHorizontal: space[3], paddingVertical: space[2.5], marginTop: space[2] },
+  moreToggleTitle: { fontSize: fontSize.xs, fontWeight: "900" },
+  moreToggleHint: { fontSize: 10, fontWeight: "700", marginTop: 2 },
+  morePanel: { borderTopWidth: 1, marginTop: space[2], paddingTop: space[1], },
   strike: { fontSize: fontSize.xs, textDecorationLine: "line-through" },
   price: { fontSize: fontSize.xl, fontWeight: "900" },
   payMeta: { fontSize: fontSize.xs, fontWeight: "700" },
