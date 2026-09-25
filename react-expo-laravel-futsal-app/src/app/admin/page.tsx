@@ -43,6 +43,26 @@ type Booking = {
   status: string;
   paymentStatus: string;
   paymentMethod: string;
+  advancePaymentRequired?: boolean;
+  advancePaymentAmount?: number;
+  advancePaymentStatus?: string;
+  paidAmount?: number;
+  paymentSummary?: {
+    received: number;
+    receivable: number;
+    advanceRequested: number;
+    advanceReceived: number;
+    advanceReceivable: number;
+  };
+  amountReceived?: number;
+  amountReceivable?: number;
+  advanceReceivedAmount?: number;
+  advanceReceivableAmount?: number;
+  cancellationMoneyStatus?: string;
+  cancellationReceivedAmount?: number;
+  cancellationRefundedAmount?: number;
+  cancellationMoneyResolvedAt?: string | null;
+  cancellationMoneyResolvedBy?: number | null;
   bookerName: string;
   bookerPhone: string;
   visibility: string;
@@ -55,8 +75,25 @@ type Booking = {
     homeScore: number | null;
     awayScore: number | null;
     scoreStatus: string;
+    competitionStatus?: string;
   } | null;
 };
+
+function advanceReceivableFor(b: Booking) {
+  const requestedAndUnpaid =
+    b.status !== "cancelled" &&
+    b.status !== "rejected" &&
+    b.advancePaymentRequired &&
+    b.advancePaymentStatus !== "paid" &&
+    b.advancePaymentStatus !== "expired"
+      ? Math.max(0, Number(b.advancePaymentAmount) || 0)
+      : 0;
+  return Math.max(
+    0,
+    Number(b.paymentSummary?.advanceReceivable ?? b.advanceReceivableAmount ?? 0) || 0,
+    requestedAndUnpaid,
+  );
+}
 
 export default function OwnerOverviewPage() {
   const { user } = useUser();
@@ -71,6 +108,9 @@ export default function OwnerOverviewPage() {
         (b) =>
           b.visibility === "competition" &&
           b.competition &&
+          b.competition.competitionStatus !== "pending" &&
+          b.competition.competitionStatus !== "declined" &&
+          b.competition.competitionStatus !== "cancelled" &&
           b.competition.scoreStatus !== "recorded"
       ),
     [bookings]
@@ -104,15 +144,34 @@ export default function OwnerOverviewPage() {
   );
   const myVenueIds = useMemo(() => new Set(myVenues.map((v) => v.id)), [myVenues]);
   const myBookings = useMemo(
-    () => bookings.filter((b) => b.venue && myVenueIds.has(b.venue.id)),
+    () =>
+      bookings
+        .filter((b) => b.venue && myVenueIds.has(b.venue.id))
+        .filter(
+          (b) =>
+            b.visibility !== "competition" ||
+            b.competition?.competitionStatus === "accepted" ||
+            !b.competition?.competitionStatus ||
+            b.competition.competitionStatus === "none",
+        ),
     [bookings, myVenueIds]
   );
 
-  const pending = myBookings.filter((b) => b.status === "pending");
+  const pending = myBookings.filter((b) => b.status === "pending" || advanceReceivableFor(b) > 0);
   const confirmed = myBookings.filter((b) => b.status === "confirmed");
   const revenue = myBookings
     .filter((b) => b.status === "confirmed" || b.status === "completed")
     .reduce((s, b) => s + b.totalPrice, 0);
+  const activeMoney = myBookings.filter((b) => b.status !== "cancelled" && b.status !== "rejected");
+  const advanceReceived = activeMoney.reduce(
+    (sum, b) => sum + (b.paymentSummary?.advanceReceived ?? b.advanceReceivedAmount ?? 0),
+    0,
+  );
+  const advanceReceivable = myBookings.reduce((sum, b) => sum + advanceReceivableFor(b), 0);
+  const receivable = activeMoney.reduce(
+    (sum, b) => sum + (b.paymentSummary?.receivable ?? b.amountReceivable ?? Math.max(0, b.totalPrice - (b.paidAmount ?? 0))),
+    0,
+  );
   const today = new Date().toISOString().slice(0, 10);
   const todaysGames = myBookings.filter(
     (b) => b.date === today && (b.status === "confirmed" || b.status === "pending")
@@ -172,7 +231,7 @@ export default function OwnerOverviewPage() {
       await apiFetch(`/api/bookings/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: ok ? "confirmed" : "rejected" }),
+        body: JSON.stringify({ status: ok ? "confirmed" : "rejected", actor: "owner", actorId: user?.id }),
       });
       await load();
     } finally {
@@ -235,6 +294,21 @@ export default function OwnerOverviewPage() {
                 value: formatNPR(revenue),
                 sub: `${confirmed.length} confirmed bookings`,
                 href: "/admin/bookings",
+              },
+              {
+                icon: Banknote,
+                label: "Advance received",
+                value: formatNPR(advanceReceived),
+                sub: `${formatNPR(advanceReceivable)} advance receivable`,
+                href: "/admin/requests",
+              },
+              {
+                icon: Banknote,
+                label: "Receivable",
+                value: formatNPR(receivable),
+                sub: "still to collect",
+                hot: receivable > 0,
+                href: "/admin/requests",
               },
               {
                 icon: CalendarCheck,
@@ -307,12 +381,17 @@ export default function OwnerOverviewPage() {
                         <p className="truncate text-xs text-slate-500 dark:text-slate-400">
                           {b.venue?.name} • {b.court?.name} • {prettyDate(b.date)} {formatTime12(b.startTime)}
                         </p>
+                        {advanceReceivableFor(b) > 0 && (
+                          <p className="mt-1 text-[11px] font-black text-orange-700 dark:text-orange-300">
+                            💳 Advance receivable {formatNPR(advanceReceivableFor(b))} • awaiting player
+                          </p>
+                        )}
                       </div>
                       <button
                         onClick={() => decide(b.id, true)}
-                        disabled={acting === b.id}
+                        disabled={acting === b.id || advanceReceivableFor(b) > 0}
+                        title={advanceReceivableFor(b) > 0 ? "Awaiting the requested advance" : "Accept"}
                         className="grid h-9 w-9 place-items-center rounded-xl bg-emerald-500 text-white transition hover:bg-emerald-600 disabled:opacity-50"
-                        title="Accept"
                       >
                         <Check className="h-4 w-4" strokeWidth={3} />
                       </button>
