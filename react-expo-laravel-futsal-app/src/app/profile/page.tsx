@@ -1,4 +1,5 @@
 "use client";
+import { ThemedSelect } from "@/components/ThemedSelect";
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
@@ -299,13 +300,13 @@ export default function PlayerProfilePage() {
               <span className="mb-1.5 flex items-center gap-1.5 text-xs font-black uppercase tracking-wider text-stone-400 dark:text-slate-500">
                 <MapPin className="h-3.5 w-3.5" /> Home city — used for futsal search 🏠
               </span>
-              <select value={defaultCity} onChange={(e) => setDefaultCity(e.target.value)} className={SELECT_CLS}>
+              <ThemedSelect value={defaultCity} onChange={(e) => setDefaultCity(e.target.value)} className={SELECT_CLS}>
                 {CITY_OPTIONS.map((c) => (
                   <option key={c} value={c}>
                     {c === "All Cities" ? "No default — show all cities" : c}
                   </option>
                 ))}
-              </select>
+              </ThemedSelect>
               <span className="mt-1 block text-[11px] text-stone-400 dark:text-slate-500">
                 Home tab search starts in {defaultCity === "All Cities" ? "all cities 🌍" : `${defaultCity} 📍`} — change anytime!
               </span>
@@ -313,19 +314,19 @@ export default function PlayerProfilePage() {
             <div className="grid grid-cols-2 gap-3">
               <label className="block">
                 <span className="mb-1.5 block text-xs font-black uppercase tracking-wider text-stone-400 dark:text-slate-500">Level</span>
-                <select value={level} onChange={(e) => setLevel(e.target.value)} className={SELECT_CLS}>
+                <ThemedSelect value={level} onChange={(e) => setLevel(e.target.value)} className={SELECT_CLS}>
                   {LEVELS.map((l) => (
                     <option key={l}>{l}</option>
                   ))}
-                </select>
+                </ThemedSelect>
               </label>
               <label className="block">
                 <span className="mb-1.5 block text-xs font-black uppercase tracking-wider text-stone-400 dark:text-slate-500">Position</span>
-                <select value={position} onChange={(e) => setPosition(e.target.value)} className={SELECT_CLS}>
+                <ThemedSelect value={position} onChange={(e) => setPosition(e.target.value)} className={SELECT_CLS}>
                   {POSITIONS.map((p) => (
                     <option key={p}>{p}</option>
                   ))}
-                </select>
+                </ThemedSelect>
               </label>
             </div>
             <div>

@@ -1,4 +1,5 @@
 "use client";
+import { ThemedSelect } from "@/components/ThemedSelect";
 
 import { Suspense, useEffect, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
@@ -523,7 +524,7 @@ function MatchesInner() {
               </label>
               <label className="block">
                 <span className="mb-1 block text-xs font-black uppercase tracking-wider text-stone-400 dark:text-slate-500">Where?</span>
-                <select
+                <ThemedSelect
                   value={venueId}
                   onChange={(e) => setVenueId(e.target.value)}
                   className="w-full rounded-xl border border-stone-200 bg-[#FFF6E9] px-3.5 py-2.5 text-sm font-semibold text-stone-900 focus:border-emerald-500 focus:outline-none dark:border-white/10 dark:bg-white/5 dark:text-slate-100 [&>option]:bg-white [&>option]:text-stone-900 dark:[&>option]:bg-slate-900 dark:[&>option]:text-slate-100"
@@ -531,7 +532,7 @@ function MatchesInner() {
                   {venues.map((v) => (
                     <option key={v.id} value={v.id}>{v.name}</option>
                   ))}
-                </select>
+                </ThemedSelect>
               </label>
               <div className="grid grid-cols-2 gap-3">
                 <label className="block">

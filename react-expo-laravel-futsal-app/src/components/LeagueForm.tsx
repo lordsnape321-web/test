@@ -1,4 +1,5 @@
 "use client";
+import { ThemedSelect } from "@/components/ThemedSelect";
 
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -399,7 +400,7 @@ export function LeagueForm({
             </div>
             <label className="block">
               <span className={label}>Ground</span>
-              <select value={venueId} onChange={(e) => {
+              <ThemedSelect value={venueId} onChange={(e) => {
                 setVenueId(e.target.value);
                 setCourtId("");
               }} className={field}>
@@ -409,28 +410,28 @@ export function LeagueForm({
                     {v.name} — {v.city}
                   </option>
                 ))}
-              </select>
+              </ThemedSelect>
             </label>
             <label className="block">
               <span className={label}>Pitch (optional)</span>
-              <select value={courtId} onChange={(e) => setCourtId(e.target.value)} className={field} disabled={!venue}>
+              <ThemedSelect value={courtId} onChange={(e) => setCourtId(e.target.value)} className={field} disabled={!venue}>
                 <option value="">Whatever is free</option>
                 {(venue?.courts ?? []).map((c) => (
                   <option key={c.id} value={c.id}>
                     {c.name}
                   </option>
                 ))}
-              </select>
+              </ThemedSelect>
             </label>
             <label className="block">
               <span className={label}>Format</span>
-              <select value={format} onChange={(e) => setFormat(e.target.value)} className={field}>
+              <ThemedSelect value={format} onChange={(e) => setFormat(e.target.value)} className={field}>
                 {LEAGUE_FORMATS.map((f) => (
                   <option key={f} value={f}>
                     {f}
                   </option>
                 ))}
-              </select>
+              </ThemedSelect>
             </label>
             <label className="block">
               <span className={label}>How many squads ({LEAGUE_MIN_TEAMS}–{LEAGUE_MAX_TEAMS})</span>
@@ -590,12 +591,12 @@ export function LeagueForm({
               <span className={label}>
                 <Crown className="inline h-3 w-3" /> League stage
               </span>
-              <select value={status} onChange={(e) => setStatus(e.target.value)} className={field}>
+              <ThemedSelect value={status} onChange={(e) => setStatus(e.target.value)} className={field}>
                 <option value="registration">📝 Taking entries</option>
                 <option value="ongoing">🔴 Under way</option>
                 <option value="completed">🏁 Finished</option>
                 <option value="cancelled">🚫 Cancelled</option>
-              </select>
+              </ThemedSelect>
             </label>
           )}
 

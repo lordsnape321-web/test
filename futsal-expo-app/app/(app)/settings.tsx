@@ -1,4 +1,4 @@
-import { Picker } from "@react-native-picker/picker";
+import { Picker } from "@/components/ThemedPicker";
 import { useRouter } from "expo-router";
 import {
   Activity,

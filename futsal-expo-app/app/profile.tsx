@@ -1,4 +1,4 @@
-import { Picker } from "@react-native-picker/picker";
+import { Picker } from "@/components/ThemedPicker";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import {

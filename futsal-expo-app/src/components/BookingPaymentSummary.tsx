@@ -16,6 +16,12 @@ type Line = {
   voidedAt: string | null;
 };
 
+function paymentMethodLabel(method?: string) {
+  if (method === "Cash at Venue") return "Cash at venue";
+  if (method === "Free Play 🎁") return "Free play";
+  return method || "Payment";
+}
+
 type Summary = {
   totals: {
     courtPrice: number;
@@ -150,7 +156,7 @@ export function BookingPaymentSummary({ bookingId }: { bookingId: number }) {
                     .map((p) => (
                       <View key={p.id} style={styles.row}>
                         <Text style={[styles.lineText, { color: c.textMuted }]} numberOfLines={1}>
-                          {p.method}
+                          {paymentMethodLabel(p.method)}
                           {p.reference ? (
                             <Text style={{ color: c.textFaint }}> • {p.reference.slice(0, 14)}</Text>
                           ) : p.note ? (

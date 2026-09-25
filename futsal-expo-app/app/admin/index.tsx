@@ -21,7 +21,7 @@ import {
   Text,
   View,
 } from "react-native";
-import { fetchBookings, fetchVenues, patchBooking, seedDemo } from "@/api";
+import { fetchBookings, fetchVenues, patchBooking } from "@/api";
 import {
   BookingDonut,
   PaymentParty,
@@ -48,7 +48,7 @@ export default function OwnerHome() {
   const [acting, setActing] = useState<number | null>(null);
 
   const load = useCallback(async () => {
-    const [v, b] = await Promise.all([fetchVenues(), fetchBookings()]);
+    const [v, b] = await Promise.all([fetchVenues(), fetchBookings({ refresh: true })]);
     setVenues(v);
     setBookings(b);
   }, []);
@@ -57,7 +57,6 @@ export default function OwnerHome() {
     useCallback(() => {
       (async () => {
         try {
-          await seedDemo();
           await load();
         } finally {
           setLoading(false);
@@ -72,7 +71,16 @@ export default function OwnerHome() {
   );
   const myVenueIds = useMemo(() => new Set(myVenues.map((v) => v.id)), [myVenues]);
   const myBookings = useMemo(
-    () => bookings.filter((b) => b.venue && myVenueIds.has(b.venue.id)),
+    () =>
+      bookings
+        .filter((b) => b.venue && myVenueIds.has(b.venue.id))
+        .filter(
+          (b) =>
+            b.visibility !== "competition" ||
+            b.competition?.competitionStatus === "accepted" ||
+            !b.competition?.competitionStatus ||
+            b.competition.competitionStatus === "none",
+        ),
     [bookings, myVenueIds],
   );
 
@@ -81,6 +89,19 @@ export default function OwnerHome() {
   const revenue = myBookings
     .filter((b) => b.status === "confirmed" || b.status === "completed")
     .reduce((s, b) => s + b.totalPrice, 0);
+  const activeMoney = myBookings.filter((b) => b.status !== "cancelled" && b.status !== "rejected");
+  const advanceReceived = activeMoney.reduce(
+    (sum, b) => sum + (b.paymentSummary?.advanceReceived ?? b.advanceReceivedAmount ?? 0),
+    0,
+  );
+  const advanceReceivable = activeMoney.reduce(
+    (sum, b) => sum + (b.paymentSummary?.advanceReceivable ?? b.advanceReceivableAmount ?? 0),
+    0,
+  );
+  const receivable = activeMoney.reduce(
+    (sum, b) => sum + (b.paymentSummary?.receivable ?? b.amountReceivable ?? Math.max(0, b.totalPrice - (b.paidAmount ?? 0))),
+    0,
+  );
   const today = new Date().toISOString().slice(0, 10);
   const todaysGames = myBookings.filter(
     (b) => b.date === today && (b.status === "confirmed" || b.status === "pending"),
@@ -90,6 +111,9 @@ export default function OwnerHome() {
     (b) =>
       b.visibility === "competition" &&
       b.competition &&
+      b.competition.competitionStatus !== "pending" &&
+      b.competition.competitionStatus !== "declined" &&
+      b.competition.competitionStatus !== "cancelled" &&
       b.competition.scoreStatus !== "recorded",
   );
 
@@ -201,6 +225,22 @@ export default function OwnerHome() {
       sub: `${confirmed.length} confirmed bookings`,
       hot: false,
       href: "/admin/bookings" as const,
+    },
+    {
+      icon: Banknote,
+      label: "Advance received",
+      value: formatNPR(advanceReceived),
+      sub: `${formatNPR(advanceReceivable)} advance receivable`,
+      hot: false,
+      href: "/admin/requests" as const,
+    },
+    {
+      icon: Banknote,
+      label: "Receivable",
+      value: formatNPR(receivable),
+      sub: "still to collect",
+      hot: receivable > 0,
+      href: "/admin/requests" as const,
     },
     {
       icon: CalendarCheck,
@@ -438,8 +478,20 @@ const styles = StyleSheet.create({
   },
   kpiSubRow: { flexDirection: "row", alignItems: "center", gap: 4, marginTop: 2 },
   kpiSub: { fontSize: fontSize.xs, fontWeight: "600", flex: 1 },
-  twoCol: { flexDirection: "row", flexWrap: "wrap", gap: space[3], marginTop: space[2] },
-  threeCol: { flexDirection: "row", flexWrap: "wrap", gap: space[3], marginTop: space[2] },
+  twoCol: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "stretch",
+    gap: space[3],
+    marginTop: space[2],
+  },
+  threeCol: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "stretch",
+    gap: space[3],
+    marginTop: space[2],
+  },
   panel: {
     borderRadius: radius["2xl"],
     borderWidth: 1,
@@ -447,7 +499,6 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     flexBasis: "45%",
     minWidth: 260,
-    marginTop: space[2],
     gap: space[2.5],
   },
   panelHead: {
@@ -518,7 +569,6 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     flexBasis: "45%",
     minWidth: 260,
-    marginTop: space[2],
   },
   promoIcon: {
     width: 44,
