@@ -1,5 +1,5 @@
-import { db } from "@/db";
-import { bookings, courts, venues, bookingPayments, bookingExtras } from "@/db/schema";
+import { db, ensureCompetitionBookingColumns } from "@/db";
+import { bookings, courts, venues, bookingPayments, bookingExtras, bookingTeamPayments } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { parsePayments } from "@/lib/loyalty";
 import { sendNotification } from "@/lib/notify";
@@ -25,16 +25,17 @@ async function venueOf(courtId: number) {
 }
 
 async function loadLedger(bookingId: number) {
-  const [payments, extras] = await Promise.all([
+  const [payments, extras, teamPayments] = await Promise.all([
     db.select().from(bookingPayments).where(eq(bookingPayments.bookingId, bookingId)),
     db.select().from(bookingExtras).where(eq(bookingExtras.bookingId, bookingId)),
+    db.select().from(bookingTeamPayments).where(eq(bookingTeamPayments.bookingId, bookingId)),
   ]);
-  return { payments, extras };
+  return { payments, extras, teamPayments };
 }
 
 /** Everything the payments panel needs in one shape. */
 async function payload(booking: typeof bookings.$inferSelect) {
-  const { payments, extras } = await loadLedger(booking.id);
+  const { payments, extras, teamPayments } = await loadLedger(booking.id);
   const { venue } = await venueOf(booking.courtId);
   const totals = ledgerTotals({
     courtPrice: booking.totalPrice,
@@ -78,6 +79,16 @@ async function payload(booking: typeof bookings.$inferSelect) {
       voidedAt: p.voidedAt,
       createdAt: p.createdAt,
     })),
+    teamPayments: teamPayments.map((payment) => ({
+      id: payment.id,
+      teamId: payment.teamId,
+      userId: payment.userId,
+      amountDue: payment.amountDue,
+      paymentMethod: payment.paymentMethod,
+      paymentStatus: payment.paymentStatus,
+      paidAmount: payment.paidAmount,
+      gatewayTxnId: payment.gatewayTxnId,
+    })),
   };
 }
 
@@ -86,6 +97,7 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    await ensureCompetitionBookingColumns();
     const { id } = await params;
     const bookingId = Number(id);
     if (!Number.isInteger(bookingId) || bookingId <= 0)
@@ -126,6 +138,7 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    await ensureCompetitionBookingColumns();
     const { id } = await params;
     const bookingId = Number(id);
     if (!Number.isInteger(bookingId) || bookingId <= 0)

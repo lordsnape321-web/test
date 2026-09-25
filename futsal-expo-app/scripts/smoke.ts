@@ -1,5 +1,5 @@
 /**
- * End-to-end smoke test for the vertical slice.
+ * End-to-end smoke test for the core booking and payment flow.
  *
  * This drives the SAME modules the app ships — src/lib/api.ts and src/api/index.ts
  * — against a live backend. It is not a re-implementation: if apiUrl(), apiJson()
@@ -43,7 +43,7 @@ async function main() {
   const email = `smoke${stamp}@example.com`;
   const phone = `98${String(stamp).slice(-8)}`;
 
-  console.log("\n=== Expo vertical-slice smoke test ===\n");
+  console.log("\n=== Expo booking/payment smoke test ===\n");
 
   // 1. Sign up a fresh player.
   const { user } = await signup({

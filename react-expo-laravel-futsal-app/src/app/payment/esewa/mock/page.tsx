@@ -41,7 +41,13 @@ function Inner() {
                   amount,
                   method: "eSewa",
                 }
-              : { mockApprove: true, bookingId: Number(bookingId) }
+              : {
+                  mockApprove: true,
+                  bookingId: Number(bookingId),
+                  teamPaymentId: params.get("teamPaymentId") ? Number(params.get("teamPaymentId")) : undefined,
+                  uuid,
+                  userId: params.get("userId") ? Number(params.get("userId")) : undefined,
+                }
           ),
         }
       );
@@ -51,7 +57,7 @@ function Inner() {
         router.push(`/leagues/${leagueId}?paid=1`);
         return;
       }
-      router.push(`/payment/esewa/success?mock=1&bookingId=${bookingId}`);
+      router.push(`/payment/esewa/success?mock=1&bookingId=${bookingId}${params.get("teamPaymentId") ? `&teamPaymentId=${params.get("teamPaymentId")}` : ""}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed");
       setBusy(null);
