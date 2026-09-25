@@ -1,4 +1,4 @@
-import { db } from "@/db";
+import { db, ensureCompetitionBookingColumns } from "@/db";
 import {
   bookings,
   courts,
@@ -11,6 +11,9 @@ import {
   teams,
   tournamentTeams,
   tournaments,
+  teamMembers,
+  bookingTeamPayments,
+  bookingPaymentRequests,
 } from "@/db/schema";
 import { formatNPR, prettyDate, formatTime12, rangesOverlap, addHours } from "@/lib/futsal";
 import { playerRating, CANCEL_LIMIT_PER_MONTH, depositDecision, depositAmountFor, parsePayments, ONLINE_PAYMENTS, TRUST_START } from "@/lib/loyalty";
@@ -19,6 +22,7 @@ import { promoUsage } from "@/lib/promo-store";
 import { findTeamForUser } from "@/lib/team-store";
 import { validateTitle, validateNotes, validatePhone, validateCrew, validateTotalPlayers, validateDateISO, validateTimeHM, validateHours, validateCustomPrice, validateTeamId, firstError } from "@/lib/validation";
 import { sendNotification } from "@/lib/notify";
+import { expireOverdueAdvanceRequests } from "@/lib/advance-payment";
 import { eq, and, desc } from "drizzle-orm";
 
 export const dynamic = "force-dynamic";
@@ -27,6 +31,8 @@ const PAY_METHODS = ["eSewa", "Khalti", "Cash at Venue", "Free Play 🎁"];
 
 export async function GET(req: Request) {
   try {
+    await ensureCompetitionBookingColumns();
+    await expireOverdueAdvanceRequests();
     const { searchParams } = new URL(req.url);
     const userId = searchParams.get("userId");
     const courtId = searchParams.get("courtId");
@@ -48,7 +54,14 @@ export async function GET(req: Request) {
       .orderBy(desc(bookings.createdAt));
 
     let rows = [...allRows];
-    if (userId) rows = rows.filter((r) => r.userId === Number(userId));
+    if (!userId) {
+      // The owner/admin collection must not expose an actionable competition
+      // request before consent. The requester/captain inbox query below keeps
+      // pending rows available only to the two relevant players.
+      rows = rows.filter(
+        (r) => r.visibility !== "competition" || r.competitionStatus !== "pending",
+      );
+    }
     if (courtId) rows = rows.filter((r) => r.courtId === Number(courtId));
     if (date) rows = rows.filter((r) => r.date === date);
     if (status) rows = rows.filter((r) => r.status === status);
@@ -58,10 +71,29 @@ export async function GET(req: Request) {
     const allUsers = await db.select().from(users);
     const allMatches = await db.select().from(openMatches);
     const allJoins = await db.select().from(matchJoins);
+    const allTeamMembers = await db.select().from(teamMembers);
+    const allTeamPayments = await db.select().from(bookingTeamPayments);
+    const allPaymentRequests = await db.select().from(bookingPaymentRequests);
     // Competition context: the opposing squad's name and the league it belongs
     // to, so a card renders the fixture instead of a bare time slot.
     const allUsersTeams = await db.select().from(teams);
     const allTournaments = await db.select().from(tournaments);
+    if (userId) {
+      const viewerId = Number(userId);
+      // The opposition captain must see incoming competition requests even
+      // though they are not the player who created the booking. This is a
+      // database-backed inbox query, not a client-side copy of the request.
+      rows = rows.filter(
+        (r) =>
+          r.userId === viewerId ||
+          (r.teamId != null &&
+            allTeamMembers.some((member) => member.teamId === r.teamId && member.userId === viewerId)) ||
+          (r.visibility === "competition" &&
+            allUsersTeams.some(
+              (team) => team.id === r.opponentTeamId && team.captainId === viewerId
+            ))
+      );
+    }
 
     const enriched = rows.map((b) => {
       const court = allCourts.find((c) => c.id === b.courtId);
@@ -113,6 +145,17 @@ export async function GET(req: Request) {
                 homeScore: b.homeScore,
                 awayScore: b.awayScore,
                 scoreStatus: b.scoreStatus,
+                scoreUpdatedAt: b.scoreUpdatedAt,
+                competitionStatus: b.competitionStatus,
+                paymentMode:
+                  b.competitionPaymentPolicy === "loser_pays" ? "loser_pays" : "split",
+                paymentLabel:
+                  b.competitionPaymentPolicy === "loser_pays"
+                    ? "Losing squad pays"
+                    : "Fair split between both squads",
+                opponentCaptainId: opponent?.captainId ?? null,
+                isOpponentCaptain:
+                  Boolean(userId) && opponent?.captainId === Number(userId),
               }
             : null,
         linkedMatch: linked
@@ -129,10 +172,54 @@ export async function GET(req: Request) {
               chargeMode: (linked as { chargeMode?: string }).chargeMode ?? "split",
             }
           : null,
+        teamPayments: b.teamId
+          ? allTeamPayments
+              .filter((payment) => payment.bookingId === b.id)
+              .map((payment) => ({
+                id: payment.id,
+                teamId: payment.teamId,
+                userId: payment.userId,
+                amountDue: payment.amountDue,
+                paymentMethod: payment.paymentMethod,
+                paymentStatus: payment.paymentStatus,
+                paidAmount: payment.paidAmount,
+                gatewayTxnId: payment.gatewayTxnId,
+              }))
+          : [],
+        paymentRequests: allPaymentRequests
+          .filter((request) => request.bookingId === b.id)
+          .map((request) => ({
+            id: request.id,
+            requestedBy: request.requestedBy,
+            requesterName: allUsers.find((person) => person.id === request.requestedBy)?.name ?? "Captain",
+            payerId: request.payerId,
+            payerName: allUsers.find((person) => person.id === request.payerId)?.name ?? "Player",
+            amountDue: request.amountDue,
+            purpose: request.purpose,
+            note: request.note,
+            paymentMethod: request.paymentMethod,
+            status: request.status,
+            paidAmount: request.paidAmount,
+            gatewayTxnId: request.gatewayTxnId,
+            createdAt: request.createdAt,
+            paidAt: request.paidAt,
+          })),
+        teamPlayers: b.teamId
+          ? allTeamMembers
+              .filter((member) => member.teamId === b.teamId)
+              .map((member) => ({
+                id: member.userId,
+                name: allUsers.find((person) => person.id === member.userId)?.name ?? "Player",
+                role: allUsersTeams.find((team) => team.id === b.teamId)?.captainId === member.userId ? "captain" : "player",
+              }))
+          : [],
       };
     });
 
-    return Response.json({ bookings: enriched });
+    return Response.json(
+      { bookings: enriched },
+      { headers: { "Cache-Control": "no-store, no-cache, must-revalidate" } },
+    );
   } catch (e) {
     console.error(`[/api/bookings GET] failed:`, e);
     return Response.json({ bookings: [], error: String(e) }, { status: 500 });
@@ -141,6 +228,7 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   try {
+    await ensureCompetitionBookingColumns();
     const body = await req.json();
     const { courtId, userId, date, startTime, endTime, durationHours } = body;
 
@@ -228,8 +316,18 @@ export async function POST(req: Request) {
       }
     }
 
-    // Custom charge validation (public only).
-    const chargeMode: "split" | "custom" = body.chargeMode === "custom" ? "custom" : "split";
+    // Keep public/open pricing semantics on `charge_mode`; competition policy
+    // has its own nullable column so a public booking's custom per-player price
+    // can never be confused with loser-pays. The legacy migration backfills
+    // existing competition rows before new requests reach this path.
+    const competitionPaymentPolicy: "split" | "loser_pays" | null =
+      visibility === "competition"
+        ? body.competitionPaymentMode === "loser_pays"
+          ? "loser_pays"
+          : "split"
+        : null;
+    const chargeMode: "split" | "custom" =
+      body.chargeMode === "custom" && visibility === "public" ? "custom" : "split";
     let customPrice = 0;
     if (visibility === "public" && chargeMode === "custom") {
       const cErr = validateCustomPrice(body.customPricePerPlayer, { total: 0, openSpots, max: 10000 });
@@ -390,6 +488,9 @@ export async function POST(req: Request) {
         tournamentId = league.id;
         tournamentName = league.name;
       }
+      // Keep the score lifecycle at "awaiting" while the separate
+      // `competitionStatus` column holds the opposition-consent gate. The venue
+      // has not received an actionable request until that gate is accepted.
       scoreStatus = "awaiting";
     }
 
@@ -502,7 +603,12 @@ export async function POST(req: Request) {
         tournamentId,
         opponentTeamId,
         scoreStatus,
-        chargeMode: visibility === "public" ? chargeMode : "split",
+        competitionStatus: visibility === "competition" ? "pending" : "none",
+        competitionPaymentPolicy,
+        // `chargeMode` stays reserved for public/open booking pricing. A
+        // competition row always receives the normal split value here; its
+        // actual policy is stored in competitionPaymentPolicy above.
+        chargeMode,
         customPricePerPlayer: visibility === "public" && chargeMode === "custom" ? customPrice : 0,
         depositRequired,
         depositAmount,
@@ -512,6 +618,50 @@ export async function POST(req: Request) {
 
     const booking = inserted[0];
 
+    // A private "Just our gang" booking is a shared obligation, not one
+    // mysterious charge on the captain's card. Snapshot one equal, rounded
+    // share for every current team member so each person can choose eSewa,
+    // Khalti, or cash and the ledger can reconcile the booking as a whole.
+    let teamPaymentRows: Array<{ id: number; userId: number; amountDue: number }> = [];
+    if (visibility === "private" && teamId) {
+      const roster = await db
+        .select()
+        .from(teamMembers)
+        .where(eq(teamMembers.teamId, teamId));
+      const memberIds = Array.from(new Set(roster.map((member) => member.userId)));
+      if (!memberIds.includes(Number(userId))) memberIds.push(Number(userId));
+      const baseShare = memberIds.length > 0 ? Math.floor(totalPrice / memberIds.length) : totalPrice;
+      let remainder = Math.max(0, totalPrice - baseShare * memberIds.length);
+      teamPaymentRows = await db
+        .insert(bookingTeamPayments)
+        .values(
+          memberIds.map((memberId) => {
+            const amountDue = baseShare + (remainder-- > 0 ? 1 : 0);
+            return {
+              bookingId: booking.id,
+              teamId,
+              userId: memberId,
+              amountDue,
+              paymentMethod: memberId === Number(userId) ? payMethod : "",
+              paymentStatus: amountDue === 0 ? "paid" : "pending",
+              paidAmount: amountDue === 0 ? 0 : 0,
+            };
+          }),
+        )
+        .returning({ id: bookingTeamPayments.id, userId: bookingTeamPayments.userId, amountDue: bookingTeamPayments.amountDue });
+
+      const teamMessage = `${teamName} booking at ${venue?.name ?? "the venue"} on ${prettyDate(booking.date)} at ${formatTime12(booking.startTime)} is ready. Your equal share is ${formatNPR(teamPaymentRows.find((row) => row.userId === Number(userId))?.amountDue ?? 0)} — choose eSewa, Khalti, or cash from My Bookings. Each member's confirmed payment is added to the booking ledger. ⚽`;
+      for (const memberId of memberIds) {
+        await sendNotification({
+          userId: memberId,
+          type: "payment",
+          title: `👥 Team payment requested — ${teamName}`,
+          message: teamMessage,
+          link: "/bookings",
+        });
+      }
+    }
+
     if (useFreePlay && voucherId) {
       await db
         .update(vouchers)
@@ -519,12 +669,15 @@ export async function POST(req: Request) {
         .where(eq(vouchers.id, voucherId));
     }
 
-    if (venue?.ownerId) {
+    // A regular booking can go straight to the venue owner. A competition
+    // booking is different: the opposition captain must consent first. Do not
+    // leak it into Owner Studio until that captain accepts it.
+    if (venue?.ownerId && !opponentTeamId) {
       await sendNotification({
         userId: venue.ownerId,
         type: "booking_request",
         title: `📩 New booking request — ${venue.name}`,
-        message: `${booking.bookerName || "A player"} (${stats.emoji} ${stats.rating}★ ${stats.label}, trust ${bookerTrust}/100) requested ${court?.name ?? "a court"} on ${prettyDate(booking.date)} at ${formatTime12(booking.startTime)} (${hours} hr, ${formatNPR(booking.totalPrice)}${useFreePlay ? `, 🎁 FREE HOUR ${voucherCode}` : ""}${promoId ? `, 🎟️ ${promoCode} −${formatNPR(discountAmount)} (was ${formatNPR(priceAfterVoucher)})` : ""}${teamId ? `, 👥 squad ${teamName}` : ""}${opponentTeamId ? `, 🆚 ${teamName} vs ${opponentName}${tournamentName ? ` (${tournamentName})` : ""} — the winner's result goes on both squads' records, so you'll be asked for the score` : ""}${depositRequired ? `, 🛡️ ${depDecision.percent}% deposit ${formatNPR(depositAmount)} due via test gateway (non-refundable)` : ""}). Tap to accept or decline.`,
+        message: `${booking.bookerName || "A player"} (${stats.emoji} ${stats.rating}★ ${stats.label}, trust ${bookerTrust}/100) requested ${court?.name ?? "a court"} on ${prettyDate(booking.date)} at ${formatTime12(booking.startTime)} (${hours} hr, ${formatNPR(booking.totalPrice)}${useFreePlay ? `, 🎁 FREE HOUR ${voucherCode}` : ""}${promoId ? `, 🎟️ ${promoCode} −${formatNPR(discountAmount)} (was ${formatNPR(priceAfterVoucher)})` : ""}${teamId ? `, 👥 squad ${teamName}` : ""}${depositRequired ? `, 🛡️ ${depDecision.percent}% deposit ${formatNPR(depositAmount)} due via test gateway (non-refundable)` : ""}). Tap to accept or decline.`,
         link: "/admin/requests",
       });
       // Heads-up when this redemption fills the code's cap.
@@ -548,7 +701,10 @@ export async function POST(req: Request) {
         userId: Number(userId),
         type: "payment",
         title: `🛡️ Deposit due — ${venue?.name ?? "your game"}`,
-        message: `Fair-play shield: pay ${formatNPR(depositAmount)} (${depDecision.percent}%) upfront via eSewa/Khalti test to lock this booking. It's non-refundable if you cancel — show up and your trust climbs! 💪`,
+        message:
+          visibility === "competition"
+            ? `Fair-play shield: ${formatNPR(depositAmount)} (${depDecision.percent}%) deposit will open after the opposition captain accepts this competition request. It's non-refundable if you cancel — show up and your trust climbs! 💪`
+            : `Fair-play shield: pay ${formatNPR(depositAmount)} (${depDecision.percent}%) upfront via eSewa/Khalti test to lock this booking. It's non-refundable if you cancel — show up and your trust climbs! 💪`,
         link: "/bookings",
       });
     }
@@ -596,15 +752,16 @@ export async function POST(req: Request) {
       });
     }
 
-    // Competition game: the other captain has to know they're being played 🆚
+    // Competition game: the selected opposition captain receives the request,
+    // but the venue owner must not hear about it until that captain accepts.
     if (opponentTeamId) {
       const opponent = (await db.select().from(teams).where(eq(teams.id, opponentTeamId)))[0];
       await sendNotification({
         userId: opponent?.captainId ?? 0,
-        type: "competition",
-        title: `🆚 ${teamName} vs ${opponentName} — court booked`,
-        message: `${booking.bookerName || "The other captain"} booked ${court?.name ?? "a court"} at ${venue?.name ?? "the venue"} for ${prettyDate(booking.date)} at ${formatTime12(booking.startTime)}.${tournamentName ? ` It counts towards ${tournamentName}.` : ""} The venue owner records the final score, and it goes on both squads' records — bring your best! ⚽`,
-        link: tournamentId ? `/leagues/${tournamentId}` : "/bookings",
+        type: "info",
+        title: `🆚 Competition request — ${teamName} vs ${opponentName}`,
+        message: `${booking.bookerName || "The other captain"} requested ${court?.name ?? "a court"} at ${venue?.name ?? "the venue"} for ${prettyDate(booking.date)} at ${formatTime12(booking.startTime)}.${tournamentName ? ` It counts towards ${tournamentName}.` : ""} Payment policy: ${competitionPaymentPolicy === "loser_pays" ? "the losing squad pays" : "fair split between both squads"}. Open My Bookings to accept or decline. The venue owner is only notified after you accept. ⚽`,
+        link: "/bookings",
       });
     }
 
@@ -614,7 +771,13 @@ export async function POST(req: Request) {
         match,
         freePlayUsed: useFreePlay,
         competition: opponentTeamId
-          ? { opponentId: opponentTeamId, opponentName, leagueId: tournamentId, leagueName: tournamentName }
+          ? {
+              opponentId: opponentTeamId,
+              opponentName,
+              leagueId: tournamentId,
+              leagueName: tournamentName,
+              paymentMode: competitionPaymentPolicy,
+            }
           : null,
         depositRequired,
         depositAmount,
@@ -622,7 +785,13 @@ export async function POST(req: Request) {
         promo: promoId
           ? { id: promoId, code: promoCode, discount: discountAmount, message: promoMessage }
           : null,
-        team: teamId ? { id: teamId, name: teamName } : null,
+        team: teamId
+          ? {
+              id: teamId,
+              name: teamName,
+              payments: teamPaymentRows,
+            }
+          : null,
       },
       { status: 201 }
     );
