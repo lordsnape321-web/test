@@ -16,7 +16,6 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -186,14 +185,14 @@ export function LeagueBrowser() {
       {/* Controls — stack on a phone, one row on wide screens */}
       <View style={styles.controls}>
         <View style={[styles.searchWrap, { backgroundColor: c.surface, borderColor: c.border }]}>
-          <Search size={16} color="#A8A29E" style={styles.searchIcon} />
+          <Search size={16} color={c.textFaint} style={styles.searchIcon} />
           <TextInput
             value={draft}
             onChangeText={setDraft}
             onSubmitEditing={runSearch}
             returnKeyType="search"
             placeholder="Search leagues, grounds or hosts…"
-            placeholderTextColor="#A8A29E"
+            placeholderTextColor={c.textFaint}
             accessibilityLabel="Search leagues"
             style={[styles.searchInput, { color: c.text }]}
           />
@@ -201,41 +200,39 @@ export function LeagueBrowser() {
         <Pressable
           onPress={runSearch}
           accessibilityRole="button"
-          style={({ pressed }) => [styles.searchBtn, { opacity: pressed ? 0.9 : 1 }]}
+          style={({ pressed }) => [styles.searchBtn, { backgroundColor: c.primary, opacity: pressed ? 0.9 : 1 }]}
         >
-          <Text style={styles.searchBtnText}>Search</Text>
+          <Text style={[styles.searchBtnText, { color: c.primaryText }]}>Search</Text>
         </Pressable>
-        {/* The four filters used to overflow a 360px screen on the web; they
-            scroll sideways here for the same reason. */}
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          style={styles.filterBar}
-          contentContainerStyle={[styles.filterBarInner, { backgroundColor: c.surface }]}
-        >
-          <ListFilter size={14} color="#A8A29E" style={{ marginRight: 4 }} />
-          {FILTERS.map((f) => {
-            const on = filter === f.id;
-            return (
-              <Pressable
-                key={f.id}
-                onPress={() => setFilter(f.id)}
-                accessibilityRole="button"
-                accessibilityState={{ selected: on }}
-                style={[
-                  styles.filterChip,
-                  on ? { backgroundColor: "#059669" } : null,
-                ]}
-              >
-                <Text
-                  style={[styles.filterChipText, { color: on ? "#FFFFFF" : c.textMuted }]}
+        {/* Keep every filter readable without making the whole screen wider.
+            Chips wrap to a second row on a very narrow phone rather than
+            hiding “Taking entries”, “My squads” or “I host” off-screen. */}
+        <View style={[styles.filterBar, { backgroundColor: c.surface, borderColor: c.border }]}>
+          <View style={styles.filterBarInner}>
+            <ListFilter size={14} color={c.textFaint} style={styles.filterIcon} />
+            {FILTERS.map((f) => {
+              const on = filter === f.id;
+              return (
+                <Pressable
+                  key={f.id}
+                  onPress={() => setFilter(f.id)}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: on }}
+                  style={[
+                    styles.filterChip,
+                    on ? { backgroundColor: c.primary } : { backgroundColor: c.inset },
+                  ]}
                 >
-                  {f.label}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </ScrollView>
+                  <Text
+                    style={[styles.filterChipText, { color: on ? c.primaryText : c.textMuted }]}
+                  >
+                    {f.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </View>
       </View>
 
       {/* Hosting blurb for owners */}
@@ -296,10 +293,10 @@ export function LeagueBrowser() {
             <Pressable
               onPress={() => setShowForm(true)}
               accessibilityRole="button"
-              style={[styles.ghostBtn, { backgroundColor: "#059669", borderColor: "#059669" }]}
+              style={[styles.ghostBtn, { backgroundColor: c.primary, borderColor: c.primary }]}
             >
-              <Plus size={16} color="#FFFFFF" />
-              <Text style={[styles.ghostBtnText, { color: "#FFFFFF" }]}>Host a league</Text>
+              <Plus size={16} color={c.primaryText} />
+              <Text style={[styles.ghostBtnText, { color: c.primaryText }]}>Host a league</Text>
             </Pressable>
           ) : null}
         </View>
@@ -459,21 +456,29 @@ const styles = StyleSheet.create({
   filterBar: {
     borderRadius: radius.xl,
     borderWidth: 1,
-    borderColor: "#F0E3CC",
     flexGrow: 0,
   },
   filterBarInner: {
+    flexDirection: "row",
+    flexWrap: "wrap",
     alignItems: "center",
     gap: 4,
     padding: 4,
     borderRadius: radius.xl,
   },
+  filterIcon: { marginLeft: 4, marginRight: 2 },
   filterChip: {
-    paddingHorizontal: 12,
+    flexGrow: 1,
+    flexBasis: 72,
+    minWidth: 72,
+    paddingHorizontal: 8,
     paddingVertical: 8,
+    minHeight: 38,
+    alignItems: "center",
+    justifyContent: "center",
     borderRadius: radius.lg,
   },
-  filterChipText: { fontSize: 11, fontWeight: "900" },
+  filterChipText: { fontSize: 11, fontWeight: "900", lineHeight: 14, textAlign: "center" },
   ownerBlurb: {
     marginTop: space["3"],
     flexDirection: "row",

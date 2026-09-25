@@ -318,7 +318,7 @@ function MatchesInner() {
               }`}
             >
               <t.icon className="h-4 w-4 shrink-0" strokeWidth={2.5} />
-              <span className="truncate">{t.label}</span>
+              <span className="min-w-0 whitespace-nowrap">{t.label}</span>
             </button>
           ))}
         </div>
@@ -372,11 +372,11 @@ function MatchesInner() {
                   return (
                     <div
                       key={m.id}
-                      className="overflow-hidden rounded-3xl border border-[#F0E3CC] bg-white p-5 shadow-[0_10px_30px_rgba(180,120,60,0.08)] transition hover:border-emerald-300 dark:border-white/10 dark:bg-slate-900 dark:hover:border-emerald-500/50"
+                      className="min-w-0 overflow-hidden rounded-3xl border border-[#F0E3CC] bg-white p-5 shadow-[0_10px_30px_rgba(180,120,60,0.08)] transition hover:border-emerald-300 dark:border-white/10 dark:bg-slate-900 dark:hover:border-emerald-500/50"
                     >
                       <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <h3 className="text-base font-extrabold text-stone-900 dark:text-slate-100">{m.title}</h3>
+                        <div className="min-w-0 flex-1">
+                          <h3 className="break-words text-base font-extrabold leading-tight text-stone-900 dark:text-slate-100">{m.title}</h3>
                           <p className="mt-0.5 text-xs text-stone-500 dark:text-slate-400">
                             hosted with 💚 by {m.organizer?.name ?? "a friend"} •{" "}
                             {m.level === "All Levels" ? "🌍 Anyone welcome" : `🎯 ${m.level}`}
@@ -417,14 +417,14 @@ function MatchesInner() {
                         </p>
                       )}
                       <div className="mt-3 space-y-1.5 text-[13px] font-semibold text-stone-600 dark:text-slate-300">
-                        <p className="flex items-center gap-2">
-                          <MapPin className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
-                          {m.venue?.name} — {m.venue?.address}
+                        <p className="flex min-w-0 flex-wrap items-start gap-2 leading-relaxed">
+                          <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
+                          <span className="min-w-0 break-words">{m.venue?.name} — {m.venue?.address}</span>
                         </p>
-                        <p className="flex items-center gap-2">
-                          <CalendarDays className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
-                          {prettyDate(m.date)} • {formatTime12(m.startTime)} – {formatTime12(m.endTime || m.startTime)}
-                          <span className="ml-auto font-black text-emerald-700 dark:text-emerald-300">
+                        <p className="flex min-w-0 flex-wrap items-start gap-2 leading-relaxed">
+                          <CalendarDays className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
+                          <span className="min-w-0 break-words">{prettyDate(m.date)} • {formatTime12(m.startTime)} – {formatTime12(m.endTime || m.startTime)}</span>
+                          <span className="ml-auto shrink-0 font-black text-emerald-700 dark:text-emerald-300">
                             {formatNPR(m.pricePerPlayer)} each
                           </span>
                         </p>
@@ -663,8 +663,8 @@ function MatchesInner() {
                         : "border-stone-200 dark:border-white/10"
                     }`}
                   >
-                    <span className="block text-sm font-black">🌍 Anyone!</span>
-                    <span className="text-[11px] text-stone-500">All levels, max fun</span>
+                    <span className="block text-sm font-black text-stone-900 dark:text-slate-100">🌍 Anyone!</span>
+                    <span className="text-[11px] text-stone-500 dark:text-slate-400">All levels, max fun</span>
                   </button>
                   <button
                     onClick={() => setWelcomeMode("specific")}
@@ -674,8 +674,8 @@ function MatchesInner() {
                         : "border-stone-200 dark:border-white/10"
                     }`}
                   >
-                    <span className="block text-sm font-black">🎯 Specific</span>
-                    <span className="text-[11px] text-stone-500">Pick levels below</span>
+                    <span className="block text-sm font-black text-stone-900 dark:text-slate-100">🎯 Specific</span>
+                    <span className="text-[11px] text-stone-500 dark:text-slate-400">Pick levels below</span>
                   </button>
                 </div>
                 {welcomeMode === "specific" && (
@@ -689,11 +689,11 @@ function MatchesInner() {
                           className={`min-w-0 rounded-xl border px-1.5 py-2 text-center transition ${
                             on
                               ? "border-orange-500 bg-orange-500 text-white"
-                              : "border-stone-200 dark:border-white/10"
+                              : "border-stone-200 bg-white text-stone-900 dark:border-white/10 dark:bg-white/5 dark:text-slate-100"
                           }`}
                         >
                           <span className="block text-base">{l.emoji}</span>
-                          <span className="block truncate text-[10px] font-black sm:text-[11px]">{l.name}</span>
+                          <span className="block break-words text-[10px] font-black leading-tight sm:text-[11px]">{l.name}</span>
                         </button>
                       );
                     })}

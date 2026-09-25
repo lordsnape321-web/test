@@ -689,22 +689,19 @@ export default function BookingsPage() {
             { l: "Memories made", v: bookings.filter(played).length },
             { l: "Invested in fun", v: formatNPR(totalSpent) },
           ].map((s) => (
-            <div key={s.l} className="rounded-2xl border border-[#F0E3CC] bg-white px-3 py-3.5 text-center shadow-sm dark:border-white/10 dark:bg-slate-900">
-              <p className="truncate text-lg font-black text-stone-900 sm:text-xl dark:text-slate-100">{s.v}</p>
-              {/* `tracking-widest` here needed ~100px for "INVESTED IN FUN" inside a
-                  ~66px cell on a 320px phone; `tracking-wide` + `leading-tight` lets
-                  it wrap to two tidy lines instead of overflowing the card. */}
-              <p className="text-[10px] font-bold uppercase leading-tight tracking-wide text-stone-400 dark:text-slate-500">{s.l}</p>
+            <div key={s.l} className="min-w-0 rounded-2xl border border-[#F0E3CC] bg-white px-2.5 py-3.5 text-center shadow-sm dark:border-white/10 dark:bg-slate-900 sm:px-3">
+              <p className="break-words text-base font-black leading-tight text-stone-900 sm:text-xl dark:text-slate-100">{s.v}</p>
+              <p className="break-words text-[10px] font-bold uppercase leading-tight tracking-wide text-stone-400 dark:text-slate-500">{s.l}</p>
             </div>
           ))}
         </div>
 
-        <div className="mt-5 flex gap-2">
+        <div className="mt-5 flex flex-wrap gap-2">
           {(["upcoming", "past", "cancelled"] as const).map((t) => (
             <button
               key={t}
               onClick={() => setTab(t)}
-              className={`flex-1 rounded-2xl py-2.5 text-xs font-black uppercase tracking-wider transition sm:flex-none sm:px-6 ${
+              className={`min-w-0 flex-1 rounded-2xl px-2 py-2.5 text-xs font-black uppercase leading-tight tracking-wider transition sm:flex-none sm:px-6 ${
                 tab === t ? "bg-emerald-600 text-white shadow-md" : "border border-stone-200 bg-white text-stone-600 shadow-sm dark:border-white/10 dark:bg-slate-900 dark:text-slate-300"
               }`}
             >
@@ -757,7 +754,7 @@ export default function BookingsPage() {
               return (
               <div
                 key={b.id}
-                className="overflow-hidden rounded-3xl border border-[#F0E3CC] bg-white shadow-[0_10px_30px_rgba(180,120,60,0.08)] dark:border-white/10 dark:bg-slate-900"
+                className="min-w-0 overflow-hidden rounded-3xl border border-[#F0E3CC] bg-white shadow-[0_10px_30px_rgba(180,120,60,0.08)] dark:border-white/10 dark:bg-slate-900"
               >
                 <div className="flex flex-col sm:flex-row">
                   <div className="relative h-36 sm:h-auto sm:w-52 sm:shrink-0">
@@ -782,15 +779,15 @@ export default function BookingsPage() {
                             : b.status}
                     </span>
                   </div>
-                  <div className="flex-1 p-4 sm:p-5">
+                  <div className="min-w-0 flex-1 p-4 sm:p-5">
                     <div className="flex flex-wrap items-start justify-between gap-2">
-                      <div>
-                        <h3 className="text-base font-extrabold text-stone-900 dark:text-slate-100">{b.venue?.name}</h3>
-                        <p className="mt-0.5 text-xs text-stone-500 dark:text-slate-400">
+                      <div className="min-w-0">
+                        <h3 className="break-words text-base font-extrabold leading-tight text-stone-900 dark:text-slate-100">{b.venue?.name}</h3>
+                        <p className="mt-0.5 break-words text-xs leading-relaxed text-stone-500 dark:text-slate-400">
                           {b.court?.name} • {b.court?.format}
                         </p>
                       </div>
-                      <span className="text-right">
+                      <span className="max-w-full shrink-0 text-right">
                         {b.discountAmount > 0 && b.priceBeforeDiscount > b.totalPrice && (
                           <span className="block text-xs font-bold text-stone-400 line-through dark:text-slate-500">
                             {formatNPR(b.priceBeforeDiscount)}
@@ -1029,7 +1026,7 @@ export default function BookingsPage() {
                           : "Oh no — the venue was fully packed for this slot. Pick another time, we believe in you! 🙏"}
                       </p>
                     )}
-                    <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1.5 text-[13px] font-semibold text-stone-600 dark:text-slate-300">
+                    <div className="mt-3 flex min-w-0 flex-wrap gap-x-5 gap-y-1.5 text-[13px] font-semibold leading-relaxed text-stone-600 dark:text-slate-300">
                       <span className="flex items-center gap-1.5">
                         <CalendarCheck className="h-4 w-4 text-emerald-600 dark:text-emerald-400" /> {prettyDate(b.date)}
                       </span>
@@ -1037,8 +1034,9 @@ export default function BookingsPage() {
                         <Clock className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
                         {formatTime12(b.startTime)} – {formatTime12(b.endTime || b.startTime)}
                       </span>
-                      <span className="flex items-center gap-1.5">
-                        <MapPin className="h-4 w-4 text-emerald-600 dark:text-emerald-400" /> {b.venue?.address}
+                      <span className="flex min-w-0 items-start gap-1.5 break-words">
+                        <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
+                        <span className="break-words">{b.venue?.address}</span>
                       </span>
                     </div>
                     {b.competition && (

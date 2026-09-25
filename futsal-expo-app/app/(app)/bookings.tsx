@@ -488,9 +488,17 @@ export default function BookingsScreen() {
         {payError ? <Notice message={`💳 ${payError}`} /> : null}
 
         {pendingCount > 0 ? (
-          <View style={[styles.pendingBanner, { borderColor: "#FDE68A", backgroundColor: isDark ? "rgba(245,158,11,0.10)" : "#FFFBEB" }]}>
+          <View
+            style={[
+              styles.pendingBanner,
+              {
+                borderColor: isDark ? "rgba(245,158,11,0.30)" : "#FDE68A",
+                backgroundColor: isDark ? "rgba(245,158,11,0.10)" : "#FFFBEB",
+              },
+            ]}
+          >
             <Hourglass size={20} color={colors.amber400} />
-            <Text style={styles.pendingText}>
+            <Text style={[styles.pendingText, { color: isDark ? colors.amber300 : "#92400E" }]}>
               {competitionRequestCount > 0
                 ? `${competitionRequestCount} competition request${competitionRequestCount > 1 ? "s" : ""} need your accept or decline. The venue owner stays out until you decide.`
                 : `${pendingCount} game${pendingCount > 1 ? "s" : ""} waiting for a friendly thumbs-up from the venue — we'll ping you the moment they confirm!`}
@@ -508,7 +516,7 @@ export default function BookingsScreen() {
             { l: "Invested in fun", v: formatNPR(totalSpent) },
           ].map((s) => (
             <View key={s.l} style={[styles.kpi, { backgroundColor: c.surface, borderColor: c.border }]}>
-              <Text style={[styles.kpiValue, { color: c.text }]} numberOfLines={1}>
+              <Text style={[styles.kpiValue, { color: c.text }]}>
                 {s.v}
               </Text>
               <Text style={[styles.kpiLabel, { color: c.textFaint }]}>{s.l}</Text>
@@ -524,13 +532,13 @@ export default function BookingsScreen() {
               style={[
                 styles.tabBtn,
                 tab === t
-                  ? styles.tabOn
+                  ? { backgroundColor: c.primary, borderColor: c.primary }
                   : { backgroundColor: c.surface, borderColor: c.border },
               ]}
               accessibilityRole="button"
               accessibilityState={{ selected: tab === t }}
             >
-              <Text style={[styles.tabText, tab === t ? styles.tabTextOn : { color: c.textMuted }]}>
+              <Text style={[styles.tabText, { color: tab === t ? c.primaryText : c.textMuted }]}>
                 {t === "upcoming" ? "Coming up" : t === "past" ? "Played" : "Cancelled"}
               </Text>
             </Pressable>
@@ -735,6 +743,15 @@ function BookingCard({
   const canDecideCompetition = Boolean(
     b.status === "pending" && competitionPending && b.competition?.isOpponentCaptain,
   );
+  const semantic = {
+    orange: isDark ? colors.orange300 : colors.orange700,
+    indigo: isDark ? "#C7D2FE" : "#4338CA",
+    sky: isDark ? colors.sky300 : colors.sky700,
+    violet: isDark ? colors.violet300 : colors.violet700,
+    emerald: isDark ? colors.emerald300 : colors.emerald700,
+    amber: isDark ? colors.amber300 : "#B45309",
+    red: isDark ? colors.red400 : colors.red600,
+  };
 
   const statusTone =
     b.status === "confirmed"
@@ -765,10 +782,10 @@ function BookingCard({
         <View style={styles.cardBody}>
           <View style={styles.cardHeadRow}>
             <View style={styles.grow}>
-              <Text style={[styles.venueName, { color: text }]} numberOfLines={1}>
+              <Text style={[styles.venueName, { color: text }]}>
                 {b.venue?.name ?? "Venue"}
               </Text>
-              <Text style={[styles.meta, { color: muted }]} numberOfLines={1}>
+              <Text style={[styles.meta, { color: muted }]}>
                 {b.court?.name ?? "Court"} • {b.court && "format" in b.court ? (b.court as { format?: string }).format : ""}
               </Text>
             </View>
@@ -778,7 +795,7 @@ function BookingCard({
                   {formatNPR(b.priceBeforeDiscount)}
                 </Text>
               ) : null}
-              <Text style={[styles.price, { color: isDark ? "#34D399" : "#047857" }]}>
+              <Text style={[styles.price, { color: isDark ? colors.emerald300 : colors.emerald700 }]}>
                 {b.totalPrice === 0 ? "FREE 🎁" : formatNPR(b.totalPrice)}
               </Text>
               <View style={styles.paymentMetaRow}>
@@ -787,7 +804,11 @@ function BookingCard({
                   style={[
                     styles.paymentStatusChip,
                     {
-                      color: b.paymentStatus === "paid" ? (isDark ? "#6EE7B7" : "#047857") : b.paymentStatus === "pending" ? (isDark ? "#FCD34D" : "#B45309") : textFaint(muted),
+                      color: b.paymentStatus === "paid"
+                        ? semantic.emerald
+                        : b.paymentStatus === "pending"
+                          ? semantic.amber
+                          : textFaint(muted),
                       backgroundColor: b.paymentStatus === "paid" ? (isDark ? "rgba(16,185,129,0.18)" : "#ECFDF5") : b.paymentStatus === "pending" ? (isDark ? "rgba(245,158,11,0.16)" : "#FFFBEB") : (isDark ? "rgba(148,163,184,0.16)" : "#F1F5F9"),
                     },
                   ]}
@@ -843,7 +864,19 @@ function BookingCard({
                 </View>
                 <View style={styles.teamPaymentStatusRow}>
                   <Text style={[styles.teamPaymentStatus, { color: muted }]}>Payment: {paymentMethodLabel(teamShare.paymentMethod)}</Text>
-                  <Text style={[styles.paymentStatusChip, { color: teamShare.paymentStatus === "paid" ? "#047857" : muted, backgroundColor: teamShare.paymentStatus === "paid" ? "#ECFDF5" : "#F1F5F9" }]}>
+                  <Text
+                    style={[
+                      styles.paymentStatusChip,
+                      {
+                        color: teamShare.paymentStatus === "paid"
+                          ? (isDark ? colors.emerald300 : colors.emerald700)
+                          : muted,
+                        backgroundColor: teamShare.paymentStatus === "paid"
+                          ? (isDark ? "rgba(16,185,129,0.18)" : colors.emerald50)
+                          : (isDark ? "rgba(148,163,184,0.16)" : colors.stone100),
+                      },
+                    ]}
+                  >
                     {paymentStatusLabel(teamShare.paymentStatus)}
                   </Text>
                 </View>
@@ -868,7 +901,7 @@ function BookingCard({
                       </Pressable>
                     ))}
                   </View>
-                  <Pressable onPress={onSaveTeamMethod} disabled={teamSaving} style={[styles.teamSave, { opacity: teamSaving ? 0.5 : 1 }]}>
+                  <Pressable onPress={onSaveTeamMethod} disabled={teamSaving} style={[styles.teamSave, { backgroundColor: isDark ? colors.sky500 : colors.sky700, opacity: teamSaving ? 0.5 : 1 }]}>
                     <Text style={styles.teamSaveText}>{teamSaving ? "Saving…" : "Save payment choice"}</Text>
                   </Pressable>
                 </View>
@@ -892,7 +925,13 @@ function BookingCard({
             </Text>
           ) : null}
           {b.status === "rejected" ? (
-            <Text style={[styles.note, styles.noteRed]}>
+            <Text
+              style={[
+                styles.note,
+                styles.noteRed,
+                isDark && { backgroundColor: "rgba(239,68,68,0.12)", color: colors.red400 },
+              ]}
+            >
               {b.competition?.competitionStatus === "declined"
                 ? "The opposition captain declined this competition request, so the venue owner was not notified."
                 : "Oh no — the venue was fully packed for this slot. Pick another time, we believe in you! 🙏"}
@@ -907,7 +946,7 @@ function BookingCard({
               {formatTime12(b.startTime)} – {formatTime12(b.endTime || b.startTime)}
             </Text>
             <MapPin size={16} color={colors.emerald600} />
-            <Text style={[styles.detailText, { color: muted }]} numberOfLines={1}>
+            <Text style={[styles.detailText, { color: muted }]}>
               {b.venue?.address ?? ""}
             </Text>
           </View>
@@ -915,8 +954,8 @@ function BookingCard({
           {b.competition ? (
             <View style={[styles.compCard, { borderColor: isDark ? "rgba(99,102,241,0.3)" : "#C7D2FE" }]}>
               <View style={styles.compHead}>
-                <Text style={styles.compTitle}>
-                  <Swords size={14} color="#4338CA" /> {b.teamName || "Your squad"} vs{" "}
+                <Text style={[styles.compTitle, { color: semantic.indigo }]}>
+                  <Swords size={14} color={semantic.indigo} /> {b.teamName || "Your squad"} vs{" "}
                   {b.competition.opponentName}
                 </Text>
                 <View
@@ -936,14 +975,10 @@ function BookingCard({
                   <Text
                     style={{
                       color: competitionDeclined
-                        ? "#DC2626"
+                        ? semantic.red
                         : b.competition.scoreStatus === "recorded"
-                          ? isDark
-                            ? "#34D399"
-                            : "#047857"
-                          : isDark
-                            ? "#C7D2FE"
-                            : "#4338CA",
+                          ? semantic.emerald
+                          : semantic.indigo,
                       fontSize: fontSize.xs,
                       fontWeight: "900",
                     }}
@@ -960,7 +995,7 @@ function BookingCard({
                   </Text>
                 </View>
               </View>
-              <Text style={styles.compBody}>
+              <Text style={[styles.compBody, { color: semantic.indigo }]}>
                 {competitionDeclined
                   ? "The opposition captain declined this request, so it was not sent to the venue owner."
                   : competitionPending
@@ -982,8 +1017,8 @@ function BookingCard({
                   },
                 ]}
               >
-                <Wallet size={13} color={isDark ? "#C7D2FE" : "#4338CA"} />
-                <Text style={[styles.competitionPaymentText, { color: isDark ? "#C7D2FE" : "#4338CA" }]}>
+                <Wallet size={13} color={semantic.indigo} />
+                <Text style={[styles.competitionPaymentText, { color: semantic.indigo }]}>
                   {b.competition.paymentLabel ??
                     (b.competition.paymentMode === "loser_pays"
                       ? "Losing squad pays"
@@ -991,7 +1026,7 @@ function BookingCard({
                 </Text>
               </View>
               {b.competition.paymentMode === "loser_pays" ? (
-                <Text style={styles.competitionPaymentHint}>The result decides who pays.</Text>
+                <Text style={[styles.competitionPaymentHint, { color: semantic.indigo }]}>The result decides who pays.</Text>
               ) : null}
               {canDecideCompetition ? (
                   <View
@@ -1003,7 +1038,7 @@ function BookingCard({
                       },
                     ]}
                   >
-                    <Text style={[styles.competitionDecisionHint, { color: isDark ? "#C7D2FE" : "#3730A3" }]}>
+                    <Text style={[styles.competitionDecisionHint, { color: semantic.indigo }]}>
                     Accept this fixture to release it to the venue owner. Declining keeps it out of
                     the owner's actionable bookings.
                   </Text>
@@ -1011,7 +1046,7 @@ function BookingCard({
                     <Pressable
                       onPress={() => onCompetitionAction("accept")}
                       disabled={competitionActing}
-                      style={[styles.competitionAccept, { opacity: competitionActing ? 0.55 : 1 }]}
+                      style={[styles.competitionAccept, { backgroundColor: isDark ? colors.emerald500 : colors.emerald600, opacity: competitionActing ? 0.55 : 1 }]}
                     >
                       {competitionActing ? (
                         <ActivityIndicator size="small" color="#FFFFFF" />
@@ -1023,9 +1058,9 @@ function BookingCard({
                     <Pressable
                       onPress={() => onCompetitionAction("decline")}
                       disabled={competitionActing}
-                      style={[styles.competitionDecline, { opacity: competitionActing ? 0.55 : 1 }]}
+                      style={[styles.competitionDecline, { borderColor: isDark ? "rgba(248,113,113,0.45)" : "#FCA5A5", opacity: competitionActing ? 0.55 : 1 }]}
                     >
-                      <Text style={styles.competitionDeclineText}>× Decline request</Text>
+                      <Text style={[styles.competitionDeclineText, { color: semantic.red }]}>× Decline request</Text>
                     </Pressable>
                   </View>
                 </View>
@@ -1039,13 +1074,13 @@ function BookingCard({
             </View>
             {isPublic ? (
               <View style={[styles.chip, { backgroundColor: isDark ? "rgba(249,115,22,0.15)" : "#FFEDD5" }]}>
-                <Globe size={12} color="#C2410C" />
-                <Text style={[styles.chipText, { color: "#C2410C" }]}>Open game</Text>
+                <Globe size={12} color={semantic.orange} />
+                <Text style={[styles.chipText, { color: semantic.orange }]}>Open game</Text>
               </View>
             ) : b.competition ? (
               <View style={[styles.chip, { backgroundColor: "rgba(99,102,241,0.15)" }]}>
-                <Swords size={12} color="#4338CA" />
-                <Text style={[styles.chipText, { color: "#4338CA" }]}>Competition</Text>
+                <Swords size={12} color={semantic.indigo} />
+                <Text style={[styles.chipText, { color: semantic.indigo }]}>Competition</Text>
               </View>
             ) : (
               <View style={[styles.chip, { backgroundColor: isDark ? "rgba(255,255,255,0.10)" : "#F5F5F4" }]}>
@@ -1066,28 +1101,28 @@ function BookingCard({
             )}
             {b.teamName ? (
               <View style={[styles.chip, { backgroundColor: "rgba(14,165,233,0.15)" }]}>
-                <Shield size={12} color="#0369A1" />
-                <Text style={[styles.chipText, { color: "#0369A1" }]}>{b.teamName}</Text>
+                <Shield size={12} color={semantic.sky} />
+                <Text style={[styles.chipText, { color: semantic.sky }]}>{b.teamName}</Text>
               </View>
             ) : null}
             {b.isFreePlay ? (
               <View style={[styles.chip, { backgroundColor: "rgba(139,92,246,0.15)" }]}>
-                <Gift size={12} color="#6D28D9" />
-                <Text style={[styles.chipText, { color: "#6D28D9" }]}>Free hour used 🎁</Text>
+                <Gift size={12} color={semantic.violet} />
+                <Text style={[styles.chipText, { color: semantic.violet }]}>Free hour used 🎁</Text>
               </View>
             ) : null}
             {b.promoCode && b.discountAmount ? (
               <View style={[styles.chip, { backgroundColor: "rgba(16,185,129,0.15)" }]}>
-                <Ticket size={12} color="#047857" />
-                <Text style={[styles.chipText, { color: "#047857" }]}>
+                <Ticket size={12} color={semantic.emerald} />
+                <Text style={[styles.chipText, { color: semantic.emerald }]}>
                   {b.promoCode} saved {formatNPR(b.discountAmount)}
                 </Text>
               </View>
             ) : null}
             {mine?.bookingId === b.id ? (
               <View style={[styles.chip, { backgroundColor: "rgba(245,158,11,0.15)" }]}>
-                <Star size={12} color="#B45309" fill="#B45309" />
-                <Text style={[styles.chipText, { color: "#B45309" }]}>Reviewed</Text>
+                <Star size={12} color={semantic.amber} fill={semantic.amber} />
+                <Text style={[styles.chipText, { color: semantic.amber }]}>Reviewed</Text>
               </View>
             ) : null}
             {b.depositRequired ? (
@@ -1104,7 +1139,7 @@ function BookingCard({
                   },
                 ]}
               >
-                <Text style={[styles.chipText, { color: "#B45309" }]}>
+                <Text style={[styles.chipText, { color: b.depositStatus === "paid" ? semantic.emerald : b.depositStatus === "forfeited" ? semantic.red : semantic.amber }]}>
                   🛡️ Deposit {formatNPR(b.depositAmount ?? 0)} •{" "}
                   {b.depositStatus === "paid" ? "paid ✓" : b.depositStatus}
                 </Text>
@@ -1112,7 +1147,7 @@ function BookingCard({
             ) : null}
             {b.paidAmount > 0 ? (
               <View style={[styles.chip, { backgroundColor: "rgba(14,165,233,0.10)" }]}>
-                <Text style={[styles.chipText, { color: "#0369A1" }]}>
+                <Text style={[styles.chipText, { color: semantic.sky }]}>
                   💰 {formatNPR(b.paidAmount)} verified
                   {b.gatewayTxnId ? ` • ${b.gatewayTxnId.slice(0, 12)}` : ""}
                 </Text>
@@ -1143,13 +1178,13 @@ function BookingCard({
             {isOnlineMethod(method) && !isGone && b.competition?.competitionStatus !== "pending" ? (
               b.receiptUrl ? (
                 <Pressable onPress={onOpenReceipt} style={[styles.chip, { backgroundColor: "rgba(16,185,129,0.15)" }]}>
-                  <ReceiptText size={12} color="#047857" />
-                  <Text style={[styles.chipText, { color: "#047857" }]}>Receipt ✓</Text>
+                  <ReceiptText size={12} color={semantic.emerald} />
+                  <Text style={[styles.chipText, { color: semantic.emerald }]}>Receipt ✓</Text>
                 </Pressable>
               ) : !isPlayed ? (
                 <Pressable onPress={onToggleUpload} style={[styles.chip, { backgroundColor: isDark ? "rgba(249,115,22,0.15)" : "#FFEDD5" }]}>
-                  <ReceiptText size={12} color="#C2410C" />
-                  <Text style={[styles.chipText, { color: "#C2410C" }]}>Add receipt 🧾</Text>
+                  <ReceiptText size={12} color={semantic.orange} />
+                  <Text style={[styles.chipText, { color: semantic.orange }]}>Add receipt 🧾</Text>
                 </Pressable>
               ) : null
             ) : null}
@@ -1157,18 +1192,26 @@ function BookingCard({
               <Pressable
                 onPress={onCancel}
                 disabled={cancelling}
-                style={[styles.chip, styles.cancelChip, { opacity: cancelling ? 0.5 : 1 }]}
+                style={[
+                  styles.chip,
+                  {
+                    backgroundColor: isDark ? "rgba(239,68,68,0.12)" : colors.red50,
+                    borderWidth: 1,
+                    borderColor: isDark ? "rgba(248,113,113,0.35)" : colors.red200,
+                    opacity: cancelling ? 0.5 : 1,
+                  },
+                ]}
               >
-                <XCircle size={12} color="#DC2626" />
-                <Text style={[styles.chipText, { color: "#DC2626" }]}>
+                <XCircle size={12} color={semantic.red} />
+                <Text style={[styles.chipText, { color: semantic.red }]}>
                   {cancelling ? "Cancelling…" : "Can't make it"}
                 </Text>
               </Pressable>
             ) : null}
             {reviewable ? (
               <Pressable onPress={onToggleReview} style={[styles.chip, { backgroundColor: colors.amber400 }]}>
-                <Star size={12} color="#78350F" fill="#78350F" />
-                <Text style={[styles.chipText, { color: "#78350F" }]}>
+                <Star size={12} color={semantic.amber} fill={semantic.amber} />
+                <Text style={[styles.chipText, { color: semantic.amber }]}>
                   {reviewFor
                     ? "Close"
                     : mine?.bookingId === b.id
@@ -1182,7 +1225,15 @@ function BookingCard({
           </View>
 
           {reviewFor ? (
-            <View style={[styles.reviewForm, { borderColor: isDark ? "rgba(245,158,11,0.25)" : "#FDE68A" }]}>
+            <View
+              style={[
+                styles.reviewForm,
+                {
+                  borderColor: isDark ? "rgba(245,158,11,0.25)" : "#FDE68A",
+                  backgroundColor: isDark ? "rgba(245,158,11,0.08)" : "rgba(254,243,199,0.5)",
+                },
+              ]}
+            >
               <Text style={[styles.reviewPrompt, { color: text }]}>
                 {mine
                   ? `Update your review of ${b.venue?.name} — it replaces the old one, you keep just the one ⭐`
@@ -1215,12 +1266,20 @@ function BookingCard({
           ) : null}
 
           {uploadFor ? (
-            <View style={[styles.uploadBox, { borderColor: isDark ? "rgba(249,115,22,0.25)" : "#FED7AA" }]}>
+            <View
+              style={[
+                styles.uploadBox,
+                {
+                  borderColor: isDark ? "rgba(249,115,22,0.25)" : "#FED7AA",
+                  backgroundColor: isDark ? "rgba(249,115,22,0.08)" : "rgba(255,247,237,0.6)",
+                },
+              ]}
+            >
               <Text style={[styles.uploadHint, { color: muted }]}>
                 Paid via {method}? Attach your screenshot — it speeds up approval! ⚡
               </Text>
               <ReceiptUploader value="" compact onChange={(url) => url && onSaveReceipt(url)} />
-              {uploading ? <Text style={styles.uploading}>Saving…</Text> : null}
+              {uploading ? <Text style={[styles.uploading, { color: isDark ? colors.orange300 : colors.orange600 }]}>Saving…</Text> : null}
             </View>
           ) : null}
         </View>
@@ -1271,34 +1330,37 @@ const styles = StyleSheet.create({
     marginTop: space[2],
   },
   pendingText: { flex: 1, fontSize: 13, fontWeight: "700", color: "#92400E", lineHeight: 18 },
-  kpiRow: { flexDirection: "row", gap: space[2], marginTop: space[3] },
+  kpiRow: { flexDirection: "row", flexWrap: "wrap", gap: space[2], marginTop: space[3] },
   kpi: {
     flex: 1,
+    minWidth: 0,
     borderRadius: radius["2xl"],
     borderWidth: 1,
     paddingHorizontal: space[3],
     paddingVertical: space[3.5],
     alignItems: "center",
   },
-  kpiValue: { fontSize: fontSize.xl, fontWeight: "900" },
+  kpiValue: { fontSize: fontSize.xl, lineHeight: 24, fontWeight: "900", textAlign: "center" },
   kpiLabel: {
     fontSize: 10,
     fontWeight: "700",
     textTransform: "uppercase",
     textAlign: "center",
     letterSpacing: 0.5,
+    lineHeight: 13,
     marginTop: 2,
   },
-  tabRow: { flexDirection: "row", gap: space[2], marginTop: space[4] },
+  tabRow: { flexDirection: "row", flexWrap: "wrap", gap: space[2], marginTop: space[4] },
   tabBtn: {
     flex: 1,
+    minWidth: 0,
     borderRadius: radius["2xl"],
     borderWidth: 1,
     paddingVertical: space[2.5],
     alignItems: "center",
   },
   tabOn: { backgroundColor: colors.emerald600, borderColor: colors.emerald600 },
-  tabText: { fontSize: fontSize.xs, fontWeight: "900", textTransform: "uppercase" },
+  tabText: { fontSize: fontSize.xs, fontWeight: "900", lineHeight: 14, textAlign: "center", textTransform: "uppercase" },
   tabTextOn: { color: "#FFFFFF" },
   emptyCard: {
     borderRadius: radius["3xl"],
@@ -1323,14 +1385,14 @@ const styles = StyleSheet.create({
     marginTop: space[3],
     overflow: "hidden",
   },
-  cardTop: { flexDirection: "row" },
-  cardImg: { width: 120, height: "100%", minHeight: 140 },
+  cardTop: { flexDirection: "row", alignItems: "stretch" },
+  cardImg: { width: 120, minHeight: 140, alignSelf: "stretch" },
   cardBody: { flex: 1, minWidth: 0, padding: space[4] },
-  cardHeadRow: { flexDirection: "row", gap: space[2], alignItems: "flex-start" },
+  cardHeadRow: { flexDirection: "row", flexWrap: "wrap", gap: space[2], alignItems: "flex-start" },
   grow: { flex: 1, minWidth: 0 },
   venueName: { fontSize: fontSize.base, fontWeight: "800" },
   meta: { fontSize: fontSize.xs, marginTop: 2 },
-  moneyCol: { alignItems: "flex-end" },
+  moneyCol: { alignItems: "flex-end", maxWidth: "100%", flexShrink: 1 },
   openBooking: {
     flexDirection: "row",
     alignItems: "center",
@@ -1353,7 +1415,6 @@ const styles = StyleSheet.create({
     paddingVertical: space[2.5],
     fontSize: fontSize.xs,
     lineHeight: 17,
-    overflow: "hidden",
   },
   noteAmber: { backgroundColor: "#FFFBEB", color: "#B45309" },
   noteRed: { backgroundColor: "#FEF2F2", color: "#DC2626" },
@@ -1362,11 +1423,11 @@ const styles = StyleSheet.create({
   advanceHint: { fontSize: 11, lineHeight: 16, fontWeight: "600" },
   advanceActions: { flexDirection: "row", flexWrap: "wrap", gap: space[2] },
   teamPaymentCard: { marginTop: space[2.5], borderRadius: radius["2xl"], borderWidth: 1, padding: space[3.5], gap: space[2] },
-  teamPaymentHead: { flexDirection: "row", alignItems: "flex-start", gap: space[2] },
+  teamPaymentHead: { flexDirection: "row", flexWrap: "wrap", alignItems: "flex-start", gap: space[2] },
   teamPaymentTitle: { fontSize: fontSize.sm, fontWeight: "900" },
   teamPaymentHint: { fontSize: 11, lineHeight: 16, fontWeight: "600", marginTop: 2 },
   teamPaymentStatus: { fontSize: 10, fontWeight: "900" },
-  teamPaymentStatusRow: { alignItems: "flex-end", gap: 4, maxWidth: 150 },
+  teamPaymentStatusRow: { alignItems: "flex-end", gap: 4, maxWidth: "100%", flexShrink: 1 },
   teamPaymentActions: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: space[2] },
   teamMethodBox: { borderWidth: 1, borderRadius: radius.xl, padding: space[3], gap: space[2] },
   teamMethodTitle: { fontSize: fontSize.xs, fontWeight: "900" },
@@ -1381,7 +1442,7 @@ const styles = StyleSheet.create({
     gap: space[2],
     marginTop: space[3],
   },
-  detailText: { fontSize: 13, fontWeight: "600", marginRight: space[2] },
+  detailText: { fontSize: 13, lineHeight: 18, fontWeight: "600", flexShrink: 1, marginRight: space[2] },
   compCard: {
     marginTop: space[3],
     borderRadius: radius["2xl"],
@@ -1451,6 +1512,7 @@ const styles = StyleSheet.create({
   idChip: { borderRadius: radius.xl, paddingHorizontal: space[3], paddingVertical: space[1.5] },
   idChipText: { fontFamily: "monospace", fontSize: fontSize.xs, fontWeight: "700" },
   chip: {
+    maxWidth: "100%",
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
@@ -1458,7 +1520,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: space[3],
     paddingVertical: space[1.5],
   },
-  chipText: { fontSize: fontSize.xs, fontWeight: "900" },
+  chipText: { flexShrink: 1, fontSize: fontSize.xs, lineHeight: 15, fontWeight: "900" },
   cancelChip: { backgroundColor: "#FEF2F2", borderWidth: 1, borderColor: "#FECACA" },
   payBtn: {
     flexDirection: "row",
@@ -1469,7 +1531,7 @@ const styles = StyleSheet.create({
     paddingVertical: space[1.5],
     minHeight: 32,
   },
-  payBtnText: { color: "#FFFFFF", fontSize: fontSize.xs, fontWeight: "900" },
+  payBtnText: { flexShrink: 1, color: "#FFFFFF", fontSize: fontSize.xs, lineHeight: 15, fontWeight: "900" },
   reviewForm: {
     marginTop: space[3],
     borderRadius: radius["2xl"],

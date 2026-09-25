@@ -169,18 +169,19 @@ export function LeagueBrowser() {
         >
           Search
         </button>
-        {/* The four filters used to be a rigid row that overflowed a 360px screen;
-            they scroll sideways now instead of pushing the layout wide. */}
-        <div className="no-scrollbar -mx-1 flex items-center gap-1 overflow-x-auto rounded-2xl border border-[#F0E3CC] bg-white p-1 px-1 dark:border-white/10 dark:bg-slate-900 lg:mx-0">
+        {/* Keep every filter visible without pushing the listing sideways. On a
+            very narrow phone the chips wrap into a second tidy row instead of
+            hiding “Taking entries”, “My squads” or “I host” in a scroll rail. */}
+        <div className="-mx-1 flex flex-wrap items-center gap-1 rounded-2xl border border-[#F0E3CC] bg-white p-1 dark:border-white/10 dark:bg-slate-900 lg:mx-0">
           <Filter className="ml-1.5 h-3.5 w-3.5 shrink-0 text-stone-400" />
           {FILTERS.map((f) => (
             <button
               key={f.id}
               onClick={() => setFilter(f.id)}
               aria-pressed={filter === f.id}
-              className={`shrink-0 rounded-xl px-3 py-2 text-[11px] font-black whitespace-nowrap transition ${
+              className={`min-w-[4.5rem] flex-1 rounded-xl px-2.5 py-2 text-center text-[11px] font-black leading-tight transition lg:flex-none lg:whitespace-nowrap ${
                 filter === f.id
-                  ? "bg-emerald-600 text-white"
+                  ? "bg-emerald-600 text-white shadow-sm"
                   : "text-stone-600 hover:bg-stone-100 dark:text-slate-300 dark:hover:bg-white/5"
               }`}
             >
@@ -192,12 +193,15 @@ export function LeagueBrowser() {
 
       {/* Hosting blurb for owners */}
       {isOwner && (
-        <p className="mt-3 flex flex-wrap items-center gap-2 rounded-2xl border border-orange-200 bg-orange-50 px-4 py-3 text-xs font-bold text-orange-700 dark:border-orange-500/25 dark:bg-orange-500/10 dark:text-orange-300">
-          <Crown className="h-3.5 w-3.5 shrink-0" /> Running a venue? You can host leagues at your own
-          ground straight from the Owner Studio — same tools, same table.
-          <Link href="/admin/leagues" className="underline">
-            Open Owner Studio → Leagues
-          </Link>
+        <p className="mt-3 flex flex-wrap items-start gap-2 rounded-2xl border border-orange-200 bg-orange-50 px-4 py-3 text-xs font-bold leading-relaxed text-orange-700 dark:border-orange-500/25 dark:bg-orange-500/10 dark:text-orange-300">
+          <Crown className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          <span className="min-w-0 flex-1">
+            Running a venue? You can host leagues at your own ground straight from the Owner Studio —
+            same tools, same table. {" "}
+            <Link href="/admin/leagues" className="underline">
+              Open Owner Studio → Leagues
+            </Link>
+          </span>
         </p>
       )}
 

@@ -182,11 +182,11 @@ export default function MatchesScreen() {
             accessibilityRole="button"
             style={({ pressed }) => [
               styles.startButton,
-              { backgroundColor: colors.emerald600, opacity: pressed ? 0.85 : 1 },
+              { backgroundColor: c.primary, opacity: pressed ? 0.85 : 1 },
             ]}
           >
-            <Plus size={16} color="#FFFFFF" strokeWidth={3} />
-            <Text style={styles.startButtonText}>Start a game</Text>
+            <Plus size={16} color={c.primaryText} strokeWidth={3} />
+            <Text style={[styles.startButtonText, { color: c.primaryText }]}>Start a game</Text>
           </Pressable>
         ) : null}
 
@@ -209,13 +209,12 @@ export default function MatchesScreen() {
                 accessibilityState={{ selected: active }}
                 style={[
                   styles.toggleButton,
-                  active ? { backgroundColor: colors.emerald600 } : null,
+                  active ? { backgroundColor: c.primary } : null,
                 ]}
               >
-                <t.icon size={16} color={active ? "#FFFFFF" : c.textMuted} strokeWidth={2.5} />
+                <t.icon size={16} color={active ? c.primaryText : c.textMuted} strokeWidth={2.5} />
                 <Text
-                  style={[styles.toggleText, { color: active ? "#FFFFFF" : c.textMuted }]}
-                  numberOfLines={1}
+                  style={[styles.toggleText, { color: active ? c.primaryText : c.textMuted }]}
                 >
                   {t.label}
                 </Text>
@@ -248,11 +247,11 @@ export default function MatchesScreen() {
                     style={[
                       styles.filterPill,
                       active
-                        ? { backgroundColor: colors.emerald600 }
+                        ? { backgroundColor: c.primary }
                         : { backgroundColor: c.surface, borderColor: c.border, borderWidth: 1 },
                     ]}
                   >
-                    <Text style={[styles.filterPillText, { color: active ? "#FFFFFF" : c.textMuted }]}>
+                    <Text style={[styles.filterPillText, { color: active ? c.primaryText : c.textMuted }]}>
                       {filterLabel(f)}
                     </Text>
                   </Pressable>
@@ -309,7 +308,7 @@ function OpenMatchCard({
   joining: boolean;
   onToggle: () => void;
 }) {
-  const { colors: c } = useTheme();
+  const { colors: c, isDark } = useTheme();
   const { user } = useAuth();
 
   const already = (m.players ?? []).some((p) => p.id === user?.id);
@@ -346,7 +345,18 @@ function OpenMatchCard({
               ]}
             >
               <Text
-                style={[styles.chipText, { color: isCustom ? colors.violet700 : colors.sky700 }]}
+                style={[
+                  styles.chipText,
+                  {
+                    color: isCustom
+                      ? isDark
+                        ? colors.violet300
+                        : colors.violet700
+                      : isDark
+                        ? colors.sky300
+                        : colors.sky700,
+                  },
+                ]}
               >
                 {isCustom ? `✨ Custom ${formatNPR(m.pricePerPlayer)}` : "🤝 Fair split"}
               </Text>
@@ -354,9 +364,25 @@ function OpenMatchCard({
           </View>
         </View>
         <View
-          style={[styles.spots, { backgroundColor: full ? colors.stone200 : colors.orange100 }]}
+          style={[
+            styles.spots,
+            {
+              backgroundColor: full
+                ? isDark
+                  ? "rgba(255,255,255,0.10)"
+                  : colors.stone200
+                : isDark
+                  ? "rgba(249,115,22,0.15)"
+                  : colors.orange100,
+            },
+          ]}
         >
-          <Text style={[styles.spotsText, { color: full ? colors.stone500 : colors.orange700 }]}>
+          <Text
+            style={[
+              styles.spotsText,
+              { color: full ? c.textFaint : isDark ? colors.orange300 : colors.orange700 },
+            ]}
+          >
             {full ? "Full house" : `${m.spotsLeft} left`}
           </Text>
         </View>
@@ -368,14 +394,14 @@ function OpenMatchCard({
 
       <View style={styles.metaBlock}>
         <View style={styles.metaRow}>
-          <MapPin size={16} color={colors.emerald600} />
-          <Text style={[styles.metaText, { color: c.textMuted }]} numberOfLines={1}>
+          <MapPin size={16} color={c.primary} />
+          <Text style={[styles.metaText, { color: c.textMuted }]}>
             {m.venue?.name} — {m.venue?.address}
           </Text>
         </View>
         <View style={styles.metaRow}>
-          <CalendarDays size={16} color={colors.emerald600} />
-          <Text style={[styles.metaText, { color: c.textMuted }]} numberOfLines={1}>
+          <CalendarDays size={16} color={c.primary} />
+          <Text style={[styles.metaText, { color: c.textMuted }]}>
             {prettyDate(m.date)} • {formatTime12(m.startTime)} –{" "}
             {formatTime12(m.endTime || m.startTime)}
           </Text>
@@ -425,24 +451,28 @@ function OpenMatchCard({
         style={({ pressed }) => [
           styles.joinButton,
           already
-            ? { backgroundColor: colors.red50, borderWidth: 1, borderColor: colors.red200 }
+            ? {
+                backgroundColor: isDark ? "rgba(239,68,68,0.12)" : colors.red50,
+                borderWidth: 1,
+                borderColor: isDark ? "rgba(248,113,113,0.35)" : colors.red200,
+              }
             : full
               ? { backgroundColor: c.inset }
-              : { backgroundColor: colors.emerald600 },
+              : { backgroundColor: c.primary },
           (joining || full) && !already ? { opacity: 0.6 } : null,
           pressed ? { opacity: 0.85 } : null,
         ]}
       >
         {already ? (
-          <Text style={[styles.joinText, { color: colors.red500 }]}>
+          <Text style={[styles.joinText, { color: isDark ? colors.red400 : colors.red500 }]}>
             Can't make it — leave game
           </Text>
         ) : full ? (
           <Text style={[styles.joinText, { color: c.textFaint }]}>This one's full</Text>
         ) : (
           <>
-            <Check size={16} color="#FFFFFF" strokeWidth={3} />
-            <Text style={[styles.joinText, { color: "#FFFFFF" }]}>
+            <Check size={16} color={c.primaryText} strokeWidth={3} />
+            <Text style={[styles.joinText, { color: c.primaryText }]}>
               {joining ? "Saving your spot…" : `Count me in • ${formatNPR(m.pricePerPlayer)}`}
             </Text>
           </>
@@ -465,7 +495,7 @@ function CreateGameModal({
   venues: Venue[];
   onCreated: () => void;
 }) {
-  const { colors: c } = useTheme();
+  const { colors: c, isDark } = useTheme();
   const { user } = useAuth();
 
   const [title, setTitle] = useState("");
@@ -652,11 +682,11 @@ function CreateGameModal({
                     style={[
                       styles.dayChip,
                       active
-                        ? { backgroundColor: colors.emerald600 }
+                        ? { backgroundColor: c.primary }
                         : { backgroundColor: c.inset, borderColor: c.border, borderWidth: 1 },
                     ]}
                   >
-                    <Text style={{ color: active ? "#FFFFFF" : c.textMuted, fontSize: fontSize.sm, fontWeight: "700" }}>
+                    <Text style={{ color: active ? c.primaryText : c.textMuted, fontSize: fontSize.sm, fontWeight: "700" }}>
                       {prettyDate(d)}
                     </Text>
                   </Pressable>
@@ -679,11 +709,11 @@ function CreateGameModal({
                     style={[
                       styles.dayChip,
                       active
-                        ? { backgroundColor: colors.emerald600 }
+                        ? { backgroundColor: c.primary }
                         : { backgroundColor: c.inset, borderColor: c.border, borderWidth: 1 },
                     ]}
                   >
-                    <Text style={{ color: active ? "#FFFFFF" : c.textMuted, fontSize: fontSize.sm, fontWeight: "700" }}>
+                    <Text style={{ color: active ? c.primaryText : c.textMuted, fontSize: fontSize.sm, fontWeight: "700" }}>
                       {formatTime12(s)}
                     </Text>
                   </Pressable>
@@ -708,23 +738,31 @@ function CreateGameModal({
                   <Pressable
                     onPress={() => setOurCrew((v) => Math.min(21, v + 1))}
                     accessibilityLabel="More crew"
-                    style={[styles.counterBtn, { backgroundColor: colors.emerald600 }]}
+                    style={[styles.counterBtn, { backgroundColor: c.primary }]}
                   >
                     <Plus size={16} color="#FFFFFF" />
                   </Pressable>
                 </View>
               </View>
-              <View style={[styles.counter, { borderColor: colors.orange300, backgroundColor: colors.orange50 }]}>
-                <Text style={[styles.counterLabel, { color: colors.orange700 }]}>🙋 Open spots</Text>
+              <View
+                style={[
+                  styles.counter,
+                  {
+                    borderColor: isDark ? "rgba(249,115,22,0.45)" : colors.orange300,
+                    backgroundColor: isDark ? "rgba(249,115,22,0.10)" : colors.orange50,
+                  },
+                ]}
+              >
+                <Text style={[styles.counterLabel, { color: isDark ? colors.orange300 : colors.orange700 }]}>🙋 Open spots</Text>
                 <View style={styles.counterControls}>
                   <Pressable
                     onPress={() => setOpenSpots((v) => Math.max(1, v - 1))}
                     accessibilityLabel="Fewer open spots"
-                    style={[styles.counterBtn, { borderColor: colors.orange300 }]}
+                    style={[styles.counterBtn, { borderColor: isDark ? "rgba(249,115,22,0.45)" : colors.orange300 }]}
                   >
-                    <Minus size={16} color={colors.orange600} />
+                    <Minus size={16} color={isDark ? colors.orange300 : colors.orange600} />
                   </Pressable>
-                  <Text style={[styles.counterValue, { color: colors.orange600 }]}>{openSpots}</Text>
+                  <Text style={[styles.counterValue, { color: isDark ? colors.orange300 : colors.orange600 }]}>{openSpots}</Text>
                   <Pressable
                     onPress={() => setOpenSpots((v) => Math.min(21, v + 1))}
                     accessibilityLabel="More open spots"
@@ -749,7 +787,7 @@ function CreateGameModal({
                   styles.welcomeBox,
                   {
                     borderColor: welcomeMode === "any" ? colors.emerald500 : c.border,
-                    backgroundColor: welcomeMode === "any" ? colors.emerald50 : "transparent",
+                    backgroundColor: welcomeMode === "any" ? c.activeSoft : c.surface,
                   },
                 ]}
               >
@@ -762,7 +800,11 @@ function CreateGameModal({
                   styles.welcomeBox,
                   {
                     borderColor: welcomeMode === "specific" ? colors.orange400 : c.border,
-                    backgroundColor: welcomeMode === "specific" ? colors.orange50 : "transparent",
+                    backgroundColor: welcomeMode === "specific"
+                      ? isDark
+                        ? "rgba(249,115,22,0.10)"
+                        : colors.orange50
+                      : c.surface,
                   },
                 ]}
               >
@@ -789,7 +831,6 @@ function CreateGameModal({
                       <Text style={styles.levelEmoji}>{l.emoji}</Text>
                       <Text
                         style={[styles.levelName, { color: on ? "#FFFFFF" : c.text }]}
-                        numberOfLines={1}
                       >
                         {l.name}
                       </Text>
@@ -801,7 +842,7 @@ function CreateGameModal({
 
             {/* Custom charge */}
             <View style={[styles.chargeBox, { borderColor: "rgba(139,92,246,0.25)" }]}>
-              <Text style={styles.chargeLabel}>✨ Custom charge per joiner</Text>
+              <Text style={[styles.chargeLabel, { color: isDark ? colors.violet300 : colors.violet700 }]}>✨ Custom charge per joiner</Text>
               <View style={styles.chargeInputRow}>
                 <Text style={[styles.chargePrefix, { color: c.textFaint }]}>Rs.</Text>
                 <TextInput
@@ -878,7 +919,19 @@ function CreateGameModal({
             />
             {fieldErrors.desc ? <Text style={styles.fieldError}>{fieldErrors.desc}</Text> : null}
 
-            {formError ? <Text style={styles.formError}>{formError}</Text> : null}
+            {formError ? (
+              <Text
+                style={[
+                  styles.formError,
+                  {
+                    color: isDark ? colors.red400 : colors.red600,
+                    backgroundColor: isDark ? "rgba(239,68,68,0.12)" : colors.red50,
+                  },
+                ]}
+              >
+                {formError}
+              </Text>
+            ) : null}
 
             <Pressable
               onPress={submit}
@@ -886,12 +939,12 @@ function CreateGameModal({
               accessibilityRole="button"
               style={({ pressed }) => [
                 styles.submitButton,
-                { backgroundColor: colors.emerald600 },
+                { backgroundColor: c.primary },
                 creating || !title ? { opacity: 0.4 } : null,
                 pressed ? { opacity: 0.85 } : null,
               ]}
             >
-              <Text style={styles.submitText}>
+              <Text style={[styles.submitText, { color: c.primaryText }]}>
                 {creating ? "Inviting everyone…" : "Share my game 🎉"}
               </Text>
             </Pressable>
@@ -981,7 +1034,7 @@ const styles = StyleSheet.create({
     padding: space[5],
     marginTop: space[4],
   },
-  cardHead: { flexDirection: "row", justifyContent: "space-between", gap: space[3] },
+  cardHead: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: space[3] },
   cardTitle: { fontSize: fontSize.lg, fontWeight: "800" },
   cardSub: { fontSize: fontSize.sm, color: colors.stone500, marginTop: 2 },
   cardCrew: { fontSize: fontSize.xs, fontWeight: "700", marginTop: 4 },
@@ -993,17 +1046,19 @@ const styles = StyleSheet.create({
 
   desc: { fontSize: 13, lineHeight: 19, marginTop: space[2] },
   metaBlock: { marginTop: space[3], gap: 6 },
-  metaRow: { flexDirection: "row", alignItems: "center", gap: space[2] },
+  metaRow: { flexDirection: "row", flexWrap: "wrap", alignItems: "flex-start", gap: space[2] },
   metaText: { fontSize: 13, fontWeight: "600", flex: 1 },
-  metaPrice: { fontSize: 13, fontWeight: "900" },
+  metaPrice: { fontSize: 13, fontWeight: "900", marginLeft: "auto", flexShrink: 0 },
 
   track: { height: 8, borderRadius: radius.full, overflow: "hidden", marginTop: space[3] },
   fill: { height: "100%", borderRadius: radius.full },
 
   peopleRow: {
     flexDirection: "row",
+    flexWrap: "wrap",
     alignItems: "center",
     justifyContent: "space-between",
+    gap: space[2],
     marginTop: space[2],
   },
   stack: { flexDirection: "row", alignItems: "center" },
@@ -1016,7 +1071,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   moreText: { fontSize: fontSize["2xs"], fontWeight: "900" },
-  count: { fontSize: fontSize.sm, fontWeight: "700" },
+  count: { fontSize: fontSize.sm, fontWeight: "700", flexShrink: 1, textAlign: "right" },
 
   joinButton: {
     flexDirection: "row",
@@ -1082,8 +1137,8 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
 
-  counterRow: { flexDirection: "row", gap: space[3], marginTop: space[3] },
-  counter: { flex: 1, borderRadius: radius["2xl"], borderWidth: 1, padding: space[3] },
+  counterRow: { flexDirection: "row", flexWrap: "wrap", gap: space[3], marginTop: space[3] },
+  counter: { flexGrow: 1, flexBasis: 130, minWidth: 0, borderRadius: radius["2xl"], borderWidth: 1, padding: space[3] },
   counterLabel: { fontSize: fontSize.sm, fontWeight: "900" },
   counterControls: {
     flexDirection: "row",
@@ -1107,9 +1162,10 @@ const styles = StyleSheet.create({
   welcomeBox: { flex: 1, borderRadius: radius.xl, borderWidth: 1, padding: 10 },
   welcomeTitle: { fontSize: fontSize.base, fontWeight: "900" },
   welcomeSub: { fontSize: fontSize.xs, color: colors.stone500 },
-  levelRow: { flexDirection: "row", gap: space[2], marginTop: space[2] },
+  levelRow: { flexDirection: "row", flexWrap: "wrap", gap: space[2], marginTop: space[2] },
   levelBox: {
-    flex: 1,
+    flexGrow: 1,
+    flexBasis: 88,
     borderRadius: radius.xl,
     borderWidth: 1,
     paddingVertical: space[2],
@@ -1117,7 +1173,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   levelEmoji: { fontSize: fontSize.lg },
-  levelName: { fontSize: fontSize["2xs"], fontWeight: "900" },
+  levelName: { fontSize: fontSize["2xs"], fontWeight: "900", textAlign: "center", lineHeight: 13 },
 
   chargeBox: {
     borderRadius: radius["2xl"],
