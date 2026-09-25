@@ -849,6 +849,15 @@ export default function BookingsPage() {
                         </span>
                       </span>
                     </div>
+                    {b.advancePaymentRequired && b.advancePaymentStatus !== "paid" && (
+                      <div role="alert" className="mt-3 flex items-start gap-2.5 rounded-2xl border-2 border-orange-300 bg-orange-50 px-3.5 py-3 text-xs text-orange-900 dark:border-orange-400/40 dark:bg-orange-500/10 dark:text-orange-100">
+                        <Hourglass className="mt-0.5 h-4 w-4 shrink-0 animate-pulse text-orange-600 dark:text-orange-300" />
+                        <div className="min-w-0">
+                          <p className="font-black">Action needed: venue advance {formatNPR(b.advancePaymentAmount)} requested</p>
+                          <p className="mt-0.5 font-bold leading-relaxed text-orange-800/80 dark:text-orange-100/80">Pay within 30 minutes of the owner&apos;s request or this booking expires. Open payment actions below; only eSewa or Khalti can satisfy the advance.</p>
+                        </div>
+                      </div>
+                    )}
                     <div className="mt-3 flex min-w-0 flex-wrap items-start gap-x-4 gap-y-1.5 border-b border-stone-100 pb-3 text-[12px] font-bold leading-relaxed text-stone-500 dark:border-white/5 dark:text-slate-400">
                       <span className="flex items-start gap-1.5">
                         <CalendarCheck className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-600 dark:text-emerald-400" />
@@ -859,11 +868,6 @@ export default function BookingsPage() {
                         <span className="break-words">{b.venue?.address || "Venue address unavailable"}</span>
                       </span>
                     </div>
-                    {b.advancePaymentRequired && b.advancePaymentStatus !== "paid" && (
-                      <p className="mt-3 rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-[11px] font-black leading-relaxed text-sky-800 dark:border-sky-500/25 dark:bg-sky-500/10 dark:text-sky-200">
-                        💳 Venue advance {formatNPR(b.advancePaymentAmount)} needs attention — open payment actions below.
-                      </p>
-                    )}
                     {canDecideCompetition && (
                       <p className="mt-3 rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-2 text-[11px] font-black leading-relaxed text-indigo-700 dark:border-indigo-500/25 dark:bg-indigo-500/10 dark:text-indigo-200">
                         🆚 Opposition decision needed — open booking actions to accept or decline.
@@ -894,7 +898,7 @@ export default function BookingsPage() {
                         ) : (
                           <>
                             <p className="mt-1.5 text-[11px] font-semibold text-sky-800/80 dark:text-sky-200/80">
-                              Pay this requested amount within one hour of the owner&apos;s request. Only eSewa or Khalti can satisfy the advance; Cash at Venue is not available for it.
+                              Pay this requested amount within 30 minutes of the owner&apos;s request. Only eSewa or Khalti can satisfy the advance; Cash at Venue is not available for it.
                               {b.advancePaymentRequestedAt ? ` Requested ${new Date(b.advancePaymentRequestedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}.` : ""}
                             </p>
                             <div className="mt-2 flex flex-wrap gap-2">

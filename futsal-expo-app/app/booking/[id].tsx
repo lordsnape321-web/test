@@ -239,7 +239,7 @@ export default function BookingDetail() {
         {error ? <Notice message={error} /> : null}
         {success ? <Notice message={success} tone="success" /> : null}
         {advanceDue > 0 ? (
-          <Notice message={`Venue advance requested: ${formatNPR(advanceDue)}. Pay within one hour using eSewa or Khalti only; Cash at Venue cannot satisfy this advance.`} tone="info" />
+          <Notice message={`Venue advance requested: ${formatNPR(advanceDue)}. Pay within 30 minutes using eSewa or Khalti only; Cash at Venue cannot satisfy this advance.`} tone="info" />
         ) : booking.advancePaymentRequired && booking.advancePaymentStatus === "paid" ? (
           <Notice message={`Advance verified. Remaining ${formatNPR(Math.max(0, balance))} may be paid at the venue.`} tone="success" />
         ) : null}

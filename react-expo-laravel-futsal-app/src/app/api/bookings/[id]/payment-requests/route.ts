@@ -172,7 +172,7 @@ export async function POST(
       userId: request.payerId,
       type: "payment",
       title: `${purpose === "advance" ? "💳 Advance payment request" : "💳 Team payment request"} — ${requester}`,
-      message: `${requester} asked you to pay ${formatNPR(amount)} directly to ${venue?.name ?? "the venue"} for ${court?.name ?? "the court"} on ${when}. Choose eSewa or Khalti; the verified payment goes into booking #FN-${booking.id}.${purpose === "advance" && deadline ? ` Pay before ${deadline.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })} — the booking cancels one hour after the venue's advance request.` : ""}${note ? ` Note: ${note}` : ""}`,
+      message: `${requester} asked you to pay ${formatNPR(amount)} directly to ${venue?.name ?? "the venue"} for ${court?.name ?? "the court"} on ${when}. Choose eSewa or Khalti; the verified payment goes into booking #FN-${booking.id}.${purpose === "advance" && deadline ? ` Pay before ${deadline.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })} — the booking cancels 30 minutes after the venue's advance request.` : ""}${note ? ` Note: ${note}` : ""}`,
       link: "/bookings",
     })));
     if (venue?.ownerId) {

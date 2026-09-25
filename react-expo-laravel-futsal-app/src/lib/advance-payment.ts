@@ -4,8 +4,8 @@ import { bookingPaymentRequests, bookingTeamPayments, bookings, courts, venues }
 import { formatNPR, formatTime12, prettyDate } from "@/lib/futsal";
 import { sendNotification } from "@/lib/notify";
 
-/** A player gets one hour from the owner's advance request to pay it. */
-export const ADVANCE_PAYMENT_WINDOW_MS = 60 * 60 * 1000;
+/** A player gets 30 minutes from the owner's advance request to pay it. */
+export const ADVANCE_PAYMENT_WINDOW_MS = 30 * 60 * 1000;
 
 export function advancePaymentDeadline(requestedAt: Date | string | null | undefined) {
   if (!requestedAt) return null;
@@ -51,7 +51,7 @@ export async function recordDirectedTeamSharePayment(input: {
  * Expire overdue owner advances in the database. The app has no separate
  * scheduler, so feed/payment requests call this before reading or mutating a
  * booking. The conditional update makes it safe when two devices arrive at
- * the one-hour boundary together.
+ * the 30-minute boundary together.
  */
 export async function expireOverdueAdvanceRequests() {
   const rows = await db
@@ -99,7 +99,7 @@ export async function expireOverdueAdvanceRequests() {
         userId: booking.userId,
         type: "booking_cancelled",
         title: `⌛ Booking cancelled — advance not received`,
-        message: `${venue?.name ?? "The venue"} did not receive the requested ${formatNPR(booking.advancePaymentAmount)} advance within one hour for ${when}, so booking #FN-${booking.id} was cancelled automatically.`,
+        message: `${venue?.name ?? "The venue"} did not receive the requested ${formatNPR(booking.advancePaymentAmount)} advance within 30 minutes for ${when}, so booking #FN-${booking.id} was cancelled automatically.`,
         link: "/bookings",
       });
       if (venue?.ownerId) {
@@ -107,7 +107,7 @@ export async function expireOverdueAdvanceRequests() {
           userId: venue.ownerId,
           type: "booking_cancelled",
           title: `⌛ Advance window expired — booking #FN-${booking.id}`,
-          message: `The player did not pay the ${formatNPR(booking.advancePaymentAmount)} advance within one hour, so the pending request was cancelled and the slot is free again.`,
+          message: `The player did not pay the ${formatNPR(booking.advancePaymentAmount)} advance within 30 minutes, so the pending request was cancelled and the slot is free again.`,
           link: "/admin/requests",
         });
       }

@@ -873,6 +873,19 @@ function BookingCard({
             </View>
           </View>
 
+          {b.advancePaymentRequired && b.advancePaymentStatus !== "paid" ? (
+            <View style={[styles.advanceAlert, { backgroundColor: isDark ? "rgba(249,115,22,0.14)" : "#FFF7ED", borderColor: isDark ? "rgba(251,146,60,0.45)" : "#FDBA74" }]}>
+              <Hourglass size={16} color={isDark ? colors.orange300 : colors.orange700} />
+              <View style={styles.grow}>
+                <Text style={[styles.advanceAlertTitle, { color: isDark ? colors.orange100 : colors.orange700 }]}>Action needed: venue advance {formatNPR(b.advancePaymentAmount ?? 0)} requested</Text>
+                <Text style={[styles.advanceAlertText, { color: isDark ? colors.orange100 : colors.orange700 }]}>Pay within 30 minutes of the owner&apos;s request or this booking expires. Use eSewa or Khalti.</Text>
+              </View>
+              <Pressable onPress={() => setMoreOpen(true)} style={[styles.advanceAlertAction, { backgroundColor: isDark ? colors.orange500 : colors.orange600 }]}>
+                <Text style={styles.advanceAlertActionText}>Open</Text>
+              </Pressable>
+            </View>
+          ) : null}
+
           <Pressable
             onPress={onOpenBooking}
             accessibilityRole="button"
@@ -928,7 +941,7 @@ function BookingCard({
                 <Text style={[styles.advanceHint, { color: isDark ? "#BAE6FD" : "#075985" }]}>Remaining balance may be paid at the venue.</Text>
               ) : (
                 <>
-                  <Text style={[styles.advanceHint, { color: isDark ? "#BAE6FD" : "#075985" }]}>Pay within one hour using eSewa or Khalti only. Cash at Venue cannot satisfy this advance.</Text>
+                  <Text style={[styles.advanceHint, { color: isDark ? "#BAE6FD" : "#075985" }]}>Pay within 30 minutes using eSewa or Khalti only. Cash at Venue cannot satisfy this advance.</Text>
                   {!isGone ? (
                     <View style={styles.advanceActions}>
                       <Pressable onPress={() => onPayAdvance("eSewa")} disabled={paying} style={[styles.payBtn, { backgroundColor: colors.emerald600, opacity: paying ? 0.5 : 1 }]}>
@@ -1477,6 +1490,11 @@ const styles = StyleSheet.create({
   nameScroll: { maxWidth: "100%", flexShrink: 1 },
   meta: { fontSize: fontSize.xs, marginTop: 2 },
   moneyCol: { alignItems: "flex-end", maxWidth: "100%", flexShrink: 1 },
+  advanceAlert: { flexDirection: "row", alignItems: "flex-start", gap: space[2], borderWidth: 2, borderRadius: radius["2xl"], padding: space[3], marginTop: space[3] },
+  advanceAlertTitle: { fontSize: fontSize.xs, fontWeight: "900", lineHeight: 16 },
+  advanceAlertText: { fontSize: 10, fontWeight: "700", lineHeight: 15, marginTop: 2 },
+  advanceAlertAction: { borderRadius: radius.full, paddingHorizontal: space[2.5], paddingVertical: space[1.5], marginLeft: space[1] },
+  advanceAlertActionText: { color: "#FFFFFF", fontSize: 10, fontWeight: "900" },
   openBooking: {
     flexDirection: "row",
     alignItems: "center",
