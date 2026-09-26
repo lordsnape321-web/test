@@ -14,10 +14,15 @@ use App\Http\Controllers\Api\PaymentRequestController;
 use App\Http\Controllers\Api\PlayerController;
 use App\Http\Controllers\Api\PromoController;
 use App\Http\Controllers\Api\ReviewController;
+use App\Http\Controllers\Api\SeedController;
 use App\Http\Controllers\Api\StatsController;
 use App\Http\Controllers\Api\TeamController;
 use App\Http\Controllers\Api\TeamInviteController;
 use App\Http\Controllers\Api\TeamPaymentController;
+use App\Http\Controllers\Api\TournamentController;
+use App\Http\Controllers\Api\TournamentMatchController;
+use App\Http\Controllers\Api\TournamentMediaController;
+use App\Http\Controllers\Api\TournamentPaymentController;
 use App\Http\Controllers\Api\UserController;
 use App\Http\Controllers\Api\VenueController;
 use App\Http\Controllers\Api\VoucherController;
@@ -150,3 +155,32 @@ Route::post('/promos', [PromoController::class, 'store']);
 Route::get('/promos/{id}', [PromoController::class, 'show'])->whereNumber('id');
 Route::patch('/promos/{id}', [PromoController::class, 'update'])->whereNumber('id');
 Route::delete('/promos/{id}', [PromoController::class, 'destroy'])->whereNumber('id');
+
+/* ── leagues ─────────────────────────────────────────────────────────────── */
+Route::get('/tournaments', [TournamentController::class, 'index']);
+Route::post('/tournaments', [TournamentController::class, 'store']);
+Route::get('/tournaments/{id}', [TournamentController::class, 'show'])->whereNumber('id');
+Route::patch('/tournaments/{id}', [TournamentController::class, 'update'])->whereNumber('id');
+
+// The entry desk: who is in, and the five conversations a host has with a
+// captain (request / invite / approve / reject / withdraw).
+Route::get('/tournaments/{id}/teams', [TournamentController::class, 'teamsIndex'])->whereNumber('id');
+Route::post('/tournaments/{id}/teams', [TournamentController::class, 'teamsAction'])->whereNumber('id');
+
+// The fixture book: draw it, schedule it, score it.
+Route::get('/tournaments/{id}/matches', [TournamentMatchController::class, 'index'])->whereNumber('id');
+Route::post('/tournaments/{id}/matches', [TournamentMatchController::class, 'store'])->whereNumber('id');
+
+// The album — and its delete, which lives on the POST body as `action`.
+Route::get('/tournaments/{id}/media', [TournamentMediaController::class, 'index'])->whereNumber('id');
+Route::post('/tournaments/{id}/media', [TournamentMediaController::class, 'store'])->whereNumber('id');
+
+// The ledger.
+Route::get('/tournaments/{id}/payments', [TournamentPaymentController::class, 'index'])->whereNumber('id');
+Route::post('/tournaments/{id}/payments', [TournamentPaymentController::class, 'store'])->whereNumber('id');
+
+/* ── demo data ───────────────────────────────────────────────────────────── */
+// Idempotent: safe to hit twice, and the way a fresh database gets its first
+// grounds, squads and leagues.
+Route::get('/seed', [SeedController::class, 'index']);
+Route::post('/seed', [SeedController::class, 'store']);
