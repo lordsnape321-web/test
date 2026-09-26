@@ -4,13 +4,23 @@ use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\AvailabilityController;
 use App\Http\Controllers\Api\BookingController;
 use App\Http\Controllers\Api\CourtController;
+use App\Http\Controllers\Api\EsewaController;
 use App\Http\Controllers\Api\HealthController;
+use App\Http\Controllers\Api\KhaltiController;
 use App\Http\Controllers\Api\LedgerController;
+use App\Http\Controllers\Api\MatchController;
+use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\PaymentRequestController;
+use App\Http\Controllers\Api\PlayerController;
+use App\Http\Controllers\Api\PromoController;
+use App\Http\Controllers\Api\ReviewController;
 use App\Http\Controllers\Api\StatsController;
+use App\Http\Controllers\Api\TeamController;
+use App\Http\Controllers\Api\TeamInviteController;
 use App\Http\Controllers\Api\TeamPaymentController;
 use App\Http\Controllers\Api\UserController;
 use App\Http\Controllers\Api\VenueController;
+use App\Http\Controllers\Api\VoucherController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -75,3 +85,68 @@ Route::post('/bookings/{id}/payment-requests', [PaymentRequestController::class,
 Route::patch('/bookings/{id}/payment-requests/{requestId}', [PaymentRequestController::class, 'update'])
     ->whereNumber('id')
     ->whereNumber('requestId');
+
+/* ── test gateways ─────────────────────────────────────────────────────── */
+Route::post('/payments/esewa/initiate', [EsewaController::class, 'initiate']);
+Route::post('/payments/esewa/verify', [EsewaController::class, 'verify']);
+Route::post('/payments/khalti/initiate', [KhaltiController::class, 'initiate']);
+Route::post('/payments/khalti/verify', [KhaltiController::class, 'verify']);
+
+/* ── open matches ───────────────────────────────────────────────────────── */
+Route::get('/matches', [MatchController::class, 'index']);
+Route::post('/matches', [MatchController::class, 'store']);
+Route::post('/matches/{id}/join', [MatchController::class, 'join'])->whereNumber('id');
+Route::delete('/matches/{id}/join', [MatchController::class, 'leave'])->whereNumber('id');
+
+/* ── notifications ──────────────────────────────────────────────────────── */
+Route::get('/notifications', [NotificationController::class, 'index']);
+Route::post('/notifications', [NotificationController::class, 'store']);
+Route::post('/notifications/read-all', [NotificationController::class, 'readAll']);
+Route::patch('/notifications/{id}', [NotificationController::class, 'update'])->whereNumber('id');
+Route::delete('/notifications/{id}', [NotificationController::class, 'destroy'])->whereNumber('id');
+
+/* ── loyalty vouchers ───────────────────────────────────────────────────── */
+Route::get('/vouchers', [VoucherController::class, 'index']);
+
+/* ── squads ─────────────────────────────────────────────────────────────── */
+Route::get('/teams', [TeamController::class, 'index']);
+Route::post('/teams', [TeamController::class, 'store']);
+Route::get('/teams/{id}', [TeamController::class, 'show'])->whereNumber('id');
+Route::patch('/teams/{id}', [TeamController::class, 'update'])->whereNumber('id');
+
+// Asking to join, and leaving again.
+Route::post('/teams/{id}/join', [TeamController::class, 'join'])->whereNumber('id');
+Route::delete('/teams/{id}/join', [TeamController::class, 'leave'])->whereNumber('id');
+
+// The roster: read it, and the captain's one removal right.
+Route::get('/teams/{id}/members', [TeamController::class, 'members'])->whereNumber('id');
+Route::post('/teams/{id}/members', [TeamController::class, 'addMember'])->whereNumber('id');
+Route::delete('/teams/{id}/members', [TeamController::class, 'removeMember'])->whereNumber('id');
+
+// Invitations out.
+Route::get('/teams/{id}/invites', [TeamController::class, 'invites'])->whereNumber('id');
+Route::post('/teams/{id}/invites', [TeamController::class, 'invite'])->whereNumber('id');
+Route::delete('/teams/{id}/invites', [TeamController::class, 'withdrawInvite'])->whereNumber('id');
+
+// The captain's join-request queue.
+Route::get('/teams/{id}/requests', [TeamController::class, 'requests'])->whereNumber('id');
+Route::post('/teams/{id}/requests', [TeamController::class, 'decideRequest'])->whereNumber('id');
+
+/* ── invitations in ─────────────────────────────────────────────────────── */
+Route::get('/team-invites', [TeamInviteController::class, 'index']);
+Route::post('/team-invites', [TeamInviteController::class, 'store']);
+
+/* ── players ────────────────────────────────────────────────────────────── */
+Route::get('/players/{id}', [PlayerController::class, 'show'])->whereNumber('id');
+
+/* ── reviews ────────────────────────────────────────────────────────────── */
+Route::get('/reviews', [ReviewController::class, 'index']);
+Route::post('/reviews', [ReviewController::class, 'store']);
+Route::delete('/reviews', [ReviewController::class, 'destroy']);
+
+/* ── promo codes ─────────────────────────────────────────────────────────── */
+Route::get('/promos', [PromoController::class, 'index']);
+Route::post('/promos', [PromoController::class, 'store']);
+Route::get('/promos/{id}', [PromoController::class, 'show'])->whereNumber('id');
+Route::patch('/promos/{id}', [PromoController::class, 'update'])->whereNumber('id');
+Route::delete('/promos/{id}', [PromoController::class, 'destroy'])->whereNumber('id');

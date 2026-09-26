@@ -177,4 +177,80 @@ class League
     {
         return isset($m['homeScore']) && isset($m['awayScore']);
     }
+
+    /**
+     * A league table from its fixtures and the squads in it.
+     *
+     * Points first, then goal difference, then goals scored, then name — the
+     * ordinary order, computed once so every screen shows the same table.
+     *
+     * @param  iterable<array{teamId?: mixed, name?: mixed, logoColor?: mixed, teamCode?: mixed}>  $teams
+     * @param  iterable<array{homeTeamId?: mixed, awayTeamId?: mixed, homeScore?: mixed, awayScore?: mixed, status?: mixed}>  $matches
+     * @return array<int, array<string, mixed>>
+     */
+    public static function standingsFor(iterable $teams, iterable $matches): array
+    {
+        $rows = [];
+
+        foreach ($teams as $t) {
+            $t = is_object($t) ? (array) $t : (array) $t;
+
+            $rows[(int) ($t['teamId'] ?? 0)] = [
+                'teamId' => (int) ($t['teamId'] ?? 0),
+                'name' => (string) ($t['name'] ?? ''),
+                'logoColor' => (string) ($t['logoColor'] ?? '#16a34a'),
+                'teamCode' => (string) ($t['teamCode'] ?? ''),
+                'played' => 0,
+                'won' => 0,
+                'drawn' => 0,
+                'lost' => 0,
+                'goalsFor' => 0,
+                'goalsAgainst' => 0,
+                'goalDiff' => 0,
+                'points' => 0,
+                'form' => [],
+            ];
+        }
+
+        $played = [];
+
+        foreach ($matches as $m) {
+            $m = is_object($m) ? (array) $m : (array) $m;
+
+            if (($m['homeScore'] ?? null) === null || ($m['awayScore'] ?? null) === null || ($m['status'] ?? null) === 'void') {
+                continue;
+            }
+
+            $played[] = $m;
+        }
+
+        usort($played, fn ($a, $b) => ((int) ($a['homeTeamId'] ?? 0) <=> (int) ($b['homeTeamId'] ?? 0))
+            ?: ((int) ($a['awayTeamId'] ?? 0) <=> (int) ($b['awayTeamId'] ?? 0)));
+
+        foreach ($played as $m) {
+            $homeId = (int) ($m['homeTeamId'] ?? 0);
+            $awayId = (int) ($m['awayTeamId'] ?? 0);
+            $hs = (int) ($m['homeScore'] ?? 0);
+            $as = (int) ($m['awayScore'] ?? 0);
+
+            if (isset($rows[$homeId])) {
+                self::applyResult($rows[$homeId], $hs, $as);
+            }
+
+            if (isset($rows[$awayId])) {
+                self::applyResult($rows[$awayId], $as, $hs);
+            }
+        }
+
+        foreach ($rows as $i => $row) {
+            $rows[$i]['goalDiff'] = $row['goalsFor'] - $row['goalsAgainst'];
+        }
+
+        usort($rows, fn ($a, $b) => ($b['points'] <=> $a['points'])
+            ?: ($b['goalDiff'] <=> $a['goalDiff'])
+            ?: ($b['goalsFor'] <=> $a['goalsFor'])
+            ?: strcmp($a['name'], $b['name']));
+
+        return array_values($rows);
+    }
 }
