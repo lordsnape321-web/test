@@ -73,25 +73,36 @@ php artisan route:list --path=seed
 
 ## Running the acceptance suite
 
-The API suites are plain-HTTP node scripts, but they **live in the Next.js app**,
-not at the repo root, and they are run by `tests/run.mjs` rather than directly.
-From the repository root:
+Six live HTTP suites, one command, from `laravel/tests/api`:
 
 ```bash
-cd react-expo-laravel-futsal-app
-BASE_URL=http://127.0.0.1:8000 npm run test:api
+cd laravel/tests/api
+npm install                                   # one dependency: mysql2
+BASE_URL=http://127.0.0.1:8000 npm test
 ```
 
-`BASE_URL` matters: it defaults to `http://127.0.0.1:3000`, the Next.js port, so
-without it you would be testing the old backend.
+`BASE_URL` defaults to `http://127.0.0.1:8000` and `DATABASE_URL` to
+`mysql://root@127.0.0.1:3306/futsal`; override either. The suites need a
+running server and a seeded database.
 
-Six suites run. Four of them (`court-delete`, `deposit-split`, `gateway`,
-`venue-defaults`) are pure HTTP and work against this backend unchanged. The
-other two — `ledger` and `settlement-lock` — open a second, direct connection to
-the database with the `pg` driver to inspect and back-date rows the API doesn't
-expose (`booking_payments`, `bookings.settled_at`). They will fail here until
-they are pointed at MySQL; see `docs/api-routes.md` for the endpoints they
-exercise in the meantime.
+Where the suites come from, and why it's split:
+
+- **`ledger.mjs` and `settlement-lock.mjs` live here.** They were ported from
+  the Next.js app because they open a database connection of their own — to read
+  `booking_payments` directly, and to back-date `bookings.settled_at` so the
+  five-minute settlement lock can be tested without waiting five minutes. There
+  is no HTTP route for either, and there shouldn't be one. `mysql.mjs` gives
+  them a Postgres-shaped client over MySQL, translating the three Postgres-isms
+  they use (`$1` placeholders, `interval '6 minutes'`, `count(*)::int`) and
+  putting MySQL's string-typed DECIMAL columns back into numbers.
+- **The other four are run from `react-expo-laravel-futsal-app/tests/api/`, not
+  copied.** `gateway`, `venue-defaults`, `deposit-split` and `court-delete` are
+  pure HTTP, so both backends run the *same* files — which is the point of this
+  whole exercise.
+
+> The Next.js app's own runner (`npm run test:api` in that directory) will skip
+> all six against this backend: it picks players by querying Postgres first, and
+> treats that failure as "no players available". Use `npm test` here instead.
 
 ## Seeding `/api/seed`
 
