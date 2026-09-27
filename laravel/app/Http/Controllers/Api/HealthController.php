@@ -12,8 +12,9 @@ class HealthController extends ApiController
      *
      * A database failure is deliberately returned as a structured 503 instead
      * of `{ ok: false }` with no explanation. `apiJson()` can then show the
-     * actual local PDO/Laravel error, which makes a missing SQLite extension,
-     * wrong MySQL credentials, or an uncreated database immediately actionable.
+     * actual local PDO/Laravel error, which makes a missing `pdo_mysql`
+     * extension, wrong MySQL credentials, or an uncreated database immediately
+     * actionable.
      */
     public function __invoke(): JsonResponse
     {

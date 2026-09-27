@@ -12,13 +12,13 @@ the API origin configured by `EXPO_PUBLIC_API_BASE` (port `8000` locally).
 
 | | |
 |---|---|
-| PHP | ^8.2 with PDO and `pdo_sqlite` (or `pdo_mysql` for MySQL) |
+| PHP | ^8.2 with PDO and `pdo_mysql` |
 | Composer | 2.x |
-| Database | SQLite (default) or MySQL 8 / MariaDB 10.6+ |
+| Database | MySQL 8 or MariaDB 10.6+ |
 
-SQLite is the default development database. It is created automatically by the
-migration command, so a fresh checkout does not require a running database
-server or an undocumented `futsal` database.
+MySQL is the required application database. Laravel is the only backend and
+owns all schema, seed data, queries, writes, booking rules, payments, and API
+logic; the Expo app never connects to MySQL directly.
 
 ## Getting started
 
@@ -27,24 +27,15 @@ cd laravel
 composer install
 cp .env.example .env
 php artisan key:generate
+mysql -u root -p -e "CREATE DATABASE futsal CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
 php artisan migrate --seed
 php artisan serve --host=0.0.0.0 --port=8000
 ```
 
-The copied `.env.example` uses SQLite at `database/database.sqlite`; Laravel
-creates the file as part of `migrate --seed`. For MySQL/MariaDB, replace the
-SQLite values with your server details and create the database first:
-
-```dotenv
-DB_CONNECTION=mysql
-DB_HOST=127.0.0.1
-DB_PORT=3306
-DB_DATABASE=futsal
-DB_USERNAME=root
-DB_PASSWORD=
-```
-
-Then build the schema and load the demo data with `php artisan migrate --seed`.
+The copied `.env.example` is already configured for MySQL on `127.0.0.1:3306`
+with database `futsal` and user `root`. Change only those `DB_*` values if your
+MySQL installation uses a different host, port, database, username, or password.
+Keep `DB_CONNECTION=mysql`; do not switch the application to another database driver.
 
 Check that the API answered:
 
@@ -95,9 +86,8 @@ The runner defaults to `http://127.0.0.1:8000`, checks `/api/health` first, and
 reads the configured database credentials from `laravel/.env`. The two ledger
 suites also inspect database rows to verify gateway payments and settlement
 locks; the other four are HTTP-only. No other project directory is required to
-run these tests. The acceptance helper currently uses its MySQL client for
-row-level assertions, so use a MySQL/MariaDB `.env` when running the full suite;
-the app itself supports SQLite for local development.
+run these tests. The acceptance helper uses the same MySQL database configured
+for Laravel, so use a MySQL/MariaDB `.env` when running the full suite.
 
 ## API contract
 

@@ -11,21 +11,22 @@ and the complete Owner Studio workflow.
 
 ## Quick start
 
-Start the Laravel API first. The backend example environment uses SQLite and
-creates `database/database.sqlite` during migration, so a fresh checkout does
-not require MySQL or a separately created database:
+Start the MySQL-backed Laravel API first. The backend example environment is
+already configured for MySQL database `futsal` on `127.0.0.1:3306`:
 
 ```bash
 cd ../laravel
 composer install
 cp .env.example .env
 php artisan key:generate
+mysql -u root -p -e "CREATE DATABASE futsal CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
 php artisan migrate --seed
 php artisan serve --host=0.0.0.0 --port=8000
 ```
 
-If you use MySQL/MariaDB instead, update the `DB_*` values in `../laravel/.env`
-before `migrate --seed`.
+If your MySQL/MariaDB server uses different credentials, update the `DB_*`
+values in `../laravel/.env` before `migrate --seed`. Expo talks only to
+Laravel, and Laravel owns all application persistence in MySQL.
 
 Then, in a second terminal, start Expo:
 
