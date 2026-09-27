@@ -152,7 +152,31 @@ export class Client {
   }
 
   async connect() {
-    this.conn = await mysql.createConnection(configFrom(this.connectionString));
+    try {
+      this.conn = await mysql.createConnection(configFrom(this.connectionString));
+    } catch (err) {
+      // `Access denied for user 'root'@'localhost'` is technically accurate
+      // and completely unhelpful. Say which settings produced it.
+      if (err.code === 'ER_ACCESS_DENIED_ERROR' || err.code === 'ER_DBACCESS_DENIED_ERROR') {
+        throw new Error(
+          `MySQL refused the connection as ${this.describe()}\n` +
+          `      check DB_USERNAME / DB_PASSWORD / DB_DATABASE in laravel/.env`,
+        );
+      }
+
+      if (err.code === 'ER_BAD_DB_ERROR') {
+        throw new Error(
+          `database does not exist (${this.describe()})\n` +
+          `      create it, or fix DB_DATABASE in laravel/.env — then: php artisan migrate`,
+        );
+      }
+
+      if (err.code === 'ECONNREFUSED') {
+        throw new Error(`nothing is listening for MySQL at ${this.describe()}`);
+      }
+
+      throw err;
+    }
 
     return this;
   }
