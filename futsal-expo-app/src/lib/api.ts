@@ -177,14 +177,22 @@ export async function apiJson<T>(
     });
   } catch (e) {
     if (timedOut) {
-      throw new ApiError(
+      const error = new ApiError(
         0,
         `The API took too long to respond at ${url}. Check the backend connection and try again.`,
       );
+      if (process.env.NODE_ENV !== "production") {
+        console.error("[Laravel API] request timed out", { url, error });
+      }
+      throw error;
     }
     // No response at all — connection/DNS/TLS level. Status 0 marks "never got
     // an HTTP status", distinct from any real 4xx/5xx the server could return.
-    throw new ApiError(0, networkMessage(url, e));
+    const error = new ApiError(0, networkMessage(url, e));
+    if (process.env.NODE_ENV !== "production") {
+      console.error("[Laravel API] request could not connect", { url, error, cause: e });
+    }
+    throw error;
   } finally {
     clearTimeout(timeoutId);
     parentSignal?.removeEventListener("abort", abortFromParent);
@@ -195,7 +203,16 @@ export async function apiJson<T>(
   const body = text ? safeParse(text) : undefined;
 
   if (!res.ok) {
-    throw new ApiError(res.status, messageFrom(body, `Request failed (${res.status})`), body);
+    const error = new ApiError(res.status, messageFrom(body, `Request failed (${res.status})`), body);
+    if (process.env.NODE_ENV !== "production") {
+      console.error("[Laravel API] backend returned an error", {
+        url,
+        status: res.status,
+        message: error.message,
+        body,
+      });
+    }
+    throw error;
   }
   return body as T;
 }
