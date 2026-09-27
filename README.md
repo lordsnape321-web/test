@@ -30,6 +30,40 @@ Set `EXPO_PUBLIC_API_BASE` for the device running Expo. Use
 `http://localhost:8000` for an iOS simulator, `http://10.0.2.2:8000` for an
 Android emulator, or the computer's LAN IP for a physical device.
 
+## Development dataset
+
+`php artisan migrate --seed` and `POST /api/seed` use the same deterministic
+`Database\Seeders\RealWorldSeeder`. It creates a connected Nepal-based world
+rather than a handful of generic demo rows: 18 venue owners, 120 players,
+multiple courts at 20 venues, 24 squads with rosters and pending team
+invitations/requests, bookings with ledger rows and team shares, open matches,
+three leagues with entries/fixtures/payments/media, notifications, reviews,
+promos and loyalty vouchers. The data includes both an everyday booking/open-
+game flow and an in-progress league flow.
+
+All seeded accounts use the password `futsal123`. Useful accounts for checking
+both sides of the app are:
+
+- Player: `aayush.adhikari@futsal.np`
+- Venue owner: `prabin.shakya@futsal.np`
+
+The seed is safe to run again: once `Satdobato Sports Village` exists it returns
+its counts without adding another copy. To replace an older local dataset rather
+than layering this one on top, use a clean development database:
+
+```bash
+cd laravel
+php artisan migrate:fresh --seed
+```
+
+The endpoint returns `counts`, `seedVersion`, the example logins and two
+scenario descriptions, which makes it easy to confirm that the API is serving
+the Laravel dataset before opening Expo:
+
+```bash
+curl -s -X POST http://127.0.0.1:8000/api/seed
+```
+
 ## Verification
 
 ```bash

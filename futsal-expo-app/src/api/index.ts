@@ -784,8 +784,8 @@ export async function fetchPlayerDirectory(): Promise<
 }
 
 /**
- * POST /api/seed — idempotent demo data, kicked off on first Teams visit so a
- * fresh database has squads to show (same call the web teams page makes).
+ * POST /api/seed — idempotent Nepal development data, kicked off on first Teams
+ * visit so a fresh Laravel database has connected squads and venues to show.
  */
 export function seedDemo(): Promise<Record<string, unknown>> {
   return apiJson("/api/seed", { method: "POST" });
