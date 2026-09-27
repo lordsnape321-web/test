@@ -33,9 +33,11 @@ php artisan serve --host=0.0.0.0 --port=8000
 ```
 
 The copied `.env.example` is already configured for MySQL on `127.0.0.1:3306`
-with database `futsal` and user `root`. Change only those `DB_*` values if your
-MySQL installation uses a different host, port, database, username, or password.
-Keep `DB_CONNECTION=mysql`; do not switch the application to another database driver.
+with database `futsal` and user `root`. Laravel also falls back to the `futsal`
+database name when `DB_DATABASE` is missing, so it does not silently target the
+standard `laravel` database. Change only those `DB_*` values if your MySQL
+installation uses a different host, port, database, username, or password. Keep
+`DB_CONNECTION=mysql`; do not switch the application to another database driver.
 
 Check that the API answered:
 
