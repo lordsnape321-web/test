@@ -6,10 +6,12 @@ import {
   CalendarDays,
   Check,
   HandHeart,
+  Hourglass,
   MapPin,
   Minus,
   Plus,
   Trophy,
+  Wallet,
   X,
   Zap,
 } from "lucide-react-native";
@@ -28,8 +30,27 @@ import { Avatar } from "@/components/Avatar";
 import { LeagueBrowser } from "@/components/LeagueBrowser";
 import { useAuth } from "@/context/AuthContext";
 import { useTheme } from "@/context/ThemeContext";
-import { createMatch, fetchMatches, fetchVenues, joinMatch, leaveMatch } from "@/api";
+import {
+  createMatch,
+  decideMatchJoin,
+  fetchMatches,
+  fetchVenues,
+  joinMatch,
+  leaveMatch,
+  payMatchJoin,
+} from "@/api";
 import { formatNPR, formatTime12, prettyDate, timeSlots, todayISO } from "@/lib/futsal";
+import {
+  ANY_POSITION,
+  JOIN_PENDING,
+  MAX_POSITIONS,
+  POSITIONS,
+  POSITION_EMOJI,
+  advanceAmount,
+  normalizePositions,
+  positionFor,
+} from "@/lib/open-games";
+import type { Position } from "@/lib/open-games";
 import {
   firstError,
   validateDateISO,
@@ -39,7 +60,7 @@ import {
   validateTitle,
 } from "@/lib/validation";
 import { useBreakpoints } from "@/lib/responsive";
-import type { Match, Venue } from "@/lib/types";
+import type { Match, MatchJoinRequest, Venue } from "@/lib/types";
 import { colors, fontSize, radius, space } from "@/theme";
 
 /**
@@ -47,9 +68,16 @@ import { colors, fontSize, radius, space } from "@/theme";
  *
  * Same header copy, same level filter (including the rule that a specific level
  * still shows "All Levels" games, because those welcome everyone), same card
- * anatomy, same join/leave toggle and the same create-game validation chain.
+ * anatomy and the same create-game validation chain.
  *
- * Two deliberate deviations, both forced by the platform:
+ * One deliberate change from the web version, and it is the point of the
+ * screen: **taking a spot is a request.** There is no "Count me in" button,
+ * because a host who posts a game is the one deciding who plays in it — the
+ * same two-sided agreement a squad uses. A player asks (naming the position
+ * they are filling, and optionally paying their share up front, which settles
+ * it by itself), and the host answers with accept, decline, or "pay me first".
+ *
+ * Other deviations, both forced by the platform:
  *  - The web version keeps the open/leagues toggle in the query string so it is
  *    shareable. A tab screen has no URL, so it lives in state here.
  *  - `<input type="date|time">` has no RN equivalent, so day and time use the
@@ -93,14 +121,19 @@ export default function MatchesScreen() {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<string>("All");
   const [joining, setJoining] = useState<number | null>(null);
+  const [deciding, setDeciding] = useState<string | null>(null);
+  const [asking, setAsking] = useState<Match | null>(null);
   const [showCreate, setShowCreate] = useState(false);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
 
+  // `userId` is what brings back the viewer's own request on each game, and a
+  // host's queue of players waiting on them.
   const load = useCallback(async () => {
-    const [m, v] = await Promise.all([fetchMatches(), fetchVenues()]);
+    const [m, v] = await Promise.all([fetchMatches(user?.id), fetchVenues()]);
     setMatches(m);
     setVenues(v);
-  }, []);
+  }, [user?.id]);
 
   useEffect(() => {
     (async () => {
@@ -123,22 +156,77 @@ export default function MatchesScreen() {
     return m.level === "All Levels" || m.level.includes(filter);
   });
 
-  async function toggleJoin(m: Match) {
+  /**
+   * The one button a player gets. Opening the sheet is the whole interaction —
+   * nothing is sent to the host until they choose a spot and press send.
+   */
+  function askToPlay(m: Match) {
     if (!user) {
       router.push("/login");
       return;
     }
-    const already = (m.players ?? []).some((p) => p.id === user.id);
+    setError("");
+    setNotice("");
+    setAsking(m);
+  }
+
+  /** Withdraw a pending request, or give a settled spot back. */
+  async function toggleJoin(m: Match) {
+    if (!user) return;
     setJoining(m.id);
     setError("");
     try {
-      if (already) await leaveMatch(m.id, user.id);
-      else await joinMatch(m.id, user.id);
+      const res = await leaveMatch(m.id, user.id);
+      setNotice(String(res.message ?? "Done"));
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed");
     } finally {
       setJoining(null);
+    }
+  }
+
+  /** The host answers: accept, decline, or ask for the share up front. */
+  async function decide(m: Match, request: MatchJoinRequest, action: "accept" | "decline" | "askPayment") {
+    if (!user) return;
+    const key = `${m.id}-${request.id}-${action}`;
+    setDeciding(key);
+    setError("");
+    try {
+      const res = await decideMatchJoin(m.id, {
+        organizerId: user.id,
+        joinId: request.id,
+        action,
+      });
+      setNotice(String(res.message ?? (action === "accept" ? `${request.name} is in 🎉` : "Saved")));
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed");
+    } finally {
+      setDeciding(null);
+    }
+  }
+
+  /** The host asked for the share — paying settles the request on its own. */
+  async function payShare(m: Match) {
+    if (!user) return;
+    const requestId = m.viewer?.requestId;
+    if (!requestId) return;
+    setDeciding(`pay-${m.id}`);
+    setError("");
+    try {
+      const res = await payMatchJoin(m.id, {
+        userId: user.id,
+        joinId: requestId,
+        amount: m.pricePerPlayer,
+        payMethod: "eSewa",
+      });
+      setNotice(String(res.message ?? "You're in 🎉"));
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed");
+    } finally {
+      setDeciding(null);
     }
   }
 
@@ -224,6 +312,7 @@ export default function MatchesScreen() {
         </View>
 
         {error ? <Text style={[styles.errorText, { color: c.dangerText }]}>{error}</Text> : null}
+        {notice ? <Text style={[styles.noticeText, { color: c.activeText }]}>{notice}</Text> : null}
 
         {tab === "leagues" ? (
           <View style={styles.leagueBrowserWrap}>
@@ -291,7 +380,11 @@ export default function MatchesScreen() {
                   key={m.id}
                   m={m}
                   joining={joining === m.id}
+                  deciding={deciding}
+                  onAsk={() => askToPlay(m)}
                   onToggle={() => toggleJoin(m)}
+                  onDecide={decide}
+                  onPay={() => payShare(m)}
                 />
               ))
             )}
@@ -308,6 +401,16 @@ export default function MatchesScreen() {
           await load();
         }}
       />
+
+      <AskToPlaySheet
+        match={asking}
+        onClose={() => setAsking(null)}
+        onSent={async (message) => {
+          setAsking(null);
+          setNotice(message);
+          await load();
+        }}
+      />
     </SafeAreaView>
   );
 }
@@ -317,21 +420,36 @@ export default function MatchesScreen() {
 function OpenMatchCard({
   m,
   joining,
+  deciding,
+  onAsk,
   onToggle,
+  onDecide,
+  onPay,
 }: {
   m: Match;
   joining: boolean;
+  deciding: string | null;
+  onAsk: () => void;
   onToggle: () => void;
+  onDecide: (m: Match, r: MatchJoinRequest, a: "accept" | "decline" | "askPayment") => void;
+  onPay: () => void;
 }) {
   const { colors: c, isDark } = useTheme();
   const { user } = useAuth();
 
-  const already = (m.players ?? []).some((p) => p.id === user?.id);
-  const full = m.spotsLeft === 0 && !already;
+  const viewer = m.viewer ?? null;
+  const isHost = viewer?.isHost ?? false;
+  const already = viewer?.isIn ?? false;
+  const pending = viewer?.requestStatus === JOIN_PENDING;
+  // A request holds no spot, so a game with one still being answered is not
+  // full — otherwise the last free slot would vanish behind a pending ask.
+  const full = m.spotsLeft === 0 && !already && !pending;
   const pct = Math.round((m.joinedCount / Math.max(1, m.maxPlayers)) * 100);
   const crew = m.crewSize ?? 1;
   const others = m.otherJoined ?? Math.max(0, m.joinedCount - crew);
   const isCustom = (m.chargeMode ?? (m.bookingId ? "split" : "custom")) === "custom";
+  const needed = m.positionsNeeded ?? [];
+  const queue = (m.requests ?? []).filter((r) => r.status === JOIN_PENDING);
 
   return (
     <View style={[styles.card, { backgroundColor: c.surface, borderColor: c.border }]}>
@@ -346,6 +464,19 @@ function OpenMatchCard({
             👥 {crew} crew • 🙋 {others} joined from outside
           </Text>
           <View style={styles.chips}>
+            {needed.length > 0 ? (
+              <View style={[styles.chip, { backgroundColor: c.warningBg }]}>
+                <Text style={[styles.chipText, { color: c.warningText }]}>
+                  🧤 Needs {needed.map((p) => POSITION_EMOJI[p as Position] ?? "").join("")} {needed.join(" + ")}
+                </Text>
+              </View>
+            ) : (
+              <View style={[styles.chip, { backgroundColor: c.activeSoft }]}>
+                <Text style={[styles.chipText, { color: c.activeText }]}>
+                  🌍 Anyone welcome
+                </Text>
+              </View>
+            )}
             {m.bookingId ? (
               <View style={[styles.chip, { backgroundColor: c.activeSoft }]}>
                 <Text style={[styles.chipText, { color: c.activeText }]}>
@@ -447,41 +578,405 @@ function OpenMatchCard({
         </Text>
       </View>
 
-      <Pressable
-        onPress={onToggle}
-        disabled={joining || full}
-        accessibilityRole="button"
-        style={({ pressed }) => [
-          styles.joinButton,
-          already
-            ? {
-                backgroundColor: c.dangerBg,
-                borderWidth: 1,
-                borderColor: c.dangerBorder,
-              }
-            : full
-              ? { backgroundColor: c.inset }
-              : { backgroundColor: c.primary },
-          (joining || full) && !already ? { opacity: 0.6 } : null,
-          pressed ? { opacity: 0.85 } : null,
-        ]}
-      >
-        {already ? (
-          <Text style={[styles.joinText, { color: c.dangerText }]}>
-            Can't make it — leave game
+      {/* A request is not a seat: it says so, and it never eats a spot. */}
+      {pending ? (
+        <View style={[styles.requestNote, { backgroundColor: c.warningBg, borderColor: c.warningText }]}>
+          <Hourglass size={14} color={c.warningText} />
+          <Text style={[styles.requestNoteText, { color: c.warningText }]}>
+            Asked to play{viewer?.position ? ` as ${viewer.position}` : ""}
+            {viewer && viewer.paidAmount > 0
+              ? ` • you paid ${formatNPR(viewer.paidAmount)} up front`
+              : ""}
+            {viewer?.paymentRequested ? " • the host asked for your share" : ""}
+            {" — waiting on "}
+            {m.organizer?.name ?? "the host"}.
           </Text>
-        ) : full ? (
-          <Text style={[styles.joinText, { color: c.textFaint }]}>This one's full</Text>
-        ) : (
-          <>
-            <Check size={16} color={c.primaryText} strokeWidth={3} />
-            <Text style={[styles.joinText, { color: c.primaryText }]}>
-              {joining ? "Saving your spot…" : `Count me in • ${formatNPR(m.pricePerPlayer)}`}
+        </View>
+      ) : null}
+
+      {/* The host's queue — the thing a "Count me in" button used to skip. */}
+      {isHost && queue.length > 0 ? (
+        <View style={[styles.queueBox, { borderColor: c.border, backgroundColor: isDark ? "rgba(255,255,255,0.04)" : colors.stone50 }]}>
+          <Text style={[styles.queueTitle, { color: c.textMuted }]}>
+            <HandHeart size={13} color={c.textMuted} /> Players waiting on you • {queue.length}
+          </Text>
+          {queue.map((r) => (
+            <View key={r.id} style={[styles.queueRow, { borderColor: c.border }]}>
+              <Avatar
+                user={{ name: r.name, avatarColor: r.avatarColor, avatarUrl: r.avatarUrl }}
+                size={32}
+              />
+              <View style={styles.grow}>
+                <Text style={[styles.queueName, { color: c.text }]} numberOfLines={1}>
+                  {r.name}
+                </Text>
+                <Text style={[styles.queueMeta, { color: c.textFaint }]} numberOfLines={1}>
+                  {r.level} • {r.playerPosition}
+                  {r.slot && r.slot !== ANY_POSITION ? ` • for ${r.slot}` : ""}
+                </Text>
+                {r.message ? (
+                  <Text style={[styles.queueMsg, { color: c.textMuted }]} numberOfLines={2}>
+                    “{r.message}”
+                  </Text>
+                ) : null}
+                <Text
+                  style={[
+                    styles.queuePay,
+                    { color: r.paid ? c.activeText : c.textFaint },
+                  ]}
+                >
+                  {r.paid ? `💰 ${r.paymentSummary}` : `⏳ ${r.paymentSummary}`}
+                </Text>
+              </View>
+              <View style={styles.queueActions}>
+                <Pressable
+                  onPress={() => onDecide(m, r, "accept")}
+                  disabled={deciding === `${m.id}-${r.id}-accept` || full}
+                  accessibilityRole="button"
+                  style={[
+                    styles.queueAccept,
+                    (deciding === `${m.id}-${r.id}-accept` || full) && { opacity: 0.5 },
+                  ]}
+                >
+                  <Check size={13} color="#FFFFFF" strokeWidth={3} />
+                  <Text style={styles.queueAcceptText}>
+                    {r.paid ? "In" : "Accept"}
+                  </Text>
+                </Pressable>
+                {!r.paid ? (
+                  <Pressable
+                    onPress={() => onDecide(m, r, "askPayment")}
+                    disabled={deciding === `${m.id}-${r.id}-askPayment`}
+                    accessibilityRole="button"
+                    style={[
+                      styles.queueGhost,
+                      { borderColor: c.border },
+                      deciding === `${m.id}-${r.id}-askPayment` && { opacity: 0.5 },
+                    ]}
+                  >
+                    <Wallet size={12} color={c.textMuted} />
+                    <Text style={[styles.queueGhostText, { color: c.textMuted }]}>
+                      {r.paymentRequested ? "Asked" : "Ask Rs"}
+                    </Text>
+                  </Pressable>
+                ) : null}
+                <Pressable
+                  onPress={() => onDecide(m, r, "decline")}
+                  disabled={deciding === `${m.id}-${r.id}-decline`}
+                  accessibilityRole="button"
+                  style={[
+                    styles.queueGhost,
+                    { borderColor: c.border },
+                    deciding === `${m.id}-${r.id}-decline` && { opacity: 0.5 },
+                  ]}
+                >
+                  <X size={12} color={c.textMuted} />
+                  <Text style={[styles.queueGhostText, { color: c.textMuted }]}>Pass</Text>
+                </Pressable>
+              </View>
+            </View>
+          ))}
+        </View>
+      ) : null}
+
+      {isHost ? (
+        <View style={[styles.hostBar, { backgroundColor: c.inset }]}>
+          <Text style={[styles.hostBarText, { color: c.textMuted }]}>
+            {queue.length > 0
+              ? `${queue.length} player${queue.length === 1 ? "" : "s"} waiting on your answer 👑`
+              : "You're hosting — nobody is waiting on you right now 🎉"}
+          </Text>
+        </View>
+      ) : (
+        <Pressable
+          onPress={already || pending ? onToggle : onAsk}
+          disabled={joining || full}
+          accessibilityRole="button"
+          style={({ pressed }) => [
+            styles.joinButton,
+            already || pending
+              ? {
+                  backgroundColor: already ? c.dangerBg : c.warningBg,
+                  borderWidth: 1,
+                  borderColor: already ? c.dangerBorder : c.warningText,
+                }
+              : full
+                ? { backgroundColor: c.inset }
+                : { backgroundColor: c.primary },
+            (joining || full) && !already && !pending ? { opacity: 0.6 } : null,
+            pressed ? { opacity: 0.85 } : null,
+          ]}
+        >
+          {already ? (
+            <Text style={[styles.joinText, { color: c.dangerText }]}>
+              You're in — can't make it? Give your spot back
             </Text>
-          </>
-        )}
-      </Pressable>
+          ) : pending ? (
+            <>
+              <Hourglass size={16} color={c.warningText} />
+              <Text style={[styles.joinText, { color: c.warningText }]}>
+                {joining ? "Withdrawing…" : "Request pending — tap to withdraw"}
+              </Text>
+            </>
+          ) : full ? (
+            <Text style={[styles.joinText, { color: c.textFaint }]}>This one's full</Text>
+          ) : (
+            <>
+              <HandHeart size={16} color={c.primaryText} strokeWidth={2.5} />
+              <Text style={[styles.joinText, { color: c.primaryText }]}>
+                {joining ? "Sending…" : `Ask to play • ${formatNPR(m.pricePerPlayer)} each`}
+              </Text>
+            </>
+          )}
+        </Pressable>
+      )}
+
+      {/* The host asked for the share. Rendered beside the button rather than
+          inside it: nesting one pressable in another makes which one wins the
+          tap a matter of layout order, and this one has to. */}
+      {pending && viewer?.paymentRequested ? (
+        <Pressable
+          onPress={onPay}
+          disabled={deciding === `pay-${m.id}`}
+          accessibilityRole="button"
+          style={({ pressed }) => [
+            styles.joinButton,
+            { backgroundColor: c.primary, marginTop: space[2], opacity: deciding === `pay-${m.id}` ? 0.6 : pressed ? 0.85 : 1 },
+          ]}
+        >
+          <Wallet size={16} color={c.primaryText} strokeWidth={2.5} />
+          <Text style={[styles.joinText, { color: c.primaryText }]}>
+            {deciding === `pay-${m.id}`
+              ? "Paying…"
+              : `Host asked for ${formatNPR(m.pricePerPlayer)} — pay & you're in`}
+          </Text>
+        </Pressable>
+      ) : null}
     </View>
+  );
+}
+
+/* ── Ask to play ─────────────────────────────────────────────────────────── */
+
+/**
+ * The sheet behind "Ask to play".
+ *
+ * It asks the two questions the host would want answered — which spot are you
+ * filling, and can you make it — plus whether the player wants to put their
+ * share in up front. Paying is the one thing that settles a request without the
+ * host tapping anything, and the copy says so plainly rather than hiding it.
+ */
+function AskToPlaySheet({
+  match,
+  onClose,
+  onSent,
+}: {
+  match: Match | null;
+  onClose: () => void;
+  onSent: (message: string) => void;
+}) {
+  const { colors: c, isDark } = useTheme();
+  const { user } = useAuth();
+
+  const [position, setPosition] = useState("");
+  const [note, setNote] = useState("");
+  const [payUpFront, setPayUpFront] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [formError, setFormError] = useState("");
+
+  const needed = match?.positionsNeeded ?? [];
+  const share = match?.pricePerPlayer ?? 0;
+  // A game that named no positions accepts anything, so there is nothing to ask.
+  const amount = advanceAmount(share, share, payUpFront);
+
+  useEffect(() => {
+    if (!match) return;
+    setPosition(needed[0] ?? ANY_POSITION);
+    setNote("");
+    setPayUpFront(false);
+    setFormError("");
+  }, [match, needed.join(",")]);
+
+  async function send() {
+    if (!match || !user) return;
+    const errs: string[] = [];
+
+    if (note.trim()) {
+      const nErr = validateMessage(note.trim(), { min: 3, max: 300, label: "Note", required: false });
+      if (nErr) errs.push(nErr);
+    }
+
+    if (errs.length > 0) {
+      setFormError(firstError(...errs) ?? "Please check that note 🙏");
+      return;
+    }
+
+    setSending(true);
+    setFormError("");
+    try {
+      const res = await joinMatch(match.id, {
+        userId: user.id,
+        position: positionFor(needed, position),
+        message: note.trim(),
+        payInAdvance: payUpFront,
+        paidAmount: amount,
+        payMethod: "eSewa",
+      });
+      onSent(String(res.message ?? "Request sent ⏳"));
+    } catch (e) {
+      setFormError(e instanceof Error ? e.message : "Could not send that request 🙏");
+    } finally {
+      setSending(false);
+    }
+  }
+
+  return (
+    <Modal visible={match !== null} animationType="slide" transparent onRequestClose={onClose}>
+      <View style={[styles.modalBackdrop, { backgroundColor: c.scrim }]}>
+        <View style={[styles.modalSheet, { backgroundColor: c.surface, borderColor: c.border, shadowColor: c.shadow }]}>
+          <View style={styles.modalHead}>
+            <View style={styles.grow}>
+              <Text style={[styles.modalTitle, { color: c.text }]}>Ask to play ⚽</Text>
+              <Text style={[styles.modalSub, { color: c.textMuted }]}>
+                {match?.title} • {formatNPR(share)} each
+              </Text>
+            </View>
+            <Pressable onPress={onClose} style={styles.closeButton} accessibilityRole="button">
+              <X size={18} color={c.textMuted} />
+            </Pressable>
+          </View>
+
+          <ScrollView style={styles.modalBody} keyboardShouldPersistTaps="handled">
+            {/* The host decides who plays. Say so before they type anything. */}
+            <View style={[styles.sayNoBox, { backgroundColor: c.infoBg, borderColor: c.border }]}>
+              <Text style={[styles.sayNoText, { color: c.infoText }]}>
+                🛡️ {match?.organizer?.name ?? "The host"} answers every request — nobody is on the
+                pitch until they say yes.
+              </Text>
+            </View>
+
+            <Text style={[styles.label, { color: c.textFaint }]}>
+              {needed.length > 0 ? "Which spot are you filling? 🧤" : "Where do you play? 🌍"}
+            </Text>
+            <View style={styles.posRow}>
+              {(needed.length > 0 ? needed : [...POSITIONS]).map((p) => {
+                const on = position === p;
+                return (
+                  <Pressable
+                    key={p}
+                    onPress={() => setPosition(p)}
+                    accessibilityState={{ selected: on }}
+                    style={[
+                      styles.posChip,
+                      on
+                        ? { backgroundColor: c.primary, borderColor: c.primary }
+                        : { borderColor: c.border, backgroundColor: c.surface },
+                    ]}
+                  >
+                    <Text style={styles.posEmoji}>{POSITION_EMOJI[p as Position] ?? "🙋"}</Text>
+                    <Text style={[styles.posName, { color: on ? c.primaryText : c.text }]}>{p}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+            {needed.length > 0 ? (
+              <Pressable
+                onPress={() => setPosition(ANY_POSITION)}
+                accessibilityState={{ selected: position === ANY_POSITION }}
+                style={[
+                  styles.anyRow,
+                  { borderColor: c.border },
+                  position === ANY_POSITION && { backgroundColor: c.activeSoft, borderColor: c.activeText },
+                ]}
+              >
+                <Text style={[styles.anyText, { color: position === ANY_POSITION ? c.activeText : c.textMuted }]}>
+                  🙋 I'm flexible — any spot they'll give me
+                </Text>
+              </Pressable>
+            ) : null}
+            <Text style={[styles.hint, { color: c.textFaint }]}>
+              {needed.length > 0
+                ? `They're short of ${needed.join(" and ")} — but the host can still say yes to any spot.`
+                : "This game is open to everyone, so pick whatever suits."}
+            </Text>
+
+            <Text style={[styles.label, { color: c.textFaint }]}>Say hello (optional) 💬</Text>
+            <TextInput
+              value={note}
+              onChangeText={setNote}
+              multiline
+              maxLength={300}
+              placeholder="A line about how you play, or when you can make it"
+              placeholderTextColor={c.textFaint}
+              style={[
+                styles.input,
+                styles.textarea,
+                { color: c.text, borderColor: c.border, backgroundColor: isDark ? "rgba(255,255,255,0.05)" : colors.stone50 },
+              ]}
+            />
+
+            {/* Money in advance — the one shortcut, stated honestly. */}
+            <Pressable
+              onPress={() => setPayUpFront((v) => !v)}
+              accessibilityRole="switch"
+              accessibilityState={{ checked: payUpFront }}
+              style={[
+                styles.chargeBox,
+                {
+                  borderColor: payUpFront ? colors.emerald500 : "rgba(139,92,246,0.25)",
+                  backgroundColor: payUpFront ? c.activeSoft : "transparent",
+                },
+              ]}
+            >
+              <View style={styles.welcomeRow}>
+                <View style={styles.grow}>
+                  <Text style={[styles.chargeLabel, { color: payUpFront ? c.activeText : isDark ? colors.violet300 : colors.violet700 }]}>
+                    💰 Pay my {formatNPR(share)} share now
+                  </Text>
+                  <Text style={[styles.hint, { color: c.textMuted }]}>
+                    {payUpFront
+                      ? "You're in the moment this lands — no waiting on a reply."
+                      : "Money in front of the host is a commitment, so it puts you straight in. You can also ask first and pay later."}
+                  </Text>
+                </View>
+                <View
+                  style={[
+                    styles.tick,
+                    { borderColor: payUpFront ? colors.emerald500 : c.border, backgroundColor: payUpFront ? colors.emerald500 : "transparent" },
+                  ]}
+                >
+                  {payUpFront ? <Check size={14} color="#FFFFFF" strokeWidth={3} /> : null}
+                </View>
+              </View>
+            </Pressable>
+
+            {formError ? (
+              <Text style={styles.formError}>{formError}</Text>
+            ) : null}
+
+            <Pressable
+              onPress={send}
+              disabled={sending}
+              accessibilityRole="button"
+              style={[styles.submitButton, { backgroundColor: c.primary, opacity: sending ? 0.6 : 1 }]}
+            >
+              <HandHeart size={16} color={c.primaryText} strokeWidth={2.5} />
+              <Text style={[styles.submitText, { color: c.primaryText }]}>
+                {sending
+                  ? "Sending…"
+                  : payUpFront
+                    ? `Pay ${formatNPR(amount)} & join`
+                    : "Send my request"}
+              </Text>
+            </Pressable>
+            <Text style={[styles.hint, { color: c.textFaint, textAlign: "center" }]}>
+              No money moves unless you tick the box. Until the host answers, you are on nobody's
+              team but your own.
+            </Text>
+          </ScrollView>
+        </View>
+      </View>
+    </Modal>
   );
 }
 
@@ -510,6 +1005,8 @@ function CreateGameModal({
   const [openSpots, setOpenSpots] = useState(5);
   const [welcomeMode, setWelcomeMode] = useState<"any" | "specific">("any");
   const [welcomeLevels, setWelcomeLevels] = useState<string[]>([]);
+  // The spots this game is short of. Empty is the default and means anyone.
+  const [positions, setPositions] = useState<string[]>([]);
   const [desc, setDesc] = useState("");
   const [creating, setCreating] = useState(false);
   const [formError, setFormError] = useState("");
@@ -527,6 +1024,16 @@ function CreateGameModal({
     setWelcomeLevels((prev) =>
       prev.includes(name) ? prev.filter((l) => l !== name) : [...prev, name],
     );
+  }
+
+  function togglePosition(name: string) {
+    setPositions((prev) => {
+      if (prev.includes(name)) return prev.filter((p) => p !== name);
+      // A pitch has four spots. Asking for a fifth is a shopping list, not a
+      // game, so the picker stops rather than accepting an impossible ask.
+      if (prev.length >= MAX_POSITIONS) return prev;
+      return [...prev, name];
+    });
   }
 
   async function submit() {
@@ -597,11 +1104,13 @@ function CreateGameModal({
         description:
           desc.trim() ||
           `👥 ${ourCrew} from our crew • 🙋 ${openSpots} open for you! Come join the fun 🤝`,
+        positionsNeeded: normalizePositions(positions),
       });
       setTitle("");
       setDesc("");
       setWelcomeLevels([]);
       setWelcomeMode("any");
+      setPositions([]);
       onCreated();
     } catch {
       setFormError("Could not share your game — try again 🙏");
@@ -846,6 +1355,40 @@ function CreateGameModal({
                 })}
               </View>
             ) : null}
+
+            {/* Spots you're short of — the reason a host gets to answer at all. */}
+            <Text style={[styles.label, { color: c.textFaint }]}>
+              Anyone can ask to play — but who do you need? 🧤
+            </Text>
+            <View style={styles.posRow}>
+              {POSITIONS.map((p) => {
+                const on = positions.includes(p);
+                const capped = !on && positions.length >= MAX_POSITIONS;
+                return (
+                  <Pressable
+                    key={p}
+                    onPress={() => togglePosition(p)}
+                    disabled={capped}
+                    accessibilityState={{ selected: on, disabled: capped }}
+                    style={[
+                      styles.posChip,
+                      on
+                        ? { backgroundColor: colors.orange500, borderColor: colors.orange500 }
+                        : { borderColor: c.border, backgroundColor: c.surface },
+                      capped && { opacity: 0.4 },
+                    ]}
+                  >
+                    <Text style={styles.posEmoji}>{POSITION_EMOJI[p]}</Text>
+                    <Text style={[styles.posName, { color: on ? "#FFFFFF" : c.text }]}>{p}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+            <Text style={[styles.hint, { color: c.textFaint }]}>
+              {positions.length === 0
+                ? "Pick none and anyone can ask for a spot — you'll still decide who plays. 🌍"
+                : `You'll see people asking for ${positions.join(" and ")}. You can still say yes to any spot.`}
+            </Text>
 
             {/* Custom charge */}
             <View style={[styles.chargeBox, { borderColor: "rgba(139,92,246,0.25)" }]}>
@@ -1093,6 +1636,85 @@ const styles = StyleSheet.create({
     marginTop: space[4],
   },
   joinText: { fontSize: fontSize.base, fontWeight: "900" },
+  noticeText: {
+    marginTop: space[3],
+    fontSize: fontSize.sm,
+    fontWeight: "700",
+    backgroundColor: colors.emerald50,
+    color: colors.emerald700,
+    borderRadius: radius.xl,
+    paddingHorizontal: space[3],
+    paddingVertical: space[2],
+  },
+  requestNote: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    borderWidth: 1,
+    borderRadius: radius.xl,
+    paddingHorizontal: space[3],
+    paddingVertical: space[2],
+    marginTop: space[3],
+  },
+  requestNoteText: { flex: 1, fontSize: fontSize.xs, fontWeight: "700", lineHeight: 16 },
+
+  queueBox: { borderWidth: 1, borderRadius: radius["2xl"], padding: space[3], marginTop: space[3], gap: space[2] },
+  queueTitle: {
+    fontSize: fontSize.xs,
+    fontWeight: "900",
+    textTransform: "uppercase",
+    letterSpacing: 0.8,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  queueRow: { flexDirection: "row", alignItems: "center", gap: space[2], borderTopWidth: 1, paddingTop: space[2] },
+  queueName: { fontSize: fontSize.sm, fontWeight: "800" },
+  queueMeta: { fontSize: 10, fontWeight: "700", marginTop: 1 },
+  queueMsg: { fontSize: fontSize.xs, fontStyle: "italic", marginTop: 2, lineHeight: 15 },
+  queuePay: { fontSize: 10, fontWeight: "900", marginTop: 3 },
+  queueActions: { gap: 4, alignItems: "flex-end" },
+  queueAccept: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+    backgroundColor: colors.emerald600,
+    borderRadius: radius.lg,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  queueAcceptText: { fontSize: 10, fontWeight: "900", color: "#FFFFFF" },
+  queueGhost: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+    borderWidth: 1,
+    borderRadius: radius.lg,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+  },
+  queueGhostText: { fontSize: 9, fontWeight: "900" },
+  hostBar: { borderRadius: radius["2xl"], padding: space[3], marginTop: space[4] },
+  hostBarText: { fontSize: fontSize.xs, fontWeight: "700", textAlign: "center" },
+
+  sayNoBox: { borderWidth: 1, borderRadius: radius.xl, padding: space[3], marginTop: space[4] },
+  sayNoText: { fontSize: fontSize.xs, fontWeight: "700", lineHeight: 16 },
+  hint: { fontSize: fontSize.xs, fontWeight: "600", color: colors.stone500, marginTop: 6, lineHeight: 16 },
+  posRow: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
+  posChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    borderWidth: 1,
+    borderRadius: radius.full,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+  },
+  posEmoji: { fontSize: 12 },
+  posName: { fontSize: fontSize.xs, fontWeight: "800" },
+  anyRow: { borderWidth: 1, borderRadius: radius.xl, paddingHorizontal: 12, paddingVertical: 9, marginTop: 6 },
+  anyText: { fontSize: fontSize.xs, fontWeight: "700" },
+  tick: { width: 24, height: 24, borderRadius: 12, borderWidth: 2, alignItems: "center", justifyContent: "center" },
 
   /* modal */
   modalBackdrop: { flex: 1, backgroundColor: "rgba(28,25,23,0.5)", justifyContent: "flex-end" },

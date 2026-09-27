@@ -17,6 +17,7 @@ use App\Models\User;
 use App\Models\Venue;
 use App\Support\BookingLedger;
 use App\Support\Loyalty;
+use App\Support\OpenGames;
 
 /**
  * Turns booking rows into the payload the app renders.
@@ -75,9 +76,16 @@ class BookingPresenter
             ->keyBy('booking_id');
 
         $matchIds = $matches->pluck('id')->all();
+        // A linked listing shows who is actually on it. Requests still waiting
+        // on the host are deliberately left out — the booking screen is not the
+        // place to show an unanswered ask as a settled player.
         $joinsByMatch = $matchIds === []
             ? []
-            : MatchJoin::whereIn('match_id', $matchIds)->get()->groupBy('match_id')->all();
+            : MatchJoin::whereIn('match_id', $matchIds)
+                ->where('status', OpenGames::JOIN_ACCEPTED)
+                ->get()
+                ->groupBy('match_id')
+                ->all();
 
         $teamIds = $rows->pluck('team_id')->filter()->unique()->values()->all();
         $opponentIds = $rows->pluck('opponent_team_id')->filter()->unique()->values()->all();

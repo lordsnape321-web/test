@@ -21,6 +21,7 @@ use App\Services\Notifier;
 use App\Support\AdvancePayment;
 use App\Support\Futsal;
 use App\Support\Loyalty;
+use App\Support\OpenGames;
 use App\Support\PromoStore;
 use App\Support\Promos;
 use App\Support\TeamStore;
@@ -625,7 +626,14 @@ class BookingController extends ApiController
                         : "{$crewLine} • 🙋 {$openSpots} open for you! Court requested by the host — listing goes live once the venue accepts. Split ".Futsal::formatNPR($perPlayer).' each! 🤝'),
                 ]);
 
-                MatchJoin::create(['match_id' => $match->id, 'user_id' => $userId]);
+                // The host's own crew is not a request — it is already theirs.
+                MatchJoin::create([
+                    'match_id' => $match->id,
+                    'user_id' => $userId,
+                    'status' => OpenGames::JOIN_ACCEPTED,
+                    'position' => OpenGames::ANY_POSITION,
+                    'joined_at' => now(),
+                ]);
             }
         });
 

@@ -98,8 +98,12 @@ Route::post('/payments/khalti/verify', [KhaltiController::class, 'verify']);
 /* ── open matches ───────────────────────────────────────────────────────── */
 Route::get('/matches', [MatchController::class, 'index']);
 Route::post('/matches', [MatchController::class, 'store']);
+// Taking a spot is a request, and the host is the one who answers it.
 Route::post('/matches/{id}/join', [MatchController::class, 'join'])->whereNumber('id');
 Route::delete('/matches/{id}/join', [MatchController::class, 'leave'])->whereNumber('id');
+Route::get('/matches/{id}/joins', [MatchController::class, 'joins'])->whereNumber('id');
+Route::post('/matches/{id}/joins', [MatchController::class, 'decideJoin'])->whereNumber('id');
+Route::post('/matches/{id}/joins/pay', [MatchController::class, 'payJoin'])->whereNumber('id');
 
 /* ── notifications ──────────────────────────────────────────────────────── */
 Route::get('/notifications', [NotificationController::class, 'index']);

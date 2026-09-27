@@ -242,6 +242,45 @@ export type MatchPlayer = {
   avatarUrl?: string | null;
 };
 
+/**
+ * One player waiting on a host, as the host's queue shows it.
+ *
+ * `slot` is the spot they asked to fill; `playerPosition` is their usual role,
+ * which is a different thing — anyone can stand in goal for one game.
+ */
+export type MatchJoinRequest = {
+  id: number;
+  matchId: number;
+  userId: number;
+  name: string;
+  level: string;
+  playerPosition: string;
+  avatarColor?: string | null;
+  avatarUrl?: string | null;
+  status: string;
+  slot: string;
+  message?: string | null;
+  paidAmount: number;
+  payMethod: string;
+  paymentSummary: string;
+  paid: boolean;
+  paymentRequested: boolean;
+  autoAccepted: boolean;
+  createdAt?: string | null;
+  decidedAt?: string | null;
+};
+
+/** Where the logged-in player stands with one game. */
+export type MatchViewer = {
+  isHost: boolean;
+  isIn: boolean;
+  requestStatus: string | null;
+  requestId: number | null;
+  position: string | null;
+  paidAmount: number;
+  paymentRequested: boolean;
+};
+
 /** GET /api/matches → { matches } */
 export type Match = {
   id: number;
@@ -260,6 +299,13 @@ export type Match = {
   openSpots?: number;
   crewSize?: number;
   otherJoined?: number;
+  /** Requests waiting on the host. They hold no spot, so they are not a count. */
+  pendingCount?: number;
+  /** The spots this host said it was short of. Empty = anyone welcome. */
+  positionsNeeded?: string[];
+  viewer?: MatchViewer | null;
+  /** Only ever filled for the host — nobody else can see who asked. */
+  requests?: MatchJoinRequest[] | null;
   bookingId?: number | null;
   courtId?: number | null;
   venueId?: number | null;

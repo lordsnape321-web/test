@@ -29,6 +29,7 @@ use App\Support\Futsal;
 use App\Support\League;
 use App\Support\LegacyPassword;
 use App\Support\Loyalty;
+use App\Support\OpenGames;
 use App\Support\Promos;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Seeder;
@@ -1665,8 +1666,87 @@ class RealWorldSeeder extends Seeder
 
         MatchJoin::firstOrCreate(
             ['match_id' => $match->id, 'user_id' => $organizer->id],
-            ['status' => 'joined', 'joined_at' => now()->subHours(6)]
+            ['status' => OpenGames::JOIN_ACCEPTED, 'position' => OpenGames::ANY_POSITION, 'joined_at' => now()->subHours(6)]
         );
+    }
+
+    /**
+     * The queue a host answers, written the way the app writes it: a player asks
+     * for a spot, and only the host's answer — or money offered up front —
+     * makes it accepted. A pending request must never look like a taken spot.
+     *
+     * @param  list<Player>  $players
+     */
+    private function seedMatchRequests(OpenMatch $match, User $organizer, array $players, int $price, int $index): void
+    {
+        $needed = OpenGames::normalisePositions($match->positions_needed);
+        $hostId = (int) $organizer->id;
+        $open = max(0, (int) $match->max_players - (int) $match->crew_size);
+        $free = MatchJoin::where('match_id', $match->id)->where('status', OpenGames::JOIN_ACCEPTED)->count();
+
+        if ((int) $match->status !== 'open' || $free >= $open) {
+            return;
+        }
+
+        $notes = [
+            "I can make any day this week — I've played at {$players[0]->name}'s ground before.",
+            'I was coming with two friends from college, is there still room?',
+            'Happy to take the hardest spot, I do not mind playing keeper.',
+            'I can pay my share right now if that helps.',
+            'Just finished a game nearby, could squeeze this in.',
+        ];
+
+        // One player per kind of answer, so the host's queue on every game has
+        // something in each state rather than four identical rows.
+        $stories = [
+            ['ask', null, ''],                 // waiting for a decision
+            ['paid', 'eSewa', $price],         // paid in advance → in by default
+            ['asked-payment', '', 0],          // host asked for the share
+            ['declined', '', 0],               // passed over, nothing charged
+        ];
+
+        for ($slot = 0; $slot < count($stories); $slot++) {
+            [$kind, $method, $amount] = $stories[$slot];
+
+            if ($kind === 'declined' && $index % 3 !== 0) {
+                continue;
+            }
+
+            $joiner = $players[(($index * 11) + ($slot * 17) + 3) % count($players)];
+
+            if ((int) $joiner->id === $hostId) {
+                continue;
+            }
+
+            $position = $needed !== [] && $slot % 2 === 0
+                ? $needed[$slot % count($needed)]
+                : ($needed === [] ? OpenGames::ANY_POSITION : '');
+
+            $paid = $kind === 'paid';
+            $settled = $paid;
+
+            MatchJoin::firstOrCreate(
+                ['match_id' => $match->id, 'user_id' => $joiner->id],
+                [
+                    'status' => match ($kind) {
+                        'paid' => OpenGames::JOIN_ACCEPTED,
+                        'declined' => OpenGames::JOIN_DECLINED,
+                        default => OpenGames::JOIN_PENDING,
+                    },
+                    'position' => $position,
+                    'message' => $notes[($index + $slot) % count($notes)],
+                    'paid_amount' => $paid ? (int) $amount : 0,
+                    'pay_method' => $paid ? (string) $method : '',
+                    'payment_ref' => $paid ? 'SEED-JOIN-'.$match->id.'-'.$slot : '',
+                    'paid_at' => $paid ? now()->subHours(3 + $slot) : null,
+                    'payment_requested_at' => $kind === 'asked-payment' ? now()->subHours(2) : null,
+                    'auto_accepted' => $paid,
+                    'joined_at' => $settled ? now()->subHours(3 + $slot) : null,
+                    'decided_at' => $settled || $kind === 'declined' ? now()->subHours(3 + $slot) : null,
+                    'decided_by' => $settled || $kind === 'declined' ? $hostId : null,
+                ]
+            );
+        }
     }
 
     /**
@@ -2418,29 +2498,31 @@ class RealWorldSeeder extends Seeder
     {
         $today = now()->startOfDay();
 
-        // [title, venue, court offset, player offset, level, day, hour, price, max, joiners, status]
+        // [title, venue, court offset, player offset, level, day, hour, price, max, joiners, status, positions]
+        // Most games welcome anyone (an empty list). The rest name the spots
+        // they are short of, which is the whole reason the host is asked.
         $rows = [
-            ['Tuesday Touches at Satdobato', 0, 1, 2, 'Intermediate', 1, 17, 250, 10, 5, 'open'],
-            ['New Baneshwor After-Work Five', 4, 0, 3, 'All Levels', 2, 18, 220, 10, 4, 'open'],
-            ['Chabahil College Night', 5, 1, 4, 'Beginner+Intermediate', 3, 19, 200, 12, 3, 'open'],
-            ['Pokhara Lakeside Sunday Run', 13, 0, 5, 'Intermediate', 4, 7, 260, 10, 6, 'open'],
-            ['Bhaktapur Saturday Press', 10, 1, 6, 'Advanced', 5, 16, 240, 10, 2, 'open'],
-            ['Damside Keepers and Runners', 14, 0, 7, 'All Levels', 2, 6, 180, 8, 4, 'open'],
-            ['Bharatpur Midweek Kickabout', 16, 1, 8, 'Beginner', 3, 18, 190, 10, 3, 'open'],
-            ['Lalitpur Late Slot', 19, 0, 9, 'Advanced', 0, 20, 280, 10, 8, 'open'],
-            ['Tokha Sunrise Session', 9, 0, 10, 'All Levels', 1, 6, 160, 8, 5, 'open'],
-            ['Suryabinayak Hill View Five', 10, 0, 11, 'Intermediate', 6, 17, 210, 10, 3, 'open'],
-            ['Baluwatar Office League Warm-up', 7, 1, 12, 'Advanced', 2, 19, 270, 10, 9, 'open'],
-            ['Dattatreya Old Boys Match', 12, 0, 13, 'All Levels', 7, 17, 200, 10, 10, 'open'],
-            ['Birauta Casual Kickabout', 15, 1, 14, 'Beginner', 4, 18, 190, 8, 2, 'open'],
-            ['Jhamsikhel Friday Five', 2, 0, 15, 'Intermediate', -3, 18, 230, 10, 7, 'completed'],
-            ['Narayangarh Morning Run', 17, 0, 16, 'All Levels', -8, 7, 170, 8, 6, 'completed'],
-            ['Maharajgunj Closed Game', 8, 1, 17, 'Advanced', -1, 19, 250, 10, 4, 'cancelled'],
+            ['Tuesday Touches at Satdobato', 0, 1, 2, 'Intermediate', 1, 17, 250, 10, 5, 'open', []],
+            ['New Baneshwor After-Work Five', 4, 0, 3, 'All Levels', 2, 18, 220, 10, 4, 'open', []],
+            ['Chabahil College Night', 5, 1, 4, 'Beginner+Intermediate', 3, 19, 200, 12, 3, 'open', ['Goalkeeper', 'Defender']],
+            ['Pokhara Lakeside Sunday Run', 13, 0, 5, 'Intermediate', 4, 7, 260, 10, 6, 'open', []],
+            ['Bhaktapur Saturday Press', 10, 1, 6, 'Advanced', 5, 16, 240, 10, 2, 'open', ['Goalkeeper']],
+            ['Damside Keepers and Runners', 14, 0, 7, 'All Levels', 2, 6, 180, 8, 4, 'open', ['Goalkeeper']],
+            ['Bharatpur Midweek Kickabout', 16, 1, 8, 'Beginner', 3, 18, 190, 10, 3, 'open', []],
+            ['Lalitpur Late Slot', 19, 0, 9, 'Advanced', 0, 20, 280, 10, 8, 'open', ['Midfielder', 'Forward']],
+            ['Tokha Sunrise Session', 9, 0, 10, 'All Levels', 1, 6, 160, 8, 5, 'open', []],
+            ['Suryabinayak Hill View Five', 10, 0, 11, 'Intermediate', 6, 17, 210, 10, 3, 'open', ['Defender']],
+            ['Baluwatar Office League Warm-up', 7, 1, 12, 'Advanced', 2, 19, 270, 10, 9, 'open', ['Goalkeeper']],
+            ['Dattatreya Old Boys Match', 12, 0, 13, 'All Levels', 7, 17, 200, 10, 10, 'open', []],
+            ['Birauta Casual Kickabout', 15, 1, 14, 'Beginner', 4, 18, 190, 8, 2, 'open', []],
+            ['Jhamsikhel Friday Five', 2, 0, 15, 'Intermediate', -3, 18, 230, 10, 7, 'completed', []],
+            ['Narayangarh Morning Run', 17, 0, 16, 'All Levels', -8, 7, 170, 8, 6, 'completed', []],
+            ['Maharajgunj Closed Game', 8, 1, 17, 'Advanced', -1, 19, 250, 10, 4, 'cancelled', []],
         ];
 
         $courtList = array_values($courts);
 
-        foreach ($rows as $index => [$title, $venueIndex, $courtOffset, $playerOffset, $level, $dayOffset, $startHour, $price, $maxPlayers, $joinerCount, $status]) {
+        foreach ($rows as $index => [$title, $venueIndex, $courtOffset, $playerOffset, $level, $dayOffset, $startHour, $price, $maxPlayers, $joinerCount, $status, $positions]) {
             $venue = $venues[$venueIndex];
 
             $venueCourts = array_values(array_filter(
@@ -2476,6 +2558,7 @@ class RealWorldSeeder extends Seeder
                             ? 'That was a good one. Thanks to everyone who turned up.'
                             : 'Bring boots and water; we play two short games if the court is free.'),
                     'charge_mode' => 'split',
+                    'positions_needed' => $positions === [] ? null : json_encode($positions),
                 ]
             );
 
@@ -2485,7 +2568,7 @@ class RealWorldSeeder extends Seeder
 
             MatchJoin::firstOrCreate(
                 ['match_id' => $match->id, 'user_id' => $organizer->id],
-                ['status' => 'joined', 'joined_at' => now()->subHours(6)]
+                ['status' => OpenGames::JOIN_ACCEPTED, 'position' => OpenGames::ANY_POSITION, 'joined_at' => now()->subHours(6)]
             );
 
             for ($joinIndex = 1; $joinIndex <= $joinerCount; $joinIndex++) {
@@ -2495,11 +2578,21 @@ class RealWorldSeeder extends Seeder
                     continue;
                 }
 
+                $slot = $positions === [] ? OpenGames::ANY_POSITION : $positions[$joinIndex % count($positions)];
+
                 MatchJoin::firstOrCreate(
                     ['match_id' => $match->id, 'user_id' => $joiner->id],
-                    ['status' => 'joined', 'joined_at' => now()->subHours(5 + $joinIndex)]
+                    [
+                        'status' => OpenGames::JOIN_ACCEPTED,
+                        'position' => $slot,
+                        'joined_at' => now()->subHours(5 + $joinIndex),
+                        'decided_at' => now()->subHours(5 + $joinIndex),
+                        'decided_by' => (int) $organizer->id,
+                    ]
                 );
             }
+
+            $this->seedMatchRequests($match, $organizer, $players, $price, $index);
         }
 
         // The listings that came from a public booking need joiners too, so
@@ -2520,7 +2613,25 @@ class RealWorldSeeder extends Seeder
 
                 MatchJoin::firstOrCreate(
                     ['match_id' => $match->id, 'user_id' => $joiner->id],
-                    ['status' => 'joined', 'joined_at' => now()->subHours(3 + $joinIndex)]
+                    [
+                        'status' => OpenGames::JOIN_ACCEPTED,
+                        'position' => OpenGames::ANY_POSITION,
+                        'joined_at' => now()->subHours(3 + $joinIndex),
+                        'decided_at' => now()->subHours(3 + $joinIndex),
+                        'decided_by' => (int) $public['booking']->user_id,
+                    ]
+                );
+            }
+
+            $host = User::find($public['booking']->user_id);
+
+            if ($host) {
+                $this->seedMatchRequests(
+                    $match,
+                    $host,
+                    $players,
+                    (int) $match->price_per_player,
+                    $offset + 20
                 );
             }
         }
@@ -2551,8 +2662,14 @@ class RealWorldSeeder extends Seeder
                 'charge_mode' => 'split',
             ]
         );
-        MatchJoin::firstOrCreate(['match_id' => $historical->id, 'user_id' => $players[40]->id], ['status' => 'joined', 'joined_at' => now()->subDays(9)]);
-        MatchJoin::firstOrCreate(['match_id' => $historical->id, 'user_id' => $players[41]->id], ['status' => 'joined', 'joined_at' => now()->subDays(9)]);
+        MatchJoin::firstOrCreate(
+            ['match_id' => $historical->id, 'user_id' => $players[40]->id],
+            ['status' => OpenGames::JOIN_ACCEPTED, 'position' => OpenGames::ANY_POSITION, 'joined_at' => now()->subDays(9)]
+        );
+        MatchJoin::firstOrCreate(
+            ['match_id' => $historical->id, 'user_id' => $players[41]->id],
+            ['status' => OpenGames::JOIN_ACCEPTED, 'position' => OpenGames::ANY_POSITION, 'joined_at' => now()->subDays(9)]
+        );
     }
 
     /**

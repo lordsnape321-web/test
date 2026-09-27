@@ -652,7 +652,14 @@ class TeamStore
         $allMatches = OpenMatch::all();
         $venues = Venue::all()->keyBy('id');
 
-        $joinedIds = MatchJoin::where('user_id', $userId)->pluck('match_id')->map(fn ($v) => (int) $v)->all();
+        // Only a settled join counts as showing up. A request still waiting on
+        // the host must not appear in a captain's "games this player is in" —
+        // that is the whole point of making the host answer.
+        $joinedIds = MatchJoin::where('user_id', $userId)
+            ->where('status', OpenGames::JOIN_ACCEPTED)
+            ->pluck('match_id')
+            ->map(fn ($v) => (int) $v)
+            ->all();
         $today = now()->toDateString();
 
         $shape = fn (OpenMatch $m) => [
