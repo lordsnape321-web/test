@@ -19,6 +19,7 @@ export function NotificationBell({ variant }: { variant?: "dark" | "light" }) {
   const { colors: c, isDark } = useTheme();
   const router = useRouter();
   const [unread, setUnread] = useState(0);
+  const [open, setOpen] = useState(false);
   const [latest, setLatest] = useState<Array<{ id: number; title: string; message: string; isRead: boolean; createdAt: string | null }>>([]);
 
   const load = useCallback(async () => {
@@ -34,9 +35,9 @@ export function NotificationBell({ variant }: { variant?: "dark" | "light" }) {
 
   useEffect(() => {
     void load();
-    const t = setInterval(() => void load(), 15000);
+    const t = setInterval(() => void load(), open ? 4000 : 15000);
     return () => clearInterval(t);
-  }, [load]);
+  }, [load, open]);
 
   async function markAll() {
     if (!user) return;
@@ -58,7 +59,10 @@ export function NotificationBell({ variant }: { variant?: "dark" | "light" }) {
   return (
     <View style={styles.wrap}>
       <Pressable
-        onPress={() => router.push(isOwner ? "/admin/notifications" : "/notifications")}
+        onPress={() => {
+          setOpen((value) => !value);
+          void load();
+        }}
         style={[styles.btn, { backgroundColor: btnBg, borderColor: btnBorder }]}
         accessibilityLabel={unread > 0 ? `Notifications, ${unread} unread` : "Notifications"}
       >
@@ -70,15 +74,20 @@ export function NotificationBell({ variant }: { variant?: "dark" | "light" }) {
         ) : null}
       </Pressable>
 
-      {/* Compact unread list — open shows the dedicated screen. */}
-      {false ? (
+      {/* Compact live inbox on the main screen; View all opens the full screen. */}
+      {open ? (
         <View style={[styles.pop, { backgroundColor: c.surface, borderColor: c.border }]}>
           <View style={styles.popHead}>
             <Text style={[styles.popTitle, { color: c.text }]}>Notifications</Text>
-            <Pressable onPress={() => void markAll()} style={styles.markAll}>
-              <CheckCheck size={14} color={brand.emerald600} />
-              <Text style={styles.markAllText}>Mark all read</Text>
-            </Pressable>
+            <View style={styles.popActions}>
+              <Pressable onPress={() => { setOpen(false); router.push(isOwner ? "/admin/notifications" : "/notifications"); }} style={styles.viewAll}>
+                <Text style={styles.viewAllText}>View all</Text>
+              </Pressable>
+              <Pressable onPress={() => void markAll()} style={styles.markAll}>
+                <CheckCheck size={14} color={brand.emerald600} />
+                <Text style={styles.markAllText}>Mark all read</Text>
+              </Pressable>
+            </View>
           </View>
           {latest.map((n) => (
             <Pressable key={n.id} onPress={() => void openOne(n.id)} style={styles.popRow}>
@@ -150,6 +159,9 @@ const styles = StyleSheet.create({
     paddingVertical: space[2],
   },
   popTitle: { fontSize: fontSize.sm, fontWeight: "900" },
+  popActions: { flexDirection: "row", alignItems: "center", gap: space[2] },
+  viewAll: { paddingHorizontal: 2, paddingVertical: 2 },
+  viewAllText: { fontSize: fontSize.xs, fontWeight: "800", color: brand.orange600 },
   markAll: { flexDirection: "row", alignItems: "center", gap: 4 },
   markAllText: { fontSize: fontSize.xs, fontWeight: "800", color: brand.emerald600 },
   popRow: {

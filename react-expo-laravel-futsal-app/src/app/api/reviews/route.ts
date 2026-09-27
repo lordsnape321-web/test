@@ -1,4 +1,4 @@
-import { db } from "@/db";
+import { db, ensureCompetitionBookingColumns } from "@/db";
 import { reviews, users, venues, bookings, courts } from "@/db/schema";
 import { sendNotification } from "@/lib/notify";
 import { validateMessage, firstError } from "@/lib/validation";
@@ -9,6 +9,7 @@ export const dynamic = "force-dynamic";
 
 export async function GET(req: Request) {
   try {
+    await ensureCompetitionBookingColumns();
     const { searchParams } = new URL(req.url);
     const venueId = searchParams.get("venueId");
     const userId = searchParams.get("userId");
@@ -37,6 +38,7 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   try {
+    await ensureCompetitionBookingColumns();
     const body = await req.json();
     const venueId = Number(body.venueId);
     const userId = Number(body.userId);

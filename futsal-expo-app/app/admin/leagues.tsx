@@ -19,7 +19,7 @@ import {
   Text,
   View,
 } from "react-native";
-import { fetchBookings, fetchLeagues, fetchVenues, seedDemo } from "@/api";
+import { fetchBookings, fetchLeagues, fetchVenues } from "@/api";
 import { LeagueCard } from "@/components/LeagueCard";
 import { LeagueForm } from "@/components/LeagueForm";
 import { useAuth } from "@/context/AuthContext";
@@ -41,14 +41,12 @@ export default function OwnerLeagues() {
 
   const load = useCallback(async () => {
     if (!user) return;
-    try {
-      await seedDemo();
-    } catch {
-      /* optional */
-    }
+    // This screen is a control room, not a demo-data bootstrapper. Seeding
+    // before the real requests made a slow/unavailable seed endpoint look like
+    // the Owner Studio navigation had frozen.
     const [l, b, v] = await Promise.all([
       fetchLeagues(user.id),
-      fetchBookings(),
+      fetchBookings({ refresh: true }),
       fetchVenues(),
     ]);
     setLeagues(l);
@@ -182,7 +180,11 @@ export default function OwnerLeagues() {
           ) : (
             hosted.map((l) => (
               <View key={l.id} style={styles.leagueBlock}>
-                <LeagueCard league={l} />
+                <LeagueCard
+                  league={l}
+                  ownerMode
+                  onPress={() => router.push(`/admin/leagues/${l.id}`)}
+                />
                 <View style={styles.leagueMetaRow}>
                   <View style={styles.leagueMetaItem}>
                     {l.visibility === "private" ? (
@@ -202,13 +204,6 @@ export default function OwnerLeagues() {
                       • {l.pendingTeams} waiting on you
                     </Text>
                   ) : null}
-                  <Pressable
-                    onPress={() => router.push(`/leagues/${l.id}`)}
-                    style={styles.controlLink}
-                  >
-                    <Text style={styles.controlLinkText}>Control room</Text>
-                    <ArrowRight size={12} color={colors.emerald600} />
-                  </Pressable>
                 </View>
               </View>
             ))
@@ -222,7 +217,7 @@ export default function OwnerLeagues() {
               {playing.map((l) => (
                 <Pressable
                   key={l.id}
-                  onPress={() => router.push(`/leagues/${l.id}`)}
+                  onPress={() => router.push(`/admin/leagues/${l.id}`)}
                   style={[styles.playingRow, { backgroundColor: c.surface, borderColor: c.border }]}
                 >
                   <View style={styles.playingIcon}>
@@ -353,8 +348,6 @@ const styles = StyleSheet.create({
   },
   leagueMetaItem: { flexDirection: "row", alignItems: "center", gap: 4 },
   leagueMeta: { fontSize: 11, fontWeight: "700" },
-  controlLink: { flexDirection: "row", alignItems: "center", gap: 4, marginLeft: "auto" },
-  controlLinkText: { fontSize: 11, fontWeight: "900", color: colors.emerald600 },
   playingRow: {
     flexDirection: "row",
     alignItems: "center",

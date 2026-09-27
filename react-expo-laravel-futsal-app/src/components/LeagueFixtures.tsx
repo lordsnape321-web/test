@@ -1,4 +1,5 @@
 "use client";
+import { ThemedSelect } from "@/components/ThemedSelect";
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
@@ -151,7 +152,7 @@ export function LeagueFixtures({
           {/* A squad can't play itself, so each list hides whoever is already
               picked on the other side — the server refuses it too, but the
               option shouldn't have been there to click. */}
-          <select
+          <ThemedSelect
             value={homeTeamId}
             onChange={(e) => setHomeTeamId(e.target.value)}
             className="rounded-xl border border-[#F0E3CC] bg-white px-3 py-2 text-xs font-bold dark:border-white/10 dark:bg-slate-950 dark:text-slate-100"
@@ -164,8 +165,8 @@ export function LeagueFixtures({
                   {s.name}
                 </option>
               ))}
-          </select>
-          <select
+          </ThemedSelect>
+          <ThemedSelect
             value={awayTeamId}
             onChange={(e) => setAwayTeamId(e.target.value)}
             className="rounded-xl border border-[#F0E3CC] bg-white px-3 py-2 text-xs font-bold dark:border-white/10 dark:bg-slate-950 dark:text-slate-100"
@@ -178,8 +179,8 @@ export function LeagueFixtures({
                   {s.name}
                 </option>
               ))}
-          </select>
-          <select
+          </ThemedSelect>
+          <ThemedSelect
             value={round}
             onChange={(e) => setRound(e.target.value)}
             className="rounded-xl border border-[#F0E3CC] bg-white px-3 py-2 text-xs font-bold dark:border-white/10 dark:bg-slate-950 dark:text-slate-100"
@@ -189,7 +190,7 @@ export function LeagueFixtures({
                 {r}
               </option>
             ))}
-          </select>
+          </ThemedSelect>
           <div className="grid grid-cols-2 gap-2">
             <input
               type="date"

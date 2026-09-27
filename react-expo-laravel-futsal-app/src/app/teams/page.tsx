@@ -1,4 +1,5 @@
 "use client";
+import { ThemedSelect } from "@/components/ThemedSelect";
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
@@ -1007,7 +1008,7 @@ export default function TeamsPage() {
               <div className="grid grid-cols-2 gap-3">
                 <label className="block">
                   <span className="mb-1 block text-xs font-black uppercase tracking-wider text-stone-400 dark:text-slate-500">Level</span>
-                  <select
+                  <ThemedSelect
                     value={level}
                     onChange={(e) => setLevel(e.target.value)}
                     className="w-full rounded-xl border border-stone-200 bg-[#FFF6E9] px-3.5 py-2.5 text-sm font-semibold text-stone-900 focus:border-emerald-500 focus:outline-none dark:border-white/10 dark:bg-white/5 dark:text-slate-100 [&>option]:bg-white [&>option]:text-stone-900 dark:[&>option]:bg-slate-900 dark:[&>option]:text-slate-100"
@@ -1015,13 +1016,13 @@ export default function TeamsPage() {
                     {["Beginner", "Intermediate", "Advanced"].map((l) => (
                       <option key={l}>{l}</option>
                     ))}
-                  </select>
+                  </ThemedSelect>
                 </label>
                 <label className="block">
                   <span className="mb-1 flex items-center gap-1 text-xs font-black uppercase tracking-wider text-stone-400 dark:text-slate-500">
                     <MapPin className="h-3 w-3" /> Home turf
                   </span>
-                  <select
+                  <ThemedSelect
                     value={homeVenueId}
                     onChange={(e) => setHomeVenueId(e.target.value)}
                     className="w-full rounded-xl border border-stone-200 bg-[#FFF6E9] px-3.5 py-2.5 text-sm font-semibold text-stone-900 focus:border-emerald-500 focus:outline-none dark:border-white/10 dark:bg-white/5 dark:text-slate-100 [&>option]:bg-white [&>option]:text-stone-900 dark:[&>option]:bg-slate-900 dark:[&>option]:text-slate-100"
@@ -1032,7 +1033,7 @@ export default function TeamsPage() {
                         {v.name} — {v.city}
                       </option>
                     ))}
-                  </select>
+                  </ThemedSelect>
                   <span className="mt-1 block text-[11px] text-stone-400">
                     {venues.length > 0
                       ? `From the platform's ${venues.length} venues 📍`

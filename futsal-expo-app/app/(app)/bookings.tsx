@@ -1,6 +1,9 @@
 import { useFocusEffect, useRouter } from "expo-router";
 import {
   CalendarCheck,
+  ChevronDown,
+  ChevronRight,
+  ChevronUp,
   Clock,
   Gift,
   Globe,
@@ -31,8 +34,17 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { fetchBookings, fetchReviews, patchBooking, postReview, seedDemo } from "@/api";
+import {
+  chooseBookingTeamPayment,
+  decideCompetitionBooking,
+  fetchBookings,
+  fetchReviews,
+  fetchUserStats,
+  patchBooking,
+  postReview,
+} from "@/api";
 import { BookingPaymentSummary } from "@/components/BookingPaymentSummary";
+import { BookingVenueName } from "@/components/BookingVenueName";
 import { PlayerRatingBadge } from "@/components/PlayerRating";
 import { ReceiptUploader, ReceiptViewer, isOnlineMethod } from "@/components/ReceiptUploader";
 import { StarInput } from "@/components/Reviews";
@@ -71,6 +83,26 @@ const played = (b: {
   endTime: string;
 }) => b.status !== "cancelled" && b.status !== "rejected" && gamePlayed(b);
 
+const gone = (status: string) => status === "cancelled" || status === "rejected";
+
+function paymentStatusLabel(status: string) {
+  return String(status || "unknown")
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function paymentMethodLabel(method: string) {
+  if (method === "Cash at Venue") return "Cash at venue";
+  if (method === "Free Play 🎁") return "Free play";
+  return method || "Not selected";
+}
+
+function cancellationMoneyLabel(status?: string) {
+  if (status === "refunded") return "Refund recorded";
+  if (status === "retained") return "Kept by venue under cancellation policy";
+  return "Refund decision pending with venue";
+}
+
 /**
  * My games — a 1:1 port of the web app's app/bookings/page.tsx.
  *
@@ -86,6 +118,7 @@ export default function BookingsScreen() {
   const router = useRouter();
 
   const [bookings, setBookings] = useState<DiaryBooking[]>([]);
+  const [playerStats, setPlayerStats] = useState<PlayerStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<"upcoming" | "past" | "cancelled">("upcoming");
   const [cancelling, setCancelling] = useState<number | null>(null);
@@ -101,14 +134,24 @@ export default function BookingsScreen() {
   const [cancelError, setCancelError] = useState("");
   const [paying, setPaying] = useState<number | null>(null);
   const [payError, setPayError] = useState("");
+  const [competitionDecision, setCompetitionDecision] = useState<number | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [teamMethodFor, setTeamMethodFor] = useState<number | null>(null);
+  const [teamMethod, setTeamMethod] = useState<"eSewa" | "Khalti" | "Cash at Venue">("eSewa");
+  const [teamSaving, setTeamSaving] = useState<number | null>(null);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (refresh = false) => {
     if (!user) return;
     try {
       setLoadError(null);
-      const list = await fetchBookings({ userId: user.id });
+      const [list, stats] = await Promise.all([
+        fetchBookings({ userId: user.id, refresh }),
+        fetchUserStats(user.id).catch(() => null),
+      ]);
       setBookings(list);
+      setPlayerStats(
+        (list as DiaryBooking[]).find((b) => b.playerStats)?.playerStats ?? stats,
+      );
       try {
         const mine = await fetchReviews({ userId: user.id });
         setMyReviews(
@@ -134,16 +177,26 @@ export default function BookingsScreen() {
 
   useFocusEffect(
     useCallback(() => {
+      let active = true;
       (async () => {
-        // Seed is idempotent — same call the web page makes on mount.
-        try {
-          await seedDemo();
-        } catch {
-          /* a live backend may refuse; non-fatal */
-        }
+        // Do not block the diary on demo-data seeding. The booking API is the
+        // source of truth and a slow seed endpoint used to make this screen look
+        // frozen while the user was trying to review a game.
         if (user) await load();
         else setLoading(false);
       })();
+      // Keep both captains' feeds synchronized while this screen is focused.
+      // The server response is always authoritative; this is only a refresh
+      // loop, never a local status mutation.
+      const timer = user
+        ? setInterval(() => {
+            if (active) void load(true);
+          }, 4000)
+        : null;
+      return () => {
+        active = false;
+        if (timer) clearInterval(timer);
+      };
     }, [user, load]),
   );
 
@@ -159,6 +212,13 @@ export default function BookingsScreen() {
   }, [bookings, tab, today]);
 
   const pendingCount = bookings.filter((b) => b.status === "pending" && b.date >= today).length;
+  const competitionRequestCount = bookings.filter(
+    (b) =>
+      b.status === "pending" &&
+      b.date >= today &&
+      b.competition?.competitionStatus === "pending" &&
+      b.competition.isOpponentCaptain,
+  ).length;
   const totalSpent = bookings
     .filter((b) => !gone(b.status))
     .reduce((s, b) => s + b.totalPrice, 0);
@@ -184,41 +244,75 @@ export default function BookingsScreen() {
    * posts verify with mockApprove — the identical server path (signature check
    * skipped, ledger row appended, statuses updated).
    */
-  async function payNow(b: DiaryBooking) {
+  async function payNow(b: DiaryBooking, overrideMethod?: "eSewa" | "Khalti") {
     setPaying(b.id);
     setPayError("");
     setCancelError("");
+    const method = overrideMethod ?? String(b.paymentMethod ?? "");
+    if (method !== "eSewa" && method !== "Khalti") {
+      setPaying(null);
+      setPayError("Choose eSewa or Khalti to pay this advance.");
+      return;
+    }
     try {
-      const method = String(b.paymentMethod ?? "");
-      const { initiateEsewa, verifyEsewa, initiateKhalti, verifyKhalti } = await import("@/api");
-      if (method === "eSewa") {
-        try {
-          await initiateEsewa(b.id);
-        } catch {
-          /* initiate is optional against mockApprove */
-        }
-        await verifyEsewa(b.id, true);
-      } else if (method === "Khalti") {
-        const init = await initiateKhalti(b.id);
-        const pidx = typeof init.pidx === "string" ? init.pidx : "mock-pidx";
-        await verifyKhalti(b.id, pidx, true);
+      if (overrideMethod && b.advancePaymentRequired && b.advancePaymentStatus !== "paid") {
+        await patchBooking(b.id, { paymentMethod: method, actor: "player", actorId: user?.id });
       }
-      await load();
+      const amount = Math.max(0, b.advancePaymentRequired && b.advancePaymentStatus !== "paid"
+        ? b.advancePaymentAmount ?? 0
+        : b.depositRequired && b.depositStatus !== "paid"
+          ? b.depositAmount ?? 0
+          : b.totalPrice - b.paidAmount);
+      const path = method === "eSewa"
+        ? `/payment/esewa/mock?bookingId=${b.id}&amount=${encodeURIComponent(String(amount))}&userId=${user?.id ?? 0}`
+        : `/payment/khalti/mock?bookingId=${b.id}&amount=${encodeURIComponent(String(amount))}&pidx=mock-pidx&userId=${user?.id ?? 0}`;
+      router.push(path as never);
     } catch (e) {
-      setPayError(e instanceof Error ? e.message : "Payment failed");
-    } finally {
+      setPayError(e instanceof Error ? e.message : "Could not start the payment");
       setPaying(null);
     }
   }
 
+  async function saveTeamMethod(b: DiaryBooking) {
+    if (!user || !b.teamId || teamMethodFor !== b.id) return;
+    setTeamSaving(b.id);
+    try {
+      await chooseBookingTeamPayment(b.id, user.id, teamMethod);
+      setTeamMethodFor(null);
+      await load();
+    } catch (e) {
+      setPayError(e instanceof Error ? e.message : "Couldn't save the team payment method");
+    } finally {
+      setTeamSaving(null);
+    }
+  }
+
+  function payTeamShare(b: DiaryBooking, share: NonNullable<DiaryBooking["teamPayments"]>[number]) {
+    if (share.paymentStatus === "paid" || !["eSewa", "Khalti"].includes(share.paymentMethod)) return;
+    setPaying(b.id);
+    const gateway = share.paymentMethod === "eSewa" ? "esewa" : "khalti";
+    const query = gateway === "esewa"
+      ? `/payment/esewa/mock?bookingId=${b.id}&amount=${encodeURIComponent(String(share.amountDue))}&teamPaymentId=${share.id}&userId=${user?.id ?? 0}`
+      : `/payment/khalti/mock?bookingId=${b.id}&amount=${encodeURIComponent(String(share.amountDue))}&teamPaymentId=${share.id}&userId=${user?.id ?? 0}&pidx=mock-team-${share.id}`;
+    setPaying(null);
+    router.push(query as never);
+  }
+
   function needsOnlinePay(b: DiaryBooking) {
     if (gone(b.status)) return false;
+    // The bill is not payable until the opposition captain releases the
+    // competition request. Payment must follow the durable decision, not a
+    // locally hidden button.
+    if (b.competition?.competitionStatus === "pending") return false;
     if (played(b)) return false;
     if (b.isFreePlay && b.totalPrice === 0) return false;
+    // Owner-requested advances have dedicated eSewa/Khalti buttons on the card.
+    if (b.advancePaymentRequired) return false;
     const m = String(b.paymentMethod ?? "");
     if (m !== "eSewa" && m !== "Khalti") return false;
   /** Specs may say "pending" before wallet capture; treat like unpaid. */
   return (
+    (b.advancePaymentRequired && b.advancePaymentStatus !== "paid") ||
     b.paymentStatus === "unpaid" ||
     b.paymentStatus === "pending" ||
     (!!b.depositRequired && b.depositStatus !== "paid")
@@ -226,10 +320,13 @@ export default function BookingsScreen() {
   }
 
   function payLabel(b: DiaryBooking) {
+    if (b.advancePaymentRequired && b.advancePaymentStatus !== "paid") {
+      return `Pay ${formatNPR(b.advancePaymentAmount ?? 0)} advance 💳`;
+    }
     if (b.depositRequired && b.depositStatus !== "paid") {
       return `Pay ${formatNPR(b.depositAmount ?? 0)} deposit 🛡️`;
     }
-    return `Pay ${formatNPR(b.totalPrice)} now 💳`;
+    return `Pay ${formatNPR(Math.max(0, b.totalPrice - b.paidAmount))} balance 💳`;
   }
 
   async function submitReview(b: DiaryBooking) {
@@ -265,15 +362,13 @@ export default function BookingsScreen() {
   }
 
   /**
-   * Can this card open the review box? The game has to be played, and a player
-   * keeps one review per venue: an unreviewed venue starts it, and any *other*
-   * played game here updates the one that's already there.
+   * A played game can always open the one-review-per-venue editor. The API
+   * upserts that single review, so the same booking can be corrected later and
+   * a later booking at the venue can update the existing review without creating
+   * duplicates.
    */
   function reviewable(b: DiaryBooking) {
-    if (gone(b.status) || !played(b)) return false;
-    const mine = myReviewAt(b.venue?.id);
-    if (!mine) return true;
-    return mine.bookingId !== b.id;
+    return !gone(b.status) && played(b);
   }
 
   async function cancel(b: DiaryBooking) {
@@ -290,7 +385,7 @@ export default function BookingsScreen() {
               setCancelling(b.id);
               setCancelError("");
               try {
-                await patchBooking(b.id, { status: "cancelled", actor: "player" });
+                await patchBooking(b.id, { status: "cancelled", actor: "player", actorId: user?.id });
                 await load();
               } catch (e) {
                 setCancelError(e instanceof Error ? e.message : "Couldn't cancel");
@@ -302,6 +397,36 @@ export default function BookingsScreen() {
         },
       ],
     );
+  }
+
+  async function decideCompetition(b: DiaryBooking, action: "accept" | "decline") {
+    if (!user || !b.competition?.isOpponentCaptain) return;
+    setCompetitionDecision(b.id);
+    setLoadError(null);
+    try {
+      const result = await decideCompetitionBooking(b.id, user.id, action);
+      const nextStatus = String(result.competitionStatus ?? result.booking?.competitionStatus ?? "");
+      if (nextStatus) {
+        setBookings((current) =>
+          current.map((row) =>
+            row.id !== b.id
+              ? row
+              : {
+                  ...row,
+                  status: action === "decline" ? "rejected" : row.status,
+                  competition: row.competition
+                    ? { ...row.competition, competitionStatus: nextStatus }
+                    : row.competition,
+                },
+          ),
+        );
+      }
+      await load();
+    } catch (e) {
+      setLoadError(e instanceof Error ? e.message : "Couldn't update the competition request.");
+    } finally {
+      setCompetitionDecision(null);
+    }
   }
 
   // Signed-out: the web page shows a "your games live here" card.
@@ -352,12 +477,27 @@ export default function BookingsScreen() {
       >
         <View style={styles.eyebrowRow}>
           <PartyPopper size={14} color={colors.orange500} />
-          <Text style={styles.eyebrow}>{user?.name?.split(" ")[0]}'s game diary</Text>
+          <ScrollView
+            horizontal
+            nestedScrollEnabled
+            showsHorizontalScrollIndicator={false}
+            style={styles.eyebrowScroll}
+          >
+            <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72} style={styles.eyebrow}>{user?.name ?? "Player"}'s game diary</Text>
+          </ScrollView>
         </View>
         <View style={styles.titleRow}>
           <Text style={[styles.h1, { color: c.text }]}>My games</Text>
-          {bookings[0]?.playerStats ? (
-            <PlayerRatingBadge stats={bookings[0].playerStats} />
+          {playerStats ? (
+            <View style={[styles.ratingSummary, { backgroundColor: c.surface, borderColor: c.border }]}>
+              <PlayerRatingBadge stats={playerStats} size="sm" />
+              <View style={styles.ratingSummaryCopy}>
+                <Text style={[styles.ratingSummaryTitle, { color: c.text }]}>Reliability</Text>
+                <Text style={[styles.ratingSummaryMeta, { color: c.textMuted }]}>
+                  {playerStats.label} • {playerStats.completed} played • {playerStats.cancelled} cancelled
+                </Text>
+              </View>
+            </View>
           ) : null}
         </View>
 
@@ -366,11 +506,20 @@ export default function BookingsScreen() {
         {payError ? <Notice message={`💳 ${payError}`} /> : null}
 
         {pendingCount > 0 ? (
-          <View style={[styles.pendingBanner, { borderColor: "#FDE68A", backgroundColor: isDark ? "rgba(245,158,11,0.10)" : "#FFFBEB" }]}>
+          <View
+            style={[
+              styles.pendingBanner,
+              {
+                borderColor: isDark ? "rgba(245,158,11,0.30)" : "#FDE68A",
+                backgroundColor: isDark ? "rgba(245,158,11,0.10)" : "#FFFBEB",
+              },
+            ]}
+          >
             <Hourglass size={20} color={colors.amber400} />
-            <Text style={styles.pendingText}>
-              {pendingCount} game{pendingCount > 1 ? "s" : ""} waiting for a friendly thumbs-up
-              from the venue — we'll ping you the moment they confirm!
+            <Text style={[styles.pendingText, { color: isDark ? colors.amber300 : "#92400E" }]}>
+              {competitionRequestCount > 0
+                ? `${competitionRequestCount} competition request${competitionRequestCount > 1 ? "s" : ""} need your accept or decline. The venue owner stays out until you decide.`
+                : `${pendingCount} game${pendingCount > 1 ? "s" : ""} waiting for a friendly thumbs-up from the venue — we'll ping you the moment they confirm!`}
             </Text>
           </View>
         ) : null}
@@ -380,38 +529,65 @@ export default function BookingsScreen() {
             {
               l: "Coming up",
               v: String(bookings.filter((b) => !gone(b.status) && !played(b) && b.date >= today).length),
+              icon: CalendarCheck,
+              iconBg: isDark ? "rgba(16,185,129,0.16)" : "#ECFDF5",
+              iconColor: isDark ? colors.emerald300 : colors.emerald700,
             },
-            { l: "Memories made", v: String(bookings.filter(played).length) },
-            { l: "Invested in fun", v: formatNPR(totalSpent) },
-          ].map((s) => (
-            <View key={s.l} style={[styles.kpi, { backgroundColor: c.surface, borderColor: c.border }]}>
-              <Text style={[styles.kpiValue, { color: c.text }]} numberOfLines={1}>
-                {s.v}
-              </Text>
-              <Text style={[styles.kpiLabel, { color: c.textFaint }]}>{s.l}</Text>
-            </View>
-          ))}
+            {
+              l: "Memories made",
+              v: String(bookings.filter(played).length),
+              icon: Clock,
+              iconBg: isDark ? "rgba(14,165,233,0.16)" : "#F0F9FF",
+              iconColor: isDark ? colors.sky300 : colors.sky700,
+            },
+            {
+              l: "Invested in fun",
+              v: formatNPR(totalSpent),
+              icon: Wallet,
+              iconBg: isDark ? "rgba(139,92,246,0.16)" : "#F5F3FF",
+              iconColor: isDark ? colors.violet300 : colors.violet700,
+            },
+          ].map((s) => {
+            const Icon = s.icon;
+            return (
+              <View key={s.l} style={[styles.kpi, { backgroundColor: c.surface, borderColor: c.border }]}>
+                <View style={styles.kpiTop}>
+                  <View style={[styles.kpiIcon, { backgroundColor: s.iconBg }]}>
+                    <Icon size={15} color={s.iconColor} />
+                  </View>
+                  <Text style={[styles.kpiValue, { color: c.text }]}>{s.v}</Text>
+                </View>
+                <Text style={[styles.kpiLabel, { color: c.textFaint }]}>{s.l}</Text>
+              </View>
+            );
+          })}
         </View>
 
-        <View style={styles.tabRow}>
-          {(["upcoming", "past", "cancelled"] as const).map((t) => (
-            <Pressable
-              key={t}
-              onPress={() => setTab(t)}
-              style={[
-                styles.tabBtn,
-                tab === t
-                  ? styles.tabOn
-                  : { backgroundColor: c.surface, borderColor: c.border },
-              ]}
-              accessibilityRole="button"
-              accessibilityState={{ selected: tab === t }}
-            >
-              <Text style={[styles.tabText, tab === t ? styles.tabTextOn : { color: c.textMuted }]}>
-                {t === "upcoming" ? "Coming up" : t === "past" ? "Played" : "Cancelled"}
-              </Text>
-            </Pressable>
-          ))}
+        <View style={[styles.tabShell, { backgroundColor: c.surface, borderColor: c.border }]}>
+          {(["upcoming", "past", "cancelled"] as const).map((t) => {
+            const label = t === "upcoming" ? "Coming up" : t === "past" ? "Played" : "Cancelled";
+            const count = t === "upcoming"
+              ? bookings.filter((b) => !gone(b.status) && !played(b) && b.date >= today).length
+              : t === "past"
+                ? bookings.filter(played).length
+                : bookings.filter((b) => gone(b.status)).length;
+            return (
+              <Pressable
+                key={t}
+                onPress={() => setTab(t)}
+                style={[styles.tabBtn, tab === t ? { backgroundColor: c.primary } : null]}
+                accessibilityRole="button"
+                accessibilityState={{ selected: tab === t }}
+              >
+                <Text style={[styles.tabText, { color: tab === t ? c.primaryText : c.textMuted }]} numberOfLines={1}>
+                  {label}
+                </Text>
+                <Text style={[styles.tabCount, { color: tab === t ? c.primaryText : c.textFaint, backgroundColor: tab === t ? "rgba(255,255,255,0.20)" : c.inset }]}>
+                  {count}
+                </Text>
+              </Pressable>
+            );
+          })}
         </View>
 
         {loading ? (
@@ -455,7 +631,23 @@ export default function BookingsScreen() {
               reviewSaving={reviewSaving}
               onCancel={() => void cancel(b)}
               onPay={() => void payNow(b)}
+              onPayAdvance={(method) => void payNow(b, method)}
               needsOnlinePay={needsOnlinePay(b)}
+              teamShare={user ? b.teamPayments?.find((share) => share.userId === user.id) ?? null : null}
+              teamMethodOpen={teamMethodFor === b.id}
+              teamMethod={teamMethod}
+              teamSaving={teamSaving === b.id}
+              onOpenTeamMethod={() => {
+                const share = b.teamPayments?.find((item) => item.userId === user?.id);
+                setTeamMethodFor(teamMethodFor === b.id ? null : b.id);
+                setTeamMethod((share?.paymentMethod as "eSewa" | "Khalti" | "Cash at Venue") || "eSewa");
+              }}
+              onTeamMethodChange={setTeamMethod}
+              onSaveTeamMethod={() => void saveTeamMethod(b)}
+              onPayTeamShare={() => {
+                const share = b.teamPayments?.find((item) => item.userId === user?.id);
+                if (share) payTeamShare(b, share);
+              }}
               payLabel={payLabel(b)}
               onOpenReceipt={() => setViewReceipt(b.receiptUrl ?? "")}
               onToggleUpload={() =>
@@ -483,6 +675,8 @@ export default function BookingsScreen() {
                 if (card) void submitReview(card);
               }}
               onOpenBooking={() => router.push(`/booking/${b.id}`)}
+              competitionActing={competitionDecision === b.id}
+              onCompetitionAction={(action) => void decideCompetition(b, action)}
               isDark={isDark}
               muted={c.textMuted}
               surface={c.surface}
@@ -513,7 +707,16 @@ function BookingCard({
   reviewSaving,
   onCancel,
   onPay,
+  onPayAdvance,
   needsOnlinePay,
+  teamShare,
+  teamMethodOpen,
+  teamMethod,
+  teamSaving,
+  onOpenTeamMethod,
+  onTeamMethodChange,
+  onSaveTeamMethod,
+  onPayTeamShare,
   payLabel,
   onOpenReceipt,
   onToggleUpload,
@@ -523,6 +726,8 @@ function BookingCard({
   onReviewMsg,
   onSubmitReview,
   onOpenBooking,
+  competitionActing,
+  onCompetitionAction,
   isDark,
   muted,
   surface,
@@ -544,7 +749,16 @@ function BookingCard({
   reviewSaving: boolean;
   onCancel: () => void;
   onPay: () => void;
+  onPayAdvance: (method: "eSewa" | "Khalti") => void;
   needsOnlinePay: boolean;
+  teamShare: NonNullable<DiaryBooking["teamPayments"]>[number] | null;
+  teamMethodOpen: boolean;
+  teamMethod: "eSewa" | "Khalti" | "Cash at Venue";
+  teamSaving: boolean;
+  onOpenTeamMethod: () => void;
+  onTeamMethodChange: (method: "eSewa" | "Khalti" | "Cash at Venue") => void;
+  onSaveTeamMethod: () => void;
+  onPayTeamShare: () => void;
   payLabel: string;
   onOpenReceipt: () => void;
   onToggleUpload: () => void;
@@ -554,6 +768,8 @@ function BookingCard({
   onReviewMsg: (t: string) => void;
   onSubmitReview: () => void;
   onOpenBooking: () => void;
+  competitionActing: boolean;
+  onCompetitionAction: (action: "accept" | "decline") => void;
   isDark: boolean;
   muted: string;
   surface: string;
@@ -565,6 +781,23 @@ function BookingCard({
   const isGone = b.status === "cancelled" || b.status === "rejected";
   const balance = b.totalPrice - b.paidAmount;
   const method = String(b.paymentMethod ?? "");
+  const competitionPending = b.competition?.competitionStatus === "pending";
+  const competitionDeclined =
+    b.competition?.competitionStatus === "declined" ||
+    b.competition?.competitionStatus === "cancelled";
+  const canDecideCompetition = Boolean(
+    b.status === "pending" && competitionPending && b.competition?.isOpponentCaptain,
+  );
+  const [moreOpen, setMoreOpen] = useState(false);
+  const semantic = {
+    orange: isDark ? colors.orange300 : colors.orange700,
+    indigo: isDark ? "#C7D2FE" : "#4338CA",
+    sky: isDark ? colors.sky300 : colors.sky700,
+    violet: isDark ? colors.violet300 : colors.violet700,
+    emerald: isDark ? colors.emerald300 : colors.emerald700,
+    amber: isDark ? colors.amber300 : "#B45309",
+    red: isDark ? colors.red400 : colors.red600,
+  };
 
   const statusTone =
     b.status === "confirmed"
@@ -585,7 +818,7 @@ function BookingCard({
           : "danger";
 
   return (
-    <Pressable onPress={onOpenBooking} style={[styles.card, { backgroundColor: surface, borderColor: border }]}>
+    <View style={[styles.card, { backgroundColor: surface, borderColor: border }]}>
       <View style={styles.cardTop}>
         {b.venue?.imageUrl ? (
           <Image source={{ uri: b.venue.imageUrl }} style={styles.cardImg} />
@@ -593,14 +826,48 @@ function BookingCard({
           <View style={[styles.cardImg, { backgroundColor: muted + "33" }]} />
         )}
         <View style={styles.cardBody}>
-          <View style={styles.cardHeadRow}>
-            <View style={styles.grow}>
-              <Text style={[styles.venueName, { color: text }]} numberOfLines={1}>
-                {b.venue?.name ?? "Venue"}
-              </Text>
-              <Text style={[styles.meta, { color: muted }]} numberOfLines={1}>
-                {b.court?.name ?? "Court"} • {b.court && "format" in b.court ? (b.court as { format?: string }).format : ""}
-              </Text>
+          <View style={styles.statusRow}>
+            <Pill
+              label={
+                isPlayed
+                  ? "Played"
+                  : b.status === "pending"
+                    ? canDecideCompetition
+                      ? "Decision needed"
+                      : "Awaiting confirmation"
+                    : b.status === "confirmed"
+                      ? "Confirmed"
+                      : b.status
+              }
+              tone={statusTone}
+            />
+          </View>
+          <View style={styles.nameBlock}>
+            <BookingVenueName name={b.venue?.name} color={text} />
+            <Text style={[styles.meta, { color: muted }]}>
+              {b.court?.name ?? "Court"} • {b.court && "format" in b.court ? (b.court as { format?: string }).format : ""}
+            </Text>
+          </View>
+          <View style={[styles.priceSummaryRow, { borderColor: border }]}>
+            <View style={styles.paymentSummaryCopy}>
+              <View style={[styles.paymentMetaRow, { justifyContent: "flex-start", marginTop: 0 }]}>
+                <Text style={[styles.payMeta, { color: textFaint(muted) }]}>Payment: {paymentMethodLabel(method)}</Text>
+                <Text
+                  style={[
+                    styles.paymentStatusChip,
+                    {
+                      color: b.paymentStatus === "paid"
+                        ? semantic.emerald
+                        : b.paymentStatus === "pending"
+                          ? semantic.amber
+                          : textFaint(muted),
+                      backgroundColor: b.paymentStatus === "paid" ? (isDark ? "rgba(16,185,129,0.18)" : "#ECFDF5") : b.paymentStatus === "pending" ? (isDark ? "rgba(245,158,11,0.16)" : "#FFFBEB") : (isDark ? "rgba(148,163,184,0.16)" : "#F1F5F9"),
+                    },
+                  ]}
+                >
+                  {paymentStatusLabel(b.paymentStatus)}
+                </Text>
+              </View>
             </View>
             <View style={styles.moneyCol}>
               {b.discountAmount && b.priceBeforeDiscount && b.priceBeforeDiscount > b.totalPrice ? (
@@ -608,18 +875,157 @@ function BookingCard({
                   {formatNPR(b.priceBeforeDiscount)}
                 </Text>
               ) : null}
-              <Text style={[styles.price, { color: isDark ? "#34D399" : "#047857" }]}>
+              <Text style={[styles.price, { color: isDark ? colors.emerald300 : colors.emerald700 }]}>
                 {b.totalPrice === 0 ? "FREE 🎁" : formatNPR(b.totalPrice)}
-              </Text>
-              <Text style={[styles.payMeta, { color: textFaint(muted) }]}>
-                {method} • {b.paymentStatus}
               </Text>
             </View>
           </View>
 
-          {b.totalPrice > 0 ? <BookingPaymentSummary bookingId={b.id} /> : null}
+          {!gone(b.status) && b.advancePaymentRequired && b.advancePaymentStatus !== "paid" ? (
+            <View style={[styles.advanceAlert, { backgroundColor: isDark ? "rgba(249,115,22,0.14)" : "#FFF7ED", borderColor: isDark ? "rgba(251,146,60,0.45)" : "#FDBA74" }]}>
+              <Hourglass size={16} color={isDark ? colors.orange300 : colors.orange700} />
+              <View style={styles.grow}>
+                <Text style={[styles.advanceAlertTitle, { color: isDark ? colors.orange100 : colors.orange700 }]}>Action needed: venue advance {formatNPR(b.advancePaymentAmount ?? 0)} requested</Text>
+                <Text style={[styles.advanceAlertText, { color: isDark ? colors.orange100 : colors.orange700 }]}>Pay within 30 minutes of the owner&apos;s request or this booking expires. Use eSewa or Khalti.</Text>
+              </View>
+              <Pressable onPress={() => setMoreOpen(true)} style={[styles.advanceAlertAction, { backgroundColor: isDark ? colors.orange500 : colors.orange600 }]}>
+                <Text style={styles.advanceAlertActionText}>Open</Text>
+              </Pressable>
+            </View>
+          ) : null}
 
-          {b.status === "pending" ? (
+          {gone(b.status) && (b.cancellationReceivedAmount ?? 0) > 0 ? (
+            <View style={[styles.cancellationNotice, { backgroundColor: isDark ? "rgba(139,92,246,0.12)" : "#F5F3FF", borderColor: isDark ? "rgba(167,139,250,0.3)" : "#DDD6FE" }]}>
+              <Text style={[styles.cancellationNoticeTitle, { color: isDark ? colors.violet300 : colors.violet700 }]}>💰 Received before cancellation: {formatNPR(b.cancellationReceivedAmount ?? 0)}</Text>
+              <Text style={[styles.cancellationNoticeText, { color: isDark ? colors.violet300 : colors.violet700 }]}>{cancellationMoneyLabel(b.cancellationMoneyStatus)}</Text>
+            </View>
+          ) : null}
+
+          <Pressable
+            onPress={onOpenBooking}
+            accessibilityRole="button"
+            style={[styles.openBooking, { borderColor: border }]}
+          >
+            <Text style={[styles.openBookingText, { color: isDark ? "#6EE7B7" : colors.emerald700 }]}>
+              View booking details
+            </Text>
+            <ChevronRight size={14} color={isDark ? "#6EE7B7" : colors.emerald700} />
+          </Pressable>
+
+          <View style={[styles.compactFacts, { borderColor: border }]}>
+            <View style={styles.compactFact}>
+              <CalendarCheck size={14} color={isDark ? colors.emerald300 : colors.emerald700} />
+              <Text style={[styles.compactFactText, { color: muted }]}>{prettyDate(b.date)}</Text>
+            </View>
+            <View style={styles.compactFact}>
+              <Clock size={14} color={isDark ? colors.emerald300 : colors.emerald700} />
+              <Text style={[styles.compactFactText, { color: muted }]}>{formatTime12(b.startTime)} – {formatTime12(b.endTime || b.startTime)}</Text>
+            </View>
+            <View style={[styles.compactFact, styles.compactFactWide]}>
+              <MapPin size={14} color={isDark ? colors.emerald300 : colors.emerald700} />
+              <Text style={[styles.compactFactText, styles.compactFactWrap, { color: muted }]}>{b.venue?.address ?? "Venue address unavailable"}</Text>
+            </View>
+          </View>
+
+          <Pressable
+            onPress={() => setMoreOpen((value) => !value)}
+            accessibilityRole="button"
+            accessibilityState={{ expanded: moreOpen }}
+            style={[styles.moreToggle, { backgroundColor: cInset(surface, isDark), borderColor: border }]}
+          >
+            <View style={styles.grow}>
+              <Text style={[styles.moreToggleTitle, { color: text }]}>
+                {moreOpen ? "Hide payment & booking actions" : "Payment & booking actions"}
+              </Text>
+              <Text style={[styles.moreToggleHint, { color: muted }]}>
+                {canDecideCompetition ? "Decision needed" : gone(b.status) && (b.cancellationReceivedAmount ?? 0) > 0 ? "Cancellation money status" : b.advancePaymentRequired && b.advancePaymentStatus !== "paid" ? "Venue advance needs attention" : isPlayed ? "Payment history and review" : "Receipts, payment and cancellation"}
+              </Text>
+            </View>
+            {moreOpen ? <ChevronUp size={16} color={muted} /> : <ChevronDown size={16} color={muted} />}
+          </Pressable>
+
+          {moreOpen ? (
+            <View style={[styles.morePanel, { borderColor: border }]}>
+              {b.totalPrice > 0 ? <BookingPaymentSummary bookingId={b.id} /> : null}
+          {!gone(b.status) && b.advancePaymentRequired ? (
+            <View style={[styles.advanceCard, { backgroundColor: isDark ? "rgba(14,165,233,0.12)" : "#F0F9FF", borderColor: isDark ? "rgba(56,189,248,0.25)" : "#BAE6FD" }]}>
+              <Text style={[styles.noteText, { color: isDark ? "#BAE6FD" : "#075985" }]}>
+                💳 Venue advance: {formatNPR(b.advancePaymentAmount ?? 0)} • {b.advancePaymentStatus === "paid" ? "Verified" : "Awaiting payment"}
+              </Text>
+              {b.advancePaymentStatus === "paid" ? (
+                <Text style={[styles.advanceHint, { color: isDark ? "#BAE6FD" : "#075985" }]}>Remaining balance may be paid at the venue.</Text>
+              ) : (
+                <>
+                  <Text style={[styles.advanceHint, { color: isDark ? "#BAE6FD" : "#075985" }]}>Pay within 30 minutes using eSewa or Khalti only. Cash at Venue cannot satisfy this advance.</Text>
+                  {!isGone ? (
+                    <View style={styles.advanceActions}>
+                      <Pressable onPress={() => onPayAdvance("eSewa")} disabled={paying} style={[styles.payBtn, { backgroundColor: colors.emerald600, opacity: paying ? 0.5 : 1 }]}>
+                        <Wallet size={14} color="#FFFFFF" /><Text style={styles.payBtnText}>{paying ? "Opening…" : "Pay with eSewa"}</Text>
+                      </Pressable>
+                      <Pressable onPress={() => onPayAdvance("Khalti")} disabled={paying} style={[styles.payBtn, { backgroundColor: "#9333EA", opacity: paying ? 0.5 : 1 }]}>
+                        <Wallet size={14} color="#FFFFFF" /><Text style={styles.payBtnText}>{paying ? "Opening…" : "Pay with Khalti"}</Text>
+                      </Pressable>
+                    </View>
+                  ) : null}
+                </>
+              )}
+            </View>
+          ) : null}
+          {b.teamName && teamShare ? (
+            <View style={[styles.teamPaymentCard, { backgroundColor: isDark ? "rgba(14,165,233,0.12)" : "#F0F9FF", borderColor: isDark ? "rgba(56,189,248,0.25)" : "#BAE6FD" }]}>
+              <View style={styles.teamPaymentHead}>
+                <View style={styles.grow}>
+                  <Text style={[styles.teamPaymentTitle, { color: isDark ? "#BAE6FD" : "#075985" }]}>👥 {b.teamName} payment</Text>
+                  <Text style={[styles.teamPaymentHint, { color: muted }]}>Your equal server-calculated share: {formatNPR(teamShare.amountDue)}. The confirmed payment goes into the booking ledger.</Text>
+                </View>
+                <View style={styles.teamPaymentStatusRow}>
+                  <Text style={[styles.teamPaymentStatus, { color: muted }]}>Payment: {paymentMethodLabel(teamShare.paymentMethod)}</Text>
+                  <Text
+                    style={[
+                      styles.paymentStatusChip,
+                      {
+                        color: teamShare.paymentStatus === "paid"
+                          ? (isDark ? colors.emerald300 : colors.emerald700)
+                          : muted,
+                        backgroundColor: teamShare.paymentStatus === "paid"
+                          ? (isDark ? "rgba(16,185,129,0.18)" : colors.emerald50)
+                          : (isDark ? "rgba(148,163,184,0.16)" : colors.stone100),
+                      },
+                    ]}
+                  >
+                    {paymentStatusLabel(teamShare.paymentStatus)}
+                  </Text>
+                </View>
+              </View>
+              <View style={styles.teamPaymentActions}>
+                <Pressable onPress={onOpenTeamMethod} disabled={teamShare.paymentStatus === "paid" || isGone} style={[styles.chip, { backgroundColor: surface, borderWidth: 1, borderColor: border }]}>
+                  <Text style={[styles.chipText, { color: text }]}>{teamShare.paymentMethod ? "Change method" : "Choose payment method"}</Text>
+                </Pressable>
+                {teamShare.paymentStatus !== "paid" && ["eSewa", "Khalti"].includes(teamShare.paymentMethod) ? (
+                  <Pressable onPress={onPayTeamShare} disabled={paying} style={[styles.payBtn, { backgroundColor: "#0284C7", opacity: paying ? 0.5 : 1 }]}>
+                    <Wallet size={14} color="#FFFFFF" /><Text style={styles.payBtnText}>Pay share via {teamShare.paymentMethod}</Text>
+                  </Pressable>
+                ) : null}
+              </View>
+              {teamMethodOpen ? (
+                <View style={[styles.teamMethodBox, { backgroundColor: surface, borderColor: border }]}>
+                  <Text style={[styles.teamMethodTitle, { color: text }]}>How will you pay your share?</Text>
+                  <View style={styles.teamMethodChoices}>
+                    {(["eSewa", "Khalti", "Cash at Venue"] as const).filter((choice) => !(b.advancePaymentRequired && b.advancePaymentStatus !== "paid" && choice === "Cash at Venue")).map((choice) => (
+                      <Pressable key={choice} onPress={() => onTeamMethodChange(choice)} style={[styles.teamMethodChoice, { backgroundColor: teamMethod === choice ? "#0284C7" : surface, borderColor: teamMethod === choice ? "#0284C7" : border }]}>
+                        <Text style={[styles.chipText, { color: teamMethod === choice ? "#FFFFFF" : text }]}>{choice}</Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                  <Pressable onPress={onSaveTeamMethod} disabled={teamSaving} style={[styles.teamSave, { backgroundColor: isDark ? colors.sky500 : colors.sky700, opacity: teamSaving ? 0.5 : 1 }]}>
+                    <Text style={styles.teamSaveText}>{teamSaving ? "Saving…" : "Save payment choice"}</Text>
+                  </Pressable>
+                </View>
+              ) : null}
+            </View>
+          ) : null}
+
+          {b.status === "pending" && b.competition?.competitionStatus !== "pending" ? (
             <Text
               style={[
                 styles.note,
@@ -635,9 +1041,16 @@ function BookingCard({
             </Text>
           ) : null}
           {b.status === "rejected" ? (
-            <Text style={[styles.note, styles.noteRed]}>
-              Oh no — the venue was fully packed for this slot. Pick another time, we believe in
-              you! 🙏
+            <Text
+              style={[
+                styles.note,
+                styles.noteRed,
+                isDark && { backgroundColor: "rgba(239,68,68,0.12)", color: colors.red400 },
+              ]}
+            >
+              {b.competition?.competitionStatus === "declined"
+                ? "The opposition captain declined this competition request, so the venue owner was not notified."
+                : "Oh no — the venue was fully packed for this slot. Pick another time, we believe in you! 🙏"}
             </Text>
           ) : null}
 
@@ -649,7 +1062,7 @@ function BookingCard({
               {formatTime12(b.startTime)} – {formatTime12(b.endTime || b.startTime)}
             </Text>
             <MapPin size={16} color={colors.emerald600} />
-            <Text style={[styles.detailText, { color: muted }]} numberOfLines={1}>
+            <Text style={[styles.detailText, { color: muted }]}>
               {b.venue?.address ?? ""}
             </Text>
           </View>
@@ -657,16 +1070,17 @@ function BookingCard({
           {b.competition ? (
             <View style={[styles.compCard, { borderColor: isDark ? "rgba(99,102,241,0.3)" : "#C7D2FE" }]}>
               <View style={styles.compHead}>
-                <Text style={styles.compTitle}>
-                  <Swords size={14} color="#4338CA" /> {b.teamName || "Your squad"} vs{" "}
+                <Text style={[styles.compTitle, { color: semantic.indigo }]}>
+                  <Swords size={14} color={semantic.indigo} /> {b.teamName || "Your squad"} vs{" "}
                   {b.competition.opponentName}
                 </Text>
                 <View
                   style={[
                     styles.compScore,
                     {
-                      backgroundColor:
-                        b.competition.scoreStatus === "recorded"
+                      backgroundColor: competitionDeclined
+                        ? "rgba(239,68,68,0.14)"
+                        : b.competition.scoreStatus === "recorded"
                           ? "rgba(16,185,129,0.15)"
                           : isDark
                             ? "rgba(255,255,255,0.10)"
@@ -676,31 +1090,97 @@ function BookingCard({
                 >
                   <Text
                     style={{
-                      color:
-                        b.competition.scoreStatus === "recorded"
-                          ? isDark
-                            ? "#34D399"
-                            : "#047857"
-                          : isDark
-                            ? "#C7D2FE"
-                            : "#4338CA",
+                      color: competitionDeclined
+                        ? semantic.red
+                        : b.competition.scoreStatus === "recorded"
+                          ? semantic.emerald
+                          : semantic.indigo,
                       fontSize: fontSize.xs,
                       fontWeight: "900",
                     }}
                   >
-                    {b.competition.scoreStatus === "recorded"
-                      ? `⚽ ${b.competition.homeScore}–${b.competition.awayScore}`
-                      : "score pending"}
+                    {competitionDeclined
+                      ? "request declined"
+                      : competitionPending
+                        ? canDecideCompetition
+                          ? "decision needed"
+                          : "opponent pending"
+                        : b.competition.scoreStatus === "recorded"
+                          ? `⚽ ${b.competition.homeScore}–${b.competition.awayScore}`
+                          : "score pending"}
                   </Text>
                 </View>
               </View>
-              <Text style={styles.compBody}>
-                {b.competition.scoreStatus === "recorded"
-                  ? "The venue owner recorded this result — it counts on both squads' profiles."
-                  : "The venue owner records the final score after kick-off — it then counts on both squads' profiles."}
+              <Text style={[styles.compBody, { color: semantic.indigo }]}>
+                {competitionDeclined
+                  ? "The opposition captain declined this request, so it was not sent to the venue owner."
+                  : competitionPending
+                    ? canDecideCompetition
+                      ? "Your explicit decision is required. The venue owner will only be notified if you accept."
+                      : "Waiting for the opposition captain to accept before the venue can review this request."
+                    : b.competition.scoreStatus === "recorded"
+                      ? "The venue owner recorded this result — it counts on both squads' profiles."
+                      : "The venue owner records the final score after kick-off — it then counts on both squads' profiles."}
                 {b.competition.leagueName ? ` 🏆 Counts towards ${b.competition.leagueName}.` : ""}
                 {b.competition.leagueId ? " Open the league (from Matches → Leagues)." : ""}
               </Text>
+              <View
+                style={[
+                  styles.competitionPaymentPill,
+                  {
+                    backgroundColor: isDark ? "rgba(255,255,255,0.10)" : "rgba(255,255,255,0.7)",
+                    borderColor: isDark ? "rgba(129,140,248,0.3)" : "rgba(99,102,241,0.25)",
+                  },
+                ]}
+              >
+                <Wallet size={13} color={semantic.indigo} />
+                <Text style={[styles.competitionPaymentText, { color: semantic.indigo }]}>
+                  {b.competition.paymentLabel ??
+                    (b.competition.paymentMode === "loser_pays"
+                      ? "Losing squad pays"
+                      : "Fair split between both squads")}
+                </Text>
+              </View>
+              {b.competition.paymentMode === "loser_pays" ? (
+                <Text style={[styles.competitionPaymentHint, { color: semantic.indigo }]}>The result decides who pays.</Text>
+              ) : null}
+              {canDecideCompetition ? (
+                  <View
+                    style={[
+                      styles.competitionDecisionBox,
+                      {
+                        backgroundColor: isDark ? "rgba(15,23,42,0.72)" : "rgba(255,255,255,0.82)",
+                        borderColor: isDark ? "rgba(129,140,248,0.28)" : "#C7D2FE",
+                      },
+                    ]}
+                  >
+                    <Text style={[styles.competitionDecisionHint, { color: semantic.indigo }]}>
+                    Accept this fixture to release it to the venue owner. Declining keeps it out of
+                    the owner's actionable bookings.
+                  </Text>
+                  <View style={styles.competitionDecisionRow}>
+                    <Pressable
+                      onPress={() => onCompetitionAction("accept")}
+                      disabled={competitionActing}
+                      style={[styles.competitionAccept, { backgroundColor: isDark ? colors.emerald500 : colors.emerald600, opacity: competitionActing ? 0.55 : 1 }]}
+                    >
+                      {competitionActing ? (
+                        <ActivityIndicator size="small" color="#FFFFFF" />
+                      ) : null}
+                      <Text style={styles.competitionAcceptText}>
+                        {competitionActing ? "Saving…" : "✓ Accept request"}
+                      </Text>
+                    </Pressable>
+                    <Pressable
+                      onPress={() => onCompetitionAction("decline")}
+                      disabled={competitionActing}
+                      style={[styles.competitionDecline, { borderColor: isDark ? "rgba(248,113,113,0.45)" : "#FCA5A5", opacity: competitionActing ? 0.55 : 1 }]}
+                    >
+                      <Text style={[styles.competitionDeclineText, { color: semantic.red }]}>× Decline request</Text>
+                    </Pressable>
+                  </View>
+                </View>
+              ) : null}
             </View>
           ) : null}
 
@@ -710,13 +1190,13 @@ function BookingCard({
             </View>
             {isPublic ? (
               <View style={[styles.chip, { backgroundColor: isDark ? "rgba(249,115,22,0.15)" : "#FFEDD5" }]}>
-                <Globe size={12} color="#C2410C" />
-                <Text style={[styles.chipText, { color: "#C2410C" }]}>Open game</Text>
+                <Globe size={12} color={semantic.orange} />
+                <Text style={[styles.chipText, { color: semantic.orange }]}>Open game</Text>
               </View>
             ) : b.competition ? (
               <View style={[styles.chip, { backgroundColor: "rgba(99,102,241,0.15)" }]}>
-                <Swords size={12} color="#4338CA" />
-                <Text style={[styles.chipText, { color: "#4338CA" }]}>Competition</Text>
+                <Swords size={12} color={semantic.indigo} />
+                <Text style={[styles.chipText, { color: semantic.indigo }]}>Competition</Text>
               </View>
             ) : (
               <View style={[styles.chip, { backgroundColor: isDark ? "rgba(255,255,255,0.10)" : "#F5F5F4" }]}>
@@ -737,28 +1217,28 @@ function BookingCard({
             )}
             {b.teamName ? (
               <View style={[styles.chip, { backgroundColor: "rgba(14,165,233,0.15)" }]}>
-                <Shield size={12} color="#0369A1" />
-                <Text style={[styles.chipText, { color: "#0369A1" }]}>{b.teamName}</Text>
+                <Shield size={12} color={semantic.sky} />
+                <Text style={[styles.chipText, { color: semantic.sky }]}>{b.teamName}</Text>
               </View>
             ) : null}
             {b.isFreePlay ? (
               <View style={[styles.chip, { backgroundColor: "rgba(139,92,246,0.15)" }]}>
-                <Gift size={12} color="#6D28D9" />
-                <Text style={[styles.chipText, { color: "#6D28D9" }]}>Free hour used 🎁</Text>
+                <Gift size={12} color={semantic.violet} />
+                <Text style={[styles.chipText, { color: semantic.violet }]}>Free hour used 🎁</Text>
               </View>
             ) : null}
             {b.promoCode && b.discountAmount ? (
               <View style={[styles.chip, { backgroundColor: "rgba(16,185,129,0.15)" }]}>
-                <Ticket size={12} color="#047857" />
-                <Text style={[styles.chipText, { color: "#047857" }]}>
+                <Ticket size={12} color={semantic.emerald} />
+                <Text style={[styles.chipText, { color: semantic.emerald }]}>
                   {b.promoCode} saved {formatNPR(b.discountAmount)}
                 </Text>
               </View>
             ) : null}
             {mine?.bookingId === b.id ? (
               <View style={[styles.chip, { backgroundColor: "rgba(245,158,11,0.15)" }]}>
-                <Star size={12} color="#B45309" fill="#B45309" />
-                <Text style={[styles.chipText, { color: "#B45309" }]}>Reviewed</Text>
+                <Star size={12} color={semantic.amber} fill={semantic.amber} />
+                <Text style={[styles.chipText, { color: semantic.amber }]}>Reviewed</Text>
               </View>
             ) : null}
             {b.depositRequired ? (
@@ -775,7 +1255,7 @@ function BookingCard({
                   },
                 ]}
               >
-                <Text style={[styles.chipText, { color: "#B45309" }]}>
+                <Text style={[styles.chipText, { color: b.depositStatus === "paid" ? semantic.emerald : b.depositStatus === "forfeited" ? semantic.red : semantic.amber }]}>
                   🛡️ Deposit {formatNPR(b.depositAmount ?? 0)} •{" "}
                   {b.depositStatus === "paid" ? "paid ✓" : b.depositStatus}
                 </Text>
@@ -783,7 +1263,7 @@ function BookingCard({
             ) : null}
             {b.paidAmount > 0 ? (
               <View style={[styles.chip, { backgroundColor: "rgba(14,165,233,0.10)" }]}>
-                <Text style={[styles.chipText, { color: "#0369A1" }]}>
+                <Text style={[styles.chipText, { color: semantic.sky }]}>
                   💰 {formatNPR(b.paidAmount)} verified
                   {b.gatewayTxnId ? ` • ${b.gatewayTxnId.slice(0, 12)}` : ""}
                 </Text>
@@ -807,47 +1287,69 @@ function BookingCard({
                   <Wallet size={14} color="#FFFFFF" />
                 )}
                 <Text style={styles.payBtnText}>
-                  {paying ? "Opening…" : `${payLabel} via ${method} (Test)`}
+                  {paying ? "Opening…" : `${payLabel} using ${method}`}
                 </Text>
               </Pressable>
             ) : null}
-            {isOnlineMethod(method) && !isGone ? (
+            {isOnlineMethod(method) && !isGone && b.competition?.competitionStatus !== "pending" ? (
               b.receiptUrl ? (
                 <Pressable onPress={onOpenReceipt} style={[styles.chip, { backgroundColor: "rgba(16,185,129,0.15)" }]}>
-                  <ReceiptText size={12} color="#047857" />
-                  <Text style={[styles.chipText, { color: "#047857" }]}>Receipt ✓</Text>
+                  <ReceiptText size={12} color={semantic.emerald} />
+                  <Text style={[styles.chipText, { color: semantic.emerald }]}>Receipt ✓</Text>
                 </Pressable>
               ) : !isPlayed ? (
                 <Pressable onPress={onToggleUpload} style={[styles.chip, { backgroundColor: isDark ? "rgba(249,115,22,0.15)" : "#FFEDD5" }]}>
-                  <ReceiptText size={12} color="#C2410C" />
-                  <Text style={[styles.chipText, { color: "#C2410C" }]}>Add receipt 🧾</Text>
+                  <ReceiptText size={12} color={semantic.orange} />
+                  <Text style={[styles.chipText, { color: semantic.orange }]}>Add receipt 🧾</Text>
                 </Pressable>
               ) : null
             ) : null}
-            {tab === "upcoming" && !isPlayed ? (
+            {tab === "upcoming" && !isPlayed && !b.competition?.isOpponentCaptain ? (
               <Pressable
                 onPress={onCancel}
                 disabled={cancelling}
-                style={[styles.chip, styles.cancelChip, { opacity: cancelling ? 0.5 : 1 }]}
+                style={[
+                  styles.chip,
+                  {
+                    backgroundColor: isDark ? "rgba(239,68,68,0.12)" : colors.red50,
+                    borderWidth: 1,
+                    borderColor: isDark ? "rgba(248,113,113,0.35)" : colors.red200,
+                    opacity: cancelling ? 0.5 : 1,
+                  },
+                ]}
               >
-                <XCircle size={12} color="#DC2626" />
-                <Text style={[styles.chipText, { color: "#DC2626" }]}>
+                <XCircle size={12} color={semantic.red} />
+                <Text style={[styles.chipText, { color: semantic.red }]}>
                   {cancelling ? "Cancelling…" : "Can't make it"}
                 </Text>
               </Pressable>
             ) : null}
             {reviewable ? (
               <Pressable onPress={onToggleReview} style={[styles.chip, { backgroundColor: colors.amber400 }]}>
-                <Star size={12} color="#78350F" fill="#78350F" />
-                <Text style={[styles.chipText, { color: "#78350F" }]}>
-                  {reviewFor ? "Close" : mine ? "Update review ⭐" : "Review ⭐"}
+                <Star size={12} color={semantic.amber} fill={semantic.amber} />
+                <Text style={[styles.chipText, { color: semantic.amber }]}>
+                  {reviewFor
+                    ? "Close"
+                    : mine?.bookingId === b.id
+                      ? "Edit review"
+                      : mine
+                        ? "Update review ⭐"
+                        : "Review ⭐"}
                 </Text>
               </Pressable>
             ) : null}
           </View>
 
           {reviewFor ? (
-            <View style={[styles.reviewForm, { borderColor: isDark ? "rgba(245,158,11,0.25)" : "#FDE68A" }]}>
+            <View
+              style={[
+                styles.reviewForm,
+                {
+                  borderColor: isDark ? "rgba(245,158,11,0.25)" : "#FDE68A",
+                  backgroundColor: isDark ? "rgba(245,158,11,0.08)" : "rgba(254,243,199,0.5)",
+                },
+              ]}
+            >
               <Text style={[styles.reviewPrompt, { color: text }]}>
                 {mine
                   ? `Update your review of ${b.venue?.name} — it replaces the old one, you keep just the one ⭐`
@@ -880,18 +1382,32 @@ function BookingCard({
           ) : null}
 
           {uploadFor ? (
-            <View style={[styles.uploadBox, { borderColor: isDark ? "rgba(249,115,22,0.25)" : "#FED7AA" }]}>
+            <View
+              style={[
+                styles.uploadBox,
+                {
+                  borderColor: isDark ? "rgba(249,115,22,0.25)" : "#FED7AA",
+                  backgroundColor: isDark ? "rgba(249,115,22,0.08)" : "rgba(255,247,237,0.6)",
+                },
+              ]}
+            >
               <Text style={[styles.uploadHint, { color: muted }]}>
                 Paid via {method}? Attach your screenshot — it speeds up approval! ⚡
               </Text>
               <ReceiptUploader value="" compact onChange={(url) => url && onSaveReceipt(url)} />
-              {uploading ? <Text style={styles.uploading}>Saving…</Text> : null}
+              {uploading ? <Text style={[styles.uploading, { color: isDark ? colors.orange300 : colors.orange600 }]}>Saving…</Text> : null}
+            </View>
+          ) : null}
             </View>
           ) : null}
         </View>
       </View>
-    </Pressable>
+    </View>
   );
+}
+
+function cInset(surface: string, isDark: boolean) {
+  return isDark ? "rgba(255,255,255,0.04)" : surface;
 }
 
 function textFaint(muted: string) {
@@ -903,6 +1419,7 @@ const styles = StyleSheet.create({
   center: { alignItems: "center", justifyContent: "center", padding: space[4] },
   scroll: { padding: space[4], paddingBottom: space[16], gap: space[2] },
   eyebrowRow: { flexDirection: "row", alignItems: "center", gap: 6 },
+  eyebrowScroll: { flex: 1, minWidth: 0 },
   eyebrow: {
     fontSize: fontSize.xs,
     fontWeight: "900",
@@ -912,6 +1429,20 @@ const styles = StyleSheet.create({
   },
   titleRow: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: space[3] },
   h1: { fontSize: fontSize["3xl"], fontWeight: "900" },
+  ratingSummary: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: space[2],
+    borderWidth: 1,
+    borderRadius: radius["2xl"],
+    paddingHorizontal: space[2.5],
+    paddingVertical: space[1.5],
+    maxWidth: "100%",
+  },
+  ratingSummaryCopy: { minWidth: 0, flexShrink: 1 },
+  ratingSummaryTitle: { fontSize: fontSize.xs, fontWeight: "900" },
+  ratingSummaryMeta: { fontSize: fontSize["2xs"], fontWeight: "700", marginTop: 1 },
+
   pendingBanner: {
     flexDirection: "row",
     alignItems: "center",
@@ -922,35 +1453,24 @@ const styles = StyleSheet.create({
     marginTop: space[2],
   },
   pendingText: { flex: 1, fontSize: 13, fontWeight: "700", color: "#92400E", lineHeight: 18 },
-  kpiRow: { flexDirection: "row", gap: space[2], marginTop: space[3] },
+  kpiRow: { flexDirection: "row", flexWrap: "wrap", gap: space[2], marginTop: space[3] },
   kpi: {
-    flex: 1,
+    flexGrow: 1,
+    flexBasis: 120,
+    minWidth: 0,
     borderRadius: radius["2xl"],
     borderWidth: 1,
-    paddingHorizontal: space[3],
-    paddingVertical: space[3.5],
-    alignItems: "center",
+    paddingHorizontal: space[2.5],
+    paddingVertical: space[3],
   },
-  kpiValue: { fontSize: fontSize.xl, fontWeight: "900" },
-  kpiLabel: {
-    fontSize: 10,
-    fontWeight: "700",
-    textTransform: "uppercase",
-    textAlign: "center",
-    letterSpacing: 0.5,
-    marginTop: 2,
-  },
-  tabRow: { flexDirection: "row", gap: space[2], marginTop: space[4] },
-  tabBtn: {
-    flex: 1,
-    borderRadius: radius["2xl"],
-    borderWidth: 1,
-    paddingVertical: space[2.5],
-    alignItems: "center",
-  },
-  tabOn: { backgroundColor: colors.emerald600, borderColor: colors.emerald600 },
-  tabText: { fontSize: fontSize.xs, fontWeight: "900", textTransform: "uppercase" },
-  tabTextOn: { color: "#FFFFFF" },
+  kpiTop: { flexDirection: "row", alignItems: "center", gap: space[2], minWidth: 0 },
+  kpiIcon: { width: 30, height: 30, borderRadius: radius.xl, alignItems: "center", justifyContent: "center" },
+  kpiValue: { flex: 1, minWidth: 0, fontSize: fontSize.lg, lineHeight: 22, fontWeight: "900" },
+  kpiLabel: { fontSize: 9, fontWeight: "900", textTransform: "uppercase", letterSpacing: 0.35, lineHeight: 12, marginTop: space[2] },
+  tabShell: { flexDirection: "row", gap: 4, borderRadius: radius["2xl"], borderWidth: 1, padding: 4, marginTop: space[4] },
+  tabBtn: { flex: 1, minWidth: 0, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 4, borderRadius: radius.xl, paddingHorizontal: 4, paddingVertical: space[2.5] },
+  tabText: { flexShrink: 1, fontSize: fontSize.xs, fontWeight: "900", lineHeight: 14, textAlign: "center" },
+  tabCount: { minWidth: 18, overflow: "hidden", borderRadius: radius.full, paddingHorizontal: 5, paddingVertical: 2, fontSize: 9, fontWeight: "900", textAlign: "center" },
   emptyCard: {
     borderRadius: radius["3xl"],
     borderWidth: 1,
@@ -974,17 +1494,49 @@ const styles = StyleSheet.create({
     marginTop: space[3],
     overflow: "hidden",
   },
-  cardTop: { flexDirection: "row" },
-  cardImg: { width: 120, height: "100%", minHeight: 140 },
+  cardTop: { flexDirection: "row", alignItems: "stretch" },
+  cardImg: { width: 96, minHeight: 132, alignSelf: "stretch" },
   cardBody: { flex: 1, minWidth: 0, padding: space[4] },
-  cardHeadRow: { flexDirection: "row", gap: space[2], alignItems: "flex-start" },
+  statusRow: { flexDirection: "row", alignItems: "center", marginBottom: space[1] },
+  nameBlock: { minHeight: 66 },
+  priceSummaryRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: space[2], borderTopWidth: 1, borderBottomWidth: 1, paddingVertical: space[2], marginTop: space[2] },
+  paymentSummaryCopy: { flex: 1, minWidth: 0 },
   grow: { flex: 1, minWidth: 0 },
-  venueName: { fontSize: fontSize.base, fontWeight: "800" },
+  nameScroll: { maxWidth: "100%", flexShrink: 1 },
   meta: { fontSize: fontSize.xs, marginTop: 2 },
-  moneyCol: { alignItems: "flex-end" },
+  moneyCol: { alignItems: "flex-end", maxWidth: "100%", flexShrink: 1 },
+  advanceAlert: { flexDirection: "row", alignItems: "flex-start", gap: space[2], borderWidth: 2, borderRadius: radius["2xl"], padding: space[3], marginTop: space[3] },
+  advanceAlertTitle: { fontSize: fontSize.xs, fontWeight: "900", lineHeight: 16 },
+  advanceAlertText: { fontSize: 10, fontWeight: "700", lineHeight: 15, marginTop: 2 },
+  advanceAlertAction: { borderRadius: radius.full, paddingHorizontal: space[2.5], paddingVertical: space[1.5], marginLeft: space[1] },
+  advanceAlertActionText: { color: "#FFFFFF", fontSize: 10, fontWeight: "900" },
+  cancellationNotice: { borderWidth: 1, borderRadius: radius["2xl"], padding: space[3], marginTop: space[3], gap: space[1] },
+  cancellationNoticeTitle: { fontSize: fontSize.xs, fontWeight: "900", lineHeight: 16 },
+  cancellationNoticeText: { fontSize: 10, fontWeight: "700", lineHeight: 15 },
+  openBooking: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    paddingVertical: space[2],
+    marginTop: space[2],
+  },
+  openBookingText: { fontSize: fontSize.xs, fontWeight: "900" },
+  compactFacts: { flexDirection: "row", flexWrap: "wrap", gap: space[2], borderBottomWidth: 1, paddingBottom: space[2], marginTop: space[2] },
+  compactFact: { flexDirection: "row", alignItems: "flex-start", gap: 5, maxWidth: "100%" },
+  compactFactWide: { flexBasis: "100%" },
+  compactFactText: { fontSize: fontSize.xs, fontWeight: "700", lineHeight: 16 },
+  compactFactWrap: { flexShrink: 1 },
+  moreToggle: { flexDirection: "row", alignItems: "center", gap: space[2], borderWidth: 1, borderRadius: radius.xl, paddingHorizontal: space[3], paddingVertical: space[2.5], marginTop: space[2] },
+  moreToggleTitle: { fontSize: fontSize.xs, fontWeight: "900" },
+  moreToggleHint: { fontSize: 10, fontWeight: "700", marginTop: 2 },
+  morePanel: { borderTopWidth: 1, marginTop: space[2], paddingTop: space[1], },
   strike: { fontSize: fontSize.xs, textDecorationLine: "line-through" },
   price: { fontSize: fontSize.xl, fontWeight: "900" },
   payMeta: { fontSize: fontSize.xs, fontWeight: "700" },
+  paymentMetaRow: { flexDirection: "row", flexWrap: "wrap", justifyContent: "flex-end", alignItems: "center", gap: 4, marginTop: 2 },
+  paymentStatusChip: { borderRadius: radius.full, paddingHorizontal: 6, paddingVertical: 3, fontSize: 9, fontWeight: "900", textTransform: "uppercase" },
   note: {
     marginTop: space[2.5],
     borderRadius: radius.xl,
@@ -992,10 +1544,26 @@ const styles = StyleSheet.create({
     paddingVertical: space[2.5],
     fontSize: fontSize.xs,
     lineHeight: 17,
-    overflow: "hidden",
   },
   noteAmber: { backgroundColor: "#FFFBEB", color: "#B45309" },
   noteRed: { backgroundColor: "#FEF2F2", color: "#DC2626" },
+  advanceCard: { marginTop: space[2.5], borderRadius: radius["2xl"], borderWidth: 1, padding: space[3.5], gap: space[2] },
+  noteText: { fontSize: fontSize.xs, lineHeight: 17, fontWeight: "800" },
+  advanceHint: { fontSize: 11, lineHeight: 16, fontWeight: "600" },
+  advanceActions: { flexDirection: "row", flexWrap: "wrap", gap: space[2] },
+  teamPaymentCard: { marginTop: space[2.5], borderRadius: radius["2xl"], borderWidth: 1, padding: space[3.5], gap: space[2] },
+  teamPaymentHead: { flexDirection: "row", flexWrap: "wrap", alignItems: "flex-start", gap: space[2] },
+  teamPaymentTitle: { fontSize: fontSize.sm, fontWeight: "900" },
+  teamPaymentHint: { fontSize: 11, lineHeight: 16, fontWeight: "600", marginTop: 2 },
+  teamPaymentStatus: { fontSize: 10, fontWeight: "900" },
+  teamPaymentStatusRow: { alignItems: "flex-end", gap: 4, maxWidth: "100%", flexShrink: 1 },
+  teamPaymentActions: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: space[2] },
+  teamMethodBox: { borderWidth: 1, borderRadius: radius.xl, padding: space[3], gap: space[2] },
+  teamMethodTitle: { fontSize: fontSize.xs, fontWeight: "900" },
+  teamMethodChoices: { flexDirection: "row", flexWrap: "wrap", gap: space[2] },
+  teamMethodChoice: { borderWidth: 1, borderRadius: radius.xl, paddingHorizontal: space[3], paddingVertical: space[2] },
+  teamSave: { borderRadius: radius.xl, backgroundColor: "#0369A1", minHeight: 38, alignItems: "center", justifyContent: "center", paddingHorizontal: space[3] },
+  teamSaveText: { color: "#FFFFFF", fontSize: fontSize.xs, fontWeight: "900" },
   detailRow: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -1003,7 +1571,7 @@ const styles = StyleSheet.create({
     gap: space[2],
     marginTop: space[3],
   },
-  detailText: { fontSize: 13, fontWeight: "600", marginRight: space[2] },
+  detailText: { fontSize: 13, lineHeight: 18, fontWeight: "600", flexShrink: 1, marginRight: space[2] },
   compCard: {
     marginTop: space[3],
     borderRadius: radius["2xl"],
@@ -1015,6 +1583,51 @@ const styles = StyleSheet.create({
   compTitle: { fontSize: fontSize.xs, fontWeight: "900", color: "#4338CA", flex: 1 },
   compScore: { borderRadius: radius.full, paddingHorizontal: space[3], paddingVertical: space[1] },
   compBody: { marginTop: space[1], fontSize: fontSize.xs, color: "#4338CA", lineHeight: 16 },
+  competitionPaymentPill: {
+    alignSelf: "flex-start",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    marginTop: space[2],
+    borderRadius: radius.full,
+    borderWidth: 1,
+    borderColor: "rgba(99,102,241,0.25)",
+    backgroundColor: "rgba(255,255,255,0.7)",
+    paddingHorizontal: space[3],
+    paddingVertical: space[1.5],
+  },
+  competitionPaymentText: { color: "#4338CA", fontSize: fontSize.xs, fontWeight: "900" },
+  competitionPaymentHint: { marginTop: 3, color: "#6366F1", fontSize: 10, fontWeight: "700" },
+  competitionDecisionBox: {
+    marginTop: space[3],
+    borderRadius: radius.xl,
+    borderWidth: 1,
+    padding: space[3],
+  },
+  competitionDecisionHint: { fontSize: fontSize.xs, lineHeight: 16, fontWeight: "700" },
+  competitionDecisionRow: { flexDirection: "row", flexWrap: "wrap", gap: space[2], marginTop: space[3] },
+  competitionAccept: {
+    flex: 1,
+    minHeight: 40,
+    borderRadius: radius.xl,
+    backgroundColor: colors.emerald600,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: space[2],
+    paddingHorizontal: space[3],
+  },
+  competitionAcceptText: { color: "#FFFFFF", fontSize: fontSize.xs, fontWeight: "900" },
+  competitionDecline: {
+    minHeight: 40,
+    borderRadius: radius.xl,
+    borderWidth: 1,
+    borderColor: "#FCA5A5",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: space[4],
+  },
+  competitionDeclineText: { color: "#B91C1C", fontSize: fontSize.xs, fontWeight: "900" },
   badgeRow: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -1028,6 +1641,7 @@ const styles = StyleSheet.create({
   idChip: { borderRadius: radius.xl, paddingHorizontal: space[3], paddingVertical: space[1.5] },
   idChipText: { fontFamily: "monospace", fontSize: fontSize.xs, fontWeight: "700" },
   chip: {
+    maxWidth: "100%",
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
@@ -1035,7 +1649,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: space[3],
     paddingVertical: space[1.5],
   },
-  chipText: { fontSize: fontSize.xs, fontWeight: "900" },
+  chipText: { flexShrink: 1, fontSize: fontSize.xs, lineHeight: 15, fontWeight: "900" },
   cancelChip: { backgroundColor: "#FEF2F2", borderWidth: 1, borderColor: "#FECACA" },
   payBtn: {
     flexDirection: "row",
@@ -1046,7 +1660,7 @@ const styles = StyleSheet.create({
     paddingVertical: space[1.5],
     minHeight: 32,
   },
-  payBtnText: { color: "#FFFFFF", fontSize: fontSize.xs, fontWeight: "900" },
+  payBtnText: { flexShrink: 1, color: "#FFFFFF", fontSize: fontSize.xs, lineHeight: 15, fontWeight: "900" },
   reviewForm: {
     marginTop: space[3],
     borderRadius: radius["2xl"],

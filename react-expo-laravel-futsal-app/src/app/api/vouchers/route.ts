@@ -1,4 +1,4 @@
-import { db } from "@/db";
+import { db, ensureCompetitionBookingColumns } from "@/db";
 import { vouchers, bookings, courts, venues } from "@/db/schema";
 import { monthKey, LOYALTY_TARGET } from "@/lib/loyalty";
 import { eq } from "drizzle-orm";
@@ -8,6 +8,7 @@ export const dynamic = "force-dynamic";
 // GET /api/vouchers?userId=1 -> vouchers + per-venue monthly progress
 export async function GET(req: Request) {
   try {
+    await ensureCompetitionBookingColumns();
     const { searchParams } = new URL(req.url);
     const userId = Number(searchParams.get("userId"));
     if (!userId) return Response.json({ vouchers: [], progress: [] });

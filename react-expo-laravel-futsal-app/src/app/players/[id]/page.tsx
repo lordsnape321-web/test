@@ -1,4 +1,5 @@
 "use client";
+import { ThemedSelect } from "@/components/ThemedSelect";
 
 import { useCallback, useEffect, useState, use } from "react";
 import Link from "next/link";
@@ -468,7 +469,7 @@ export default function PlayerDossierPage({
               An invitation is a question, not an add: {player.name} accepts or declines it themselves.
             </p>
             <div className="mt-3 flex flex-wrap gap-2">
-              <select
+              <ThemedSelect
                 value={inviteTeam}
                 onChange={(e) => setInviteTeam(e.target.value)}
                 className="min-w-[13rem] flex-1 rounded-xl border border-stone-200 bg-[#FFF6E9] px-3.5 py-2.5 text-sm font-semibold text-stone-900 focus:border-emerald-500 focus:outline-none dark:border-white/10 dark:bg-white/5 dark:text-slate-100 [&>option]:bg-white [&>option]:text-stone-900 dark:[&>option]:bg-slate-900 dark:[&>option]:text-slate-100"
@@ -487,7 +488,7 @@ export default function PlayerDossierPage({
                             : ` • ${t.invitesLeftToday} invites left`}
                   </option>
                 ))}
-              </select>
+              </ThemedSelect>
               <button
                 onClick={sendInvite}
                 disabled={!canInvite || busy === "invite"}

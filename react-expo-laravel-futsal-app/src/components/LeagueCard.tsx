@@ -41,21 +41,21 @@ export function LeagueCard({ league, compact = false }: { league: LeagueSummary;
 
   return (
     <div
-      className={`group flex flex-col overflow-hidden rounded-3xl border border-[#F0E3CC] bg-white shadow-[0_10px_30px_rgba(180,120,60,0.08)] transition hover:border-emerald-300 dark:border-white/10 dark:bg-slate-900 dark:hover:border-emerald-500/50 ${
+      className={`group flex min-w-0 flex-col overflow-hidden rounded-3xl border border-[#F0E3CC] bg-white shadow-[0_10px_30px_rgba(180,120,60,0.08)] transition hover:border-emerald-300 dark:border-white/10 dark:bg-slate-900 dark:hover:border-emerald-500/50 ${
         // min() so a compact card can never be wider than its container: a
         // pinned 300px overflows a 320px viewport once the gutters are counted.
         compact ? "w-[min(300px,100%)] shrink-0 sm:w-[340px]" : ""
       }`}
     >
-      <div className="relative h-32 shrink-0 overflow-hidden">
+      <div className="relative flex min-h-32 shrink-0 flex-col justify-between overflow-hidden">
         {league.bannerUrl ? (
           // eslint-disable-next-line @next/next/no-img-element -- host-supplied data URLs and external albums
-          <img src={league.bannerUrl} alt={league.name} className="h-full w-full object-cover" />
+          <img src={league.bannerUrl} alt={league.name} className="absolute inset-0 h-full w-full object-cover" />
         ) : (
-          <div className="h-full w-full bg-gradient-to-br from-emerald-600 via-emerald-700 to-stone-900" />
+          <div className="absolute inset-0 h-full w-full bg-gradient-to-br from-emerald-600 via-emerald-700 to-stone-900" />
         )}
         <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/20 to-transparent" />
-        <div className="absolute left-3 top-3 flex flex-wrap gap-1.5">
+        <div className="relative z-10 flex flex-wrap gap-1.5 p-3">
           <span className="rounded-full bg-white/90 px-2.5 py-1 text-[10px] font-black text-stone-800 backdrop-blur dark:bg-slate-900/90 dark:text-slate-100">
             {status.emoji} {status.label}
           </span>
@@ -75,40 +75,39 @@ export function LeagueCard({ league, compact = false }: { league: LeagueSummary;
             </span>
           )}
         </div>
-        <div className="absolute inset-x-3 bottom-2.5">
-          <h3 className="truncate text-base font-black text-white drop-shadow">{league.name}</h3>
-          <p className="flex items-center gap-1.5 text-[11px] font-bold text-white/85">
-            <MapPin className="h-3 w-3" /> {league.venueName}
-            {league.venueCity ? ` • ${league.venueCity}` : ""}
+        <div className="relative z-10 mt-auto px-3 pb-2.5 pt-4">
+          <h3 className="break-words text-base font-black leading-tight text-white drop-shadow">{league.name}</h3>
+          <p className="flex flex-wrap items-start gap-1.5 text-[11px] font-bold leading-tight text-white/85">
+            <MapPin className="mt-0.5 h-3 w-3 shrink-0" />
+            <span className="min-w-0 break-words">{league.venueName}{league.venueCity ? ` • ${league.venueCity}` : ""}</span>
           </p>
         </div>
       </div>
 
       <div className="flex flex-1 flex-col p-4">
-        {/* Three cells of ~80px on a phone: `min-w-0` + `truncate` keeps a big
-            prize pool ("Rs. 1,00,000") from blowing the card wider than the
-            viewport, which is what pushed the whole leagues grid sideways. */}
+        {/* Three compact cells still allow long formats and prize amounts to
+            wrap instead of hiding meaningful values or widening the card. */}
         <div className="grid grid-cols-3 gap-2 text-center">
           <div className="min-w-0 rounded-xl bg-[#FFF6E9] px-1 py-2 dark:bg-white/5">
-            <p className="truncate text-sm font-black text-stone-900 dark:text-slate-100">
+            <p className="break-words text-sm font-black leading-tight text-stone-900 dark:text-slate-100">
               {league.approvedTeams}/{league.maxTeams}
             </p>
             <p className="text-[10px] font-bold uppercase leading-tight tracking-wider text-stone-400">Squads</p>
           </div>
           <div className="min-w-0 rounded-xl bg-[#FFF6E9] px-1 py-2 dark:bg-white/5">
-            <p className="truncate text-sm font-black text-stone-900 dark:text-slate-100">{league.format}</p>
+            <p className="break-words text-sm font-black leading-tight text-stone-900 dark:text-slate-100">{league.format}</p>
             <p className="text-[10px] font-bold uppercase leading-tight tracking-wider text-stone-400">Format</p>
           </div>
           <div className="min-w-0 rounded-xl bg-[#FFF6E9] px-1 py-2 dark:bg-white/5">
-            <p className="truncate text-[13px] font-black text-stone-900 sm:text-sm dark:text-slate-100">
+            <p className="break-words text-[13px] font-black leading-tight text-stone-900 sm:text-sm dark:text-slate-100">
               {league.prizePool > 0 ? formatNPR(league.prizePool) : "Cup"}
             </p>
             <p className="text-[10px] font-bold uppercase leading-tight tracking-wider text-stone-400">Prize</p>
           </div>
         </div>
 
-        <div className="mt-3 space-y-1.5 text-xs font-semibold text-stone-500 dark:text-slate-400">
-          <p className="flex items-center gap-1.5">
+        <div className="mt-3 space-y-1.5 text-xs font-semibold leading-relaxed text-stone-500 dark:text-slate-400">
+          <p className="flex min-w-0 flex-wrap items-start gap-1.5">
             <Coins className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
             {league.entryFee > 0 ? (
               <>
@@ -121,12 +120,12 @@ export function LeagueCard({ league, compact = false }: { league: LeagueSummary;
               <>Free entry — just turn up 🎟️</>
             )}
           </p>
-          <p className="flex items-center gap-1.5">
+          <p className="flex min-w-0 flex-wrap items-start gap-1.5">
             <CalendarDays className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
             Starts {prettyDate(league.startsAt)}
             {league.matchDays ? ` • ${league.matchDays}` : ""}
           </p>
-          <p className="flex items-center gap-1.5">
+          <p className="flex min-w-0 flex-wrap items-start gap-1.5">
             <Trophy className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
             {league.playedMatches} of {league.totalMatches || "—"} fixtures played • hosted by{" "}
             {league.hostName}
@@ -165,7 +164,7 @@ export function LeagueCard({ league, compact = false }: { league: LeagueSummary;
           </p>
         )}
 
-        <div className="mt-auto flex items-center justify-between gap-2 pt-4">
+        <div className="mt-auto flex flex-wrap items-end justify-between gap-2 pt-4">
           <span className="text-[11px] font-bold text-stone-400 dark:text-slate-500">
             {isHost
               ? league.pendingTeams > 0
@@ -208,11 +207,11 @@ export function LeagueTeamChip({
         {initials(name)}
       </span>
       <span className="min-w-0">
-        <span className="block truncate text-xs font-bold text-stone-800 dark:text-slate-100">
+        <span className="block break-words text-xs font-bold leading-tight text-stone-800 dark:text-slate-100">
           {name}
         </span>
         {teamCode && (
-          <span className="block truncate font-mono text-[10px] font-bold text-stone-400 dark:text-slate-500">
+          <span className="block break-words font-mono text-[10px] font-bold leading-tight text-stone-400 dark:text-slate-500">
             {teamCode}
           </span>
         )}

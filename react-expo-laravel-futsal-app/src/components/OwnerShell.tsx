@@ -13,7 +13,6 @@ import {
   Menu,
   X,
   Trophy,
-  Globe,
   ChevronRight,
   Settings,
   User as UserIcon,
@@ -64,7 +63,9 @@ export function OwnerShell({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!user) return;
-    (async () => {
+    let cancelled = false;
+
+    const refreshBadges = async () => {
       try {
         const [bRes, nRes, vRes] = await Promise.all([
           apiFetch("/api/bookings"),
@@ -74,6 +75,7 @@ export function OwnerShell({ children }: { children: ReactNode }) {
         const b = await bRes.json();
         const n = await nRes.json();
         const v = await vRes.json();
+        if (cancelled) return;
         const mine = new Set(
           ((v.venues ?? []) as Array<{ id: number; ownerId: number | null }>)
             .filter((x) => x.ownerId === user.id)
@@ -86,15 +88,20 @@ export function OwnerShell({ children }: { children: ReactNode }) {
         setPendingCount(pending.length);
         setUnread(n.unread ?? 0);
       } catch {}
-    })();
-    const t = setInterval(async () => {
-      try {
-        const nRes = await apiFetch(`/api/notifications?userId=${user.id}`);
-        const n = await nRes.json();
-        setUnread(n.unread ?? 0);
-      } catch {}
-    }, 15000);
-    return () => clearInterval(t);
+    };
+
+    void refreshBadges();
+    // Request actions happen inside the requests page without changing the
+    // route. Refresh immediately after its database-backed PATCH completes;
+    // the interval remains a fallback for changes made in another tab/device.
+    const onBookingsChanged = () => void refreshBadges();
+    window.addEventListener("owner-bookings-changed", onBookingsChanged);
+    const t = setInterval(() => void refreshBadges(), 15000);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("owner-bookings-changed", onBookingsChanged);
+      clearInterval(t);
+    };
   }, [user, pathname]);
 
   const handleLogout = () => {
@@ -170,12 +177,6 @@ export function OwnerShell({ children }: { children: ReactNode }) {
           </Link>
 
           <div className="ml-auto flex shrink-0 items-center gap-1.5 sm:gap-2">
-            <Link
-              href="/"
-              className="hidden items-center gap-1.5 rounded-xl border border-slate-200 px-3.5 py-2 text-xs font-bold text-slate-600 transition hover:bg-slate-50 sm:flex dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
-            >
-              <Globe className="h-4 w-4" /> View player site
-            </Link>
             <ThemeToggle />
             <NotificationBell variant="light" />
             {user && (
@@ -253,13 +254,6 @@ export function OwnerShell({ children }: { children: ReactNode }) {
             </div>
             <div className="flex-1 overflow-y-auto">{navList}</div>
             <div className="space-y-2 border-t border-slate-100 pt-3 dark:border-slate-800">
-              <Link
-                href="/"
-                onClick={() => setDrawer(false)}
-                className="flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-3 text-sm font-bold text-slate-600 dark:border-slate-700 dark:text-slate-300"
-              >
-                <Globe className="h-4 w-4" /> View player site
-              </Link>
               <button
                 onClick={handleLogout}
                 className="flex w-full items-center gap-2 rounded-xl bg-red-50 px-4 py-3 text-sm font-bold text-red-600 dark:bg-red-500/10 dark:text-red-400"

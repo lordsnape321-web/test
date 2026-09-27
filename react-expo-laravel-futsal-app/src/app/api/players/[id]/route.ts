@@ -1,4 +1,4 @@
-import { db } from "@/db";
+import { db, ensureCompetitionBookingColumns } from "@/db";
 import { bookings, users } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { playerRating } from "@/lib/loyalty";
@@ -38,6 +38,7 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    await ensureCompetitionBookingColumns();
     const { id } = await params;
     const userId = Number(id);
     const viewerId = Number(new URL(req.url).searchParams.get("viewerId") ?? 0);

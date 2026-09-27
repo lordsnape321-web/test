@@ -56,7 +56,7 @@ ok("no outstanding balance is shown", !txt().includes("still to pay"));
 
 const rows = [...container.querySelectorAll("li")].map((li) => li.textContent ?? "");
 ok("all three mediums are itemised",
-   rows.some((r) => r.includes("eSewa")) && rows.some((r) => r.includes("Khalti")) && rows.some((r) => r.includes("Cash at Venue")),
+   rows.some((r) => r.includes("eSewa")) && rows.some((r) => r.includes("Khalti")) && rows.some((r) => r.includes("Cash at venue")),
    JSON.stringify(rows));
 ok("the gateway reference is shown", rows.some((r) => r.includes("MOCK-ESEWA-33")), JSON.stringify(rows));
 ok("a note is shown when there's no reference", rows.some((r) => r.includes("handed over at the counter")));

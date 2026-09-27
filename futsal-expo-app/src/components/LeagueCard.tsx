@@ -36,7 +36,19 @@ import { colors, fontSize, radius, space } from "@/theme";
  * Tailwind → RN: the gradient banner overlay is a LinearGradient layered over
  * the image; hover lift/translate becomes pressed opacity (no hover on touch).
  */
-export function LeagueCard({ league, compact = false }: { league: LeagueSummary; compact?: boolean }) {
+export function LeagueCard({
+  league,
+  compact = false,
+  onPress,
+  ownerMode = false,
+}: {
+  league: LeagueSummary;
+  compact?: boolean;
+  /** Override navigation for scoped shells such as Owner Studio. */
+  onPress?: () => void;
+  /** Use Owner Studio's explicit control-room wording for its hosted cards. */
+  ownerMode?: boolean;
+}) {
   const { colors: c, isDark } = useTheme();
   const router = useRouter();
 
@@ -49,7 +61,7 @@ export function LeagueCard({ league, compact = false }: { league: LeagueSummary;
 
   return (
     <Pressable
-      onPress={() => router.push(`/leagues/${league.id}`)}
+      onPress={onPress ?? (() => router.push(`/leagues/${league.id}`))}
       accessibilityRole="button"
       style={({ pressed }) => [
         styles.card,
@@ -109,12 +121,12 @@ export function LeagueCard({ league, compact = false }: { league: LeagueSummary;
         </View>
 
         <View style={styles.bannerText}>
-          <Text style={styles.bannerTitle} numberOfLines={1}>
+          <Text style={styles.bannerTitle}>
             {league.name}
           </Text>
           <View style={styles.bannerMeta}>
             <MapPin size={12} color="rgba(255,255,255,0.85)" />
-            <Text style={styles.bannerMetaText} numberOfLines={1}>
+            <Text style={styles.bannerMetaText}>
               {league.venueName}
               {league.venueCity ? ` • ${league.venueCity}` : ""}
             </Text>
@@ -123,8 +135,8 @@ export function LeagueCard({ league, compact = false }: { league: LeagueSummary;
       </View>
 
       <View style={styles.body}>
-        {/* Three cells of ~80px on a phone: flex + numberOfLines keeps a big
-            prize pool ("Rs. 1,00,000") from blowing the card wide. */}
+        {/* Three compact cells wrap long formats and prize amounts instead of
+            hiding a value or widening the card on a narrow screen. */}
         <View style={styles.statRow}>
           {[
             { v: `${league.approvedTeams}/${league.maxTeams}`, l: "SQUADS" },
@@ -132,7 +144,7 @@ export function LeagueCard({ league, compact = false }: { league: LeagueSummary;
             { v: league.prizePool > 0 ? formatNPR(league.prizePool) : "Cup", l: "PRIZE" },
           ].map((s) => (
             <View key={s.l} style={[styles.statCell, { backgroundColor: c.inset }]}>
-              <Text style={[styles.statValue, { color: c.text }]} numberOfLines={1}>
+              <Text style={[styles.statValue, { color: c.text }]}>
                 {s.v}
               </Text>
               <Text style={styles.statLabel}>{s.l}</Text>
@@ -197,11 +209,11 @@ export function LeagueCard({ league, compact = false }: { league: LeagueSummary;
             ]}
           >
             <View style={styles.metaLine}>
-              <Users size={14} color={leading.status === "approved" ? "#047857" : "#B45309"} />
+              <Users size={14} color={leading.status === "approved" ? (isDark ? colors.emerald300 : colors.emerald700) : (isDark ? colors.amber300 : "#B45309")} />
               <Text
                 style={[
                   styles.myLineText,
-                  { color: leading.status === "approved" ? "#047857" : "#B45309" },
+                  { color: leading.status === "approved" ? (isDark ? colors.emerald300 : colors.emerald700) : (isDark ? colors.amber300 : "#B45309") },
                 ]}
               >
                 {leading.teamName}: {leading.payment.emoji} {leading.payment.label}
@@ -211,7 +223,7 @@ export function LeagueCard({ league, compact = false }: { league: LeagueSummary;
               <Text
                 style={[
                   styles.myLineStatus,
-                  { color: leading.status === "approved" ? "#047857" : "#B45309" },
+                  { color: leading.status === "approved" ? (isDark ? colors.emerald300 : colors.emerald700) : (isDark ? colors.amber300 : "#B45309") },
                 ]}
               >
                 {leading.status === "invited"
@@ -234,9 +246,9 @@ export function LeagueCard({ league, compact = false }: { league: LeagueSummary;
                 ? `${spotsLeft} spot${spotsLeft === 1 ? "" : "s"} left`
                 : "Full"}
           </Text>
-          <View style={styles.openBtn}>
-            <Text style={styles.openBtnText}>Open league</Text>
-            <ArrowUpRight size={14} color="#FFFFFF" />
+          <View style={[styles.openBtn, { backgroundColor: c.primary }]}>
+            <Text style={[styles.openBtnText, { color: c.primaryText }]}>{ownerMode || isHost ? "Open control room" : "Open league"}</Text>
+            <ArrowUpRight size={14} color={c.primaryText} />
           </View>
         </View>
       </View>
@@ -263,11 +275,11 @@ export function LeagueTeamChip({
         <Text style={styles.chipAvatarText}>{initials(name)}</Text>
       </View>
       <View style={styles.grow}>
-        <Text style={[styles.chipName, { color: c.text }]} numberOfLines={1}>
+        <Text style={[styles.chipName, { color: c.text }]}>
           {name}
         </Text>
         {teamCode ? (
-          <Text style={[styles.chipCode, { color: c.textFaint }]} numberOfLines={1}>
+          <Text style={[styles.chipCode, { color: c.textFaint }]}>
             {teamCode}
           </Text>
         ) : null}
@@ -325,7 +337,7 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   compact: { width: 300, maxWidth: "100%", flexGrow: 0 },
-  banner: { height: 128, position: "relative", justifyContent: "space-between" },
+  banner: { minHeight: 128, position: "relative", justifyContent: "space-between" },
   bannerImg: { position: "absolute", left: 0, right: 0, top: 0, bottom: 0, width: "100%", height: "100%" },
   badgeRow: {
     flexDirection: "row",
@@ -341,7 +353,7 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
   },
   badgeText: { fontSize: 10, fontWeight: "900" },
-  bannerText: { paddingHorizontal: space["3"], paddingBottom: 10, zIndex: 1 },
+  bannerText: { paddingHorizontal: space["3"], paddingBottom: 10, paddingTop: 4, zIndex: 1, flexShrink: 1 },
   bannerTitle: {
     fontSize: fontSize.md,
     fontWeight: "900",
@@ -350,12 +362,12 @@ const styles = StyleSheet.create({
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 2,
   },
-  bannerMeta: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 2 },
-  bannerMetaText: { fontSize: 11, fontWeight: "700", color: "rgba(255,255,255,0.85)" },
+  bannerMeta: { flexDirection: "row", alignItems: "flex-start", gap: 6, marginTop: 2 },
+  bannerMetaText: { flex: 1, flexShrink: 1, fontSize: 11, lineHeight: 15, fontWeight: "700", color: "rgba(255,255,255,0.85)" },
   body: { padding: space["4"], flex: 1, justifyContent: "space-between", gap: space["3"] },
   statRow: { flexDirection: "row", gap: space["2"] },
   statCell: { flex: 1, minWidth: 0, borderRadius: radius.lg, paddingVertical: 8, paddingHorizontal: 4, alignItems: "center" },
-  statValue: { fontSize: fontSize.base, fontWeight: "900" },
+  statValue: { fontSize: fontSize.base, fontWeight: "900", lineHeight: 16, textAlign: "center" },
   statLabel: {
     fontSize: 10,
     fontWeight: "700",
@@ -380,7 +392,8 @@ const styles = StyleSheet.create({
   },
   footer: {
     flexDirection: "row",
-    alignItems: "center",
+    flexWrap: "wrap",
+    alignItems: "flex-end",
     justifyContent: "space-between",
     gap: space["2"],
     marginTop: space["2"],
@@ -406,7 +419,7 @@ const styles = StyleSheet.create({
   },
   chipAvatarText: { fontSize: 10, fontWeight: "900", color: "#FFFFFF" },
   grow: { flex: 1, minWidth: 0 },
-  chipName: { fontSize: fontSize.sm, fontWeight: "700" },
-  chipCode: { fontSize: 10, fontWeight: "700" },
+  chipName: { fontSize: fontSize.sm, lineHeight: 16, fontWeight: "700" },
+  chipCode: { fontSize: 10, lineHeight: 13, fontWeight: "700" },
   paymentLine: { fontSize: 11, fontWeight: "700" },
 });

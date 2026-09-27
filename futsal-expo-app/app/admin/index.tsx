@@ -21,7 +21,7 @@ import {
   Text,
   View,
 } from "react-native";
-import { fetchBookings, fetchVenues, patchBooking, seedDemo } from "@/api";
+import { fetchBookings, fetchVenues, patchBooking } from "@/api";
 import {
   BookingDonut,
   PaymentParty,
@@ -33,6 +33,22 @@ import { useTheme } from "@/context/ThemeContext";
 import { formatNPR, formatTime12, prettyDate } from "@/lib/futsal";
 import type { Booking, Venue } from "@/lib/types";
 import { colors, fontSize, radius, space } from "@/theme";
+
+function advanceReceivableFor(b: Booking) {
+  const requestedAndUnpaid =
+    b.status !== "cancelled" &&
+    b.status !== "rejected" &&
+    b.advancePaymentRequired &&
+    b.advancePaymentStatus !== "paid" &&
+    b.advancePaymentStatus !== "expired"
+      ? Math.max(0, Number(b.advancePaymentAmount) || 0)
+      : 0;
+  return Math.max(
+    0,
+    Number(b.paymentSummary?.advanceReceivable ?? b.advanceReceivableAmount ?? 0) || 0,
+    requestedAndUnpaid,
+  );
+}
 
 /**
  * Owner Studio overview — KPI cards, awaiting-approval preview, four charts,
@@ -48,7 +64,7 @@ export default function OwnerHome() {
   const [acting, setActing] = useState<number | null>(null);
 
   const load = useCallback(async () => {
-    const [v, b] = await Promise.all([fetchVenues(), fetchBookings()]);
+    const [v, b] = await Promise.all([fetchVenues(), fetchBookings({ refresh: true })]);
     setVenues(v);
     setBookings(b);
   }, []);
@@ -57,7 +73,6 @@ export default function OwnerHome() {
     useCallback(() => {
       (async () => {
         try {
-          await seedDemo();
           await load();
         } finally {
           setLoading(false);
@@ -72,15 +87,34 @@ export default function OwnerHome() {
   );
   const myVenueIds = useMemo(() => new Set(myVenues.map((v) => v.id)), [myVenues]);
   const myBookings = useMemo(
-    () => bookings.filter((b) => b.venue && myVenueIds.has(b.venue.id)),
+    () =>
+      bookings
+        .filter((b) => b.venue && myVenueIds.has(b.venue.id))
+        .filter(
+          (b) =>
+            b.visibility !== "competition" ||
+            b.competition?.competitionStatus === "accepted" ||
+            !b.competition?.competitionStatus ||
+            b.competition.competitionStatus === "none",
+        ),
     [bookings, myVenueIds],
   );
 
-  const pending = myBookings.filter((b) => b.status === "pending");
+  const pending = myBookings.filter((b) => b.status === "pending" || advanceReceivableFor(b) > 0);
   const confirmed = myBookings.filter((b) => b.status === "confirmed");
   const revenue = myBookings
     .filter((b) => b.status === "confirmed" || b.status === "completed")
     .reduce((s, b) => s + b.totalPrice, 0);
+  const activeMoney = myBookings.filter((b) => b.status !== "cancelled" && b.status !== "rejected");
+  const advanceReceived = activeMoney.reduce(
+    (sum, b) => sum + (b.paymentSummary?.advanceReceived ?? b.advanceReceivedAmount ?? 0),
+    0,
+  );
+  const advanceReceivable = myBookings.reduce((sum, b) => sum + advanceReceivableFor(b), 0);
+  const receivable = activeMoney.reduce(
+    (sum, b) => sum + (b.paymentSummary?.receivable ?? b.amountReceivable ?? Math.max(0, b.totalPrice - (b.paidAmount ?? 0))),
+    0,
+  );
   const today = new Date().toISOString().slice(0, 10);
   const todaysGames = myBookings.filter(
     (b) => b.date === today && (b.status === "confirmed" || b.status === "pending"),
@@ -90,6 +124,9 @@ export default function OwnerHome() {
     (b) =>
       b.visibility === "competition" &&
       b.competition &&
+      b.competition.competitionStatus !== "pending" &&
+      b.competition.competitionStatus !== "declined" &&
+      b.competition.competitionStatus !== "cancelled" &&
       b.competition.scoreStatus !== "recorded",
   );
 
@@ -203,6 +240,22 @@ export default function OwnerHome() {
       href: "/admin/bookings" as const,
     },
     {
+      icon: Banknote,
+      label: "Advance received",
+      value: formatNPR(advanceReceived),
+      sub: `${formatNPR(advanceReceivable)} advance receivable`,
+      hot: false,
+      href: "/admin/requests" as const,
+    },
+    {
+      icon: Banknote,
+      label: "Receivable",
+      value: formatNPR(receivable),
+      sub: "still to collect",
+      hot: receivable > 0,
+      href: "/admin/requests" as const,
+    },
+    {
       icon: CalendarCheck,
       label: "Today's games",
       value: String(todaysGames.length),
@@ -297,11 +350,16 @@ export default function OwnerHome() {
                     {b.venue?.name} • {b.court?.name} • {prettyDate(b.date)}{" "}
                     {formatTime12(b.startTime)}
                   </Text>
+                  {advanceReceivableFor(b) > 0 ? (
+                    <Text style={[styles.approveAdvance, { color: isDark ? "#FDBA74" : "#C2410C" }]} numberOfLines={1}>
+                      💳 Advance receivable {formatNPR(advanceReceivableFor(b))} • awaiting player
+                    </Text>
+                  ) : null}
                 </View>
                 <Pressable
                   onPress={() => void decide(b.id, true)}
-                  disabled={acting === b.id}
-                  style={[styles.approveBtn, { opacity: acting === b.id ? 0.5 : 1 }]}
+                  disabled={acting === b.id || advanceReceivableFor(b) > 0}
+                  style={[styles.approveBtn, { opacity: acting === b.id || advanceReceivableFor(b) > 0 ? 0.5 : 1 }]}
                   accessibilityLabel="Accept"
                 >
                   <Check size={16} color="#FFFFFF" strokeWidth={3} />
@@ -438,8 +496,20 @@ const styles = StyleSheet.create({
   },
   kpiSubRow: { flexDirection: "row", alignItems: "center", gap: 4, marginTop: 2 },
   kpiSub: { fontSize: fontSize.xs, fontWeight: "600", flex: 1 },
-  twoCol: { flexDirection: "row", flexWrap: "wrap", gap: space[3], marginTop: space[2] },
-  threeCol: { flexDirection: "row", flexWrap: "wrap", gap: space[3], marginTop: space[2] },
+  twoCol: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "stretch",
+    gap: space[3],
+    marginTop: space[2],
+  },
+  threeCol: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "stretch",
+    gap: space[3],
+    marginTop: space[2],
+  },
   panel: {
     borderRadius: radius["2xl"],
     borderWidth: 1,
@@ -447,7 +517,6 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     flexBasis: "45%",
     minWidth: 260,
-    marginTop: space[2],
     gap: space[2.5],
   },
   panelHead: {
@@ -478,6 +547,7 @@ const styles = StyleSheet.create({
   grow: { flex: 1, minWidth: 0 },
   approveName: { fontSize: fontSize.sm, fontWeight: "800" },
   approveMeta: { fontSize: fontSize.xs, marginTop: 2 },
+  approveAdvance: { fontSize: 10, fontWeight: "900", marginTop: 3 },
   approveBtn: {
     width: 36,
     height: 36,
@@ -518,7 +588,6 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     flexBasis: "45%",
     minWidth: 260,
-    marginTop: space[2],
   },
   promoIcon: {
     width: 44,

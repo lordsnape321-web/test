@@ -1,4 +1,5 @@
 "use client";
+import { ThemedSelect } from "@/components/ThemedSelect";
 
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
@@ -91,7 +92,7 @@ function VenuesInner() {
             </label>
             <label className="flex items-center gap-2 rounded-2xl bg-[#FFF6E9] px-4 py-3 lg:w-48 dark:bg-white/5">
               <MapPin className="h-4 w-4 shrink-0 text-stone-400 dark:text-slate-500" />
-              <select
+              <ThemedSelect
                 value={city}
                 onChange={(e) => setCity(e.target.value)}
                 className="w-full bg-transparent text-sm font-semibold text-stone-900 focus:outline-none dark:text-slate-100 [&>option]:bg-white [&>option]:text-stone-900 dark:[&>option]:bg-slate-900 dark:[&>option]:text-slate-100"
@@ -102,11 +103,11 @@ function VenuesInner() {
                     {c === homeCity && c !== "All Cities" ? " 🏠" : ""}
                   </option>
                 ))}
-              </select>
+              </ThemedSelect>
             </label>
             <label className="flex items-center gap-2 rounded-2xl bg-[#FFF6E9] px-4 py-3 lg:w-52 dark:bg-white/5">
               <SlidersHorizontal className="h-4 w-4 shrink-0 text-stone-400 dark:text-slate-500" />
-              <select
+              <ThemedSelect
                 value={sort}
                 onChange={(e) => setSort(e.target.value)}
                 className="w-full bg-transparent text-sm font-semibold text-stone-900 focus:outline-none dark:text-slate-100 [&>option]:bg-white [&>option]:text-stone-900 dark:[&>option]:bg-slate-900 dark:[&>option]:text-slate-100"
@@ -114,7 +115,7 @@ function VenuesInner() {
                 <option value="rating">Most loved</option>
                 <option value="price-low">Price: low → high</option>
                 <option value="price-high">Price: high → low</option>
-              </select>
+              </ThemedSelect>
             </label>
           </div>
           {searchError && <p className="mt-1.5 text-[11px] font-bold text-red-500">{searchError}</p>}

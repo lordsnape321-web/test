@@ -30,7 +30,7 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { Picker } from "@react-native-picker/picker";
+import { Picker } from "@/components/ThemedPicker";
 import { SafeAreaView } from "react-native-safe-area-context";
 import {
   answerTeamInvite,

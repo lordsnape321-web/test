@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { CalendarCheck, Check, X, ReceiptText, Gift, Ticket, Shield, Swords, Trophy } from "lucide-react";
+import { CalendarCheck, Check, X, ReceiptText, Gift, Ticket, Shield, Swords, Trophy, Wallet, Lock } from "lucide-react";
 import { useUser } from "@/components/UserProvider";
 import { OwnerGuard } from "@/components/OwnerGuard";
 import { ReceiptViewer } from "@/components/ReceiptUploader";
@@ -10,6 +10,7 @@ import type { PlayerStats } from "@/lib/loyalty";
 import { formatNPR, formatTime12, prettyDate } from "@/lib/futsal";
 import { BookingLedgerPanel } from "@/components/BookingLedgerPanel";
 import { SettleAmendButton } from "@/components/SettleAmendButton";
+import { formatWindowLeft, settleWindow } from "@/lib/booking-ledger";
 import { apiFetch } from "@/lib/api";
 
 type Booking = {
@@ -34,6 +35,11 @@ type Booking = {
   depositAmount: number;
   depositStatus: string;
   paidAmount: number;
+  cancellationMoneyStatus?: string;
+  cancellationReceivedAmount?: number;
+  cancellationRefundedAmount?: number;
+  cancellationMoneyResolvedAt?: string | null;
+  cancellationMoneyResolvedBy?: number | null;
   gatewayTxnId: string;
   /**
    * When the owner marked this settled. Drives the correction window: the row
@@ -58,10 +64,44 @@ type Booking = {
     homeScore: number | null;
     awayScore: number | null;
     scoreStatus: string;
+    scoreUpdatedAt?: string | null;
+    competitionStatus?: string;
+    paymentMode?: "split" | "loser_pays" | string;
+    paymentLabel?: string;
   } | null;
 };
 
+function paymentMethodLabel(method: string) {
+  if (method === "Cash at Venue") return "Cash at venue";
+  if (method === "Free Play 🎁") return "Free play";
+  return method || "Not selected";
+}
+
+function paymentStatusLabel(status: string) {
+  return String(status || "pending").replace(/_/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
 const FILTERS = ["all", "today", "pending", "confirmed", "completed", "cancelled", "rejected"];
+
+function ScoreWindowBadge({ settledAt }: { settledAt: string | null }) {
+  const [now, setNow] = useState(() => Date.now());
+  const win = settleWindow(settledAt, now);
+
+  useEffect(() => {
+    if (!win.settled || !win.locksAt) return;
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [win.settled, win.locksAt]);
+
+  if (!win.settled) {
+    return <span className="text-[10px] font-black text-slate-400 dark:text-slate-500">Score edits open</span>;
+  }
+  return (
+    <span className={`inline-flex items-center gap-1 text-[10px] font-black ${win.editable ? "text-amber-600 dark:text-amber-300" : "text-slate-400 dark:text-slate-500"}`}>
+      <Lock className="h-3 w-3" /> {win.editable ? `Score window ${formatWindowLeft(win.msLeft)}` : "Score locked"}
+    </span>
+  );
+}
 
 export default function OwnerBookingsPage() {
   const { user } = useUser();
@@ -75,8 +115,10 @@ export default function OwnerBookingsPage() {
   const [awayInput, setAwayInput] = useState("");
   const [savingScore, setSavingScore] = useState(false);
   const [scoreError, setScoreError] = useState("");
+  const [scoreNow, setScoreNow] = useState(() => Date.now());
   /** Which booking's payment desk is open — see `BookingLedgerPanel`. */
   const [ledgerFor, setLedgerFor] = useState<Booking | null>(null);
+  const [resolvingCancellation, setResolvingCancellation] = useState<number | null>(null);
 
   const load = async () => {
     const [bRes, vRes] = await Promise.all([
@@ -99,13 +141,27 @@ export default function OwnerBookingsPage() {
     })();
   }, []);
 
+  useEffect(() => {
+    if (!scoreFor) return;
+    const timer = window.setInterval(() => setScoreNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [scoreFor]);
+
   const myVenueIds = useMemo(
     () => new Set(venues.filter((v) => user && v.ownerId === user.id).map((v) => v.id)),
     [venues, user]
   );
 
   const filtered = useMemo(() => {
-    const mine = bookings.filter((b) => b.venue && myVenueIds.has(b.venue.id));
+    const mine = bookings
+      .filter((b) => b.venue && myVenueIds.has(b.venue.id))
+      .filter(
+        (b) =>
+          b.visibility !== "competition" ||
+          b.competition?.competitionStatus === "accepted" ||
+          !b.competition?.competitionStatus ||
+          b.competition.competitionStatus === "none",
+      );
     if (filter === "all") return mine;
     if (filter === "today") {
       const t = new Date().toISOString().slice(0, 10);
@@ -118,12 +174,34 @@ export default function OwnerBookingsPage() {
     await apiFetch(`/api/bookings/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status, actor }),
+      body: JSON.stringify({ status, actor, actorId: user?.id }),
     });
     load();
   }
 
+  async function resolveCancellation(b: Booking, decision: "refunded" | "retained") {
+    if (!user || resolvingCancellation === b.id) return;
+    const label = decision === "refunded" ? "mark this money as refunded" : "keep this money as a cancellation payment";
+    if (!window.confirm(`Are you sure you want to ${label}?`)) return;
+    setResolvingCancellation(b.id);
+    try {
+      const res = await apiFetch(`/api/bookings/${b.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cancellationMoney: decision, actor: "owner", actorId: user.id }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Could not update cancellation money");
+      await load();
+    } catch (e) {
+      window.alert(e instanceof Error ? e.message : "Could not update cancellation money");
+    } finally {
+      setResolvingCancellation(null);
+    }
+  }
+
   function openScore(b: Booking) {
+    setScoreNow(Date.now());
     setScoreFor(b);
     setHomeInput(b.competition?.homeScore === null || b.competition?.homeScore === undefined ? "" : String(b.competition.homeScore));
     setAwayInput(b.competition?.awayScore === null || b.competition?.awayScore === undefined ? "" : String(b.competition.awayScore));
@@ -157,8 +235,34 @@ export default function OwnerBookingsPage() {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "Could not save the score");
+      const confirmed = data.booking as
+        | { homeScore?: number | null; awayScore?: number | null; scoreStatus?: string; scoreUpdatedAt?: string | null }
+        | undefined;
+      const savedHome = confirmed && "homeScore" in confirmed
+        ? confirmed.homeScore ?? null
+        : home === "" ? null : Number(home);
+      const savedAway = confirmed && "awayScore" in confirmed
+        ? confirmed.awayScore ?? null
+        : away === "" ? null : Number(away);
+      setBookings((current) =>
+        current.map((row) =>
+          row.id !== scoreFor.id || !row.competition
+            ? row
+            : {
+                ...row,
+                competition: {
+                  ...row.competition,
+                  homeScore: savedHome,
+                  awayScore: savedAway,
+                  scoreStatus:
+                    confirmed?.scoreStatus ?? (savedHome !== null && savedAway !== null ? "recorded" : "awaiting"),
+                  scoreUpdatedAt: confirmed?.scoreUpdatedAt ?? new Date().toISOString(),
+                },
+              },
+        ),
+      );
       setScoreFor(null);
-      load();
+      await load();
     } catch (e) {
       setScoreError(e instanceof Error ? e.message : "Could not save the score");
     } finally {
@@ -174,6 +278,8 @@ export default function OwnerBookingsPage() {
         : s === "completed"
           ? "bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300"
           : "bg-red-100 text-red-600 dark:bg-red-500/15 dark:text-red-400";
+  const scoreWindow = scoreFor ? settleWindow(scoreFor.settledAt, scoreNow) : null;
+  const scoreLocked = Boolean(scoreWindow?.settled && !scoreWindow.editable);
 
   return (
     <OwnerGuard>
@@ -182,7 +288,7 @@ export default function OwnerBookingsPage() {
           <CalendarCheck className="h-6 w-6" /> All bookings
         </h1>
         <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-          Every booking across your venues — collect payments, complete games.
+          Review bookings, record payments, and complete games.
         </p>
       </div>
 
@@ -259,6 +365,12 @@ export default function OwnerBookingsPage() {
                               ? `⚽ ${b.competition.homeScore}–${b.competition.awayScore}`
                               : "score due"}
                           </span>
+                          <span className="inline-flex items-center gap-1 rounded-full bg-sky-500/15 px-1.5 py-0.5 text-[9px] font-black text-sky-700 dark:text-sky-300">
+                            <Wallet className="h-2.5 w-2.5" />
+                            {b.competition.paymentLabel ??
+                              (b.competition.paymentMode === "loser_pays" ? "loser pays" : "fair split")}
+                          </span>
+                          <ScoreWindowBadge settledAt={b.settledAt} />
                         </span>
                       )}
                       <span className="mt-1 block">
@@ -286,7 +398,7 @@ export default function OwnerBookingsPage() {
                       )}
                       {formatNPR(b.totalPrice)}
                       <span className="block text-[11px] font-semibold text-slate-400 dark:text-slate-500">
-                        {b.paymentMethod}
+                        Method: {paymentMethodLabel(b.paymentMethod)}
                       </span>
                       {b.promoCode && b.discountAmount > 0 && (
                         <span className="mt-1 inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-black text-emerald-700 dark:text-emerald-300">
@@ -295,7 +407,47 @@ export default function OwnerBookingsPage() {
                       )}
                     </td>
                     <td className="px-3 py-3">
-                      {b.paymentStatus === "paid" ? (
+                      {b.status === "cancelled" || b.status === "rejected" ? (
+                        <div className="space-y-1.5">
+                          <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-black text-slate-500 dark:bg-slate-800 dark:text-slate-400">
+                            {b.status === "cancelled" ? "Cancelled" : "Rejected"} — no collection
+                          </span>
+                          {(b.cancellationReceivedAmount ?? 0) > 0 && (
+                            <>
+                              <p className="text-[11px] font-black text-slate-600 dark:text-slate-300">
+                                Received {formatNPR(b.cancellationReceivedAmount ?? 0)}
+                              </p>
+                              {b.cancellationMoneyStatus === "refunded" ? (
+                                <span className="inline-flex rounded-full bg-emerald-500/15 px-2 py-1 text-[10px] font-black text-emerald-700 dark:text-emerald-300">Refund recorded ✓</span>
+                              ) : b.cancellationMoneyStatus === "retained" ? (
+                                <span className="inline-flex rounded-full bg-slate-500/15 px-2 py-1 text-[10px] font-black text-slate-600 dark:text-slate-300">Kept as cancellation payment</span>
+                              ) : (
+                                <div className="space-y-1.5">
+                                  <p className="text-[10px] font-black text-orange-700 dark:text-orange-300">Refund decision needed</p>
+                                  <div className="flex flex-wrap gap-1.5">
+                                    <button
+                                      type="button"
+                                      onClick={() => void resolveCancellation(b, "refunded")}
+                                      disabled={resolvingCancellation === b.id}
+                                      className="rounded-full bg-emerald-600 px-2.5 py-1 text-[10px] font-black text-white disabled:opacity-50"
+                                    >
+                                      {resolvingCancellation === b.id ? "Saving…" : "Mark refunded"}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => void resolveCancellation(b, "retained")}
+                                      disabled={resolvingCancellation === b.id}
+                                      className="rounded-full border border-slate-300 px-2.5 py-1 text-[10px] font-black text-slate-600 dark:border-slate-600 dark:text-slate-300 disabled:opacity-50"
+                                    >
+                                      Keep payment
+                                    </button>
+                                  </div>
+                                </div>
+                              )}
+                            </>
+                          )}
+                        </div>
+                      ) : b.paymentStatus === "paid" ? (
                         <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-[11px] font-black text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300">
                           PAID ✓ {b.gatewayTxnId ? `• ${b.gatewayTxnId.slice(0, 10)}` : ""}
                         </span>
@@ -313,7 +465,7 @@ export default function OwnerBookingsPage() {
                           title="Record payments and extra charges"
                           className="rounded-full bg-amber-100 px-2.5 py-1 text-[11px] font-black text-amber-700 transition hover:bg-amber-200 dark:bg-amber-500/15 dark:text-amber-300 dark:hover:bg-amber-500/25"
                         >
-                          💰 Collect
+                          💰 Record payment
                         </button>
                       )}
                       {b.depositRequired && (
@@ -344,10 +496,12 @@ export default function OwnerBookingsPage() {
                             list, at a glance, which ones are still fixable and
                             how long is left. The countdown owns its own clock
                             so ticking it doesn't re-render the whole table. */}
-                        <SettleAmendButton
-                          settledAt={b.settledAt}
-                          onOpen={() => setLedgerFor(b)}
-                        />
+                        {b.status !== "cancelled" && b.status !== "rejected" && (
+                          <SettleAmendButton
+                            settledAt={b.settledAt}
+                            onOpen={() => setLedgerFor(b)}
+                          />
+                        )}
                         {b.status === "pending" && (
                           <>
                             <button
@@ -426,6 +580,14 @@ export default function OwnerBookingsPage() {
               {prettyDate(scoreFor.date)} {formatTime12(scoreFor.startTime)}
               {scoreFor.competition.leagueName ? ` • 🏆 ${scoreFor.competition.leagueName}` : ""}
             </p>
+            <p className={`mt-3 flex items-center gap-1.5 rounded-xl px-3 py-2 text-[11px] font-black ${scoreLocked ? "bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400" : "bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300"}`}>
+              <Lock className="h-3.5 w-3.5 shrink-0" />
+              {scoreWindow?.settled
+                ? scoreLocked
+                  ? "Score locked — the 5-minute correction window has closed."
+                  : `Score correction window open for ${formatWindowLeft(scoreWindow.msLeft)}.`
+                : "Score edits open — the 5-minute correction window starts when payment is settled."}
+            </p>
             <div className="mt-4 grid grid-cols-2 gap-3">
               <label className="block">
                 <span className="mb-1.5 block text-[11px] font-black uppercase tracking-wider text-slate-400">
@@ -434,6 +596,7 @@ export default function OwnerBookingsPage() {
                 <input
                   value={homeInput}
                   onChange={(e) => setHomeInput(e.target.value.replace(/[^0-9]/g, "").slice(0, 2))}
+                  disabled={scoreLocked}
                   inputMode="numeric"
                   placeholder="—"
                   className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-3 text-center text-2xl font-black text-slate-900 focus:border-indigo-400 focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
@@ -446,6 +609,7 @@ export default function OwnerBookingsPage() {
                 <input
                   value={awayInput}
                   onChange={(e) => setAwayInput(e.target.value.replace(/[^0-9]/g, "").slice(0, 2))}
+                  disabled={scoreLocked}
                   inputMode="numeric"
                   placeholder="—"
                   className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-3 text-center text-2xl font-black text-slate-900 focus:border-indigo-400 focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
@@ -471,10 +635,10 @@ export default function OwnerBookingsPage() {
               </button>
               <button
                 onClick={saveScore}
-                disabled={savingScore}
-                className="rounded-xl bg-indigo-600 py-3 text-sm font-black text-white transition hover:bg-indigo-700 disabled:opacity-50"
+                disabled={savingScore || scoreLocked}
+                className="rounded-xl bg-indigo-600 py-3 text-sm font-black text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                {savingScore ? "Saving…" : "Save result"}
+                {savingScore ? "Saving…" : scoreLocked ? "Score locked" : "Save result"}
               </button>
             </div>
           </div>

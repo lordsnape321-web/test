@@ -1,12 +1,13 @@
-import { db } from "@/db";
-import { bookings, openMatches, courts, teams, venues, vouchers, users } from "@/db/schema";
+import { db, ensureCompetitionBookingColumns } from "@/db";
+import { bookings, openMatches, courts, teams, venues, vouchers, users, bookingPayments, bookingExtras } from "@/db/schema";
 import { prettyDate, formatTime12, formatNPR, gamePlayed } from "@/lib/futsal";
 import { monthKey, hoursUntilGame, CANCEL_CUTOFF_HOURS, LOYALTY_TARGET, TRUST_START, TRUST_COMPLETE_BOOST, TRUST_CANCEL_PENALTY, trustAfterComplete, trustAfterCancel, trustLabel } from "@/lib/loyalty";
 import { sendNotification } from "@/lib/notify";
-import { and, eq } from "drizzle-orm";
+import { and, eq, or } from "drizzle-orm";
 import { recordFor } from "@/lib/league";
 import { validateScore } from "@/lib/validation";
-import { settleWindow, SETTLE_EDIT_WINDOW_MS } from "@/lib/booking-ledger";
+import { ledgerTotals, settleWindow, SETTLE_EDIT_WINDOW_MS } from "@/lib/booking-ledger";
+import { expireOverdueAdvanceRequests } from "@/lib/advance-payment";
 
 export const dynamic = "force-dynamic";
 
@@ -16,6 +17,14 @@ async function venueOf(booking: { courtId: number }) {
   if (!court) return { court: null, venue: null };
   const venueRows = await db.select().from(venues).where(eq(venues.id, court.venueId));
   return { court, venue: venueRows[0] ?? null };
+}
+
+async function receivedForBooking(bookingId: number, totalPrice: number) {
+  const [payments, extras] = await Promise.all([
+    db.select().from(bookingPayments).where(eq(bookingPayments.bookingId, bookingId)),
+    db.select().from(bookingExtras).where(eq(bookingExtras.bookingId, bookingId)),
+  ]);
+  return ledgerTotals({ courtPrice: totalPrice, extras, payments }).paid;
 }
 
 // After a game counts toward loyalty, check if a free hour is earned.
@@ -89,11 +98,117 @@ async function adjustTrust(userId: number, kind: "complete" | "cancel") {
   }
 }
 
+/**
+ * Release (or reject) a competition booking only through the selected
+ * opposition captain's authenticated identity. The conditional update is the
+ * one-time gate: two replayed accept calls cannot both notify the venue owner.
+ */
+async function handleCompetitionDecision(
+  prev: typeof bookings.$inferSelect,
+  body: Record<string, unknown>
+): Promise<Response | null> {
+  const action = String(body.competitionAction ?? "");
+  if (!action) return null;
+  if (action !== "accept" && action !== "decline")
+    return Response.json({ error: "Pick accept or decline for this competition request 🆚" }, { status: 400 });
+  if (prev.visibility !== "competition" || !prev.opponentTeamId)
+    return Response.json({ error: "Only competition bookings have an opposition request 🆚" }, { status: 400 });
+  if (prev.status !== "pending" || prev.competitionStatus !== "pending")
+    return Response.json(
+      { error: "This competition request has already been decided or cancelled.", competitionStatus: prev.competitionStatus },
+      { status: 409 }
+    );
+
+  const actorId = Number(body.actorId ?? 0);
+  const [actorUser] = Number.isInteger(actorId) && actorId > 0
+    ? await db.select().from(users).where(eq(users.id, actorId))
+    : [];
+  const opponent = (await db.select().from(teams).where(eq(teams.id, prev.opponentTeamId)))[0];
+  if (!actorUser || !opponent || opponent.captainId !== actorId)
+    return Response.json({ error: "Only the selected opposition captain can decide this request 🔒" }, { status: 403 });
+
+  const { court, venue } = await venueOf(prev);
+  const decisionAt = new Date();
+  const nextRows = await db
+    .update(bookings)
+    .set(
+      action === "accept"
+        ? {
+            competitionStatus: "accepted",
+            competitionRespondedBy: actorId,
+            competitionRespondedAt: decisionAt,
+            scoreStatus: "awaiting",
+          }
+        : {
+            competitionStatus: "declined",
+            competitionRespondedBy: actorId,
+            competitionRespondedAt: decisionAt,
+            scoreStatus: "none",
+            status: "rejected",
+          }
+    )
+    .where(
+      and(
+        eq(bookings.id, prev.id),
+        eq(bookings.status, "pending"),
+        eq(bookings.competitionStatus, "pending"),
+      )
+    )
+    .returning();
+  const next = nextRows[0];
+  if (!next)
+    return Response.json(
+      { error: "This competition request was decided by someone else. Refresh your bookings.", competitionStatus: "decided" },
+      { status: 409 }
+    );
+
+  const when = `${prettyDate(next.date)} at ${formatTime12(next.startTime)}`;
+  const where = venue?.name ?? "the venue";
+  const opponentName = opponent.name;
+  const fixture = `${next.teamName || "Home squad"} vs ${opponentName}`;
+
+  if (action === "accept") {
+    // This is the first and only point at which Owner Studio gets an actionable
+    // competition booking request.
+    if (venue?.ownerId) {
+      await sendNotification({
+        userId: venue.ownerId,
+        type: "booking_request",
+        title: `📩 Competition booking ready — ${where}`,
+        message: `${fixture} was accepted by ${opponentName}'s captain. Payment policy: ${next.competitionPaymentPolicy === "loser_pays" ? "the losing squad pays" : "fair split between both squads"}. Review ${court?.name ?? "the court"} for ${when} (${formatNPR(next.totalPrice)}). Tap to accept or decline.`,
+        link: "/admin/requests",
+      });
+    }
+    await sendNotification({
+      userId: next.userId,
+      type: "info",
+      title: `✅ ${opponentName} accepted your competition request`,
+      message: `${fixture} at ${where} for ${when} is now with the venue owner for final approval. Payment policy: ${next.competitionPaymentPolicy === "loser_pays" ? "the losing squad pays" : "fair split between both squads"}.`,
+      link: "/bookings",
+    });
+  } else {
+    // The owner is intentionally not notified. The requester gets the outcome,
+    // while the rejected row remains in history and cannot be booked into the
+    // owner queue by a replayed client request.
+    await sendNotification({
+      userId: next.userId,
+      type: "booking_rejected",
+      title: `❌ ${opponentName} declined the competition request`,
+      message: `${fixture} at ${where} for ${when} was declined by the opposition captain, so it was not sent to the venue owner.`,
+      link: "/bookings",
+    });
+  }
+
+  return Response.json({ booking: next, competitionStatus: next.competitionStatus });
+}
+
 export async function PATCH(
   req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    await ensureCompetitionBookingColumns();
+    await expireOverdueAdvanceRequests();
     const { id } = await params;
     const bookingId = Number(id);
     if (!Number.isInteger(bookingId) || bookingId <= 0)
@@ -116,6 +231,86 @@ export async function PATCH(
     const current = await db.select().from(bookings).where(eq(bookings.id, bookingId));
     const prev = current[0];
     if (!prev) return Response.json({ error: "Booking not found" }, { status: 404 });
+    if (body.actor === "player" && body.actorId !== undefined && Number(body.actorId) !== prev.userId) {
+      return Response.json({ error: "Only the booking player can change this payment choice 🔒" }, { status: 403 });
+    }
+    if (prev.advancePaymentRequired && prev.advancePaymentStatus !== "paid") {
+      if (body.paymentMethod !== undefined && !["eSewa", "Khalti"].includes(String(body.paymentMethod))) {
+        return Response.json({ error: "Pay the venue advance with eSewa or Khalti first. Cash at venue opens after the advance is received 💳" }, { status: 409 });
+      }
+      if (body.paymentStatus !== undefined || body.depositStatus !== undefined) {
+        return Response.json({ error: "The booking cannot be marked paid or settled until the requested advance is gateway-verified 💳" }, { status: 409 });
+      }
+    }
+
+    // Owner-requested advance payment is deliberately separate from the
+    // automatic fair-play deposit. The latter is calculated at booking time;
+    // this is a venue decision that can be no advance, the full court total, or
+    // a server-validated custom amount.
+    if (body.advancePayment !== undefined || body.advancePaymentAmount !== undefined) {
+      const { court, venue } = await venueOf(prev);
+      const actorId = Number(body.actorId ?? 0);
+      if (body.actor !== "owner" || !venue?.ownerId || actorId !== venue.ownerId)
+        return Response.json({ error: "Only the venue owner can request an advance 🔒" }, { status: 403 });
+      if (prev.advancePaymentStatus === "paid")
+        return Response.json({ error: "This advance has already been paid and cannot be changed 🔒" }, { status: 409 });
+      if (prev.paymentStatus === "paid" || prev.paidAmount >= prev.totalPrice)
+        return Response.json({ error: "This booking is already paid in full, so no separate advance is needed ✅" }, { status: 409 });
+      if (prev.visibility === "competition" && prev.competitionStatus === "pending")
+        return Response.json({ error: "The opposition captain must accept this competition request before payment decisions open 🆚" }, { status: 409 });
+      if (prev.status !== "pending")
+        return Response.json({ error: "An advance can only be requested while this booking is still pending" }, { status: 409 });
+
+      const choice = String(body.advancePayment ?? "custom");
+      const requested =
+        choice === "none"
+          ? 0
+          : choice === "full"
+            ? prev.totalPrice
+            : Number(body.advancePaymentAmount ?? 0);
+      if (!Number.isInteger(requested) || requested < 0 || requested > prev.totalPrice)
+        return Response.json({ error: "Advance must be zero or a whole-rupee amount no greater than the court total 💰" }, { status: 400 });
+      if (choice === "custom" && requested <= 0)
+        return Response.json({ error: "A custom advance must be greater than zero 💰" }, { status: 400 });
+      if (choice === "full" && prev.totalPrice <= 0)
+        return Response.json({ error: "A free booking does not need an advance 💚" }, { status: 400 });
+
+      const status = requested > 0 ? "pending" : "none";
+      const updated = await db
+        .update(bookings)
+        .set({
+          advancePaymentRequired: requested > 0,
+          advancePaymentAmount: requested,
+          advancePaymentStatus: status,
+          advancePaymentRequestedBy: requested > 0 ? venue.ownerId : null,
+          advancePaymentRequestedAt: requested > 0 ? new Date() : null,
+        })
+        .where(eq(bookings.id, prev.id))
+        .returning();
+      const next = updated[0];
+      const when = `${prettyDate(next.date)} at ${formatTime12(next.startTime)}`;
+      if (requested > 0) {
+        await sendNotification({
+          userId: next.userId,
+          type: "payment",
+          title: `💳 Advance requested — ${venue.name}`,
+          message: `${venue.name} asked you to pay ${formatNPR(requested)} in advance for ${court?.name ?? "your court"} on ${when}. Choose eSewa or Khalti from My Bookings; the verified payment will be added to the booking ledger.${requested === next.totalPrice ? " This is the full court amount." : ""}`,
+          link: "/bookings",
+        });
+      } else {
+        await sendNotification({
+          userId: next.userId,
+          type: "info",
+          title: `✅ No advance required — ${venue.name}`,
+          message: `The venue does not require an advance for ${court?.name ?? "your court"} on ${when}. Your normal payment choice remains unchanged.`,
+          link: "/bookings",
+        });
+      }
+      return Response.json({ booking: next, advancePaymentAmount: requested, advancePaymentStatus: status });
+    }
+
+    const competitionResponse = await handleCompetitionDecision(prev, body);
+    if (competitionResponse) return competitionResponse;
 
     // Scoring a competition game is handled first and returns on its own: it
     // changes nothing else about the booking.
@@ -123,6 +318,112 @@ export async function PATCH(
     if (scoreResponse) return scoreResponse;
 
     const actor = body.actor === "owner" ? "owner" : "player";
+
+    // Refund/retain is an owner decision recorded against the booking. It does
+    // not pretend to call a gateway refund; “Mark refunded” means the owner has
+    // actually sent the money back (cash or gateway) and wants the audit trail
+    // to say so.
+    if (body.cancellationMoney !== undefined) {
+      const choice = String(body.cancellationMoney);
+      if (choice !== "refunded" && choice !== "retained")
+        return Response.json({ error: "Choose Mark refunded or Keep payment." }, { status: 400 });
+      const { venue } = await venueOf(prev);
+      if (actor !== "owner" || Number(body.actorId ?? 0) !== venue?.ownerId)
+        return Response.json({ error: "Only the venue owner can resolve cancelled-booking money 🔒" }, { status: 403 });
+      if (prev.status !== "cancelled" && prev.status !== "rejected")
+        return Response.json({ error: "Resolve money only after the booking is cancelled or rejected." }, { status: 409 });
+      const received = Math.max(
+        Number(prev.cancellationReceivedAmount || 0),
+        await receivedForBooking(prev.id, prev.totalPrice),
+      );
+      if (received <= 0)
+        return Response.json({ error: "There is no recorded payment to resolve on this booking." }, { status: 409 });
+      if (prev.cancellationMoneyStatus === "refunded" || prev.cancellationMoneyStatus === "retained")
+        return Response.json({ error: "This cancelled booking's money is already resolved." }, { status: 409 });
+      const resolved = (await db
+        .update(bookings)
+        .set({
+          cancellationMoneyStatus: choice,
+          cancellationReceivedAmount: received,
+          cancellationRefundedAmount: choice === "refunded" ? received : 0,
+          cancellationMoneyResolvedAt: new Date(),
+          cancellationMoneyResolvedBy: Number(body.actorId),
+        })
+        // Legacy cancelled rows can still be in `none` until this first
+        // resolution; the conditional write prevents two owner taps from
+        // recording competing outcomes at the same time.
+        .where(
+          and(
+            eq(bookings.id, prev.id),
+            or(eq(bookings.cancellationMoneyStatus, "none"), eq(bookings.cancellationMoneyStatus, "review")),
+          ),
+        )
+        .returning())[0];
+      if (!resolved)
+        return Response.json({ error: "This cancelled booking's money was already resolved. Refresh Owner Studio." }, { status: 409 });
+      try {
+        await sendNotification({
+          userId: resolved.userId,
+          type: "payment",
+          title: `${choice === "refunded" ? "↩️ Refund recorded" : "🧾 Cancellation payment recorded"} — ${venue?.name ?? "the venue"}`,
+          message: choice === "refunded"
+            ? `${formatNPR(received)} received for booking #FN-${resolved.id} is marked refunded by the venue owner.`
+            : `${formatNPR(received)} received for cancelled booking #FN-${resolved.id} was recorded as retained by the venue owner. Contact the venue if you need clarification.`,
+          link: "/bookings",
+        });
+      } catch {
+        // The money decision is durable even if the notification is delayed.
+      }
+      return Response.json({ booking: resolved });
+    }
+
+    if (actor === "owner" && body.status === "confirmed" && prev.advancePaymentRequired && prev.advancePaymentStatus !== "paid") {
+      return Response.json({ error: "Keep this request pending until the requested advance is received by the venue 💳" }, { status: 409 });
+    }
+
+    if (
+      prev.visibility === "competition" &&
+      body.status === "cancelled" &&
+      actor === "player" &&
+      Number(body.actorId ?? 0) !== prev.userId
+    ) {
+      return Response.json({ error: "Only the competition booking player can cancel this request 🔒" }, { status: 403 });
+    }
+    if (
+      prev.visibility === "competition" &&
+      prev.competitionStatus === "accepted" &&
+      (body.status === "confirmed" || body.status === "rejected")
+    ) {
+      const { venue } = await venueOf(prev);
+      if (actor !== "owner" || Number(body.actorId ?? 0) !== venue?.ownerId) {
+        return Response.json({ error: "Only the venue owner can decide this released competition booking 🔒" }, { status: 403 });
+      }
+    }
+
+    // A venue decision must never bypass opposition consent. The only legal
+    // transition out of this state is the authenticated captain action above.
+    if (
+      prev.visibility === "competition" &&
+      prev.competitionStatus === "pending" &&
+      (body.status === "confirmed" || body.status === "rejected")
+    ) {
+      return Response.json(
+        { error: "Waiting for the opposition captain to accept this competition request first 🆚" },
+        { status: 409 }
+      );
+    }
+    if (
+      prev.visibility === "competition" &&
+      prev.competitionStatus === "pending" &&
+      ["paymentStatus", "paymentMethod", "depositStatus", "receiptUrl"].some(
+        (field) => body[field] !== undefined,
+      )
+    ) {
+      return Response.json(
+        { error: "Competition payment and receipts open only after the opposition captain accepts 🆚" },
+        { status: 409 }
+      );
+    }
 
     /*
      * A played game is locked 🔒
@@ -196,6 +497,24 @@ export async function PATCH(
     // A request that only carries a score (competition games) has nothing to
     // set here — and drizzle refuses an empty `set()`, so the write is skipped
     // rather than faked with a no-op column.
+    //
+    // Snapshot the ledger at cancellation time. This is persisted on the
+    // booking, so Owner Studio can explain a cancelled paid booking without
+    // trying to reconstruct a refund decision in JavaScript.
+    const cancellationReceived =
+      (body.status === "cancelled" || body.status === "rejected") && prev.status !== body.status
+        ? await receivedForBooking(prev.id, prev.totalPrice)
+        : 0;
+    const cancellationMoneyPatch =
+      (body.status === "cancelled" || body.status === "rejected") && prev.status !== body.status
+        ? {
+            cancellationMoneyStatus: cancellationReceived > 0 ? "review" : "none",
+            cancellationReceivedAmount: cancellationReceived,
+            cancellationRefundedAmount: 0,
+            cancellationMoneyResolvedAt: null,
+            cancellationMoneyResolvedBy: null,
+          }
+        : {};
     const changes = {
       ...(body.status ? { status: body.status } : {}),
       ...(body.paymentStatus ? { paymentStatus: body.paymentStatus } : {}),
@@ -204,6 +523,12 @@ export async function PATCH(
       ...(body.receiptUrl !== undefined
         ? { receiptUrl: String(body.receiptUrl).slice(0, 2000000) }
         : {}),
+      ...(body.status === "cancelled" &&
+      prev.visibility === "competition" &&
+      prev.competitionStatus === "pending"
+        ? { competitionStatus: "cancelled" }
+        : {}),
+      ...cancellationMoneyPatch,
     };
     const updated = Object.keys(changes).length
       ? await db.update(bookings).set(changes).where(eq(bookings.id, bookingId)).returning()
@@ -283,7 +608,7 @@ export async function PATCH(
           userId: next.userId,
           type: "booking_cancelled",
           title: `🚫 Booking cancelled — ${where}`,
-          message: `Your ${court?.name ?? "court"} booking for ${when} was cancelled by the venue.${hadDeposit ? ` Your ${formatNPR(depAmt)} deposit will be refunded 💸` : ""} No trust lost — not your fault! 💛`,
+          message: `Your ${court?.name ?? "court"} booking for ${when} was cancelled by the venue.${hadDeposit ? ` Your ${formatNPR(depAmt)} deposit will be refunded 💸` : ""}${cancellationReceived > 0 ? ` ${formatNPR(cancellationReceived)} was already received; the venue will record the refund decision in Owner Studio.` : ""} No trust lost — not your fault! 💛`,
           link: "/bookings",
         });
       } else {
@@ -291,20 +616,38 @@ export async function PATCH(
         if (hadDeposit) {
           await db.update(bookings).set({ depositStatus: "forfeited" }).where(eq(bookings.id, bookingId));
         }
-        if (venue?.ownerId) {
+        // A competition request that never reached the owner must stay out of
+        // the owner's notification stream when the booker cancels it. Once the
+        // captain has accepted, normal cancellation notices resume.
+        if (
+          venue?.ownerId &&
+          !(prev.visibility === "competition" && prev.competitionStatus === "pending")
+        ) {
           await sendNotification({
             userId: venue.ownerId,
             type: "booking_cancelled",
             title: `🚫 Booking cancelled — ${next.bookerName || "Player"}`,
-            message: `${court?.name ?? "Court"} on ${when} was cancelled by the player. The slot is free again.${hadDeposit ? ` Non-refundable deposit kept: ${formatNPR(depAmt)} 🛡️` : ""}`,
+            message: `${court?.name ?? "Court"} on ${when} was cancelled by the player. The slot is free again.${hadDeposit ? ` Non-refundable deposit kept: ${formatNPR(depAmt)} 🛡️` : ""}${cancellationReceived > 0 ? ` Received money: ${formatNPR(cancellationReceived)} — review the refund decision in Owner Studio.` : ""}`,
             link: "/admin/bookings",
           });
+        }
+        if (prev.visibility === "competition" && prev.competitionStatus === "pending" && prev.opponentTeamId) {
+          const opponent = (await db.select().from(teams).where(eq(teams.id, prev.opponentTeamId)))[0];
+          if (opponent?.captainId) {
+            await sendNotification({
+              userId: opponent.captainId,
+              type: "info",
+              title: "🚫 Competition request cancelled",
+              message: `${next.bookerName || "The other captain"} cancelled the ${opponent.name} fixture for ${when}. It no longer needs your decision.`,
+              link: "/bookings",
+            });
+          }
         }
         await sendNotification({
           userId: next.userId,
           type: "booking_cancelled",
           title: `🚫 You cancelled — ${where}`,
-          message: `Your ${court?.name ?? "court"} booking for ${when} is cancelled.${hadDeposit ? ` Your ${formatNPR(depAmt)} deposit is forfeited (non-refundable) 😢.` : ""} Heads up: 3+ cancels in a month pauses new bookings, and it lowers your reliability stars ⭐${trust ? ` Trust ${trust.before} → ${trust.after} (−${TRUST_CANCEL_PENALTY}).` : ""} Play on!`,
+          message: `Your ${court?.name ?? "court"} booking for ${when} is cancelled.${hadDeposit ? ` Your ${formatNPR(depAmt)} deposit is forfeited (non-refundable) 😢.` : ""}${cancellationReceived > 0 ? ` ${formatNPR(cancellationReceived)} was received before cancellation; the venue will show whether it was refunded or retained.` : ""} Heads up: 3+ cancels in a month pauses new bookings, and it lowers your reliability stars ⭐${trust ? ` Trust ${trust.before} → ${trust.after} (−${TRUST_CANCEL_PENALTY}).` : ""} Play on!`,
           link: "/bookings",
         });
       }
@@ -343,6 +686,8 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    await ensureCompetitionBookingColumns();
+    await expireOverdueAdvanceRequests();
     const { id } = await params;
     const rows = await db.select().from(bookings).where(eq(bookings.id, Number(id)));
     const prev = rows[0];
@@ -356,14 +701,37 @@ export async function DELETE(
         { status: 409 }
       );
     }
+    const cancellationReceived = await receivedForBooking(prev.id, prev.totalPrice);
     await db
       .update(bookings)
-      .set({ status: "cancelled" })
+      .set({
+        status: "cancelled",
+        cancellationMoneyStatus: cancellationReceived > 0 ? "review" : "none",
+        cancellationReceivedAmount: cancellationReceived,
+        cancellationRefundedAmount: 0,
+        cancellationMoneyResolvedAt: null,
+        cancellationMoneyResolvedBy: null,
+        ...(prev.visibility === "competition" && prev.competitionStatus === "pending"
+          ? { competitionStatus: "cancelled" }
+          : {}),
+      })
       .where(eq(bookings.id, Number(id)));
     await db
       .update(openMatches)
       .set({ status: "cancelled" })
       .where(eq(openMatches.bookingId, Number(id)));
+    if (prev.visibility === "competition" && prev.competitionStatus === "pending" && prev.opponentTeamId) {
+      const opponent = (await db.select().from(teams).where(eq(teams.id, prev.opponentTeamId)))[0];
+      if (opponent?.captainId) {
+        await sendNotification({
+          userId: opponent.captainId,
+          type: "info",
+          title: "🚫 Competition request cancelled",
+          message: `The competition booking for ${prettyDate(prev.date)} at ${formatTime12(prev.startTime)} was cancelled. It no longer needs your decision.`,
+          link: "/bookings",
+        });
+      }
+    }
     return Response.json({ ok: true });
   } catch (e) {
     console.error(`[/api/bookings/[id] DELETE] failed:`, e);
@@ -394,6 +762,28 @@ async function applyCompetitionScore(
       { error: "Only competition games carry a score — this is a regular booking 🙂" },
       { status: 400 }
     );
+
+  // Score corrections follow the same server-authoritative five-minute
+  // settlement window as payment corrections. Before settlement the owner may
+  // record/update the result; once settlement has been locked, changing the
+  // score would also change the competitive record and loser-pays outcome.
+  const scoreWindow = settleWindow(prev.settledAt);
+  if (scoreWindow.settled && !scoreWindow.editable)
+    return Response.json(
+      {
+        error: `This competition score is locked — the ${SETTLE_EDIT_WINDOW_MS / 60000}-minute correction window has closed 🔒`,
+        reason: "score_locked",
+        settledAt: prev.settledAt,
+      },
+      { status: 409 }
+    );
+  if (prev.competitionStatus === "pending")
+    return Response.json(
+      { error: "The opposition captain must accept this competition before a result can be recorded 🆚" },
+      { status: 409 }
+    );
+  if (prev.competitionStatus === "declined" || prev.competitionStatus === "cancelled")
+    return Response.json({ error: "A declined competition request has no result to record." }, { status: 409 });
 
   const { venue } = await venueOf(prev);
   const actorId = Number(body.actorId ?? 0);
@@ -465,11 +855,19 @@ async function applyCompetitionScore(
           status: "played",
         }));
       const rec = recordFor(team.id, history);
+      const paymentOutcome =
+        prev.competitionPaymentPolicy === "loser_pays"
+          ? home === away
+            ? "It was a draw, so the court bill falls back to a fair split."
+            : team.id === (home! < away! ? prev.teamId : prev.opponentTeamId)
+              ? "Your squad is the losing side, so the saved policy assigns the court bill to you."
+              : "Your squad won, so the saved policy assigns the court bill to the opposition."
+          : "The saved policy is a fair split between both squads.";
       await sendNotification({
         userId: team.captainId,
         type: "competition",
         title: `⚽ Result in — ${line}`,
-        message: `${venue.name} recorded the final score. ${team.name} is now ${rec.won}W • ${rec.drawn}D • ${rec.lost}L (${rec.points} pts) in competition games — the record shows on your team profile. Send the host your photos for the album 📸`,
+        message: `${venue.name} recorded the final score. ${team.name} is now ${rec.won}W • ${rec.drawn}D • ${rec.lost}L (${rec.points} pts) in competition games — the record shows on your team profile. ${paymentOutcome} Send the host your photos for the album 📸`,
         link: `/teams/${team.id}`,
       });
     }

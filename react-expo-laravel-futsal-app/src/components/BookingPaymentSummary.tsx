@@ -15,6 +15,12 @@ type Line = {
   voidedAt: string | null;
 };
 
+function paymentMethodLabel(method?: string) {
+  if (method === "Cash at Venue") return "Cash at venue";
+  if (method === "Free Play 🎁") return "Free play";
+  return method || "Payment";
+}
+
 type Summary = {
   totals: {
     courtPrice: number;
@@ -131,14 +137,14 @@ export function BookingPaymentSummary({ bookingId }: { bookingId: number }) {
                     .map((p) => (
                       <li
                         key={p.id}
-                        className="flex items-center justify-between gap-2 text-[11px] font-bold text-stone-500 dark:text-slate-400"
+                        className="flex items-start justify-between gap-2 text-[11px] font-bold leading-relaxed text-stone-500 dark:text-slate-400"
                       >
-                        <span className="min-w-0 truncate">
-                          {p.method}
+                        <span className="min-w-0 flex-1 break-words leading-relaxed">
+                          {paymentMethodLabel(p.method)}
                           {p.reference ? (
-                            <span className="text-stone-400"> • {p.reference.slice(0, 14)}</span>
+                            <span className="text-stone-400 dark:text-slate-500"> • {p.reference.slice(0, 14)}</span>
                           ) : p.note ? (
-                            <span className="text-stone-400"> — {p.note}</span>
+                            <span className="text-stone-400 dark:text-slate-500"> — {p.note}</span>
                           ) : (
                             ""
                           )}
@@ -158,9 +164,9 @@ export function BookingPaymentSummary({ bookingId }: { bookingId: number }) {
                     .map((x) => (
                       <li
                         key={x.id}
-                        className="flex items-center justify-between gap-2 text-[11px] font-bold text-stone-500 dark:text-slate-400"
+                        className="flex items-start justify-between gap-2 text-[11px] font-bold leading-relaxed text-stone-500 dark:text-slate-400"
                       >
-                        <span className="min-w-0 truncate">{x.label}</span>
+                        <span className="min-w-0 flex-1 break-words leading-relaxed">{x.label}</span>
                         <span className="shrink-0 font-black text-stone-700 dark:text-slate-200">
                           {formatNPR(x.amount)}
                         </span>

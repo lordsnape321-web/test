@@ -69,6 +69,8 @@ export function LeagueBrowser() {
   }, [user]);
 
   useEffect(() => {
+    // The request resolves asynchronously and owns its loading state.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void load();
   }, [load]);
 
@@ -145,9 +147,9 @@ export function LeagueBrowser() {
         </p>
       )}
 
-      {/* Controls — stack on a phone, one row from `sm` up */}
-      <div className="mt-5 flex flex-col gap-2 lg:flex-row lg:flex-wrap lg:items-center">
-        <div className="relative w-full lg:min-w-[15rem] lg:flex-1">
+      {/* Controls: search is a task, filters are a single intentional control. */}
+      <div className="mt-5 grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
+        <div className="relative min-w-0">
           <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400" />
           <input
             value={draft}
@@ -160,44 +162,68 @@ export function LeagueBrowser() {
             }}
             placeholder="Search leagues, grounds or hosts…"
             aria-label="Search leagues"
-            className="w-full rounded-2xl border border-[#F0E3CC] bg-white py-3 pl-10 pr-3 text-sm font-semibold text-stone-900 placeholder:text-stone-400 focus:border-emerald-500 focus:outline-none dark:border-white/10 dark:bg-slate-900 dark:text-slate-100"
+            className="w-full rounded-2xl border border-[#F0E3CC] bg-white py-3.5 pl-10 pr-3 text-sm font-semibold text-stone-900 placeholder:text-stone-400 focus:border-emerald-500 focus:outline-none dark:border-white/10 dark:bg-slate-900 dark:text-slate-100"
           />
         </div>
         <button
           onClick={runSearch}
-          className="w-full rounded-2xl bg-stone-900 px-5 py-3 text-sm font-black text-white transition hover:bg-stone-800 dark:bg-white dark:text-slate-900 lg:w-auto"
+          className="rounded-2xl bg-stone-900 px-6 py-3.5 text-sm font-black text-white transition hover:bg-stone-800 dark:bg-white dark:text-slate-900"
         >
           Search
         </button>
-        {/* The four filters used to be a rigid row that overflowed a 360px screen;
-            they scroll sideways now instead of pushing the layout wide. */}
-        <div className="no-scrollbar -mx-1 flex items-center gap-1 overflow-x-auto rounded-2xl border border-[#F0E3CC] bg-white p-1 px-1 dark:border-white/10 dark:bg-slate-900 lg:mx-0">
-          <Filter className="ml-1.5 h-3.5 w-3.5 shrink-0 text-stone-400" />
-          {FILTERS.map((f) => (
-            <button
-              key={f.id}
-              onClick={() => setFilter(f.id)}
-              aria-pressed={filter === f.id}
-              className={`shrink-0 rounded-xl px-3 py-2 text-[11px] font-black whitespace-nowrap transition ${
-                filter === f.id
-                  ? "bg-emerald-600 text-white"
-                  : "text-stone-600 hover:bg-stone-100 dark:text-slate-300 dark:hover:bg-white/5"
-              }`}
-            >
-              {f.label}
-            </button>
-          ))}
+      </div>
+      <div className="mt-3 rounded-3xl border border-[#F0E3CC] bg-white p-2.5 shadow-sm dark:border-white/10 dark:bg-slate-900">
+        <div className="flex items-center justify-between gap-3 px-1.5 pb-2.5">
+          <div className="flex min-w-0 items-center gap-2">
+            <span className="grid h-8 w-8 shrink-0 place-items-center rounded-xl bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300">
+              <Filter className="h-4 w-4" />
+            </span>
+            <div className="min-w-0">
+              <p className="text-xs font-black text-stone-800 dark:text-slate-100">Browse leagues</p>
+              <p className="text-[11px] font-semibold text-stone-400 dark:text-slate-500">Choose one view — your place is remembered.</p>
+            </div>
+          </div>
+          <span className="hidden shrink-0 text-[10px] font-black uppercase tracking-[0.12em] text-stone-400 sm:block dark:text-slate-500">{shown.length} shown</span>
+        </div>
+        <div className="no-scrollbar flex snap-x gap-2 overflow-x-auto pb-1" role="group" aria-label="Filter leagues">
+          {FILTERS.map((f) => {
+            const active = filter === f.id;
+            const hint = f.id === "all" ? "Every league" : f.id === "open" ? "Spaces available" : f.id === "mine" ? "Squads you joined" : "Your hosted boards";
+            return (
+              <button
+                key={f.id}
+                onClick={() => setFilter(f.id)}
+                aria-pressed={active}
+                className={`flex min-h-[3.75rem] w-max shrink-0 snap-start items-center gap-2 rounded-2xl border px-3 py-2 text-left transition ${
+                  active
+                    ? "border-emerald-600 bg-emerald-600 text-white shadow-sm"
+                    : "border-stone-100 bg-stone-50/80 text-stone-700 hover:border-emerald-200 hover:bg-emerald-50 dark:border-white/5 dark:bg-white/[0.03] dark:text-slate-200 dark:hover:border-emerald-500/30 dark:hover:bg-emerald-500/10"
+                }`}
+              >
+                <span className={`grid h-7 w-7 shrink-0 place-items-center rounded-lg text-xs font-black ${active ? "bg-white/20 text-white" : "bg-white text-emerald-700 dark:bg-white/10 dark:text-emerald-300"}`}>
+                  {active ? "✓" : "•"}
+                </span>
+                <span className="min-w-0">
+                  <span className="block whitespace-nowrap text-[11px] font-black leading-tight sm:text-xs">{f.label}</span>
+                  <span className={`mt-0.5 block whitespace-nowrap text-[10px] font-semibold leading-tight ${active ? "text-emerald-50" : "text-stone-400 dark:text-slate-500"}`}>{hint}</span>
+                </span>
+              </button>
+            );
+          })}
         </div>
       </div>
 
       {/* Hosting blurb for owners */}
       {isOwner && (
-        <p className="mt-3 flex flex-wrap items-center gap-2 rounded-2xl border border-orange-200 bg-orange-50 px-4 py-3 text-xs font-bold text-orange-700 dark:border-orange-500/25 dark:bg-orange-500/10 dark:text-orange-300">
-          <Crown className="h-3.5 w-3.5 shrink-0" /> Running a venue? You can host leagues at your own
-          ground straight from the Owner Studio — same tools, same table.
-          <Link href="/admin/leagues" className="underline">
-            Open Owner Studio → Leagues
-          </Link>
+        <p className="mt-3 flex flex-wrap items-start gap-2 rounded-2xl border border-orange-200 bg-orange-50 px-4 py-3 text-xs font-bold leading-relaxed text-orange-700 dark:border-orange-500/25 dark:bg-orange-500/10 dark:text-orange-300">
+          <Crown className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          <span className="min-w-0 flex-1">
+            Running a venue? You can host leagues at your own ground straight from the Owner Studio —
+            same tools, same table. {" "}
+            <Link href="/admin/leagues" className="underline">
+              Open Owner Studio → Leagues
+            </Link>
+          </span>
         </p>
       )}
 

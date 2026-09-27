@@ -30,7 +30,7 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { Picker } from "@react-native-picker/picker";
+import { Picker } from "@/components/ThemedPicker";
 import * as Clipboard from "expo-clipboard";
 import {
   fetchPlayerDirectory,

@@ -1,3 +1,4 @@
+import { LinearGradient } from "expo-linear-gradient";
 import { usePathname, useRouter } from "expo-router";
 import {
   Bell,
@@ -23,6 +24,7 @@ import { NotificationBell } from "@/components/NotificationBell";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { useAuth } from "@/context/AuthContext";
 import { useTheme } from "@/context/ThemeContext";
+import { useBreakpoints } from "@/lib/responsive";
 import { APP_FONT_FAMILY, colors as brand, fontSize, radius, space } from "@/theme";
 
 /*
@@ -48,11 +50,17 @@ export function Navbar() {
   const router = useRouter();
   const { user, isOwner, signOut } = useAuth();
   const { colors: c, isDark } = useTheme();
+  const { sm, lg } = useBreakpoints();
   const insets = useSafeAreaInsets();
   const [open, setOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
 
-  const LINKS = !user ? PUBLIC_LINKS : isOwner ? PUBLIC_LINKS : PLAYER_LINKS;
+  // Owner Studio owns its entire authenticated navigation tree. Returning no
+  // player navbar here is a final guard for deep-link/back-stack transitions;
+  // the root shell also keeps owner accounts out of player routes.
+  if (isOwner) return null;
+
+  const LINKS = user ? PLAYER_LINKS : PUBLIC_LINKS;
 
   const isLight = !isDark;
   // sticky top-0 border-b border-[#F0E3CC] bg-[#FFFDF7]/90 | dark slate-950/90
@@ -70,7 +78,7 @@ export function Navbar() {
         },
       ]}
     >
-      <View style={styles.inner}>
+      <View style={[styles.inner, { paddingHorizontal: sm ? space[6] : space[4] }]}>
         {/* Brand */}
         <Pressable
           onPress={() => router.push("/")}
@@ -78,24 +86,66 @@ export function Navbar() {
           accessibilityRole="button"
           accessibilityLabel="FutsalNepal home"
         >
-          <View style={styles.brandIcon}>
+          <LinearGradient
+            colors={[brand.emerald500, brand.green700]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.brandIcon}
+          >
             <Trophy size={20} color="#FFFFFF" strokeWidth={2.5} />
-          </View>
+          </LinearGradient>
           <View style={styles.brandText}>
-            <Text style={[styles.wordmark, { color: c.text }]} numberOfLines={1}>
+            <Text style={[styles.wordmark, { color: c.text, fontSize: sm ? 17 : 15 }]} numberOfLines={1}>
               Futsal
               <Text style={{ color: isDark ? brand.emerald400 : brand.emerald600 }}>Nepal</Text>
             </Text>
-            <Text style={[styles.tagline, { color: c.textFaint }]}>
-              Friends • Fun • Football
-            </Text>
+            {sm ? (
+              <Text style={[styles.tagline, { color: c.textFaint }]}>Friends • Fun • Football</Text>
+            ) : null}
           </View>
         </Pressable>
 
-        <View style={styles.actions}>
+        {lg ? (
+          <View style={styles.desktopNav}>
+            {LINKS.map((link) => {
+              const active = pathname === link.href || pathname.startsWith(link.href + "/");
+              const Icon = link.icon;
+              return (
+                <Pressable
+                  key={link.href}
+                  onPress={() => router.push(link.href as never)}
+                  accessibilityRole="link"
+                  style={[
+                    styles.desktopLink,
+                    active
+                      ? { backgroundColor: brand.emerald600, borderRadius: radius.xl }
+                      : { backgroundColor: "transparent" },
+                  ]}
+                >
+                  <Icon size={16} color={active ? "#FFFFFF" : isLight ? brand.stone600 : brand.slate300} />
+                  <Text style={[styles.desktopLinkText, { color: active ? "#FFFFFF" : isLight ? brand.stone600 : brand.slate300 }]}>
+                    {link.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+            {user && isOwner ? (
+              <Pressable
+                onPress={() => router.push("/admin")}
+                accessibilityRole="link"
+                style={[styles.desktopLink, styles.ownerLink]}
+              >
+                <LayoutDashboard size={16} color="#FFFFFF" />
+                <Text style={[styles.desktopLinkText, { color: "#FFFFFF" }]}>Owner Studio</Text>
+              </Pressable>
+            ) : null}
+          </View>
+        ) : null}
+
+        <View style={[styles.actions, { gap: sm ? space[2] : space[1.5] }]}>
           <ThemeToggle />
           {user ? <NotificationBell /> : null}
-          {user ? (
+          {user && sm ? (
             <Pressable
               onPress={() => router.push("/(app)/settings")}
               style={[
@@ -122,7 +172,7 @@ export function Navbar() {
             </Pressable>
           ) : null}
 
-          {!user ? (
+          {!user && sm ? (
             <View style={styles.authRow}>
               <Pressable
                 onPress={() => router.push("/login")}
@@ -144,7 +194,7 @@ export function Navbar() {
                 <Text style={styles.joinText}>Join free</Text>
               </Pressable>
             </View>
-          ) : (
+          ) : user && sm ? (
             <View style={styles.profileWrap}>
               <Pressable
                 onPress={() => setProfileOpen((v) => !v)}
@@ -262,8 +312,10 @@ export function Navbar() {
                 </>
               ) : null}
             </View>
-          )}
+          ) : null}
 
+          {!lg ? (
+            <>
           {/* Hamburger (matches the web mobile menu; the bottom rail is always there too) */}
           <Pressable
             onPress={() => setOpen((v) => !v)}
@@ -282,10 +334,12 @@ export function Navbar() {
               <Menu size={20} color={isLight ? brand.stone700 : brand.slate200} />
             )}
           </Pressable>
+            </>
+          ) : null}
         </View>
       </View>
 
-      {open ? (
+      {open && !lg ? (
         <View
           style={[
             styles.mobileMenu,
@@ -309,7 +363,7 @@ export function Navbar() {
                   style={[
                     styles.mobileLink,
                     active
-                      ? { backgroundColor: brand.emerald600 }
+                      ? { backgroundColor: brand.emerald600, borderRadius: radius.xl }
                       : { backgroundColor: isLight ? brand.stone100 : "rgba(255,255,255,0.05)" },
                   ]}
                 >
@@ -466,6 +520,10 @@ const styles = StyleSheet.create({
     alignSelf: "center",
   },
   brand: { flexDirection: "row", alignItems: "center", gap: 10, minWidth: 0 },
+  desktopNav: { flexDirection: "row", alignItems: "center", gap: space[1], flex: 1, justifyContent: "center" },
+  desktopLink: { flexDirection: "row", alignItems: "center", gap: 6, borderRadius: radius.xl, paddingHorizontal: space[4], paddingVertical: space[2] },
+  desktopLinkText: { fontSize: fontSize.base, fontWeight: "600" },
+  ownerLink: { marginLeft: space[1], backgroundColor: brand.orange500 },
   brandIcon: {
     width: 40,
     height: 40,

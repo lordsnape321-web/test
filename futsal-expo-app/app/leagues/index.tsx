@@ -1,4 +1,8 @@
 import { Redirect } from "expo-router";
+import React from "react";
+import { ActivityIndicator, View } from "react-native";
+import { useAuth } from "@/context/AuthContext";
+import { useTheme } from "@/context/ThemeContext";
 
 /**
  * Leagues moved 🏆
@@ -17,5 +21,17 @@ import { Redirect } from "expo-router";
  * the matches screen seeds its state from.)
  */
 export default function LeaguesIndex() {
+  const { colors: c, isDark } = useTheme();
+  const { user, ready } = useAuth();
+
+  if (!ready) {
+    return (
+      <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: isDark ? "#020617" : "#F1F5F9" }}>
+        <ActivityIndicator size="large" color={c.textFaint} />
+      </View>
+    );
+  }
+
+  if (user?.role === "owner") return <Redirect href="/admin/leagues" />;
   return <Redirect href={{ pathname: "/(app)/matches", params: { tab: "leagues" } }} />;
 }

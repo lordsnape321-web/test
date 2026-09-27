@@ -1,4 +1,4 @@
-import { db } from "@/db";
+import { db, ensureCompetitionBookingColumns } from "@/db";
 import { courts, venues, bookings } from "@/db/schema";
 import { validateCourtName, validateMoney, firstError } from "@/lib/validation";
 import { eq } from "drizzle-orm";
@@ -12,6 +12,7 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    await ensureCompetitionBookingColumns();
     const { id } = await params;
     if (!Number.isInteger(Number(id)) || Number(id) <= 0)
       return Response.json({ error: "Invalid court ⚽" }, { status: 400 });
@@ -59,6 +60,7 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    await ensureCompetitionBookingColumns();
     const { id } = await params;
     const courtId = Number(id);
     if (!Number.isInteger(courtId) || courtId <= 0)

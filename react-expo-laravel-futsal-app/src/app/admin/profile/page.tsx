@@ -1,4 +1,5 @@
 "use client";
+import { ThemedSelect } from "@/components/ThemedSelect";
 
 import { useEffect, useState } from "react";
 import { User as UserIcon, Phone, Lock, Check, Loader2, Eye, EyeOff, Crown, MapPin } from "lucide-react";
@@ -169,17 +170,17 @@ export default function OwnerProfilePage() {
               <span className="mb-1.5 flex items-center gap-1.5 text-xs font-black uppercase tracking-wider text-slate-400 dark:text-slate-500">
                 <MapPin className="h-3.5 w-3.5" /> Home city 🏠
               </span>
-              <select
+              <ThemedSelect
                 value={defaultCity}
                 onChange={(e) => setDefaultCity(e.target.value)}
-                className="w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm font-semibold focus:border-slate-900 focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:focus:border-white [&>option]:bg-white [&>option]:text-slate-900 dark:[&>option]:bg-slate-900 dark:[&>option]:text-slate-100"
+                className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm font-semibold text-slate-900 focus:border-slate-900 focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:focus:border-white [&>option]:bg-white [&>option]:text-slate-900 dark:[&>option]:bg-slate-900 dark:[&>option]:text-slate-100"
               >
                 {CITY_OPTIONS.map((c) => (
                   <option key={c} value={c}>
                     {c === "All Cities" ? "No default — show all cities" : c}
                   </option>
                 ))}
-              </select>
+              </ThemedSelect>
             </label>
             <div>
               <span className="mb-1.5 block text-xs font-black uppercase tracking-wider text-slate-400 dark:text-slate-500">Avatar colour (backup if no photo)</span>

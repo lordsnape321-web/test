@@ -90,7 +90,7 @@ export function Navbar() {
               <Link
                 key={l.href}
                 href={l.href}
-                className={`flex items-center gap-1.5 rounded-full px-4 py-2 text-sm font-semibold transition ${
+                className={`flex items-center gap-1.5 rounded-xl px-4 py-2 text-sm font-semibold transition ${
                   active
                     ? "bg-emerald-600 text-white shadow-md"
                     : "text-stone-600 hover:bg-orange-100/70 hover:text-stone-900 dark:text-slate-300 dark:hover:bg-white/5 dark:hover:text-white"
@@ -104,7 +104,7 @@ export function Navbar() {
           {user && isOwner && (
             <Link
               href="/admin"
-              className="ml-1 flex items-center gap-1.5 rounded-full bg-orange-500 px-4 py-2 text-sm font-black text-white transition hover:bg-orange-600"
+              className="ml-1 flex items-center gap-1.5 rounded-xl bg-orange-500 px-4 py-2 text-sm font-black text-white transition hover:bg-orange-600"
             >
               <LayoutDashboard className="h-4 w-4" />
               Owner Studio

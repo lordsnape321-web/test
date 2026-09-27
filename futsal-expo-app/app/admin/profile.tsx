@@ -16,7 +16,7 @@ import { useTheme } from "@/context/ThemeContext";
 import { CITY_OPTIONS } from "@/lib/futsal";
 import { passwordStrength, validateName, validatePassword, validatePhone, firstError } from "@/lib/validation";
 import { colors, fontSize, radius, space } from "@/theme";
-import { Picker } from "@react-native-picker/picker";
+import { Picker } from "@/components/ThemedPicker";
 
 const COLORS = [
   "#16a34a",

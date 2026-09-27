@@ -1,4 +1,4 @@
-import { db } from "@/db";
+import { db, ensureCompetitionBookingColumns } from "@/db";
 import { users, bookings } from "@/db/schema";
 import { safeUser } from "@/lib/auth";
 import { playerRating } from "@/lib/loyalty";
@@ -16,6 +16,7 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    await ensureCompetitionBookingColumns();
     const { id } = await params;
     const userId = Number(id);
     if (!Number.isInteger(userId) || userId <= 0)
@@ -41,6 +42,7 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    await ensureCompetitionBookingColumns();
     const { id } = await params;
     const userId = Number(id);
     if (!Number.isInteger(userId) || userId <= 0)

@@ -50,10 +50,12 @@ export function LeagueSquadPanel({
   league,
   viewerId,
   onChanged,
+  onOpenTeams,
 }: {
   league: LeagueDetail;
   viewerId: number;
   onChanged: () => void;
+  onOpenTeams?: () => void;
 }) {
   const { colors: c, isDark } = useTheme();
   const router = useRouter();
@@ -181,7 +183,7 @@ export function LeagueSquadPanel({
         <Text style={[styles.noSquads, { color: c.textMuted }]}>
           You need to captain a squad to enter a league.{" "}
           <Text
-            onPress={() => router.push("/teams")}
+            onPress={() => (onOpenTeams ? onOpenTeams() : router.push("/teams"))}
             style={[styles.noSquadsLink, { color: isDark ? "#6EE7B7" : "#047857" }]}
           >
             Start or find a team

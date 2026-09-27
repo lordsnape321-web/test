@@ -21,7 +21,7 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { Picker } from "@react-native-picker/picker";
+import { Picker } from "@/components/ThemedPicker";
 import { createLeague, fetchVenues, updateLeague, type LeagueFormPayload } from "@/api";
 import { DateField } from "@/components/DateTimeFields";
 import { ImagePicker } from "@/components/ImagePicker";

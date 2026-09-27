@@ -1,4 +1,4 @@
-import { db } from "@/db";
+import { db, ensureCompetitionBookingColumns } from "@/db";
 import { venues, courts, bookings } from "@/db/schema";
 import { validateVenueName, validateAddress, validatePhone, validateDescription, validateHoursRange, validatePaymentMethods, validateDepositPercent, validateMoney, firstError } from "@/lib/validation";
 import { eq } from "drizzle-orm";
@@ -12,6 +12,7 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    await ensureCompetitionBookingColumns();
     const { id } = await params;
     const venueId = Number(id);
     if (!Number.isInteger(venueId) || venueId <= 0)
@@ -41,6 +42,7 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    await ensureCompetitionBookingColumns();
     const { id } = await params;
     const venueId = Number(id);
     if (!Number.isInteger(venueId) || venueId <= 0)
@@ -135,6 +137,7 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    await ensureCompetitionBookingColumns();
     const { id } = await params;
     const venueId = Number(id);
     if (!Number.isInteger(venueId) || venueId <= 0)

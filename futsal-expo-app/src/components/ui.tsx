@@ -28,6 +28,7 @@ export function Button({
   variant = "primary",
   loading = false,
   disabled = false,
+  icon,
   style,
 }: {
   label: string;
@@ -35,6 +36,7 @@ export function Button({
   variant?: "primary" | "secondary" | "ghost" | "danger";
   loading?: boolean;
   disabled?: boolean;
+  icon?: React.ReactNode;
   style?: StyleProp<ViewStyle>;
 }) {
   const { colors } = useTheme();
@@ -76,7 +78,10 @@ export function Button({
       {loading ? (
         <ActivityIndicator size="small" color={fg} />
       ) : (
-        <Text style={[styles.buttonLabel, { color: fg }]}>{label}</Text>
+        <View style={styles.buttonContent}>
+          {icon}
+          <Text style={[styles.buttonLabel, { color: fg }]}>{label}</Text>
+        </View>
       )}
     </Pressable>
   );
@@ -126,7 +131,7 @@ export function Field({
         style={[
           styles.input,
           {
-            backgroundColor: colors.surface,
+            backgroundColor: colors.inset,
             borderColor: error ? "#EF4444" : colors.border,
             color: colors.text,
             minHeight: multiline ? 88 : MIN_TAP_TARGET,
@@ -275,8 +280,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: space["4"],
     paddingVertical: space["3"],
   },
+  buttonContent: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: space[2] },
   buttonLabel: { fontSize: fontSize.base, fontWeight: "800" },
-  field: { marginBottom: space["4"] },
+  field: { marginBottom: 0 },
   label: {
     fontSize: fontSize.sm,
     marginBottom: space["1"],
@@ -286,7 +292,7 @@ const styles = StyleSheet.create({
   },
   input: {
     borderWidth: 1,
-    borderRadius: radius.xl,
+    borderRadius: radius["2xl"],
     paddingHorizontal: space["3.5"],
     paddingVertical: space["2.5"],
     fontSize: fontSize.lg,

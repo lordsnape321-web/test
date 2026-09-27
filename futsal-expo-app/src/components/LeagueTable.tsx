@@ -23,10 +23,13 @@ export function LeagueTable({
   standings,
   highlightTeamIds = [],
   emptyHint = "The table fills up as results come in.",
+  onTeamPress,
 }: {
   standings: StandingRow[];
   highlightTeamIds?: number[];
   emptyHint?: string;
+  /** Scoped shells can keep squad navigation inside their own route tree. */
+  onTeamPress?: (teamId: number) => void;
 }) {
   const { colors: c, isDark } = useTheme();
   const router = useRouter();
@@ -86,7 +89,9 @@ export function LeagueTable({
                 </View>
                 <View style={[styles.colSquad, styles.squadCell]}>
                   <Pressable
-                    onPress={() => router.push(`/teams/${row.teamId}`)}
+                    onPress={() =>
+                      onTeamPress ? onTeamPress(row.teamId) : router.push(`/teams/${row.teamId}`)
+                    }
                     accessibilityRole="button"
                     style={styles.squadPress}
                   >

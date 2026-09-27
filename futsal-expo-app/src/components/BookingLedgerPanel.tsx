@@ -24,7 +24,7 @@ import { apiFetch } from "@/lib/api";
 import { formatWindowLeft } from "@/lib/booking-ledger";
 import { formatNPR } from "@/lib/futsal";
 import { fontSize, radius, space } from "@/theme";
-import { Picker } from "@react-native-picker/picker";
+import { Picker } from "@/components/ThemedPicker";
 
 type ExtraLine = {
   id: number;

@@ -8,7 +8,7 @@ import {
   Trash2,
   X,
 } from "lucide-react-native";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Image,
@@ -21,7 +21,6 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { Picker } from "@react-native-picker/picker";
 import { leagueMediaAction } from "@/api";
 import { MAX_IMAGE_BYTES } from "@/components/ImagePicker";
 import { useTheme } from "@/context/ThemeContext";
@@ -39,15 +38,18 @@ import { fontSize, radius, space } from "@/theme";
  * already keep.
  *
  * Who can *see* it is decided on the server, not here: the host plus the squads
- * in the league for a league-wide photo, and only the two squads that played a
- * fixture for that fixture's photos. The lock line under each photo says which
- * of the two it is, so nobody has to guess why a teammate can't see a picture.
+ * in the league for a league-wide photo, one selected squad when the additive
+ * teamId media capability is available, and only the two squads that played a
+ * fixture for fixture photos. Older servers keep the league/match contract; a
+ * team-only upload is rejected and removed rather than silently becoming public.
  *
  * Platform deltas: the web's file input becomes expo-image-picker (data URL
  * output identical to FileReader); "Download all" (a browser .zip via DOM
  * blob/anchor) has no RN equivalent without new native modules, so it is not
  * ported — previews and external links (Linking.openURL) are.
  */
+type MediaScope = "league" | `team:${number}` | `match:${number}`;
+
 export function LeagueAlbum({
   league,
   hostId,
@@ -70,12 +72,23 @@ export function LeagueAlbum({
   const [fileUrl, setFileUrl] = useState("");
   const [picking, setPicking] = useState(false);
   const [caption, setCaption] = useState("");
-  const [matchId, setMatchId] = useState<string>(focusMatchId ? String(focusMatchId) : "");
+  const [scope, setScope] = useState<MediaScope>(
+    focusMatchId ? `match:${focusMatchId}` : "league",
+  );
   const [preview, setPreview] = useState<LeagueMediaRow | null>(null);
+
+  useEffect(() => {
+    if (focusMatchId) setScope(`match:${focusMatchId}`);
+  }, [focusMatchId]);
 
   const photos = league.media.filter((m) => m.kind === "file");
   const links = league.media.filter((m) => m.kind === "link");
   const playedMatches = league.matches.filter((m) => m.status === "played");
+  const selectedTeamId = scope.startsWith("team:") ? Number(scope.slice(5)) : null;
+  const selectedMatchId = scope.startsWith("match:") ? Number(scope.slice(6)) : null;
+  const selectedTeam = selectedTeamId
+    ? league.teams.find((team) => team.teamId === selectedTeamId)
+    : null;
 
   async function pickFile() {
     setErr("");
@@ -115,6 +128,33 @@ export function LeagueAlbum({
     setErr("");
     try {
       const data = await leagueMediaAction(league.id, { userId: hostId, ...body });
+      const requestedTeamId = Number(body.teamId ?? 0) || null;
+      const savedTeamId = Number(data.media?.teamId ?? 0) || null;
+
+      // The reference API predates squad-scoped media and ignores unknown JSON
+      // keys. Never tell a host that a team-only photo worked when that would
+      // actually have made a league-wide row: remove the just-created row and
+      // explain the compatibility boundary instead.
+      if (requestedTeamId && savedTeamId !== requestedTeamId) {
+        let cleanedUp = Boolean(data.media?.id);
+        if (data.media?.id) {
+          try {
+            await leagueMediaAction(league.id, {
+              userId: hostId,
+              action: "delete",
+              mediaId: data.media.id,
+            });
+          } catch {
+            cleanedUp = false;
+          }
+        }
+        throw new Error(
+          cleanedUp
+            ? "This server does not support squad-only photo sharing yet. Nothing was added; choose All league or a fixture instead."
+            : "This server did not acknowledge squad-only photo sharing, and cleanup needs attention. Please check the album before trying again.",
+        );
+      }
+
       setMsg(String(data.message ?? "Added 📸"));
       setLinkUrl("");
       setFileUrl("");
@@ -148,7 +188,11 @@ export function LeagueAlbum({
         <View style={styles.lockLine}>
           <Lock size={10} color={c.textFaint} />
           <Text style={[styles.lockText, { color: c.textFaint }]}>
-            Host + the squads involved only
+            {selectedTeam
+              ? `Host + ${selectedTeam.name} only`
+              : selectedMatchId
+                ? "Host + both played squads"
+                : "Host + every approved squad"}
           </Text>
         </View>
       </View>
@@ -215,17 +259,85 @@ export function LeagueAlbum({
                 </Text>
               </Pressable>
             )}
-            <View style={[styles.pickerBox, { backgroundColor: c.inset, borderColor: c.border }]}>
-              <Picker selectedValue={matchId} onValueChange={(v) => setMatchId(String(v))} style={{ color: c.text }}>
-                <Picker.Item label="Whole league (every squad in it)" value="" />
-                {playedMatches.map((m) => (
-                  <Picker.Item
-                    key={m.id}
-                    label={`${m.round}: ${m.homeTeamName} ${m.homeScore}–${m.awayScore} ${m.awayTeamName}`}
-                    value={String(m.id)}
-                  />
-                ))}
-              </Picker>
+            <View style={styles.scopeSection}>
+              <Text style={[styles.scopeLabel, { color: c.text }]}>Who should see this photo?</Text>
+              <Text style={[styles.scopeSub, { color: c.textMuted }]}>Choose one audience before adding it.</Text>
+              <View style={styles.scopeOptions}>
+                <Pressable
+                  onPress={() => setScope("league")}
+                  accessibilityRole="radio"
+                  accessibilityState={{ selected: scope === "league" }}
+                  style={[
+                    styles.scopeOption,
+                    scope === "league"
+                      ? { backgroundColor: isDark ? "rgba(16,185,129,0.18)" : "#ECFDF5", borderColor: "#10B981" }
+                      : { backgroundColor: c.inset, borderColor: c.border },
+                  ]}
+                >
+                  <Lock size={14} color={scope === "league" ? (isDark ? "#A7F3D0" : "#047857") : c.textMuted} />
+                  <View style={styles.scopeOptionCopy}>
+                    <Text style={[styles.scopeOptionTitle, { color: scope === "league" ? (isDark ? "#A7F3D0" : "#047857") : c.text }]}>All league</Text>
+                    <Text style={[styles.scopeOptionMeta, { color: c.textMuted }]}>Every approved squad</Text>
+                  </View>
+                </Pressable>
+
+                {league.teams.map((team) => {
+                  const value = `team:${team.teamId}` as MediaScope;
+                  const selected = scope === value;
+                  return (
+                    <Pressable
+                      key={value}
+                      onPress={() => setScope(value)}
+                      accessibilityRole="radio"
+                      accessibilityState={{ selected }}
+                      style={[
+                        styles.scopeOption,
+                        selected
+                          ? { backgroundColor: isDark ? "rgba(16,185,129,0.18)" : "#ECFDF5", borderColor: "#10B981" }
+                          : { backgroundColor: c.inset, borderColor: c.border },
+                      ]}
+                    >
+                      <Lock size={14} color={selected ? (isDark ? "#A7F3D0" : "#047857") : c.textMuted} />
+                      <View style={styles.scopeOptionCopy}>
+                        <Text style={[styles.scopeOptionTitle, { color: selected ? (isDark ? "#A7F3D0" : "#047857") : c.text }]} numberOfLines={1}>Only {team.name}</Text>
+                        <Text style={[styles.scopeOptionMeta, { color: c.textMuted }]}>Selected squad</Text>
+                      </View>
+                    </Pressable>
+                  );
+                })}
+
+                {playedMatches.map((m) => {
+                  const value = `match:${m.id}` as MediaScope;
+                  const selected = scope === value;
+                  return (
+                    <Pressable
+                      key={value}
+                      onPress={() => setScope(value)}
+                      accessibilityRole="radio"
+                      accessibilityState={{ selected }}
+                      style={[
+                        styles.scopeOption,
+                        selected
+                          ? { backgroundColor: isDark ? "rgba(99,102,241,0.22)" : "#EEF2FF", borderColor: "#818CF8" }
+                          : { backgroundColor: c.inset, borderColor: c.border },
+                      ]}
+                    >
+                      <Camera size={14} color={selected ? (isDark ? "#C7D2FE" : "#4338CA") : c.textMuted} />
+                      <View style={styles.scopeOptionCopy}>
+                        <Text style={[styles.scopeOptionTitle, { color: selected ? (isDark ? "#C7D2FE" : "#4338CA") : c.text }]} numberOfLines={2}>{m.round}: {m.homeTeamName} vs {m.awayTeamName}</Text>
+                        <Text style={[styles.scopeOptionMeta, { color: c.textMuted }]}>Both fixture squads</Text>
+                      </View>
+                    </Pressable>
+                  );
+                })}
+              </View>
+              <Text style={[styles.scopeHint, { color: c.textFaint }]}>
+                {selectedTeam
+                  ? `Only ${selectedTeam.name} should see this photo. This requires the server's squad-audience media capability.`
+                  : selectedMatchId
+                    ? "Only the two squads in this played fixture can see it."
+                    : "Every approved squad in the league can see it."}
+              </Text>
             </View>
             <TextInput
               value={caption}
@@ -248,7 +360,14 @@ export function LeagueAlbum({
                   return;
                 }
                 void post(
-                  { action: "add", kind: tab, url, caption, matchId: matchId ? Number(matchId) : null },
+                  {
+                    action: "add",
+                    kind: tab,
+                    url,
+                    caption,
+                    matchId: selectedMatchId,
+                    teamId: selectedTeamId,
+                  },
                   "add",
                 );
               }}
@@ -458,7 +577,26 @@ const styles = StyleSheet.create({
     paddingVertical: 11,
   },
   pickFileText: { fontSize: fontSize.sm, fontWeight: "900" },
-  pickerBox: { borderRadius: radius.lg, borderWidth: 1, overflow: "hidden", justifyContent: "center" },
+  scopeSection: { gap: 5 },
+  scopeLabel: { fontSize: fontSize.sm, fontWeight: "900" },
+  scopeSub: { fontSize: fontSize["2xs"], fontWeight: "700" },
+  scopeOptions: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  scopeOption: {
+    flexGrow: 1,
+    flexBasis: 180,
+    minHeight: 58,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 9,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+  },
+  scopeOptionCopy: { flex: 1, gap: 2 },
+  scopeOptionTitle: { fontSize: 12, fontWeight: "900" },
+  scopeOptionMeta: { fontSize: 10, fontWeight: "700" },
+  scopeHint: { fontSize: fontSize["2xs"], fontWeight: "700", lineHeight: 15, marginTop: 2 },
   addBtn: {
     flexDirection: "row",
     alignItems: "center",

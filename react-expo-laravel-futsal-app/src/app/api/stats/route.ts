@@ -1,10 +1,11 @@
-import { db } from "@/db";
+import { db, ensureCompetitionBookingColumns } from "@/db";
 import { venues, courts, bookings, users, openMatches, teams } from "@/db/schema";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
+    await ensureCompetitionBookingColumns();
     const [v, c, b, u, m, t] = await Promise.all([
       db.select().from(venues),
       db.select().from(courts),

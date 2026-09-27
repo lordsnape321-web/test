@@ -109,7 +109,7 @@ export default function ForgotPasswordScreen() {
         <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
           <Link href="/login" asChild>
             <Pressable
-              style={[styles.back, { backgroundColor: c.surface, borderColor: c.border }]}
+              style={StyleSheet.flatten([styles.back, { backgroundColor: c.surface, borderColor: c.border }])}
               accessibilityRole="button"
             >
               <ChevronLeft size={16} color={c.text} />

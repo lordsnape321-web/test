@@ -18,7 +18,7 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { Picker } from "@react-native-picker/picker";
+import { Picker } from "@/components/ThemedPicker";
 import { leagueMatchesAction } from "@/api";
 import { DateField, TimeField } from "@/components/DateTimeFields";
 import { useTheme } from "@/context/ThemeContext";
@@ -38,7 +38,7 @@ import { fontSize, radius, space } from "@/theme";
  *
  * Platform notes: `<input type="date|time">` becomes the DateField/TimeField
  * chip strips; `<select>` becomes Picker; the spin Loader2 becomes an
- * ActivityIndicator; `/venues/:id` links to the native `/venue/:id`.
+ * ActivityIndicator; venue links keep the web app's `/venues/:id` path.
  */
 export function LeagueFixtures({
   league,
@@ -46,12 +46,14 @@ export function LeagueFixtures({
   isHost,
   onChanged,
   onOpenAlbum,
+  onOpenVenue,
 }: {
   league: LeagueDetail;
   hostId: number;
   isHost: boolean;
   onChanged: () => void;
   onOpenAlbum?: (matchId: number) => void;
+  onOpenVenue?: (venueId: number) => void;
 }) {
   const { colors: c, isDark } = useTheme();
   const router = useRouter();
@@ -467,7 +469,11 @@ export function LeagueFixtures({
           <Text style={[styles.venueText, { color: c.textFaint }]}>
             All fixtures at{" "}
             <Text
-              onPress={() => router.push(`/venue/${league.venueId}`)}
+              onPress={() => {
+                if (!league.venueId) return;
+                if (onOpenVenue) onOpenVenue(league.venueId);
+                else router.push(`/venues/${league.venueId}`);
+              }}
               style={[styles.venueText, { color: c.textFaint, textDecorationLine: "underline" }]}
             >
               {league.venueName}

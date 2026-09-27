@@ -20,7 +20,10 @@ export async function GET(req: Request) {
       .orderBy(desc(notifications.createdAt))
       .limit(100);
     const unread = rows.filter((r) => !r.isRead).length;
-    return Response.json({ notifications: rows, unread });
+    return Response.json(
+      { notifications: rows, unread },
+      { headers: { "Cache-Control": "no-store, no-cache, must-revalidate" } },
+    );
   } catch (e) {
     console.error(`[/api/notifications GET] failed:`, e);
     return Response.json({ notifications: [], unread: 0, error: String(e) }, { status: 500 });
