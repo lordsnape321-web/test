@@ -186,7 +186,11 @@ class RealWorldSeeder extends Seeder
         $positions = ['Goalkeeper', 'Defender', 'Midfielder', 'Winger', 'Striker', 'All-rounder', 'Pivot'];
 
         foreach ($playersNames as $index => $name) {
-            $email = Str::slug($name).($index === 0 ? '' : '-'.$index).'@futsal.np';
+            // Dotted like the owner addresses, so the "Try as Player" demo
+            // account documented in the README and the report below actually
+            // exists: aayush.adhikari@futsal.np. The index keeps the rest
+            // unique even if two names ever slug to the same string.
+            $email = Str::slug($name, '.').($index === 0 ? '' : '.'.$index).'@futsal.np';
             $players[] = User::firstOrCreate(
                 ['email' => $email],
                 [
