@@ -38,7 +38,7 @@ type PickerOption<T extends PickerValue> = Omit<PickerItemProps<T>, "value"> & {
  * option list use the same palette as the screen that opened them.
  */
 function ThemedPicker<T extends PickerValue = PickerValue>(props: ThemedPickerProps<T>) {
-  const { colors: c, isDark } = useTheme();
+  const { colors: c } = useTheme();
   const [open, setOpen] = useState(false);
 
   const options = useMemo(() => {
@@ -112,9 +112,15 @@ function ThemedPicker<T extends PickerValue = PickerValue>(props: ThemedPickerPr
         statusBarTranslucent
         onRequestClose={close}
       >
-        <Pressable style={styles.backdrop} onPress={close}>
+        <Pressable
+          style={[styles.backdrop, { backgroundColor: c.scrim }]}
+          onPress={close}
+        >
           <View
-            style={[styles.sheet, { backgroundColor: c.surface, borderColor: c.border }]}
+            style={[
+              styles.sheet,
+              { backgroundColor: c.surface, borderColor: c.border, shadowColor: c.shadow },
+            ]}
             onStartShouldSetResponder={() => true}
           >
             <View style={[styles.header, { borderBottomColor: c.border }]}>
@@ -159,7 +165,7 @@ function ThemedPicker<T extends PickerValue = PickerValue>(props: ThemedPickerPr
                     >
                       {option.label}
                     </Text>
-                    {selectedOption ? <Check size={18} color={isDark ? "#6EE7B7" : "#047857"} /> : null}
+                    {selectedOption ? <Check size={18} color={c.activeText} /> : null}
                   </Pressable>
                 );
               })}

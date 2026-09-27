@@ -129,7 +129,7 @@ function useOwnerBadges(userId: number | undefined) {
 
 /** Top brand bar shared by every Owner Studio screen. */
 export function OwnerHeader() {
-  const { colors: c, isDark } = useTheme();
+  const { colors: c } = useTheme();
   const { user, signOut } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
@@ -149,8 +149,9 @@ export function OwnerHeader() {
         style={[
           styles.header,
           {
-            backgroundColor: isDark ? colors.slate950 : colors.white,
+            backgroundColor: c.header,
             borderColor: c.border,
+            paddingHorizontal: sm ? space[6] : space[4],
             paddingTop: insets.top + space[2.5],
           },
         ]}
@@ -281,7 +282,19 @@ function OwnerDrawer({
   user: { name: string; avatarColor?: string | null; avatarUrl?: string | null } | null;
   pending: number;
   unread: number;
-  colors: { bg: string; surface: string; inset: string; border: string; text: string; textMuted: string; textFaint: string };
+  colors: {
+    bg: string;
+    surface: string;
+    inset: string;
+    border: string;
+    text: string;
+    textMuted: string;
+    textFaint: string;
+    dangerBg: string;
+    dangerBorder: string;
+    dangerText: string;
+    scrim: string;
+  };
   topInset: number;
   bottomInset: number;
   onClose: () => void;
@@ -290,7 +303,11 @@ function OwnerDrawer({
 }) {
   return (
     <View style={styles.drawerOverlay}>
-      <Pressable style={styles.drawerScrim} onPress={onClose} accessibilityLabel="Close menu" />
+      <Pressable
+        style={[styles.drawerScrim, { backgroundColor: c.scrim }]}
+        onPress={onClose}
+        accessibilityLabel="Close menu"
+      />
       <View
         style={[
           styles.drawer,
@@ -379,10 +396,10 @@ function OwnerDrawer({
         <View style={[styles.drawerFooter, { borderTopColor: c.border }]}>
           <Pressable
             onPress={onLogout}
-            style={[styles.drawerFooterBtn, { backgroundColor: "rgba(239,68,68,0.10)", borderColor: "rgba(239,68,68,0.20)" }]}
+            style={[styles.drawerFooterBtn, { backgroundColor: c.dangerBg, borderColor: c.dangerBorder }]}
           >
-            <LogOut size={16} color={colors.red500} />
-            <Text style={[styles.drawerFooterText, { color: colors.red500 }]}>Log out</Text>
+            <LogOut size={16} color={c.dangerText} />
+            <Text style={[styles.drawerFooterText, { color: c.dangerText }]}>Log out</Text>
           </Pressable>
         </View>
       </View>
@@ -460,7 +477,7 @@ export function OwnerTabBar({
   descriptors: Record<string, { options: { title?: string } }>;
   navigation: { emit: (e: unknown) => boolean; navigate: (name: string) => void };
 }) {
-  const { colors: c, isDark } = useTheme();
+  const { colors: c } = useTheme();
   const { user } = useAuth();
   const pathname = usePathname();
   const insets = useSafeAreaInsets();
@@ -471,7 +488,7 @@ export function OwnerTabBar({
       style={[
         styles.tabBar,
         {
-          backgroundColor: isDark ? colors.slate950 : colors.white,
+          backgroundColor: c.header,
           borderColor: c.border,
           paddingBottom: insets.bottom + space[1],
         },
@@ -557,7 +574,7 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: radius.xl,
-    backgroundColor: "#0F172A",
+    backgroundColor: colors.slate900,
     alignItems: "center",
     justifyContent: "center",
   },

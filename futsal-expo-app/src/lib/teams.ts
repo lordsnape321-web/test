@@ -1,7 +1,7 @@
 /**
  * Pure team helpers — no database, no React, nothing that can throw on bad
- * input. Anything touching Postgres lives in `team-store.ts`, mirroring the
- * `promos.ts` / `promo-store.ts` split.
+ * input. Database work stays in Laravel; this module only contains client-side
+ * team rules and types.
  */
 
 export const TEAM_CODE_MIN = 3;

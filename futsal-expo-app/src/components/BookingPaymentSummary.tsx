@@ -2,7 +2,7 @@ import { ChevronDown, ChevronUp, Wallet } from "lucide-react-native";
 import React, { useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 import { useTheme } from "@/context/ThemeContext";
-import { apiFetch } from "@/lib/api";
+import { apiJson } from "@/lib/api";
 import { formatNPR } from "@/lib/futsal";
 import { colors, fontSize, radius, space } from "@/theme";
 
@@ -62,12 +62,10 @@ export function BookingPaymentSummary({ bookingId }: { bookingId: number }) {
     setLoading(true);
     setError("");
     try {
-      const res = await apiFetch(`/api/bookings/${bookingId}/ledger`);
-      const body = await res.json();
-      if (!res.ok) setError(String(body.error ?? "Couldn't load the payment details 🙏"));
-      else setData(body as Summary);
-    } catch {
-      setError("Couldn't load the payment details 🙏");
+      const body = await apiJson<Summary>(`/api/bookings/${bookingId}/ledger`);
+      setData(body);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn't load the payment details 🙏");
     } finally {
       setLoading(false);
     }

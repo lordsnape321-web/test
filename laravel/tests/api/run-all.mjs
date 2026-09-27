@@ -5,19 +5,11 @@
  *   npm install
  *   BASE_URL=http://127.0.0.1:8000 npm test
  *
- * Six suites, from two places:
+ * All six suites live in this directory so the Laravel API tests are
+ * self-contained. The two ledger suites open a database connection through
+ * `mysql.mjs`; the other four exercise the HTTP contract only.
  *
- * - `ledger` and `settlement-lock` live here. They were ported from the Next.js
- *   app because they open a database connection of their own — to check the
- *   ledger's rows and to back-date `settled_at` so the five-minute lock can be
- *   tested without waiting. They talk to MySQL through `mysql.mjs`.
- *
- * - `gateway`, `venue-defaults`, `deposit-split` and `court-delete` are pure
- *   HTTP, so they are run from the Next.js app rather than copied. They are the
- *   same files that backend uses, which is the point: the two backends are
- *   being compared, not forked.
- *
- * `BASE_URL` is required in practice — it defaults to :3000, the Next.js port.
+ * `BASE_URL` defaults to Laravel's local port, `:8000`.
  */
 
 import { spawnSync } from 'node:child_process';
@@ -27,25 +19,23 @@ import path from 'node:path';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
-/** laravel/tests/api -> ../../../react-expo-laravel-futsal-app/tests/api */
-const sharedDir = path.resolve(here, '..', '..', '..', 'react-expo-laravel-futsal-app', 'tests', 'api');
-
 const SUITES = [
-  { file: 'ledger.mjs', dir: here },
-  { file: 'settlement-lock.mjs', dir: here },
-  { file: 'gateway.mjs', dir: sharedDir },
-  { file: 'venue-defaults.mjs', dir: sharedDir },
-  { file: 'deposit-split.mjs', dir: sharedDir },
-  { file: 'court-delete.mjs', dir: sharedDir },
-];
+  'ledger.mjs',
+  'settlement-lock.mjs',
+  'gateway.mjs',
+  'venue-defaults.mjs',
+  'deposit-split.mjs',
+  'court-delete.mjs',
+].map((file) => ({ file, dir: here }));
 
 const env = {
   ...process.env,
   BASE_URL: process.env.BASE_URL || 'http://127.0.0.1:8000',
 };
 
-// Never inherit the Next.js app's Postgres URL: that would point the two
-// database-backed suites at the wrong server.
+// The Laravel runner reads DB_* from laravel/.env. Never inherit a stale
+// DATABASE_URL from another project or accidentally point these tests at a
+// PostgreSQL database.
 delete env.DATABASE_URL;
 
 const { Client } = await import('./mysql.mjs');
@@ -61,7 +51,8 @@ try {
   const res = await fetch(`${env.BASE_URL}/api/health`, { signal: AbortSignal.timeout(5000) });
 
   if (!res.ok) {
-    throw new Error(`/api/health answered ${res.status}`);
+    const body = await res.json().catch(() => ({}));
+    throw new Error(`/api/health answered ${res.status}: ${body.error || body.message || 'no error body'}`);
   }
 } catch (err) {
   console.error(`\n❌  nothing answered at ${env.BASE_URL}/api/health — ${err.message}`);

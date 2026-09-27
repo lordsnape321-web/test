@@ -11,7 +11,7 @@ import { useTheme } from "@/context/ThemeContext";
  * screens exactly as it does in the web AppShell.
  */
 export default function AppLayout() {
-  const { colors: c, isDark } = useTheme();
+  const { colors: c } = useTheme();
   const { user, ready } = useAuth();
   const router = useRouter();
   const ownerInPlayerTree = ready && user?.role === "owner";
@@ -25,8 +25,8 @@ export default function AppLayout() {
   // an authenticated owner.
   if (!ready || ownerInPlayerTree) {
     return (
-      <View style={[styles.flex, styles.center, { backgroundColor: isDark ? "#020617" : "#F1F5F9" }]}>
-        <ActivityIndicator size="large" color={isDark ? "#FBBF24" : "#F97316"} />
+      <View style={[styles.flex, styles.center, { backgroundColor: c.bg }]}>
+        <ActivityIndicator size="large" color={c.primary} />
       </View>
     );
   }

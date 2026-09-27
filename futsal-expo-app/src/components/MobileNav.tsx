@@ -3,8 +3,9 @@ import { CalendarCheck, Home, MapPin, Settings, Zap } from "lucide-react-native"
 import React from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useTheme } from "@/context/ThemeContext";
 import { useBreakpoints } from "@/lib/responsive";
-import { colors as brand, radius, space } from "@/theme";
+import { radius, space } from "@/theme";
 
 /**
  * The player rail is global, just like the web AppShell's MobileNav. Keeping it
@@ -19,21 +20,24 @@ const TABS = [
   { href: "/settings", label: "Settings", icon: Settings },
 ] as const;
 
-export function MobileNav({ isDark }: { isDark: boolean }) {
+export function MobileNav() {
   const pathname = usePathname();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const bp = useBreakpoints();
+  const { colors: c } = useTheme();
 
   // The source web rail is lg:hidden. React Native web previews can therefore
   // use the same desktop breakpoint while phones and tablets always get it.
   if (bp.width >= 1024) return null;
 
-  const border = isDark ? "rgba(255,255,255,0.10)" : brand.borderSand;
-  const bg = isDark ? "rgba(2,6,23,0.96)" : "rgba(255,255,255,0.96)";
-  const activeText = isDark ? brand.emerald400 : brand.emerald700;
-  const idleText = isDark ? brand.slate500 : brand.stone400;
-  const activeSoft = isDark ? "rgba(16,185,129,0.15)" : brand.emerald100;
+  const border = c.border;
+  // Use an opaque surface: translucent rails let long page content bleed through
+  // and make labels look washed out in both the browser and native views.
+  const bg = c.surface;
+  const activeText = c.activeText;
+  const idleText = c.textFaint;
+  const activeSoft = c.activeSoft;
 
   return (
     <View
@@ -43,8 +47,8 @@ export function MobileNav({ isDark }: { isDark: boolean }) {
           backgroundColor: bg,
           borderTopColor: border,
           paddingBottom: insets.bottom,
-          shadowColor: "rgb(180,120,60)",
-          shadowOpacity: isDark ? 0 : 0.1,
+          shadowColor: c.shadow,
+          shadowOpacity: 0.18,
           shadowRadius: 15,
           shadowOffset: { width: 0, height: -8 },
           elevation: 12,

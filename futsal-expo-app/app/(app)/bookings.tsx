@@ -434,8 +434,8 @@ export default function BookingsScreen() {
     return (
       <SafeAreaView style={[styles.flex, styles.center, { backgroundColor: c.bg }]} edges={["top"]}>
         <View style={[styles.signedOutCard, { backgroundColor: c.surface, borderColor: c.border }]}>
-          <View style={[styles.signedOutIcon, { backgroundColor: colors.emerald600 }]}>
-            <CalendarCheck size={32} color="#FFFFFF" />
+          <View style={[styles.signedOutIcon, { backgroundColor: c.primary }]}>
+            <CalendarCheck size={32} color={c.primaryText} />
           </View>
           <Text style={[styles.signedOutTitle, { color: c.text }]}>Your games live here ⚽</Text>
           <Text style={[styles.signedOutBody, { color: c.textMuted }]}>
@@ -445,9 +445,9 @@ export default function BookingsScreen() {
           <View style={styles.signedOutActions}>
             <Pressable
               onPress={() => router.push("/login")}
-              style={[styles.signedOutBtn, { backgroundColor: colors.emerald600 }]}
+              style={[styles.signedOutBtn, { backgroundColor: c.primary }]}
             >
-              <LogIn size={16} color="#FFFFFF" />
+              <LogIn size={16} color={c.primaryText} />
               <Text style={styles.signedOutBtnText}>Log in</Text>
             </Pressable>
             <Pressable
@@ -468,7 +468,7 @@ export default function BookingsScreen() {
         contentContainerStyle={[
           styles.scroll,
           {
-            paddingHorizontal: 16,
+            paddingHorizontal: space[4],
             maxWidth: 1280,
             width: "100%",
             alignSelf: "center",
@@ -510,13 +510,13 @@ export default function BookingsScreen() {
             style={[
               styles.pendingBanner,
               {
-                borderColor: isDark ? "rgba(245,158,11,0.30)" : "#FDE68A",
-                backgroundColor: isDark ? "rgba(245,158,11,0.10)" : "#FFFBEB",
+                borderColor: c.warningBorder,
+                backgroundColor: c.warningBg,
               },
             ]}
           >
             <Hourglass size={20} color={colors.amber400} />
-            <Text style={[styles.pendingText, { color: isDark ? colors.amber300 : "#92400E" }]}>
+            <Text style={[styles.pendingText, { color: c.warningText }]}>
               {competitionRequestCount > 0
                 ? `${competitionRequestCount} competition request${competitionRequestCount > 1 ? "s" : ""} need your accept or decline. The venue owner stays out until you decide.`
                 : `${pendingCount} game${pendingCount > 1 ? "s" : ""} waiting for a friendly thumbs-up from the venue — we'll ping you the moment they confirm!`}
@@ -530,22 +530,22 @@ export default function BookingsScreen() {
               l: "Coming up",
               v: String(bookings.filter((b) => !gone(b.status) && !played(b) && b.date >= today).length),
               icon: CalendarCheck,
-              iconBg: isDark ? "rgba(16,185,129,0.16)" : "#ECFDF5",
-              iconColor: isDark ? colors.emerald300 : colors.emerald700,
+              iconBg: c.successBg,
+              iconColor: c.successText,
             },
             {
               l: "Memories made",
               v: String(bookings.filter(played).length),
               icon: Clock,
-              iconBg: isDark ? "rgba(14,165,233,0.16)" : "#F0F9FF",
-              iconColor: isDark ? colors.sky300 : colors.sky700,
+              iconBg: c.infoBg,
+              iconColor: c.infoText,
             },
             {
               l: "Invested in fun",
               v: formatNPR(totalSpent),
               icon: Wallet,
-              iconBg: isDark ? "rgba(139,92,246,0.16)" : "#F5F3FF",
-              iconColor: isDark ? colors.violet300 : colors.violet700,
+              iconBg: c.activeSoft,
+              iconColor: c.activeText,
             },
           ].map((s) => {
             const Icon = s.icon;
@@ -582,7 +582,7 @@ export default function BookingsScreen() {
                 <Text style={[styles.tabText, { color: tab === t ? c.primaryText : c.textMuted }]} numberOfLines={1}>
                   {label}
                 </Text>
-                <Text style={[styles.tabCount, { color: tab === t ? c.primaryText : c.textFaint, backgroundColor: tab === t ? "rgba(255,255,255,0.20)" : c.inset }]}>
+                <Text style={[styles.tabCount, { color: tab === t ? c.primaryText : c.textFaint, backgroundColor: tab === t ? c.activeSoft : c.inset }]}>
                   {count}
                 </Text>
               </Pressable>
@@ -606,9 +606,9 @@ export default function BookingsScreen() {
             {tab === "upcoming" ? (
               <Pressable
                 onPress={() => router.push("/venues")}
-                style={[styles.emptyBtn, { backgroundColor: colors.emerald600 }]}
+                style={[styles.emptyBtn, { backgroundColor: c.primary }]}
               >
-                <Text style={styles.emptyBtnText}>Find a court near me</Text>
+                <Text style={[styles.emptyBtnText, { color: c.primaryText }]}>Find a court near me</Text>
               </Pressable>
             ) : null}
           </View>

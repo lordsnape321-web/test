@@ -8,7 +8,7 @@ use Illuminate\Http\JsonResponse;
 /**
  * Shared response helpers.
  *
- * Every route in the Next.js API answered in one of two shapes: a payload, or
+ * Every route in the legacy web API answered in one of two shapes: a payload, or
  * `{ error: "..." }` with a status code. `apiJson()` in the Expo app reads
  * `body.error` to show the server's real message, so that envelope is the
  * contract — these two helpers keep every controller honest about it.
@@ -54,7 +54,7 @@ abstract class ApiController extends Controller
         ), fn ($v) => $v !== null && $v > 0));
     }
 
-    /** Trim and cap a free-text field the way the Next.js routes did. */
+    /** Trim and cap a free-text field consistently across API routes. */
     protected function text(mixed $value, int $max = 1000): string
     {
         return mb_substr(trim((string) ($value ?? '')), 0, $max);

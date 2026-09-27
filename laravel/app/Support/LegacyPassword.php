@@ -3,7 +3,7 @@
 namespace App\Support;
 
 /**
- * The password hash the Next.js API used.
+ * The password hash retained for accounts migrated from the legacy service.
  *
  * Every account on the platform was created with
  * `sha256("futsal-nepal::auth-v1::" . password)`, so moving the backend to

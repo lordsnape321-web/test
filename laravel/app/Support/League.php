@@ -1074,7 +1074,14 @@ class League
      */
     public static function parsePrizeBreakdown(string $text): array
     {
-        $lines = array_slice(array_values(array_filter(array_map('trim', explode("\n", (string) $text))), fn ($l) => $l !== ''), 0, 12);
+        $lines = array_slice(
+            array_values(array_filter(
+                array_map('trim', explode("\n", (string) $text)),
+                fn ($l) => $l !== ''
+            )),
+            0,
+            12
+        );
         $out = [];
 
         foreach ($lines as $line) {

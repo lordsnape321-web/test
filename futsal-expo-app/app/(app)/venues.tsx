@@ -23,9 +23,10 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { VenueCard } from "@/components/cards";
+import { Notice } from "@/components/ui";
 import { useAuth } from "@/context/AuthContext";
 import { useTheme } from "@/context/ThemeContext";
-import { fetchVenues } from "@/api";
+import { fetchVenues, seedDemo } from "@/api";
 import { CITY_OPTIONS } from "@/lib/futsal";
 import { validateSearch } from "@/lib/validation";
 import { useBreakpoints } from "@/lib/responsive";
@@ -52,7 +53,7 @@ type SelectOption = {
 };
 
 export default function VenuesScreen() {
-  const { colors: c, isDark } = useTheme();
+  const { colors: c } = useTheme();
   const { user } = useAuth();
   const { q: qParam, city: cityParam } = useLocalSearchParams<{ q?: string; city?: string }>();
   const bp = useBreakpoints();
@@ -62,6 +63,7 @@ export default function VenuesScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [q, setQ] = useState(qParam ?? "");
   const [searchError, setSearchError] = useState("");
+  const [loadError, setLoadError] = useState("");
 
   const homeCity = user?.defaultCity ?? "All Cities";
   const initialCity = cityParam && CITY_OPTIONS.includes(cityParam) ? cityParam : "All Cities";
@@ -87,10 +89,30 @@ export default function VenuesScreen() {
   }, [cityTouched, homeCity]);
 
   const load = useCallback(async () => {
+    let seedError: unknown = null;
+
+    // A fresh Laravel database can be populated from the idempotent demo seed.
+    // Keep this best-effort so existing production data still loads when the
+    // optional seed route is disabled.
     try {
-      setVenues(await fetchVenues());
-    } catch {
-      // Keep the filters and empty state usable while the API is offline.
+      await seedDemo();
+    } catch (error) {
+      seedError = error;
+    }
+
+    try {
+      const next = await fetchVenues();
+      setVenues(next);
+      setLoadError(
+        next.length === 0 && seedError
+          ? seedError instanceof Error
+            ? seedError.message
+            : "The Laravel API could not seed or read venue data."
+          : "",
+      );
+    } catch (error) {
+      setVenues([]);
+      setLoadError(error instanceof Error ? error.message : "Could not load venues from Laravel.");
     } finally {
       setLoading(false);
     }
@@ -155,9 +177,10 @@ export default function VenuesScreen() {
         ]}
         ListHeaderComponent={
           <>
+            {loadError ? <Notice message={loadError} /> : null}
             <View style={styles.eyebrowRow}>
               <HeartHandshake size={14} color={colors.orange500} />
-              <Text style={styles.eyebrow}>Pick your second home</Text>
+              <Text style={[styles.eyebrow, { color: c.accent }]}>Pick your second home</Text>
             </View>
             <Text style={[styles.h1, { color: c.text }]}>Courts near you</Text>
             <Text style={[styles.subtitle, { color: c.textMuted }]}>
@@ -197,7 +220,6 @@ export default function VenuesScreen() {
                     setCityTouched(true);
                   }}
                   colors={c}
-                  isDark={isDark}
                 />
                 <FilterSelect
                   label="Sort courts"
@@ -209,16 +231,15 @@ export default function VenuesScreen() {
                   onClose={() => setOpenSelect(null)}
                   onChange={setSort}
                   colors={c}
-                  isDark={isDark}
                 />
               </View>
 
-              {searchError ? <Text style={styles.errorText}>{searchError}</Text> : null}
+              {searchError ? <Text style={[styles.errorText, { color: c.dangerText }]}>{searchError}</Text> : null}
 
               {/* Price ceiling */}
               <View style={[styles.priceBox, { backgroundColor: c.inset }]}>
                 <View style={styles.priceLabelRow}>
-                  <Banknote size={16} color={colors.emerald600} />
+                  <Banknote size={16} color={c.primary} />
                   <Text style={[styles.priceLabel, { color: c.textMuted }]}>
                     Up to Rs. {maxPrice.toLocaleString()}/hr
                   </Text>
@@ -229,9 +250,9 @@ export default function VenuesScreen() {
                   step={100}
                   value={maxPrice}
                   onValueChange={setMaxPrice}
-                  minimumTrackTintColor={colors.emerald600}
+                  minimumTrackTintColor={c.primary}
                   maximumTrackTintColor={c.border}
-                  thumbTintColor={colors.emerald600}
+                  thumbTintColor={c.primary}
                   accessibilityLabel={`Maximum price per hour, currently Rs. ${maxPrice.toLocaleString()}`}
                 />
               </View>
@@ -260,12 +281,12 @@ export default function VenuesScreen() {
                       style={[
                         styles.pill,
                         active
-                          ? { backgroundColor: colors.emerald600 }
+                          ? { backgroundColor: c.primary }
                           : { backgroundColor: c.surface, borderColor: c.border, borderWidth: 1 },
                       ]}
                     >
                       <Text
-                        style={[styles.pillText, { color: active ? "#FFFFFF" : c.textMuted }]}
+                        style={[styles.pillText, { color: active ? c.primaryText : c.textMuted }]}
                       >
                         {opt}
                       </Text>
@@ -308,7 +329,6 @@ function FilterSelect({
   onClose,
   onChange,
   colors: c,
-  isDark,
 }: {
   label: string;
   icon: typeof MapPin;
@@ -318,8 +338,7 @@ function FilterSelect({
   onOpen: () => void;
   onClose: () => void;
   onChange: (value: string) => void;
-  colors: { inset: string; text: string; textMuted: string; textFaint: string; border: string; surface: string; activeSoft: string };
-  isDark: boolean;
+  colors: { inset: string; text: string; textMuted: string; textFaint: string; border: string; surface: string; activeSoft: string; activeText: string; primary: string; primaryText: string; scrim: string; shadow: string; dangerText: string };
 }) {
   const selected = options.find((option) => option.value === value) ?? options[0];
   const handleChange = (next: string) => {
@@ -348,9 +367,9 @@ function FilterSelect({
         statusBarTranslucent
         onRequestClose={onClose}
       >
-        <Pressable style={styles.modalBackdrop} onPress={onClose}>
+        <Pressable style={[styles.modalBackdrop, { backgroundColor: c.scrim }]} onPress={onClose}>
           <View
-            style={[styles.optionSheet, { backgroundColor: c.surface, borderColor: c.border }]}
+            style={[styles.optionSheet, { backgroundColor: c.surface, borderColor: c.border, shadowColor: c.shadow }]}
             onStartShouldSetResponder={() => true}
           >
             <View style={[styles.optionHeader, { borderBottomColor: c.border }]}>
@@ -376,7 +395,7 @@ function FilterSelect({
                   >
                     <Text style={[styles.optionText, { color: c.text }]}>{option.label}</Text>
                     {selectedOption ? (
-                      <Text style={[styles.optionCheck, { color: isDark ? colors.emerald300 : colors.emerald700 }]}>✓</Text>
+                      <Text style={[styles.optionCheck, { color: c.activeText }]}>✓</Text>
                     ) : null}
                   </Pressable>
                 );

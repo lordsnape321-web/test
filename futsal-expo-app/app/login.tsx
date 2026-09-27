@@ -66,13 +66,13 @@ export default function Login() {
     }
   }
 
-  const inputFill = isDark ? "rgba(255,255,255,0.05)" : tokens.insetCream;
+  const inputFill = c.inset;
 
   return (
-    <SafeAreaView style={[styles.flex, { backgroundColor: c.bg }]} edges={["bottom"]}>
+    <SafeAreaView style={[styles.flex, { backgroundColor: c.bg }]} edges={["top", "bottom"]}>
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === "ios" ? "padding" : undefined}>
         <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
-          <View style={[styles.card, { backgroundColor: c.surface, borderColor: c.border }]}>
+          <View style={[styles.card, { backgroundColor: c.surface, borderColor: c.border, shadowColor: c.shadow }]}>
             <LinearGradient colors={isDark ? ["#065F46", "#14532D"] : ["#047857", "#166534"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.hero}>
               <View style={styles.heroIcon}><Trophy size={28} color={tokens.emerald700} strokeWidth={2.5} /></View>
               <Text style={styles.heroTitle}>Welcome back, friend! 👋</Text>
@@ -81,19 +81,19 @@ export default function Login() {
 
             <View style={styles.form}>
               <Text style={[styles.label, { color: c.textFaint }]}>Email</Text>
-              <View style={[styles.inputWrap, { backgroundColor: inputFill, borderColor: touched && validateEmail(email) ? tokens.red400 : c.border }]}>
+              <View style={[styles.inputWrap, { backgroundColor: inputFill, borderColor: touched && validateEmail(email) ? c.dangerText : c.border }]}>
                 <Mail size={16} color={c.textFaint} />
                 <TextInput value={email} onChangeText={setEmail} placeholder="you@example.com" placeholderTextColor={c.textFaint} keyboardType="email-address" autoCapitalize="none" maxLength={100} style={[styles.input, { color: c.text }]} />
               </View>
-              {touched && validateEmail(email) ? <Text style={styles.error}>{validateEmail(email)}</Text> : null}
+              {touched && validateEmail(email) ? <Text style={[styles.error, { color: c.dangerText }]}>{validateEmail(email)}</Text> : null}
 
               <Text style={[styles.label, { color: c.textFaint }]}>Password</Text>
-              <View style={[styles.inputWrap, { backgroundColor: inputFill, borderColor: touched && !password ? tokens.red400 : c.border }]}>
+              <View style={[styles.inputWrap, { backgroundColor: inputFill, borderColor: touched && !password ? c.dangerText : c.border }]}>
                 <Lock size={16} color={c.textFaint} />
                 <TextInput value={password} onChangeText={setPassword} placeholder="••••••••" placeholderTextColor={c.textFaint} secureTextEntry={!showPw} autoCapitalize="none" maxLength={100} style={[styles.input, { color: c.text }]} />
                 <Pressable onPress={() => setShowPw((v) => !v)} accessibilityLabel={showPw ? "Hide password" : "Show password"}>{showPw ? <EyeOff size={17} color={c.textFaint} /> : <Eye size={17} color={c.textFaint} />}</Pressable>
               </View>
-              {touched && !password ? <Text style={styles.error}>Password is required 🔒</Text> : null}
+              {touched && !password ? <Text style={[styles.error, { color: c.dangerText }]}>Password is required 🔒</Text> : null}
 
               {error ? <Notice message={error} /> : null}
               <Button
@@ -105,11 +105,11 @@ export default function Login() {
 
               <View style={styles.dividerRow}><View style={[styles.divider, { backgroundColor: c.border }]} /><Text style={[styles.dividerText, { color: c.textFaint }]}>Just looking around?</Text><View style={[styles.divider, { backgroundColor: c.border }]} /></View>
               <View style={styles.demoRow}>
-                <Pressable disabled={busy} onPress={() => void submit({ email: "aarav@futsal.np", password: "futsal123" })} style={[styles.demo, { borderColor: tokens.emerald100, backgroundColor: isDark ? "rgba(16,185,129,0.1)" : tokens.emerald50 }]}><Zap size={16} color={tokens.emerald600} /><Text style={[styles.demoText, { color: isDark ? tokens.emerald300 : tokens.emerald700 }]}>Try as Player</Text></Pressable>
-                <Pressable disabled={busy} onPress={() => void submit({ email: "ganesh@futsal.np", password: "futsal123" })} style={[styles.demo, { borderColor: tokens.orange100, backgroundColor: isDark ? "rgba(249,115,22,0.1)" : tokens.orange50 }]}><Crown size={16} color={tokens.orange500} /><Text style={[styles.demoText, { color: isDark ? tokens.orange300 : tokens.orange700 }]}>Try as Owner</Text></Pressable>
+                <Pressable disabled={busy} onPress={() => void submit({ email: "aayush.adhikari@futsal.np", password: "futsal123" })} style={[styles.demo, { borderColor: c.successBorder, backgroundColor: c.successBg }]}><Zap size={16} color={c.successText} /><Text style={[styles.demoText, { color: c.successText }]}>Try as Player</Text></Pressable>
+                <Pressable disabled={busy} onPress={() => void submit({ email: "prabin.shakya@futsal.np", password: "futsal123" })} style={[styles.demo, { borderColor: c.warningBorder, backgroundColor: c.warningBg }]}><Crown size={16} color={c.accent} /><Text style={[styles.demoText, { color: c.warningText }]}>Try as Owner</Text></Pressable>
               </View>
 
-              <Link href="/forgot-password" asChild><Text style={StyleSheet.flatten([styles.forgot, { color: tokens.orange600 }])}>Forgot your password? 🔑</Text></Link>
+              <Link href="/forgot-password" asChild><Text style={StyleSheet.flatten([styles.forgot, { color: c.accent }])}>Forgot your password? 🔑</Text></Link>
               <View style={styles.footerRow}><Text style={{ color: c.textMuted, fontSize: fontSize.base }}>New to the family? </Text><Link href="/signup" asChild><Text style={StyleSheet.flatten([styles.link, { color: c.primary }])}>Join us — it&apos;s free</Text></Link></View>
             </View>
           </View>
@@ -131,7 +131,7 @@ const styles = StyleSheet.create({
   label: { fontSize: fontSize.sm, fontWeight: "900", textTransform: "uppercase", letterSpacing: 0.8 },
   inputWrap: { minHeight: 48, borderWidth: 1, borderRadius: radius["2xl"], paddingHorizontal: space[4], flexDirection: "row", alignItems: "center", gap: space[2] },
   input: { flex: 1, fontSize: 16, fontWeight: "600", paddingVertical: 11 },
-  error: { fontSize: fontSize.xs, color: tokens.red500, fontWeight: "700" },
+  error: { fontSize: fontSize.xs, fontWeight: "700" },
   dividerRow: { flexDirection: "row", alignItems: "center", gap: space[3], paddingVertical: space[1] },
   divider: { height: 1, flex: 1 },
   dividerText: { fontSize: 10, fontWeight: "900", textTransform: "uppercase", letterSpacing: 1.2 },

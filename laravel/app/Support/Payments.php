@@ -62,7 +62,7 @@ class Payments
      */
     public static function appOrigin(Request $request): string
     {
-        $envUrl = trim((string) (env('APP_URL', '') ?: env('NEXT_PUBLIC_APP_URL', '')));
+        $envUrl = trim((string) env('APP_URL', ''));
 
         if ($envUrl !== '' && filter_var($envUrl, FILTER_VALIDATE_URL)) {
             $origin = parse_url($envUrl, PHP_URL_SCHEME).'://'.parse_url($envUrl, PHP_URL_HOST)
@@ -112,7 +112,7 @@ class Payments
 
         $host = $request->getHost();
 
-        return str_starts_with($host, '0.0.0.0') ? 'http://localhost:3000' : $request->getScheme().'://'.$host;
+        return str_starts_with($host, '0.0.0.0') ? 'http://localhost:8000' : $request->getScheme().'://'.$host;
     }
 
     public static function makeEsewaUuid(int $bookingId): string

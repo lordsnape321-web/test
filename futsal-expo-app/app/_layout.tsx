@@ -17,7 +17,13 @@ import { MobileNav } from "@/components/MobileNav";
 import { Navbar } from "@/components/Navbar";
 import { TurfBackdrop } from "@/components/TurfBackdrop";
 import { useBreakpoints } from "@/lib/responsive";
-import { APP_FONT_FAMILY } from "@/theme";
+import {
+  APP_FONT_FAMILY,
+  darkPalette,
+  lightPalette,
+  ownerDarkPalette,
+  ownerPalette,
+} from "@/theme";
 
 /**
  * Root layout: fonts + providers + the native stack.
@@ -57,8 +63,8 @@ export default function RootLayout() {
 
   if (!fontsLoaded) {
     return (
-      <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: "#FFF9F0" }}>
-        <ActivityIndicator size="large" color="#059669" />
+      <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: lightPalette.bg }}>
+        <ActivityIndicator size="large" color={lightPalette.primary} />
       </View>
     );
   }
@@ -102,15 +108,15 @@ function Shell() {
     pathname.startsWith("/payment/");
   const showPlayerRail = showPlayerChrome && !isChromeFreeScreen && bp.width < 1024;
   // Keep the native/web root surface deterministic even while Owner Studio is
-  // switching its palette after a route change. A transparent scene must never
-  // fall through to the browser's default white canvas.
+  // switching its palette after a route change. Every scene gets a real canvas
+  // colour; nothing falls through to the browser's default white surface.
   const shellBackground = isOwnerStudio
     ? isDark
-      ? "#020617"
-      : "#F1F5F9"
+      ? ownerDarkPalette.bg
+      : ownerPalette.bg
     : isDark
-      ? "#020617"
-      : "#FFFFFF";
+      ? darkPalette.bg
+      : lightPalette.bg;
 
   React.useEffect(() => {
     if (ownerOutsideStudio) router.replace("/admin");
@@ -120,9 +126,16 @@ function Shell() {
   // An owner opening a saved player URL must never see the player shell, even
   // for the short hydration window before `user.role` is available.
   if (!ready || ownerOutsideStudio) {
+    const loadingPalette = isOwnerStudio
+      ? isDark
+        ? ownerDarkPalette
+        : ownerPalette
+      : isDark
+        ? darkPalette
+        : lightPalette;
     return (
-      <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: isDark ? "#020617" : "#F1F5F9" }}>
-        <ActivityIndicator size="large" color={isDark ? "#FBBF24" : "#F97316"} />
+      <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: loadingPalette.bg }}>
+        <ActivityIndicator size="large" color={loadingPalette.primary} />
       </View>
     );
   }
@@ -140,7 +153,7 @@ function Shell() {
             headerTintColor: colors.text,
             headerTitleStyle: { color: colors.text, fontFamily: APP_FONT_FAMILY },
             contentStyle: {
-              backgroundColor: isOwnerStudio ? shellBackground : "transparent",
+              backgroundColor: shellBackground,
             },
           }}
         >
@@ -163,7 +176,7 @@ function Shell() {
           <Stack.Screen name="payment" options={{ headerShown: false }} />
         </Stack>
       </View>
-      {showPlayerRail ? <MobileNav isDark={isDark} /> : null}
+      {showPlayerRail ? <MobileNav /> : null}
     </View>
   );
 }

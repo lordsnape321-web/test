@@ -28,7 +28,7 @@ import {
 } from "react-native";
 import { useTheme } from "@/context/ThemeContext";
 import * as Clipboard from "expo-clipboard";
-import { apiFetch } from "@/lib/api";
+import { apiJson } from "@/lib/api";
 import { formatNPR, todayISO } from "@/lib/futsal";
 import { normalizePromoCode, promoDiscountFor, suggestPromoCode } from "@/lib/promos";
 import {
@@ -191,10 +191,8 @@ export function PromoManager({
   const load = useCallback(async () => {
     if (!venueId) return;
     try {
-      const res = await apiFetch(`/api/promos?ownerId=${ownerId}`);
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || "Couldn't load promo codes");
-      setPromos(((data.promos ?? []) as Promo[]).filter((p) => p.venueId === venueId));
+      const data = await apiJson<{ promos: Promo[] }>(`/api/promos?ownerId=${ownerId}`);
+      setPromos((data.promos ?? []).filter((p) => p.venueId === venueId));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Couldn't load promo codes 🙏");
     } finally {
@@ -325,13 +323,10 @@ export function PromoManager({
         perUserLimit: Number(perUserLimit),
         isPublic,
       };
-      const res = await apiFetch(editing ? `/api/promos/${editing.id}` : "/api/promos", {
+      await apiJson(editing ? `/api/promos/${editing.id}` : "/api/promos", {
         method: editing ? "PATCH" : "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(editing ? payload : { venueId: venue.id, ...payload }),
+        json: editing ? payload : { venueId: venue.id, ...payload },
       });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || "Couldn't save the promo code");
       setShowForm(false);
       resetForm();
       setNotice(
@@ -351,13 +346,10 @@ export function PromoManager({
     setBusy(p.id);
     setError("");
     try {
-      const res = await apiFetch(`/api/promos/${p.id}`, {
+      await apiJson(`/api/promos/${p.id}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ownerId, isActive: !p.isActive }),
+        json: { ownerId, isActive: !p.isActive },
       });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || "Couldn't update");
       setNotice(p.isActive ? `${p.code} paused ⏸️` : `${p.code} is live again 🟢`);
       await load();
     } catch (e) {
@@ -385,19 +377,14 @@ export function PromoManager({
               setBusy(p.id);
               setError("");
               try {
-                const res = await apiFetch(`/api/promos/${p.id}?ownerId=${ownerId}`, {
-                  method: "DELETE",
-                });
-                const data = await res.json().catch(() => ({}));
-                if (!res.ok) {
-                  // Already-redeemed codes are paused instead of deleted.
-                  setNotice(data.error || "Couldn't delete 🙏");
-                } else {
-                  setNotice(`${p.code} deleted 🗑️`);
-                }
+                await apiJson(`/api/promos/${p.id}?ownerId=${ownerId}`, { method: "DELETE" });
+                setNotice(`${p.code} deleted 🗑️`);
                 await load();
               } catch (e) {
-                setError(e instanceof Error ? e.message : "Couldn't delete 🙏");
+                // Already-redeemed codes are paused server-side and returned as
+                // a useful 409 message; show that Laravel message in the notice.
+                setNotice(e instanceof Error ? e.message : "Couldn't delete 🙏");
+                await load();
               } finally {
                 setBusy(null);
               }

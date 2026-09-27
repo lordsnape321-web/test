@@ -7,7 +7,7 @@ namespace App\Support;
  *
  * Ported from `src/lib/promos.ts`. Pure rules only — anything that needs the
  * database (looking a code up, counting redemptions) lives in
- * `App\Support\PromoStore`, mirroring the split the Next.js app used.
+ * `App\Support\PromoStore`, keeping policy separate from persistence.
  */
 class Promos
 {

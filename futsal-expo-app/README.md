@@ -1,119 +1,145 @@
 # Futsal Nepal — Expo app
 
-The React Native (Expo) port of the Futsal Nepal web app. This is the **frontend
-half** of the migration; the Laravel backend comes later in its own directory.
+The React Native/Expo frontend for Futsal Nepal. This app is paired with the
+standalone Laravel API in `../laravel`; it does not require the retired web
+application or any source code outside this directory at runtime.
 
-The app is a **full player and owner implementation**, not a reduced vertical
-slice. It includes the same player-facing and Owner Studio routes as the web
-app: authentication and password reset, venue and court discovery, bookings and
-payments, open matches, leagues, teams, players, notifications, profile,
-settings, reviews, and the complete owner dashboard, bookings, venues, leagues,
-requests, alerts, and profile workflows.
-
-This frontend talks to the existing `react-expo-laravel-futsal-app` API during
-the migration. No second backend is bundled here; the same API contract can be
-pointed at Laravel later with the environment setting described below.
+The app is a full player and owner implementation. It includes authentication
+and password reset, venue and court discovery, bookings and payments, open
+matches, leagues, teams, players, notifications, profile, settings, reviews,
+and the complete Owner Studio workflow.
 
 ## Quick start
 
+Start the MySQL-backed Laravel API first. The backend example environment is
+already configured for MySQL database `futsal` on `127.0.0.1:3306`:
+
 ```bash
-npm install
-
-# Point at a running backend (see .env.example for device-specific hosts)
+cd ../laravel
+composer install
 cp .env.example .env
-
-npm start          # Expo dev server — press i / a / w
+php artisan key:generate
+mysql -u root -p -e "CREATE DATABASE futsal CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+php artisan migrate --seed
+php artisan serve --host=0.0.0.0 --port=8000
 ```
 
-The app talks to the **existing Next.js API** during the migration. Start that
-first (`react-expo-laravel-futsal-app`, `npm run dev` on port 3000), then run
-this app against it.
+If your MySQL/MariaDB server uses different credentials, update the `DB_*`
+values in `../laravel/.env` before `migrate --seed`. Expo talks only to
+Laravel, and Laravel owns all application persistence in MySQL.
+
+Then, in a second terminal, start Expo:
+
+```bash
+cd ../futsal-expo-app
+npm install
+cp .env.example .env
+npm start                 # press i / a / w
+```
+
+The default API origin is Laravel at `http://localhost:8000`. Change
+`EXPO_PUBLIC_API_BASE` in `.env` when the app runs on a different device:
+
+| Client | API base |
+|---|---|
+| iOS simulator | `http://localhost:8000` |
+| Android emulator | `http://10.0.2.2:8000` |
+| Physical device | `http://<computer-LAN-IP>:8000` |
+
+For a phone or a web preview, bind Laravel to `0.0.0.0` as shown above and make
+sure the device can reach the computer. Laravel's local CORS configuration is
+already open for the Expo web origin; restrict `CORS_ALLOWED_ORIGINS` before a
+production deployment.
+
+### Expo web proxy
+
+The web build uses same-origin `/api/*` requests. `metro.config.js` proxies them
+to Laravel on `127.0.0.1:8000`, so the browser never tries to call `localhost`
+directly. Set the separate `EXPO_WEB_API_PROXY` variable if the web API is on a
+different host or port; do not reuse the Android emulator value `10.0.2.2` for
+this setting. A production web build should set `EXPO_PUBLIC_API_BASE` to the
+public Laravel origin, for example `https://api.example.com`.
+
+After changing either Expo API variable, stop and restart Expo: `EXPO_PUBLIC_*`
+values are inlined into the bundle at build time. Before opening the app, check
+`http://127.0.0.1:8000/api/health`; a healthy response is `{"ok":true}`.
 
 ## Verifying it works
 
 ```bash
 npm run typecheck   # tsc --noEmit
-npm run smoke       # end-to-end against the live API (needs the backend up)
+npm run smoke       # live Laravel API booking/payment smoke test
 ```
 
-`npm run smoke` bundles `scripts/smoke.ts` with esbuild and runs it in Node. It
-drives the **same** `src/lib/api.ts` and `src/api/index.ts` the app ships — not a
-re-implementation — through signup → venues → courts → availability → booking →
-ledger → eSewa payment → settled, asserting the money actually moved in the
-ledger. 20 checks.
+`npm run smoke` bundles `scripts/smoke.ts` with esbuild and drives the same
+`src/lib/api.ts` and `src/api/index.ts` modules the app ships through signup →
+venues → courts → availability → booking → ledger → eSewa payment → settled.
+The Laravel acceptance suites live in `../laravel/tests/api`.
 
-Bundling for a device is proven with:
+Bundling for a device can be checked with:
 
 ```bash
 npx expo export --platform ios
 npx expo export --platform android
 ```
 
-## What was ported verbatim
+## Backend boundary
 
-These modules are **byte-identical** to the Next.js `src/lib` versions — copied,
-not rewritten. They are pure TypeScript with no browser or Node globals, so the
-same business rules run on web and native:
+All network calls go through `src/lib/api.ts` and `src/api/index.ts`. The Expo
+client sends the existing JSON contract under `/api`, while Laravel owns
+validation, authorization, persistence, booking rules, payment verification,
+ledger calculations, notifications, leagues, teams, and promos.
 
-| module | role |
+The client intentionally keeps the API's acting-user-id contract for now. The
+signed-in user is cached in AsyncStorage and the relevant requests carry its
+`userId`; no web server, database connection, or shared filesystem is needed by
+the Expo app.
+
+Two API shapes are adapted in the client:
+
+- **No `GET /api/courts`** — courts are returned nested on a venue, so
+  `fetchCourts()` reads the venue and lifts out active courts.
+- **No `GET /api/bookings/:id`** — `fetchBooking()` reads the booking list,
+  filtered by `userId`, and selects the requested id.
+
+`venue.acceptedPayments` is a comma-separated string such as
+`"eSewa,Khalti,Cash at Venue"`; split and trim it before comparing values.
+
+## Shared client rules
+
+These pure TypeScript modules keep client-side display and validation rules in
+one place:
+
+| Module | Role |
 |---|---|
 | `futsal.ts` | dates, time slots, `formatNPR`, slot expansion |
-| `validation.ts` | every form rule (email, phone, password, money, …) |
-| `loyalty.ts` | trust score, deposit decision, cancellation limits |
-| `booking-ledger.ts` | ledger totals, the 5-minute settlement window |
-| `promos.ts`, `teams.ts`, `league.ts` | constants `validation.ts` imports |
+| `validation.ts` | form rules for email, phone, password, money, and more |
+| `loyalty.ts` | trust score, deposits, and cancellation limits |
+| `booking-ledger.ts` | ledger totals and the five-minute settlement window |
+| `promos.ts`, `teams.ts`, `league.ts` | client-side constants and helpers |
 
-Sharing these is the point: a rule changed once applies to both apps, and a
-player can never be told "invalid" here but accepted on the web.
-
-## What had to change for React Native
-
-Two seams could not be copied, because the platforms genuinely differ:
-
-- **`src/lib/api.ts`** — the env prefix is `EXPO_PUBLIC_`, not `NEXT_PUBLIC_`,
-  and a base URL is mandatory (RN has no origin, so relative paths throw).
-- **`src/lib/storage.ts`** — AsyncStorage is **async**; localStorage is not. The
-  in-memory-map-plus-durable-backing-store design is the same, but reads go
-  through `initStorage()` hydration first.
-
-`payments.ts` was **not** ported: it signs gateway requests with `node:crypto`,
-which is server-side only. The native app calls the server's verify endpoints
-instead.
-
-## API contract notes
-
-Two routes the web app uses don't exist as GETs, so the client adapts:
-
-- **No `GET /api/courts`** — that route is POST-only. Courts come nested on the
-  venue object, so `fetchCourts()` reads the venue and lifts them out.
-- **No `GET /api/bookings/:id`** — only PATCH/DELETE. `fetchBooking()` reads the
-  player's booking list (filtered by `userId`) and picks the matching id.
-
-`venue.acceptedPayments` is a **comma-separated string** (`"eSewa,Khalti,Cash at
-Venue"`), not an array — split and trim before comparing.
+`payments.ts` is deliberately not used in Expo: gateway signing belongs on the
+Laravel server. The app calls Laravel's eSewa and Khalti initiate/verify routes.
 
 ## Layout
 
 ```
-app/                  expo-router screens
-  _layout.tsx         providers + native stack
-  index.tsx           entry redirect (auth gate)
-  login.tsx signup.tsx
-  (app)/              authenticated tabs: venues, bookings, account
-  venue/[id].tsx      court + slot picker → create booking
-  booking/[id].tsx    ledger + payment
+app/                  Expo Router screens
+  _layout.tsx         providers and native stack
+  (app)/              player tabs
+  admin/              Owner Studio
+  venue/[id].tsx      court and slot picker
+  booking/[id].tsx    booking ledger and payment
 src/
-  api/index.ts        typed calls, one per route
-  lib/                ported modules + the two RN seams
-  context/            Auth + Theme providers
-  components/ui.tsx   Button, Field, Card, Pill, Notice, Spinner
-  theme.ts            emerald/slate tokens (matches the web palette)
-scripts/smoke.ts      end-to-end test
+  api/index.ts        typed calls, one per Laravel route
+  lib/                API seam, rules, storage, and response types
+  context/            auth and theme providers
+  components/         reusable native UI
+  theme.ts            light/dark design tokens
+scripts/smoke.ts      live Laravel smoke test
 ```
 
 ## Theming
 
-Light and dark palettes live in `src/theme.ts` as plain objects (RN has no
-Tailwind). The values are Tailwind's emerald/slate ramps — the web app's accent
-is emerald, verified by counting class usage. "System" follows the device and is
-the default.
+Light and dark palettes live in `src/theme.ts` as plain objects. System mode is
+the default and follows the device.

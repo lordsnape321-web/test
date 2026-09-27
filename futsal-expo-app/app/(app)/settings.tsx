@@ -54,8 +54,7 @@ const SECTIONS = [
 type SectionId = (typeof SECTIONS)[number]["id"];
 
 export default function SettingsScreen() {
-  const { colors: c } = useTheme();
-  const { mode, setMode, isDark } = useTheme();
+  const { colors: c, mode, setMode, isDark } = useTheme();
   const { user, isOwner, signOut, updateProfile } = useAuth();
   const router = useRouter();
 
@@ -115,7 +114,7 @@ export default function SettingsScreen() {
         contentContainerStyle={[
           styles.content,
           {
-            paddingHorizontal: 16,
+            paddingHorizontal: space[4],
             maxWidth: 1280,
             width: "100%",
             alignSelf: "center",
@@ -152,23 +151,23 @@ export default function SettingsScreen() {
                 style={[
                   styles.railItem,
                   active
-                    ? { backgroundColor: colors.emerald600 }
+                    ? { backgroundColor: c.primary }
                     : { backgroundColor: c.surface, borderColor: c.border, borderWidth: 1 },
                 ]}
               >
-                <s.icon size={16} color={active ? "#FFFFFF" : c.text} />
-                <Text style={[styles.railText, { color: active ? "#FFFFFF" : c.text }]}>
+                <s.icon size={16} color={active ? c.primaryText : c.text} />
+                <Text style={[styles.railText, { color: active ? c.primaryText : c.text }]}>
                   {s.label}
                 </Text>
                 {s.id === "alerts" && unread > 0 ? (
                   <View
                     style={[
                       styles.badge,
-                      { backgroundColor: active ? "#FFFFFF" : colors.red500 },
+                      { backgroundColor: active ? c.surface : c.dangerText },
                     ]}
                   >
                     <Text
-                      style={[styles.badgeText, { color: active ? colors.emerald700 : "#FFFFFF" }]}
+                      style={[styles.badgeText, { color: active ? c.activeText : c.primaryText }]}
                     >
                       {unread > 9 ? "9+" : unread}
                     </Text>
@@ -184,8 +183,8 @@ export default function SettingsScreen() {
             style={[
               styles.msg,
               {
-                backgroundColor: msg.ok ? colors.emerald50 : colors.red50,
-                color: msg.ok ? colors.emerald700 : colors.red600,
+                backgroundColor: msg.ok ? c.successBg : c.dangerBg,
+                color: msg.ok ? c.successText : c.dangerText,
               },
             ]}
           >
@@ -221,7 +220,7 @@ export default function SettingsScreen() {
             </View>
 
             <View style={[styles.row, { backgroundColor: c.surface, borderColor: c.border }]}>
-              <MapPin size={16} color={colors.emerald600} />
+              <MapPin size={16} color={c.activeText} />
               <View style={styles.grow}>
                 <Text style={[styles.rowTitle, { color: c.text }]}>Home city</Text>
                 <Text style={[styles.rowSub, { color: c.textMuted }]}>
@@ -277,10 +276,10 @@ export default function SettingsScreen() {
                 ) : null}
                 <Pressable
                   onPress={() => router.push("/notifications")}
-                  style={[styles.smallButton, { backgroundColor: colors.emerald600, borderColor: colors.emerald600 }]}
+                  style={[styles.smallButton, { backgroundColor: c.primary, borderColor: c.primary }]}
                 >
-                  <Text style={[styles.smallButtonText, { color: "#FFFFFF" }]}>Open inbox</Text>
-                  <ChevronRight size={16} color="#FFFFFF" />
+                  <Text style={[styles.smallButtonText, { color: c.primaryText }]}>Open inbox</Text>
+                  <ChevronRight size={16} color={c.primaryText} />
                 </Pressable>
               </View>
             </View>
@@ -301,12 +300,12 @@ export default function SettingsScreen() {
                     styles.note,
                     n.isRead
                       ? { backgroundColor: c.surface, borderColor: c.border }
-                      : { backgroundColor: colors.emerald50, borderColor: colors.emerald300 },
+                      : { backgroundColor: c.successBg, borderColor: c.successBorder },
                   ]}
                 >
                   <View style={styles.grow}>
                     <View style={styles.noteTitleRow}>
-                      {!n.isRead ? <View style={styles.dot} /> : null}
+                      {!n.isRead ? <View style={[styles.dot, { backgroundColor: c.dangerText }]} /> : null}
                       <Text style={[styles.noteTitle, { color: c.text }]} numberOfLines={1}>
                         {n.title}
                       </Text>
@@ -355,18 +354,18 @@ export default function SettingsScreen() {
                     style={[
                       styles.themeCard,
                       {
-                        borderColor: active ? colors.emerald500 : c.border,
-                        backgroundColor: active ? colors.emerald50 : c.surface,
+                        borderColor: active ? c.primary : c.border,
+                        backgroundColor: active ? c.activeSoft : c.surface,
                       },
                     ]}
                   >
                     <View
                       style={[
                         styles.themeIcon,
-                        { backgroundColor: active ? colors.emerald600 : c.inset },
+                        { backgroundColor: active ? c.primary : c.inset },
                       ]}
                     >
-                      <t.icon size={20} color={active ? "#FFFFFF" : c.textMuted} />
+                      <t.icon size={20} color={active ? c.primaryText : c.textMuted} />
                     </View>
                     <Text style={[styles.themeLabel, { color: c.text }]}>
                       {t.label} {active ? "✓" : ""}
@@ -468,10 +467,10 @@ export default function SettingsScreen() {
             <Pressable
               onPress={() => void signOut()}
               accessibilityRole="button"
-              style={[styles.logoutButton, { borderColor: colors.red200, backgroundColor: colors.red50 }]}
+              style={[styles.logoutButton, { borderColor: c.dangerBorder, backgroundColor: c.dangerBg }]}
             >
-              <LogOut size={16} color={colors.red600} />
-              <Text style={[styles.logoutText, { color: colors.red600 }]}>
+              <LogOut size={16} color={c.dangerText} />
+              <Text style={[styles.logoutText, { color: c.dangerText }]}>
                 Log out of FutsalNepal
               </Text>
             </Pressable>
@@ -564,7 +563,7 @@ function Row({
         { backgroundColor: c.surface, borderColor: c.border, opacity: pressed ? 0.85 : 1 },
       ]}
     >
-      <Icon size={16} color={iconColor ?? colors.emerald600} />
+      <Icon size={16} color={iconColor ?? c.activeText} />
       <View style={styles.grow}>
         <Text style={[styles.rowTitle, { color: c.text }]}>{title}</Text>
         <Text style={[styles.rowSub, { color: c.textMuted }]} numberOfLines={1}>
@@ -751,7 +750,7 @@ const styles = StyleSheet.create({
     marginTop: space[2],
   },
   noteTitleRow: { flexDirection: "row", alignItems: "center", gap: 6 },
-  dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.red500 },
+  dot: { width: 8, height: 8, borderRadius: 4 },
   noteTitle: { fontSize: fontSize.base, fontWeight: "800", flexShrink: 1 },
   noteBody: { fontSize: fontSize.sm, lineHeight: 17, marginTop: 2 },
   noteTime: { fontSize: fontSize.xs, fontWeight: "700", marginTop: 4 },

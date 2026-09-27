@@ -7,7 +7,7 @@ use Illuminate\Support\Str;
 /**
  * Serialise models with camelCase keys.
  *
- * The app's TypeScript types were read off live responses from the Next.js API,
+ * The app's TypeScript types were read off live responses from the legacy web API,
  * where Drizzle maps `created_at` to `createdAt`, `price_per_hour` to
  * `pricePerHour` and so on. The columns stay snake_case in MySQL (that is what
  * Eloquent and every migration expect); this converts the *outgoing* JSON, and
@@ -32,7 +32,7 @@ trait CamelCasedAttributes
         $array = $this->camelCaseKeys(parent::toArray());
 
         // MySQL cannot give a TEXT column a default, so a row written without
-        // an image or a note comes back as null. The Next.js API always sent ""
+        // an image or a note comes back as null. The legacy web API always sent ""
         // and the app renders these fields straight into <Image source={{uri}}>,
         // where null is a crash and "" is "no picture".
         foreach ($this->blankStringColumns() as $column) {
@@ -86,7 +86,7 @@ trait CamelCasedAttributes
     }
 
     /**
-     * Format dates the way `JSON.stringify(new Date())` did on the Next.js side:
+     * Format dates the way `JSON.stringify(new Date())` did on the legacy web client:
      * ISO-8601 UTC with milliseconds, e.g. "2024-05-01T04:15:00.000Z".
      */
     protected function serializeDate(\DateTimeInterface $date): string

@@ -14,9 +14,8 @@ use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
 |--------------------------------------------------------------------------
 |
 | This backend is headless: it exists only to serve `/api/*` to the Expo app
-| (and, later, the web UI). There is no `/` page, no Blade views and no
-| session/cookie auth — every request carries the acting player's id, exactly
-| the way the Next.js API it replaces did.
+| (and, later, other clients). There is no `/` page, no Blade views and no
+| session/cookie auth — every request carries the acting player's id.
 |
 */
 
@@ -39,10 +38,10 @@ return Application::configure(basePath: dirname(__DIR__))
         $exceptions->shouldRenderJsonWhen(fn (Request $request) => true);
 
         /*
-         * Match the error envelope the Next.js API used — `{ error: "..." }` —
-         * because `apiJson()` in the app reads `body.error` to show the server's
-         * real message ("That court is already booked for this slot") instead of
-         * a generic one.
+         * Keep the error envelope `{ error: "..." }` because `apiJson()` in
+         * the Expo app reads `body.error` to show the server's real message
+         * ("That court is already booked for this slot") instead of a generic
+         * one.
          */
         $exceptions->render(function (Throwable $e, Request $request) {
             if ($e instanceof ValidationException) {

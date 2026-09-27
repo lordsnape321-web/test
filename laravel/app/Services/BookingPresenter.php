@@ -25,7 +25,7 @@ use App\Support\Loyalty;
  * reliability, the money that has actually arrived, who still owes what, and —
  * for a competition game — the opposition and the score. Every one of those is
  * another table, so they are loaded here in a handful of queries and stitched
- * together, rather than per booking (the Next.js route did the same: it read
+ * together, rather than per booking (the legacy web route did the same: it read
  * each table once and assembled the rows in memory).
  *
  * The money figures come from the ledger, never from `bookings.paid_amount`:

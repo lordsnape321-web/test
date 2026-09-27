@@ -113,10 +113,10 @@ export default function Signup() {
     }
   }
 
-  const inputFill = isDark ? "rgba(255,255,255,0.05)" : tokens.insetCream;
+  const inputFill = c.inset;
 
   return (
-    <SafeAreaView style={[styles.flex, { backgroundColor: c.bg }]} edges={["bottom"]}>
+    <SafeAreaView style={[styles.flex, { backgroundColor: c.bg }]} edges={["top", "bottom"]}>
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === "ios" ? "padding" : undefined}>
         <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
           <Link href="/" asChild>
@@ -126,7 +126,7 @@ export default function Signup() {
             </Pressable>
           </Link>
 
-          <View style={[styles.card, { backgroundColor: c.surface, borderColor: c.border }]}>
+          <View style={[styles.card, { backgroundColor: c.surface, borderColor: c.border, shadowColor: c.shadow }]}>
             <LinearGradient
               colors={isDark ? ["#065F46", "#14532D"] : ["#047857", "#166534"]}
               start={{ x: 0, y: 0 }}
@@ -181,7 +181,7 @@ export default function Signup() {
 
               <View style={styles.fieldBlock}>
                 <Text style={[styles.label, { color: c.textFaint }]}>Pick a password (min 6 chars)</Text>
-                <View style={[styles.passwordWrap, { backgroundColor: inputFill, borderColor: touched && passwordError ? tokens.red400 : c.border }]}>
+                <View style={[styles.passwordWrap, { backgroundColor: inputFill, borderColor: touched && passwordError ? c.dangerText : c.border }]}>
                   <Lock size={16} color={c.textFaint} />
                   <TextInput
                     value={password}
@@ -210,17 +210,17 @@ export default function Signup() {
                     </Text>
                   </View>
                 ) : null}
-                {touched && passwordError ? <Text style={styles.error}>{passwordError}</Text> : null}
+                {touched && passwordError ? <Text style={[styles.error, { color: c.dangerText }]}>{passwordError}</Text> : null}
               </View>
 
               <View style={styles.fieldBlock}>
                 <Text style={[styles.label, { color: c.textFaint }]}>Home city 🏠 — your search starts here</Text>
-                <View style={[styles.pickerWrap, { backgroundColor: inputFill, borderColor: touched && cityError ? tokens.red400 : c.border }]}>
+                <View style={[styles.pickerWrap, { backgroundColor: inputFill, borderColor: touched && cityError ? c.dangerText : c.border }]}>
                   <Picker selectedValue={defaultCity} onValueChange={(v) => setDefaultCity(String(v))} style={{ color: c.text }} dropdownIconColor={c.textMuted}>
                     {CITY_OPTIONS.filter((city) => city !== "All Cities").map((city) => <Picker.Item key={city} label={city} value={city} />)}
                   </Picker>
                 </View>
-                {touched && cityError ? <Text style={styles.error}>{cityError}</Text> : null}
+                {touched && cityError ? <Text style={[styles.error, { color: c.dangerText }]}>{cityError}</Text> : null}
               </View>
 
               {role === "player" ? (
@@ -233,9 +233,9 @@ export default function Signup() {
                   </View>
                 </View>
               ) : (
-                <View style={[styles.ownerNote, { backgroundColor: isDark ? "rgba(249,115,22,0.12)" : tokens.orange50, borderColor: isDark ? "rgba(249,115,22,0.3)" : tokens.orange100 }]}>
-                  <Crown size={16} color={tokens.orange500} />
-                  <Text style={[styles.ownerNoteText, { color: isDark ? tokens.orange300 : tokens.orange700 }]}>Owner accounts can list venues, add courts, manage requests, and run leagues from Owner Studio.</Text>
+                <View style={[styles.ownerNote, { backgroundColor: c.warningBg, borderColor: c.warningBorder }]}>
+                  <Crown size={16} color={c.accent} />
+                  <Text style={[styles.ownerNoteText, { color: c.warningText }]}>Owner accounts can list venues, add courts, manage requests, and run leagues from Owner Studio.</Text>
                 </View>
               )}
 
@@ -311,7 +311,7 @@ const styles = StyleSheet.create({
   passwordInput: { flex: 1, fontSize: 16, fontWeight: "600", paddingVertical: 11 },
   pickerWrap: { borderWidth: 1, borderRadius: radius["2xl"], overflow: "hidden", minHeight: 48, justifyContent: "center" },
   hint: { fontSize: fontSize.xs, fontWeight: "600" },
-  error: { fontSize: fontSize.xs, color: tokens.red500, fontWeight: "700" },
+  error: { fontSize: fontSize.xs, fontWeight: "700" },
   strengthWrap: { gap: 4 },
   strengthBars: { flexDirection: "row", gap: 4 },
   strengthBar: { height: 6, flex: 1, borderRadius: 99 },

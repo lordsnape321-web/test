@@ -20,7 +20,7 @@ import {
   View,
 } from "react-native";
 import { useTheme } from "@/context/ThemeContext";
-import { apiFetch } from "@/lib/api";
+import { apiJson } from "@/lib/api";
 import { formatWindowLeft } from "@/lib/booking-ledger";
 import { formatNPR } from "@/lib/futsal";
 import { fontSize, radius, space } from "@/theme";
@@ -124,22 +124,16 @@ export function BookingLedgerPanel({
   // depending on them would re-run the load every time the owner types.
   useEffect(() => {
     let dead = false;
-    apiFetch(`/api/bookings/${bookingId}/ledger`)
-      .then(async (res) => {
-        const data = await res.json();
+    apiJson<Ledger>(`/api/bookings/${bookingId}/ledger`)
+      .then((led) => {
         if (dead) return;
-        if (!res.ok) {
-          setError(String(data.error ?? "Couldn't load the ledger 🙏"));
-          return;
-        }
-        const led = data as Ledger;
         setLedger(led);
         setMethod((m) => m || (led.acceptedMethods[0] ?? ""));
         setExtraLabel((l) => l || led.defaultExtraFeeNote || "");
         setExtraAmount((a) => a || (led.defaultExtraFee ? String(led.defaultExtraFee) : ""));
       })
-      .catch(() => {
-        if (!dead) setError("Couldn't load the ledger 🙏");
+      .catch((e) => {
+        if (!dead) setError(e instanceof Error ? e.message : "Couldn't load the ledger 🙏");
       });
     return () => {
       dead = true;
@@ -151,18 +145,12 @@ export function BookingLedgerPanel({
     setError("");
     setNotice("");
     try {
-      const res = await apiFetch(`/api/bookings/${bookingId}/ledger`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...body, actorId: ownerId }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        setError(String(data.error ?? "That didn't work 🙏"));
-        return;
-      }
-      if (data.ledger) setLedger(data.ledger as Ledger);
-      if (data.message) setNotice(String(data.message));
+      const data = await apiJson<{ ledger?: Ledger; message?: string }>(
+        `/api/bookings/${bookingId}/ledger`,
+        { method: "POST", json: { ...body, actorId: ownerId } },
+      );
+      if (data.ledger) setLedger(data.ledger);
+      if (data.message) setNotice(data.message);
       // Both directions change what the bookings list renders: settling opens
       // the correction window (and the row's Amend button), and undoing it
       // closes it again and puts the payment status back. Refresh on both, or

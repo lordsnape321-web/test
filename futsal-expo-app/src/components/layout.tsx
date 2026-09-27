@@ -89,6 +89,8 @@ export function ResponsiveGrid({
 const styles = StyleSheet.create({
   base: {
     alignSelf: "center",
+    minWidth: 0,
+    flexShrink: 1,
   },
   grid: {
     flexDirection: "row",

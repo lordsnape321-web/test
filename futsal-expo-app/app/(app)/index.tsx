@@ -34,6 +34,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { MatchCard, VenueCard } from "@/components/cards";
+import { Notice } from "@/components/ui";
 import { PageContainer, ResponsiveGrid } from "@/components/layout";
 import { useAuth } from "@/context/AuthContext";
 import { useTheme } from "@/context/ThemeContext";
@@ -98,6 +99,7 @@ export default function HomeScreen() {
   const [city, setCity] = useState("All Cities");
   const [cityTouched, setCityTouched] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
 
   const homeCity = user?.defaultCity ?? "All Cities";
 
@@ -107,14 +109,31 @@ export default function HomeScreen() {
 
   useEffect(() => {
     (async () => {
+      let seedError: unknown = null;
+
+      // Seeding is only a development convenience. It must never prevent the
+      // actual reads below: a production database can already have data while
+      // the optional idempotent seed endpoint is disabled or unavailable.
       try {
         await seedDemo();
+      } catch (error) {
+        seedError = error;
+      }
+
+      try {
         const [v, m, s] = await Promise.all([fetchVenues(), fetchMatches(), fetchStats()]);
         setVenues(v);
         setMatches(m.slice(0, 3));
         setStats(s);
-      } catch {
-        // Keep the marketing shell usable while the API is offline.
+        setLoadError(
+          v.length === 0 && seedError
+            ? seedError instanceof Error
+              ? seedError.message
+              : "The Laravel API could not seed or read venue data."
+            : "",
+        );
+      } catch (error) {
+        setLoadError(error instanceof Error ? error.message : "Could not load data from Laravel.");
       } finally {
         setLoading(false);
       }
@@ -146,6 +165,7 @@ export default function HomeScreen() {
     <SafeAreaView style={[styles.flex, { backgroundColor: c.bg }]} edges={[]}>
       <ScrollView contentContainerStyle={[styles.content, { paddingHorizontal: bp.gutter, paddingBottom: 0 }]}>
         <PageContainer padded={false}>
+        {loadError ? <Notice message={loadError} /> : null}
         {/* ── HERO ─────────────────────────────────────────────────── */}
         <View style={[styles.heroGrid, bp.lg ? styles.heroGridWide : null]}>
           <View style={[styles.heroCopy, bp.lg ? styles.heroCopyWide : null]}>
@@ -399,13 +419,13 @@ export default function HomeScreen() {
         </View>
 
         {loading ? (
-          <ResponsiveGrid columns={bp.md ? 3 : 1}>
+          <ResponsiveGrid columns={bp.cardColumns}>
             {[0, 1, 2].map((i) => (
               <View key={i} style={[styles.skeleton, { backgroundColor: c.surface, height: 256, marginBottom: 0 }]} />
             ))}
           </ResponsiveGrid>
         ) : (
-          <ResponsiveGrid columns={bp.md ? 3 : 1}>
+          <ResponsiveGrid columns={bp.cardColumns}>
             {matches.map((m) => (
               <MatchCard key={m.id} m={m} />
             ))}

@@ -6,7 +6,7 @@ import { colors as brand, radius } from "@/theme";
 
 /** Theme toggle — same 40×40 rounded-xl control as the web ThemeToggle. */
 export function ThemeToggle({ style }: { style?: object }) {
-  const { isDark, toggle } = useTheme();
+  const { isDark, toggle, colors: c } = useTheme();
   return (
     <Pressable
       onPress={toggle}
@@ -14,22 +14,18 @@ export function ThemeToggle({ style }: { style?: object }) {
       accessibilityLabel={isDark ? "Switch to light mode" : "Switch to dark mode"}
       style={[
         styles.btn,
-        isDark
-          ? {
-              borderColor: "rgba(255,255,255,0.10)",
-              backgroundColor: brand.stone900,
-            }
-          : {
-              borderColor: brand.stone200,
-              backgroundColor: brand.white,
-            },
+        {
+          borderColor: c.border,
+          backgroundColor: c.surface,
+          shadowColor: c.shadow,
+        },
         style,
       ]}
     >
       {isDark ? (
         <Sun size={20} color={brand.amber300} />
       ) : (
-        <Moon size={20} color={brand.stone600} />
+        <Moon size={20} color={c.textMuted} />
       )}
     </Pressable>
   );

@@ -11,10 +11,10 @@ use Illuminate\Notifications\Notifiable;
 /**
  * A player, a venue owner or an admin.
  *
- * Passwords are *not* hashed with bcrypt: this table was created by the
- * Next.js API, which stores sha256("futsal-nepal::auth-v1::" . password).
- * `App\Support\LegacyPassword` reproduces that hash so every account that
- * exists today keeps working after the move — see App\Services\AuthService.
+ * Passwords use the established sha256("futsal-nepal::auth-v1::" . password)
+ * format rather than bcrypt. `App\Support\LegacyPassword` keeps existing
+ * migrated accounts usable while the service remains compatible with the
+ * mobile client.
  */
 class User extends Authenticatable
 {

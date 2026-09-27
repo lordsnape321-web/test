@@ -11,9 +11,9 @@ use Illuminate\Http\Request;
 /**
  * Signup, login, password reset and password change.
  *
- * There is no session and no token — exactly as the Next.js API had it. The app
- * holds the signed-in `user` object in AsyncStorage and passes `userId` back on
- * the requests that need to know who is acting. See docs/authentication.md.
+ * There is no session and no token. The Expo app holds the signed-in `user`
+ * object in AsyncStorage and passes `userId` back on requests that need to know
+ * who is acting.
  */
 class AuthController extends ApiController
 {
