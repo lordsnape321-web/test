@@ -10,12 +10,12 @@ const config = getDefaultConfig(__dirname);
  * Laravel API. Native builds use EXPO_PUBLIC_API_BASE directly.
  *
  * Set EXPO_WEB_API_PROXY when the Laravel API is not on the default local port,
- * for example `https://api.example.com` or `http://127.0.0.1:8000`. The public
- * API base is accepted as a fallback so local web and native configuration can
- * share one `.env` value.
+ * for example `https://api.example.com` or `http://127.0.0.1:9000`. It is kept
+ * separate from EXPO_PUBLIC_API_BASE because native values such as
+ * `http://10.0.2.2:8000` only make sense inside an Android emulator and are not
+ * valid targets from the Metro process on the development computer.
  */
-const proxyOrigin =
-  process.env.EXPO_WEB_API_PROXY || process.env.EXPO_PUBLIC_API_BASE || "http://127.0.0.1:8000";
+const proxyOrigin = process.env.EXPO_WEB_API_PROXY || "http://127.0.0.1:8000";
 let proxyTarget;
 try {
   proxyTarget = new URL(proxyOrigin);

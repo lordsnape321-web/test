@@ -11,7 +11,9 @@ and the complete Owner Studio workflow.
 
 ## Quick start
 
-Start the Laravel API first:
+Start the Laravel API first. The backend example environment uses SQLite and
+creates `database/database.sqlite` during migration, so a fresh checkout does
+not require MySQL or a separately created database:
 
 ```bash
 cd ../laravel
@@ -21,6 +23,9 @@ php artisan key:generate
 php artisan migrate --seed
 php artisan serve --host=0.0.0.0 --port=8000
 ```
+
+If you use MySQL/MariaDB instead, update the `DB_*` values in `../laravel/.env`
+before `migrate --seed`.
 
 Then, in a second terminal, start Expo:
 
@@ -49,9 +54,14 @@ production deployment.
 
 The web build uses same-origin `/api/*` requests. `metro.config.js` proxies them
 to Laravel on `127.0.0.1:8000`, so the browser never tries to call `localhost`
-directly. Set `EXPO_WEB_API_PROXY` if the local API is running elsewhere. A
-production web build should set `EXPO_PUBLIC_API_BASE` to the public Laravel
-origin, for example `https://api.example.com`.
+directly. Set the separate `EXPO_WEB_API_PROXY` variable if the web API is on a
+different host or port; do not reuse the Android emulator value `10.0.2.2` for
+this setting. A production web build should set `EXPO_PUBLIC_API_BASE` to the
+public Laravel origin, for example `https://api.example.com`.
+
+After changing either Expo API variable, stop and restart Expo: `EXPO_PUBLIC_*`
+values are inlined into the bundle at build time. Before opening the app, check
+`http://127.0.0.1:8000/api/health`; a healthy response is `{"ok":true}`.
 
 ## Verifying it works
 

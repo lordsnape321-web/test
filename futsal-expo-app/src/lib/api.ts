@@ -77,10 +77,31 @@ export class ApiError extends Error {
 
 /** Pull a readable message out of an error response, whatever shape it is. */
 function messageFrom(body: unknown, fallback: string): string {
-  if (body && typeof body === "object" && "error" in body) {
-    const e = (body as { error?: unknown }).error;
-    if (typeof e === "string" && e.trim()) return e;
+  if (!body || typeof body !== "object") return fallback;
+
+  const payload = body as {
+    error?: unknown;
+    message?: unknown;
+    errors?: unknown;
+  };
+
+  if (typeof payload.error === "string" && payload.error.trim()) return payload.error;
+  if (typeof payload.message === "string" && payload.message.trim()) return payload.message;
+
+  // Keep this tolerant of Laravel's default validation envelope too. The
+  // application normally returns `{ error }`, but a proxy, package, or future
+  // controller should not turn a useful field-level failure into "Request
+  // failed (422)".
+  if (payload.errors && typeof payload.errors === "object") {
+    for (const value of Object.values(payload.errors as Record<string, unknown>)) {
+      if (Array.isArray(value)) {
+        const first = value.find((item) => typeof item === "string" && item.trim());
+        if (typeof first === "string") return first;
+      }
+      if (typeof value === "string" && value.trim()) return value;
+    }
   }
+
   return fallback;
 }
 

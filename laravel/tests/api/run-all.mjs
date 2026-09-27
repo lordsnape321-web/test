@@ -51,7 +51,8 @@ try {
   const res = await fetch(`${env.BASE_URL}/api/health`, { signal: AbortSignal.timeout(5000) });
 
   if (!res.ok) {
-    throw new Error(`/api/health answered ${res.status}`);
+    const body = await res.json().catch(() => ({}));
+    throw new Error(`/api/health answered ${res.status}: ${body.error || body.message || 'no error body'}`);
   }
 } catch (err) {
   console.error(`\n❌  nothing answered at ${env.BASE_URL}/api/health — ${err.message}`);

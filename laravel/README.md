@@ -12,13 +12,13 @@ the API origin configured by `EXPO_PUBLIC_API_BASE` (port `8000` locally).
 
 | | |
 |---|---|
-| PHP | ^8.2 |
+| PHP | ^8.2 with PDO and `pdo_sqlite` (or `pdo_mysql` for MySQL) |
 | Composer | 2.x |
-| Database | MySQL 8 or MariaDB 10.6+ |
+| Database | SQLite (default) or MySQL 8 / MariaDB 10.6+ |
 
-SQLite can be used for a quick local run by changing `DB_CONNECTION` and
-creating `database/database.sqlite`, but MySQL is the supported deployment
-configuration.
+SQLite is the default development database. It is created automatically by the
+migration command, so a fresh checkout does not require a running database
+server or an undocumented `futsal` database.
 
 ## Getting started
 
@@ -27,9 +27,13 @@ cd laravel
 composer install
 cp .env.example .env
 php artisan key:generate
+php artisan migrate --seed
+php artisan serve --host=0.0.0.0 --port=8000
 ```
 
-Configure the database in `.env`:
+The copied `.env.example` uses SQLite at `database/database.sqlite`; Laravel
+creates the file as part of `migrate --seed`. For MySQL/MariaDB, replace the
+SQLite values with your server details and create the database first:
 
 ```dotenv
 DB_CONNECTION=mysql
@@ -40,20 +44,18 @@ DB_USERNAME=root
 DB_PASSWORD=
 ```
 
-Build the schema and load the demo data:
-
-```bash
-php artisan migrate --seed
-php artisan serve --host=0.0.0.0 --port=8000
-```
+Then build the schema and load the demo data with `php artisan migrate --seed`.
 
 Check that the API answered:
 
 ```bash
-curl http://127.0.0.1:8000/api/health
+curl -i http://127.0.0.1:8000/api/health
 ```
 
-`POST /api/seed` is idempotent and can be used to top up an existing database.
+A healthy response is `200 {"ok":true}`. A database problem is a `503` JSON
+response with an `error` message (and, in the copied local `APP_DEBUG=true`
+environment, the underlying PDO message) instead of a misleading generic
+failure. `POST /api/seed` is idempotent and can be used to top up an existing database.
 If a newly added route answers 404, clear Laravel's cached route table:
 
 ```bash
@@ -90,9 +92,12 @@ BASE_URL=http://127.0.0.1:8000 npm test
 ```
 
 The runner defaults to `http://127.0.0.1:8000`, checks `/api/health` first, and
-reads MySQL credentials from `laravel/.env`. The two ledger suites also inspect
-MySQL rows to verify gateway payments and settlement locks; the other four are
-HTTP-only. No other project directory is required to run these tests.
+reads the configured database credentials from `laravel/.env`. The two ledger
+suites also inspect database rows to verify gateway payments and settlement
+locks; the other four are HTTP-only. No other project directory is required to
+run these tests. The acceptance helper currently uses its MySQL client for
+row-level assertions, so use a MySQL/MariaDB `.env` when running the full suite;
+the app itself supports SQLite for local development.
 
 ## API contract
 

@@ -12,7 +12,7 @@ import {
 import { Avatar } from "@/components/Avatar";
 import { useAuth } from "@/context/AuthContext";
 import { useTheme } from "@/context/ThemeContext";
-import { apiFetch, ApiError } from "@/lib/api";
+import { apiJson } from "@/lib/api";
 import { timeAgo } from "@/lib/time";
 import { validateMessage } from "@/lib/validation";
 import { colors, fontSize, radius, space } from "@/theme";
@@ -114,11 +114,11 @@ export function ReviewsSection({
 
   const load = async () => {
     try {
-      const res = await apiFetch(`/api/reviews?venueId=${venueId}`);
-      const data = await res.json();
+      const data = await apiJson<{ reviews: Review[] }>(`/api/reviews?venueId=${venueId}`);
       setReviews(data.reviews ?? []);
-    } catch {
-      /* keep the last list */
+    } catch (e) {
+      /* Keep the last list, but do not hide a database/API failure. */
+      setError(e instanceof Error ? e.message : "Couldn't load reviews 🙏");
     }
   };
 
@@ -168,19 +168,16 @@ export function ReviewsSection({
     setSaving(true);
     setError("");
     try {
-      const res = await apiFetch("/api/reviews", {
+      await apiJson("/api/reviews", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+        json: {
           venueId,
           userId: user.id,
           bookingId: bookingId ? Number(bookingId) : null,
           rating,
           message: message.trim(),
-        }),
+        },
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Failed");
       setMessage("");
       setRating(5);
       setBookingId("");
@@ -229,6 +226,7 @@ export function ReviewsSection({
           One review per venue — posting again updates yours, it won&apos;t add a second 🔒
         </Text>
       ) : null}
+      {error && !showForm ? <Text style={styles.error}>{error}</Text> : null}
 
       {showForm ? (
         <View style={[styles.form, { borderColor: isDark ? "rgba(249,115,22,0.25)" : "#FED7AA", backgroundColor: isDark ? "rgba(249,115,22,0.05)" : "rgba(255,247,237,0.6)" }]}>

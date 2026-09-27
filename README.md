@@ -3,10 +3,12 @@
 The project is now split into two active services:
 
 - `futsal-expo-app/` — Expo/React Native frontend.
-- `laravel/` — Laravel 12 JSON API and MySQL application backend.
+- `laravel/` — Laravel 12 JSON API and application backend (SQLite locally, MySQL/MariaDB in deployment).
 
 The Expo app is configured to use Laravel on port `8000` locally. Start the API
-first, then Expo:
+first, then Expo. The Laravel example environment uses SQLite and creates the
+database file during migration, so no MySQL server or manual database creation
+is required for a fresh development setup:
 
 ```bash
 cd laravel
@@ -25,6 +27,10 @@ npm install
 cp .env.example .env
 npm start
 ```
+
+If you prefer MySQL/MariaDB, change the `DB_*` values in `laravel/.env` before
+running the migration. Keep the API bound to `0.0.0.0` when using a phone or
+another machine.
 
 Set `EXPO_PUBLIC_API_BASE` for the device running Expo. Use
 `http://localhost:8000` for an iOS simulator, `http://10.0.2.2:8000` for an
