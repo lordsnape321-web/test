@@ -163,7 +163,7 @@ export default function MatchesScreen() {
           ) : (
             <HandHeart size={14} color={colors.orange500} />
           )}
-          <Text style={styles.eyebrow}>
+          <Text style={[styles.eyebrow, { color: c.accent }]}>
             {tab === "leagues" ? "League matches" : "Come as you are"}
           </Text>
         </View>
@@ -223,7 +223,7 @@ export default function MatchesScreen() {
           })}
         </View>
 
-        {error ? <Text style={styles.errorText}>{error}</Text> : null}
+        {error ? <Text style={[styles.errorText, { color: c.dangerText }]}>{error}</Text> : null}
 
         {tab === "leagues" ? (
           <View style={styles.leagueBrowserWrap}>
@@ -356,20 +356,14 @@ function OpenMatchCard({
             <View
               style={[
                 styles.chip,
-                { backgroundColor: isCustom ? "rgba(139,92,246,0.15)" : "rgba(14,165,233,0.10)" },
+                { backgroundColor: isCustom ? c.activeSoft : c.infoBg },
               ]}
             >
               <Text
                 style={[
                   styles.chipText,
                   {
-                    color: isCustom
-                      ? isDark
-                        ? colors.violet300
-                        : colors.violet700
-                      : isDark
-                        ? colors.sky300
-                        : colors.sky700,
+                    color: isCustom ? c.activeText : c.infoText,
                   },
                 ]}
               >
@@ -382,20 +376,14 @@ function OpenMatchCard({
           style={[
             styles.spots,
             {
-              backgroundColor: full
-                ? isDark
-                  ? "rgba(255,255,255,0.10)"
-                  : colors.stone200
-                : isDark
-                  ? "rgba(249,115,22,0.15)"
-                  : colors.orange100,
+              backgroundColor: full ? c.dangerBg : c.warningBg,
             },
           ]}
         >
           <Text
             style={[
               styles.spotsText,
-              { color: full ? c.textFaint : isDark ? colors.orange300 : colors.orange700 },
+              { color: full ? c.dangerText : c.warningText },
             ]}
           >
             {full ? "Full house" : `${m.spotsLeft} left`}
@@ -467,9 +455,9 @@ function OpenMatchCard({
           styles.joinButton,
           already
             ? {
-                backgroundColor: isDark ? "rgba(239,68,68,0.12)" : colors.red50,
+                backgroundColor: c.dangerBg,
                 borderWidth: 1,
-                borderColor: isDark ? "rgba(248,113,113,0.35)" : colors.red200,
+                borderColor: c.dangerBorder,
               }
             : full
               ? { backgroundColor: c.inset }
@@ -479,7 +467,7 @@ function OpenMatchCard({
         ]}
       >
         {already ? (
-          <Text style={[styles.joinText, { color: isDark ? colors.red400 : colors.red500 }]}>
+          <Text style={[styles.joinText, { color: c.dangerText }]}>
             Can't make it — leave game
           </Text>
         ) : full ? (
@@ -624,8 +612,8 @@ function CreateGameModal({
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-      <View style={styles.modalBackdrop}>
-        <View style={[styles.modalSheet, { backgroundColor: c.surface }]}>
+      <View style={[styles.modalBackdrop, { backgroundColor: c.scrim }]}>
+        <View style={[styles.modalSheet, { backgroundColor: c.surface, borderColor: c.border, shadowColor: c.shadow }]}>
           <View style={styles.modalHead}>
             <View style={styles.grow}>
               <Text style={[styles.modalTitle, { color: c.text }]}>Start a friendly game ⚽</Text>
@@ -661,7 +649,7 @@ function CreateGameModal({
                 {
                   backgroundColor: c.inset,
                   color: c.text,
-                  borderColor: fieldErrors.title ? colors.red400 : c.border,
+                  borderColor: fieldErrors.title ? c.dangerText : c.border,
                 },
               ]}
             />

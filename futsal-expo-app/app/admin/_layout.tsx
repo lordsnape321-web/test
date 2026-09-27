@@ -5,6 +5,7 @@ import { OwnerGuard } from "@/components/OwnerGuard";
 import { OwnerHeader, OwnerSidebar, OwnerTabBar } from "@/components/OwnerShell";
 import { useTheme } from "@/context/ThemeContext";
 import { useBreakpoints } from "@/lib/responsive";
+import { space } from "@/theme";
 
 /**
  * Owner Studio layout — brand bar + the six-item owner rail, with every child
@@ -75,6 +76,11 @@ export default function AdminLayout() {
 const styles = StyleSheet.create({
   flex: { flex: 1 },
   body: { flex: 1 },
-  bodyWide: { flexDirection: "row", gap: 24, paddingHorizontal: 24, paddingVertical: 24 },
+  bodyWide: {
+    flexDirection: "row",
+    gap: space[6],
+    paddingHorizontal: space[6],
+    paddingVertical: space[6],
+  },
   content: { flex: 1, minWidth: 0 },
 });

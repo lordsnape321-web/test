@@ -14,7 +14,7 @@ import { colors, fontSize, radius, space } from "@/theme";
  */
 export function OwnerGuard({ children }: { children: React.ReactNode }) {
   const { user, ready, isOwner, signOut } = useAuth();
-  const { colors: c, isDark } = useTheme();
+  const { colors: c } = useTheme();
   const router = useRouter();
 
   if (!ready) {
@@ -46,8 +46,11 @@ export function OwnerGuard({ children }: { children: React.ReactNode }) {
               <LogIn size={16} color={c.text} />
               <Text style={[styles.btnSecondaryText, { color: c.text }]}>Log in</Text>
             </Pressable>
-            <Pressable onPress={() => router.push("/signup")} style={[styles.btn, styles.btnPrimary]}>
-              <Text style={styles.btnPrimaryText}>Sign up free</Text>
+            <Pressable
+              onPress={() => router.push("/signup")}
+              style={[styles.btn, styles.btnPrimary, { backgroundColor: c.primary, borderColor: c.primary }]}
+            >
+              <Text style={[styles.btnPrimaryText, { color: c.primaryText }]}>Sign up free</Text>
             </Pressable>
           </View>
         </View>
@@ -59,7 +62,7 @@ export function OwnerGuard({ children }: { children: React.ReactNode }) {
     return (
       <View style={[styles.center, { backgroundColor: c.bg }]}>
         <View style={[styles.card, { backgroundColor: c.surface, borderColor: c.border }]}>
-          <Text style={[styles.crownEmoji, { backgroundColor: isDark ? "#1E293B" : "#F1F5F9" }]}>
+          <Text style={[styles.crownEmoji, { backgroundColor: c.inset }]}>
             👑
           </Text>
           <Text style={[styles.title, { color: c.text }]}>Owners only</Text>
@@ -72,9 +75,9 @@ export function OwnerGuard({ children }: { children: React.ReactNode }) {
               onPress={() => {
                 void signOut().then(() => router.push("/signup"));
               }}
-              style={[styles.btn, styles.btnPrimary]}
+              style={[styles.btn, styles.btnPrimary, { backgroundColor: c.primary, borderColor: c.primary }]}
             >
-              <Text style={styles.btnPrimaryText}>Become an owner</Text>
+              <Text style={[styles.btnPrimaryText, { color: c.primaryText }]}>Become an owner</Text>
             </Pressable>
             <Pressable
               onPress={() => router.push("/venues")}

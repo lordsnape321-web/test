@@ -46,7 +46,7 @@ export function Button({
     variant === "primary"
       ? colors.primary
       : variant === "danger"
-        ? "#EF4444"
+        ? colors.dangerText
         : variant === "secondary"
           ? colors.inset
           : "transparent";
@@ -55,7 +55,7 @@ export function Button({
     variant === "primary"
       ? colors.primaryText
       : variant === "danger"
-        ? "#FFFFFF"
+        ? colors.primaryText
         : colors.text;
 
   return (
@@ -130,15 +130,16 @@ export function Field({
         accessibilityLabel={label}
         style={[
           styles.input,
+          multiline ? styles.multilineInput : null,
           {
             backgroundColor: colors.inset,
-            borderColor: error ? "#EF4444" : colors.border,
+            borderColor: error ? colors.dangerText : colors.border,
             color: colors.text,
             minHeight: multiline ? 88 : MIN_TAP_TARGET,
           },
         ]}
       />
-      {error ? <Text style={styles.errorText}>{error}</Text> : null}
+      {error ? <Text style={[styles.errorText, { color: colors.dangerText }]}>{error}</Text> : null}
     </View>
   );
 }
@@ -159,7 +160,11 @@ export function Card({
     <View
       style={[
         styles.card,
-        { backgroundColor: colors.surface, borderColor: colors.border },
+        {
+          backgroundColor: colors.surface,
+          borderColor: colors.border,
+          shadowColor: colors.shadow,
+        },
         style,
       ]}
     >
@@ -188,22 +193,15 @@ export function Pill({
   label: string;
   tone?: "neutral" | "success" | "warning" | "danger" | "info" | "brand";
 }) {
-  const { colors, isDark } = useTheme();
-  // Soft chips match the web's dark: variants (e.g. dark:bg-emerald-500/15).
+  const { colors } = useTheme();
+  // Soft chips are palette-owned so the same semantic tone has enough contrast
+  // in player light/dark mode and in the separate Owner Studio palette.
   const map: Record<string, { bg: string; fg: string }> = {
     neutral: { bg: colors.inset, fg: colors.textMuted },
-    success: isDark
-      ? { bg: "rgba(16,185,129,0.15)", fg: "#34D399" }
-      : { bg: "#D1FAE5", fg: "#047857" },
-    warning: isDark
-      ? { bg: "rgba(245,158,11,0.15)", fg: "#FCD34D" }
-      : { bg: "#FEF3C7", fg: "#B45309" },
-    danger: isDark
-      ? { bg: "rgba(239,68,68,0.15)", fg: "#F87171" }
-      : { bg: "#FEE2E2", fg: "#B91C1C" },
-    info: isDark
-      ? { bg: "rgba(59,130,246,0.15)", fg: "#7DD3FC" }
-      : { bg: "#DBEAFE", fg: "#1D4ED8" },
+    success: { bg: colors.successBg, fg: colors.successText },
+    warning: { bg: colors.warningBg, fg: colors.warningText },
+    danger: { bg: colors.dangerBg, fg: colors.dangerText },
+    info: { bg: colors.infoBg, fg: colors.infoText },
     brand: { bg: colors.primary, fg: colors.primaryText },
   };
   const c = map[tone];
@@ -223,19 +221,19 @@ export function Notice({
   message: string;
   tone?: "error" | "info" | "success";
 }) {
-  const { colors, isDark } = useTheme();
-  const soft = tone === "error" ? "rgba(239,68,68,0.12)" : tone === "success" ? "rgba(16,185,129,0.12)" : "rgba(59,130,246,0.12)";
-  const softFg = tone === "error" ? "#F87171" : tone === "success" ? "#34D399" : "#7DD3FC";
-  const solidBg = tone === "error" ? "#FEE2E2" : tone === "success" ? "#D1FAE5" : "#DBEAFE";
-  const solidFg = tone === "error" ? "#B91C1C" : tone === "success" ? "#047857" : "#1D4ED8";
-  const bg = isDark ? soft : solidBg;
-  const fg = isDark ? softFg : solidFg;
+  const { colors } = useTheme();
+  const feedback =
+    tone === "error"
+      ? { bg: colors.dangerBg, fg: colors.dangerText, border: colors.dangerBorder }
+      : tone === "success"
+        ? { bg: colors.successBg, fg: colors.successText, border: colors.successBorder }
+        : { bg: colors.infoBg, fg: colors.infoText, border: colors.infoBorder };
   return (
     <View
       accessibilityRole="alert"
-      style={[styles.notice, { backgroundColor: bg, borderColor: colors.border }]}
+      style={[styles.notice, { backgroundColor: feedback.bg, borderColor: feedback.border }]}
     >
-      <Text style={{ color: fg, fontSize: fontSize.base }}>{message}</Text>
+      <Text style={{ color: feedback.fg, fontSize: fontSize.base }}>{message}</Text>
     </View>
   );
 }
@@ -298,7 +296,11 @@ const styles = StyleSheet.create({
     fontSize: fontSize.lg,
     minHeight: MIN_TAP_TARGET,
   },
-  errorText: { color: "#B91C1C", fontSize: fontSize.sm, marginTop: space["1"] },
+  multilineInput: {
+    textAlignVertical: "top",
+    paddingTop: space["3"],
+  },
+  errorText: { fontSize: fontSize.sm, marginTop: space["1"] },
   card: {
     borderWidth: 1,
     // rounded-3xl border border-[#F0E3CC] bg-white shadow — player app cards

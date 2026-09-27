@@ -49,7 +49,7 @@ export function Navbar() {
   const pathname = usePathname();
   const router = useRouter();
   const { user, isOwner, signOut } = useAuth();
-  const { colors: c, isDark } = useTheme();
+  const { colors: c } = useTheme();
   const { sm, lg } = useBreakpoints();
   const insets = useSafeAreaInsets();
   const [open, setOpen] = useState(false);
@@ -62,10 +62,11 @@ export function Navbar() {
 
   const LINKS = user ? PLAYER_LINKS : PUBLIC_LINKS;
 
-  const isLight = !isDark;
-  // sticky top-0 border-b border-[#F0E3CC] bg-[#FFFDF7]/90 | dark slate-950/90
-  const headerBg = isDark ? "rgba(2,6,23,0.92)" : "rgba(255,253,247,0.94)";
-  const headerBorder = isDark ? "rgba(255,255,255,0.10)" : brand.borderSand;
+  // Keep the navigation on the same opaque surface as the palette. A
+  // translucent header let peach/page content show through text on web and
+  // made the light and dark versions feel like different products.
+  const headerBg = c.header;
+  const headerBorder = c.border;
 
   return (
     <View
@@ -92,12 +93,12 @@ export function Navbar() {
             end={{ x: 1, y: 1 }}
             style={styles.brandIcon}
           >
-            <Trophy size={20} color="#FFFFFF" strokeWidth={2.5} />
+            <Trophy size={20} color={c.primaryText} strokeWidth={2.5} />
           </LinearGradient>
           <View style={styles.brandText}>
             <Text style={[styles.wordmark, { color: c.text, fontSize: sm ? 17 : 15 }]} numberOfLines={1}>
               Futsal
-              <Text style={{ color: isDark ? brand.emerald400 : brand.emerald600 }}>Nepal</Text>
+              <Text style={{ color: c.activeText }}>Nepal</Text>
             </Text>
             {sm ? (
               <Text style={[styles.tagline, { color: c.textFaint }]}>Friends • Fun • Football</Text>
@@ -118,12 +119,12 @@ export function Navbar() {
                   style={[
                     styles.desktopLink,
                     active
-                      ? { backgroundColor: brand.emerald600, borderRadius: radius.xl }
+                      ? { backgroundColor: c.primary, borderRadius: radius.xl }
                       : { backgroundColor: "transparent" },
                   ]}
                 >
-                  <Icon size={16} color={active ? "#FFFFFF" : isLight ? brand.stone600 : brand.slate300} />
-                  <Text style={[styles.desktopLinkText, { color: active ? "#FFFFFF" : isLight ? brand.stone600 : brand.slate300 }]}>
+                  <Icon size={16} color={active ? c.primaryText : c.textMuted} />
+                  <Text style={[styles.desktopLinkText, { color: active ? c.primaryText : c.textMuted }]}>
                     {link.label}
                   </Text>
                 </Pressable>
@@ -135,8 +136,8 @@ export function Navbar() {
                 accessibilityRole="link"
                 style={[styles.desktopLink, styles.ownerLink]}
               >
-                <LayoutDashboard size={16} color="#FFFFFF" />
-                <Text style={[styles.desktopLinkText, { color: "#FFFFFF" }]}>Owner Studio</Text>
+                <LayoutDashboard size={16} color={c.primaryText} />
+                <Text style={[styles.desktopLinkText, { color: c.primaryText }]}>Owner Studio</Text>
               </Pressable>
             ) : null}
           </View>
@@ -151,10 +152,10 @@ export function Navbar() {
               style={[
                 styles.iconBtn,
                 pathname.startsWith("/settings")
-                  ? { backgroundColor: brand.emerald600, borderColor: brand.emerald600 }
+                  ? { backgroundColor: c.primary, borderColor: c.primary }
                   : {
-                      borderColor: isLight ? brand.stone200 : "rgba(255,255,255,0.10)",
-                      backgroundColor: isLight ? brand.white : brand.slate900,
+                      borderColor: c.border,
+                      backgroundColor: c.surface,
                     },
               ]}
               accessibilityLabel="Settings"
@@ -163,10 +164,8 @@ export function Navbar() {
                 size={20}
                 color={
                   pathname.startsWith("/settings")
-                    ? "#FFFFFF"
-                    : isLight
-                      ? brand.stone600
-                      : brand.slate300
+                    ? c.primaryText
+                    : c.textMuted
                 }
               />
             </Pressable>
@@ -179,18 +178,18 @@ export function Navbar() {
                 style={[
                   styles.loginBtn,
                   {
-                    borderColor: isLight ? brand.stone200 : "rgba(255,255,255,0.10)",
-                    backgroundColor: isLight ? brand.white : brand.slate900,
+                    borderColor: c.border,
+                    backgroundColor: c.surface,
                   },
                 ]}
               >
-                <LogIn size={16} color={isLight ? brand.stone700 : brand.slate200} />
-                <Text style={[styles.loginText, { color: isLight ? brand.stone700 : brand.slate200 }]}>
+                <LogIn size={16} color={c.text} />
+                <Text style={[styles.loginText, { color: c.text }]}>
                   Log in
                 </Text>
               </Pressable>
               <Pressable onPress={() => router.push("/signup")} style={styles.joinBtn}>
-                <UserPlus size={16} color="#FFFFFF" />
+                <UserPlus size={16} color={c.primaryText} />
                 <Text style={styles.joinText}>Join free</Text>
               </Pressable>
             </View>
@@ -201,8 +200,8 @@ export function Navbar() {
                 style={[
                   styles.profileBtn,
                   {
-                    borderColor: isLight ? brand.stone200 : "rgba(255,255,255,0.10)",
-                    backgroundColor: isLight ? brand.white : brand.slate900,
+                    borderColor: c.border,
+                    backgroundColor: c.surface,
                   },
                 ]}
               >
@@ -232,8 +231,8 @@ export function Navbar() {
                     style={[
                       styles.dropdown,
                       {
-                        borderColor: isLight ? brand.stone200 : "rgba(255,255,255,0.10)",
-                        backgroundColor: isLight ? brand.white : brand.slate900,
+                        borderColor: c.border,
+                        backgroundColor: c.surface,
                       },
                     ]}
                   >
@@ -241,8 +240,8 @@ export function Navbar() {
                       style={[
                         styles.dropdownHead,
                         {
-                          borderBottomColor: isLight ? brand.stone100 : "rgba(255,255,255,0.05)",
-                          backgroundColor: isLight ? "rgba(255,247,237,0.6)" : "rgba(249,115,22,0.10)",
+                          borderBottomColor: c.border,
+                          backgroundColor: c.inset,
                         },
                       ]}
                     >
@@ -322,16 +321,16 @@ export function Navbar() {
             style={[
               styles.iconBtn,
               {
-                borderColor: isLight ? brand.stone200 : "rgba(255,255,255,0.10)",
-                backgroundColor: isLight ? brand.white : brand.slate900,
+                borderColor: c.border,
+                backgroundColor: c.surface,
               },
             ]}
             accessibilityLabel="Menu"
           >
             {open ? (
-              <X size={20} color={isLight ? brand.stone700 : brand.slate200} />
+              <X size={20} color={c.text} />
             ) : (
-              <Menu size={20} color={isLight ? brand.stone700 : brand.slate200} />
+              <Menu size={20} color={c.text} />
             )}
           </Pressable>
             </>
@@ -345,7 +344,7 @@ export function Navbar() {
             styles.mobileMenu,
             {
               borderTopColor: headerBorder,
-              backgroundColor: isDark ? brand.slate950 : brand.headerCream,
+              backgroundColor: c.header,
             },
           ]}
         >
@@ -363,15 +362,15 @@ export function Navbar() {
                   style={[
                     styles.mobileLink,
                     active
-                      ? { backgroundColor: brand.emerald600, borderRadius: radius.xl }
-                      : { backgroundColor: isLight ? brand.stone100 : "rgba(255,255,255,0.05)" },
+                      ? { backgroundColor: c.primary, borderRadius: radius.xl }
+                      : { backgroundColor: c.inset },
                   ]}
                 >
-                  <Icon size={16} color={active ? "#FFFFFF" : isLight ? brand.stone700 : brand.slate200} />
+                  <Icon size={16} color={active ? c.primaryText : c.text} />
                   <Text
                     style={[
                       styles.mobileLinkText,
-                      { color: active ? "#FFFFFF" : isLight ? brand.stone700 : brand.slate200 },
+                      { color: active ? c.primaryText : c.text },
                     ]}
                   >
                     {l.label}
@@ -385,10 +384,10 @@ export function Navbar() {
                   setOpen(false);
                   router.push("/admin");
                 }}
-                style={[styles.mobileLink, { backgroundColor: brand.orange500 }]}
+                style={[styles.mobileLink, { backgroundColor: c.accent }]}
               >
-                <LayoutDashboard size={16} color="#FFFFFF" />
-                <Text style={[styles.mobileLinkText, { color: "#FFFFFF" }]}>
+                <LayoutDashboard size={16} color={c.primaryText} />
+                <Text style={[styles.mobileLinkText, { color: c.primaryText }]}>
                   Open Owner Studio
                 </Text>
               </Pressable>
@@ -402,29 +401,19 @@ export function Navbar() {
                 style={[
                   styles.mobileLink,
                   pathname.startsWith("/settings")
-                    ? { backgroundColor: brand.emerald600 }
-                    : { backgroundColor: isLight ? brand.stone100 : "rgba(255,255,255,0.05)" },
+                    ? { backgroundColor: c.primary }
+                    : { backgroundColor: c.inset },
                 ]}
               >
                 <Settings
                   size={16}
-                  color={
-                    pathname.startsWith("/settings")
-                      ? "#FFFFFF"
-                      : isLight
-                        ? brand.stone700
-                        : brand.slate200
-                  }
+                  color={pathname.startsWith("/settings") ? c.primaryText : c.text}
                 />
                 <Text
                   style={[
                     styles.mobileLinkText,
                     {
-                      color: pathname.startsWith("/settings")
-                        ? "#FFFFFF"
-                        : isLight
-                          ? brand.stone700
-                          : brand.slate200,
+                      color: pathname.startsWith("/settings") ? c.primaryText : c.text,
                     },
                   ]}
                 >
@@ -433,7 +422,7 @@ export function Navbar() {
               </Pressable>
             ) : null}
           </View>
-          <View style={[styles.mobileAuth, { borderTopColor: isLight ? brand.stone100 : "rgba(255,255,255,0.05)" }]}>
+          <View style={[styles.mobileAuth, { borderTopColor: c.border }]}>
             {!user ? (
               <View style={styles.mobileAuthRow}>
                 <Pressable
@@ -444,13 +433,13 @@ export function Navbar() {
                   style={[
                     styles.mobileAuthBtn,
                     {
-                      borderColor: isLight ? brand.stone200 : "rgba(255,255,255,0.10)",
-                      backgroundColor: isLight ? brand.white : brand.slate900,
+                      borderColor: c.border,
+                      backgroundColor: c.surface,
                     },
                   ]}
                 >
-                  <LogIn size={16} color={isLight ? brand.stone700 : brand.slate200} />
-                  <Text style={[styles.mobileAuthText, { color: isLight ? brand.stone700 : brand.slate200 }]}>
+                  <LogIn size={16} color={c.text} />
+                  <Text style={[styles.mobileAuthText, { color: c.text }]}>
                     Log in
                   </Text>
                 </Pressable>
@@ -459,14 +448,14 @@ export function Navbar() {
                     setOpen(false);
                     router.push("/signup");
                   }}
-                  style={[styles.mobileAuthBtn, { backgroundColor: brand.emerald600, borderColor: brand.emerald600 }]}
+                  style={[styles.mobileAuthBtn, { backgroundColor: c.primary, borderColor: c.primary }]}
                 >
-                  <UserPlus size={16} color="#FFFFFF" />
-                  <Text style={[styles.mobileAuthText, { color: "#FFFFFF" }]}>Join free</Text>
+                  <UserPlus size={16} color={c.primaryText} />
+                  <Text style={[styles.mobileAuthText, { color: c.primaryText }]}>Join free</Text>
                 </Pressable>
               </View>
             ) : (
-              <View style={[styles.mobileUser, { borderColor: isLight ? brand.stone200 : "rgba(255,255,255,0.10)", backgroundColor: isLight ? brand.white : brand.slate900 }]}>
+              <View style={[styles.mobileUser, { borderColor: c.border, backgroundColor: c.surface }]}>
                 <Avatar
                   user={{
                     name: user.name,
@@ -488,10 +477,10 @@ export function Navbar() {
                     setOpen(false);
                     void signOut().then(() => router.replace("/"));
                   }}
-                  style={[styles.outBtn, { borderColor: isLight ? brand.red200 : "rgba(239,68,68,0.3)", backgroundColor: isLight ? brand.red50 : "rgba(239,68,68,0.10)" }]}
+                  style={[styles.outBtn, { borderColor: c.dangerBorder, backgroundColor: c.dangerBg }]}
                 >
-                  <LogOut size={14} color={isLight ? brand.red500 : brand.red400} />
-                  <Text style={[styles.outText, { color: isLight ? brand.red500 : brand.red400 }]}>Out</Text>
+                  <LogOut size={14} color={c.dangerText} />
+                  <Text style={[styles.outText, { color: c.dangerText }]}>Out</Text>
                 </Pressable>
               </View>
             )}
@@ -593,7 +582,7 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 3 },
     elevation: 2,
   },
-  joinText: { fontSize: fontSize.base, fontWeight: "800", color: "#FFFFFF" },
+  joinText: { fontSize: fontSize.base, fontWeight: "800", color: brand.white },
   profileWrap: { position: "relative" },
   profileBtn: {
     flexDirection: "row",

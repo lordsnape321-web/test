@@ -53,7 +53,7 @@ function Card({
 }) {
   const { colors: c } = useTheme();
   return (
-    <View style={[styles.card, { backgroundColor: c.surface, borderColor: c.border }]}>
+    <View style={[styles.card, { backgroundColor: c.surface, borderColor: c.border, shadowColor: c.shadow }]}>
       <View style={styles.cardHead}>
         <View style={styles.cardTitleRow}>
           <Text style={{ color: iconColor }}>{icon}</Text>
@@ -75,7 +75,7 @@ export function RevenueRainbow({ data }: { data: Array<[string, number]> }) {
   if (data.length === 0) {
     return (
       <Card title="Money garden 🌱" icon={<TrendingUp size={16} />} iconColor="#10b981">
-        <Text style={[styles.empty, { backgroundColor: isDark ? "#1E293B" : "#F1F5F9", color: c.textFaint }]}>
+        <Text style={[styles.empty, { backgroundColor: c.inset, color: c.textFaint }]}>
           No earnings yet — accept requests and watch this garden bloom! 💰
         </Text>
       </Card>
@@ -88,9 +88,9 @@ export function RevenueRainbow({ data }: { data: Array<[string, number]> }) {
       icon={<TrendingUp size={16} />}
       iconColor="#10b981"
       right={
-        <View style={[styles.totalPill, { backgroundColor: "rgba(16,185,129,0.15)" }]}>
+        <View style={[styles.totalPill, { backgroundColor: c.successBg }]}>
           <Text
-            style={[styles.totalPillText, { color: isDark ? "#6EE7B7" : "#047857" }]}
+            style={[styles.totalPillText, { color: c.successText }]}
           >
             {formatNPR(total)} in {data.length} day{data.length > 1 ? "s" : ""}
           </Text>
@@ -170,7 +170,7 @@ export function BookingDonut({
   return (
     <Card title="Booking rainbow 🍩" icon={<PieChart size={16} />} iconColor="#8b5cf6">
       {segments.length === 0 ? (
-        <Text style={[styles.empty, { backgroundColor: isDark ? "#1E293B" : "#F1F5F9", color: c.textFaint }]}>
+        <Text style={[styles.empty, { backgroundColor: c.inset, color: c.textFaint }]}>
           Your booking story starts here — every slice is a happy player! 🌈
         </Text>
       ) : (
@@ -182,7 +182,7 @@ export function BookingDonut({
                 cx={50}
                 cy={50}
                 r={40}
-                stroke={isDark ? "#1E293B" : "#E2E8F0"}
+                stroke={c.border}
                 strokeWidth={14}
                 fill="none"
               />
@@ -251,7 +251,7 @@ export function PaymentParty({ byMethod }: { byMethod: Array<[string, number, nu
   return (
     <Card title="How friends pay 🎊" icon={<Wallet size={16} />} iconColor="#0ea5e9">
       {byMethod.length === 0 ? (
-        <Text style={[styles.empty, { backgroundColor: darkMode ? "#1E293B" : "#F1F5F9", color: c.textFaint }]}>
+        <Text style={[styles.empty, { backgroundColor: c.inset, color: c.textFaint }]}>
           Payment stories will dance here soon! 💃
         </Text>
       ) : (
@@ -268,7 +268,7 @@ export function PaymentParty({ byMethod }: { byMethod: Array<[string, number, nu
                   </View>
                   <Text style={[styles.payAmt, { color: c.text }]}>{formatNPR(amt)}</Text>
                 </View>
-                <View style={[styles.payTrack, { backgroundColor: darkMode ? "#1E293B" : "#F1F5F9" }]}>
+                <View style={[styles.payTrack, { backgroundColor: c.inset }]}>
                   <View
                     style={[
                       styles.payFill,
@@ -295,7 +295,7 @@ export function PeakHours({ byHour }: { byHour: Array<[string, number]> }) {
   return (
     <Card title="Busiest kickoff times 🔥" icon={<Flame size={16} />} iconColor="#f97316">
       {byHour.length === 0 ? (
-        <Text style={[styles.empty, { backgroundColor: isDark ? "#1E293B" : "#F1F5F9", color: c.textFaint }]}>
+        <Text style={[styles.empty, { backgroundColor: c.inset, color: c.textFaint }]}>
           Rush hours will glow here once games roll in! ⚽
         </Text>
       ) : (

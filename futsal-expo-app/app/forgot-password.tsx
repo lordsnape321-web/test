@@ -45,7 +45,7 @@ import { colors as tokens, fontSize, radius, space } from "@/theme";
  */
 export default function ForgotPasswordScreen() {
   const router = useRouter();
-  const { colors: c, isDark } = useTheme();
+  const { colors: c } = useTheme();
   const { user, ready } = useAuth();
 
   const [email, setEmail] = useState("");
@@ -57,7 +57,7 @@ export default function ForgotPasswordScreen() {
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [done, setDone] = useState(false);
   const strength = passwordStrength(newPw);
-  const inputFill = isDark ? "rgba(255,255,255,0.05)" : tokens.insetCream;
+  const inputFill = c.inset;
 
   useEffect(() => {
     if (ready && user) router.replace(user.role === "owner" ? "/admin" : "/(app)");
@@ -94,7 +94,7 @@ export default function ForgotPasswordScreen() {
   }
 
   const strengthBarColor = (i: number) => {
-    if (i > strength.score) return isDark ? "rgba(255,255,255,0.1)" : tokens.stone200;
+    if (i > strength.score) return c.border;
     if (strength.score <= 1) return tokens.red400;
     if (strength.score === 2) return tokens.amber400;
     return tokens.emerald500;
@@ -117,7 +117,7 @@ export default function ForgotPasswordScreen() {
             </Pressable>
           </Link>
 
-          <View style={[styles.card, { backgroundColor: c.surface, borderColor: c.border }]}>
+          <View style={[styles.card, { backgroundColor: c.surface, borderColor: c.border, shadowColor: c.shadow }]}>
             <View style={styles.hero}>
               <View style={styles.heroIcon}>
                 <KeyRound size={28} color={tokens.orange600} strokeWidth={2.5} />
@@ -149,7 +149,7 @@ export default function ForgotPasswordScreen() {
                     styles.inputWrap,
                     {
                       backgroundColor: inputFill,
-                      borderColor: fieldErrors.email ? tokens.red400 : c.border,
+                      borderColor: fieldErrors.email ? c.dangerText : c.border,
                     },
                   ]}
                 >
@@ -169,7 +169,7 @@ export default function ForgotPasswordScreen() {
                   />
                 </View>
                 {fieldErrors.email ? (
-                  <Text style={styles.fieldError}>{fieldErrors.email}</Text>
+                  <Text style={[styles.fieldError, { color: c.dangerText }]}>{fieldErrors.email}</Text>
                 ) : null}
 
                 <Text style={[styles.fieldLabel, { color: c.textFaint }]}>
@@ -180,7 +180,7 @@ export default function ForgotPasswordScreen() {
                     styles.inputWrap,
                     {
                       backgroundColor: inputFill,
-                      borderColor: fieldErrors.phone ? tokens.red400 : c.border,
+                      borderColor: fieldErrors.phone ? c.dangerText : c.border,
                     },
                   ]}
                 >
@@ -199,7 +199,7 @@ export default function ForgotPasswordScreen() {
                   />
                 </View>
                 {fieldErrors.phone ? (
-                  <Text style={styles.fieldError}>{fieldErrors.phone}</Text>
+                  <Text style={[styles.fieldError, { color: c.dangerText }]}>{fieldErrors.phone}</Text>
                 ) : null}
 
                 <Text style={[styles.fieldLabel, { color: c.textFaint }]}>
@@ -210,7 +210,7 @@ export default function ForgotPasswordScreen() {
                     styles.inputWrap,
                     {
                       backgroundColor: inputFill,
-                      borderColor: fieldErrors.newPw ? tokens.red400 : c.border,
+                      borderColor: fieldErrors.newPw ? c.dangerText : c.border,
                     },
                   ]}
                 >
@@ -252,7 +252,7 @@ export default function ForgotPasswordScreen() {
                   </View>
                 ) : null}
                 {fieldErrors.newPw ? (
-                  <Text style={styles.fieldError}>{fieldErrors.newPw}</Text>
+                  <Text style={[styles.fieldError, { color: c.dangerText }]}>{fieldErrors.newPw}</Text>
                 ) : null}
 
                 {error ? <Notice message={error} /> : null}
@@ -261,9 +261,9 @@ export default function ForgotPasswordScreen() {
                   onPress={() => void submit()}
                   disabled={busy}
                   accessibilityRole="button"
-                  style={[styles.submit, busy ? styles.dim : null]}
+                  style={[styles.submit, { backgroundColor: c.primary }, busy ? styles.dim : null]}
                 >
-                  <Text style={styles.submitText}>
+                  <Text style={[styles.submitText, { color: c.primaryText }]}>
                     {busy ? "Resetting…" : "Reset my password 🔑"}
                   </Text>
                 </Pressable>
@@ -365,7 +365,6 @@ const styles = StyleSheet.create({
   fieldError: {
     fontSize: fontSize.xs,
     fontWeight: "700",
-    color: tokens.red500,
     marginTop: 4,
   },
 
@@ -382,6 +381,6 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     marginTop: space[4],
   },
-  submitText: { fontSize: fontSize.base, fontWeight: "900", color: "#FFFFFF" },
+  submitText: { fontSize: fontSize.base, fontWeight: "900" },
   dim: { opacity: 0.5 },
 });

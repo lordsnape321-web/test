@@ -29,7 +29,7 @@ export type VenueWithCourts = Venue;
 export type MatchItem = Match;
 
 export function VenueCard({ v }: { v: VenueWithCourts }) {
-  const { colors: c, isDark } = useTheme();
+  const { colors: c } = useTheme();
   const router = useRouter();
 
   return (
@@ -38,7 +38,12 @@ export function VenueCard({ v }: { v: VenueWithCourts }) {
       accessibilityRole="button"
       style={({ pressed }) => [
         styles.venueCard,
-        { backgroundColor: c.surface, borderColor: c.border, opacity: pressed ? 0.9 : 1 },
+        {
+          backgroundColor: c.surface,
+          borderColor: c.border,
+          shadowColor: c.shadow,
+          opacity: pressed ? 0.9 : 1,
+        },
       ]}
     >
       <View style={styles.venueImageWrap}>
@@ -63,16 +68,16 @@ export function VenueCard({ v }: { v: VenueWithCourts }) {
           </View>
         ) : null}
 
-        <View style={[styles.badge, styles.badgeRating, { backgroundColor: isDark ? "rgba(15,23,42,0.95)" : "rgba(255,255,255,0.95)" }]}>
+        <View style={[styles.badge, styles.badgeRating, { backgroundColor: c.surface }]}>
           <Star size={12} color={colors.amber400} fill={colors.amber400} />
-          <Text style={[styles.badgeRatingText, { color: isDark ? colors.slate100 : colors.stone800 }]}>
+          <Text style={[styles.badgeRatingText, { color: c.text }]}>
             {v.rating.toFixed(1)}
             <Text style={{ color: c.textFaint, fontWeight: "500" }}> ({v.totalReviews})</Text>
           </Text>
         </View>
 
-        <View style={[styles.badge, styles.badgePrice, { backgroundColor: isDark ? "rgba(15,23,42,0.95)" : "rgba(255,255,255,0.95)" }]}>
-          <Text style={[styles.badgePriceText, { color: isDark ? colors.emerald300 : colors.emerald700 }]}>
+        <View style={[styles.badge, styles.badgePrice, { backgroundColor: c.surface }]}>
+          <Text style={[styles.badgePriceText, { color: c.successText }]}>
             From {formatNPR(v.minPrice)}/hr
           </Text>
         </View>
@@ -89,7 +94,7 @@ export function VenueCard({ v }: { v: VenueWithCourts }) {
           </Text>
         </View>
 
-        <View style={[styles.venueFooter, { borderTopColor: isDark ? "rgba(255,255,255,0.05)" : colors.stone100 }]}>
+        <View style={[styles.venueFooter, { borderTopColor: c.border }]}>
           <View style={styles.venueStat}>
             <Users size={14} color={c.textMuted} />
             <Text style={[styles.venueStatText, { color: c.textMuted }]}>
@@ -103,10 +108,10 @@ export function VenueCard({ v }: { v: VenueWithCourts }) {
             </Text>
           </View>
           <View style={styles.venueStat}>
-            <Text style={[styles.venueStatText, { color: isDark ? colors.emerald400 : colors.emerald600, fontWeight: "900" }]}>
+            <Text style={[styles.venueStatText, { color: c.successText, fontWeight: "900" }]}>
               Book
             </Text>
-            <ArrowRight size={14} color={isDark ? colors.emerald400 : colors.emerald600} />
+            <ArrowRight size={14} color={c.successText} />
           </View>
         </View>
       </View>
@@ -124,7 +129,12 @@ export function MatchCard({ m }: { m: MatchItem }) {
   const others = m.otherJoined ?? Math.max(0, m.joinedCount - crew);
 
   return (
-    <View style={[styles.matchCard, { backgroundColor: c.surface, borderColor: c.border }]}>
+    <View
+      style={[
+        styles.matchCard,
+        { backgroundColor: c.surface, borderColor: c.border, shadowColor: c.shadow },
+      ]}
+    >
       <View style={styles.matchHead}>
         <View style={styles.grow}>
           <Text style={[styles.matchTitle, { color: c.text }]}>{m.title}</Text>
@@ -139,8 +149,8 @@ export function MatchCard({ m }: { m: MatchItem }) {
           <View style={styles.matchChips}>
             {m.bookingId ? (
               <View style={[styles.chip, { backgroundColor: c.activeSoft }]}>
-                <BadgeCheck size={12} color={isDark ? colors.emerald300 : colors.emerald700} />
-                <Text style={[styles.chipText, { color: isDark ? colors.emerald300 : colors.emerald700 }]}>
+                <BadgeCheck size={12} color={c.successText} />
+                <Text style={[styles.chipText, { color: c.successText }]}>
                   Court already sorted
                 </Text>
               </View>
@@ -152,8 +162,8 @@ export function MatchCard({ m }: { m: MatchItem }) {
                 </Text>
               </View>
             ) : (
-              <View style={[styles.chip, { backgroundColor: "rgba(14,165,233,0.10)" }]}>
-                <Text style={[styles.chipText, { color: isDark ? colors.sky300 : colors.sky700 }]}>🤝 Fair split</Text>
+              <View style={[styles.chip, { backgroundColor: c.infoBg }]}>
+                <Text style={[styles.chipText, { color: c.infoText }]}>🤝 Fair split</Text>
               </View>
             )}
           </View>
@@ -163,20 +173,14 @@ export function MatchCard({ m }: { m: MatchItem }) {
           style={[
             styles.spotsBadge,
             {
-              backgroundColor: full
-                ? isDark
-                  ? "rgba(239,68,68,0.15)"
-                  : colors.red100
-                : isDark
-                  ? "rgba(249,115,22,0.15)"
-                  : colors.orange100,
+              backgroundColor: full ? c.dangerBg : c.warningBg,
             },
           ]}
         >
           <Text
             style={[
               styles.spotsBadgeText,
-              { color: full ? (isDark ? "#F87171" : colors.red600) : isDark ? "#FDBA74" : colors.orange700 },
+              { color: full ? c.dangerText : c.warningText },
             ]}
           >
             {full ? "Full house" : `${m.spotsLeft} spots left`}
@@ -200,7 +204,7 @@ export function MatchCard({ m }: { m: MatchItem }) {
         </View>
         <View style={[styles.tile, { backgroundColor: c.activeSoft }]}>
           <Text style={[styles.tileLabel, { color: c.textFaint }]}>Share</Text>
-          <Text style={[styles.tileValue, { color: isDark ? colors.emerald300 : colors.emerald700 }]} numberOfLines={1}>
+          <Text style={[styles.tileValue, { color: c.successText }]} numberOfLines={1}>
             {formatNPR(m.pricePerPlayer)}
           </Text>
         </View>
@@ -218,7 +222,7 @@ export function MatchCard({ m }: { m: MatchItem }) {
         <Text style={[styles.progressLabel, { color: c.textMuted }]}>
           {m.joinedCount}/{m.maxPlayers} friends in
         </Text>
-        <Text style={[styles.progressLabel, { color: isDark ? colors.emerald400 : colors.emerald600 }]}>{pct}% full</Text>
+        <Text style={[styles.progressLabel, { color: c.successText }]}>{pct}% full</Text>
       </View>
       <View style={[styles.progressTrack, { backgroundColor: c.inset }]}>
         <LinearGradient
@@ -259,11 +263,11 @@ export function MatchCard({ m }: { m: MatchItem }) {
           accessibilityRole="button"
           style={({ pressed }) => [
             styles.viewButton,
-            { backgroundColor: colors.emerald600, opacity: pressed ? 0.85 : 1 },
+            { backgroundColor: c.primary, opacity: pressed ? 0.85 : 1 },
           ]}
         >
-          <Text style={styles.viewButtonText}>View</Text>
-          <ArrowRight size={14} color="#FFFFFF" />
+          <Text style={[styles.viewButtonText, { color: c.primaryText }]}>View</Text>
+          <ArrowRight size={14} color={c.primaryText} />
         </Pressable>
       </View>
     </View>

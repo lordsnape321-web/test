@@ -72,7 +72,8 @@ class RealWorldSeeder extends Seeder
                     $teams,
                     $grounds['venues'],
                     $grounds['courts'],
-                    $users['owners']
+                    $users['owners'],
+                    $users['players']
                 );
                 $bookings = $this->createBookings(
                     $users,
@@ -536,9 +537,10 @@ class RealWorldSeeder extends Seeder
      * @param  list<Venue>  $venues
      * @param  list<Court>  $courts
      * @param  list<User>  $owners
+     * @param  list<User>  $players
      * @return array{tournaments: list<Tournament>, entries: array<int, list<TournamentTeam>>}
      */
-    private function createTournaments(array $teams, array $venues, array $courts, array $owners): array
+    private function createTournaments(array $teams, array $venues, array $courts, array $owners, array $players): array
     {
         $today = now()->startOfDay();
         $courtAtVenue = function (Venue $venue) use ($courts): ?Court {

@@ -88,12 +88,14 @@ export const colors = {
 } as const;
 
 export type Palette = {
-  /** Page background. */
+  /** Page/canvas background. This is never transparent so every route has a deterministic surface. */
   bg: string;
   /** Elevated surface: cards, sheets, header. */
   surface: string;
   /** Recessed surface: small stat tiles, input fills. */
   inset: string;
+  /** Top navigation surface; kept separate from cards for the clubhouse header tint. */
+  header: string;
   border: string;
   text: string;
   textMuted: string;
@@ -107,21 +109,40 @@ export type Palette = {
   /** Active tab tint. */
   activeSoft: string;
   activeText: string;
+  /** Feedback tokens keep notices, pills, and form errors readable in both modes. */
+  successBg: string;
+  successText: string;
+  successBorder: string;
+  warningBg: string;
+  warningText: string;
+  warningBorder: string;
+  dangerBg: string;
+  dangerText: string;
+  dangerBorder: string;
+  infoBg: string;
+  infoText: string;
+  infoBorder: string;
+  /** Shadow colour is palette-aware; warm shadows should not leak into Studio/dark mode. */
   shadow: string;
+  /** Shared modal/drawer scrim. */
+  scrim: string;
 };
 
 /**
  * Player app, light mode: the warm clubhouse look.
  * body #FFF9F0 / text #1C1917, cards white on #F0E3CC borders.
  *
- * `bg` is transparent so the shell's TurfBackdrop (the `.turf-pattern`
- * equivalent) paints through every screen; the pattern itself includes the
- * peach base colour.
+ * The shell and every screen use the same peach `bg`, so a route never falls
+ * through to the browser's default white canvas while the backdrop mounts.
  */
 export const lightPalette: Palette = {
-  bg: "transparent",
+  // Keep the warm clubhouse canvas visible behind cards. Previously this was
+  // transparent while the shell painted white, which made light mode look
+  // different on web and native and hid the intended peach direction.
+  bg: colors.peach,
   surface: colors.white,
   inset: colors.insetCream,
+  header: colors.headerCream,
   border: colors.borderSand,
   text: colors.stone900,
   textMuted: colors.stone500,
@@ -132,18 +153,31 @@ export const lightPalette: Palette = {
   accentText: colors.white,
   activeSoft: colors.emerald100,
   activeText: colors.emerald700,
+  successBg: colors.emerald100,
+  successText: colors.emerald700,
+  successBorder: colors.emerald300,
+  warningBg: "#FEF3C7",
+  warningText: "#B45309",
+  warningBorder: "#FCD34D",
+  dangerBg: colors.red100,
+  dangerText: colors.red600,
+  dangerBorder: colors.red200,
+  infoBg: "#DBEAFE",
+  infoText: "#1D4ED8",
+  infoBorder: "#93C5FD",
   shadow: "rgba(180,120,60,0.10)",
+  scrim: "rgba(28,25,23,0.48)",
 };
 
 /**
  * Player app, dark mode.
  * body #020617 / text #F1F5F9, cards slate-900 on white/10 borders.
- * `bg` is transparent for the same reason as light mode.
  */
 export const darkPalette: Palette = {
-  bg: "transparent",
+  bg: colors.slate950,
   surface: colors.slate900,
   inset: "rgba(255,255,255,0.05)",
+  header: colors.slate950,
   border: "rgba(255,255,255,0.10)",
   text: colors.slate100,
   textMuted: colors.slate400,
@@ -154,7 +188,20 @@ export const darkPalette: Palette = {
   accentText: colors.white,
   activeSoft: "rgba(16,185,129,0.15)",
   activeText: colors.emerald400,
+  successBg: "rgba(16,185,129,0.15)",
+  successText: colors.emerald300,
+  successBorder: "rgba(52,211,153,0.35)",
+  warningBg: "rgba(245,158,11,0.15)",
+  warningText: colors.amber300,
+  warningBorder: "rgba(252,211,77,0.35)",
+  dangerBg: "rgba(239,68,68,0.15)",
+  dangerText: colors.red400,
+  dangerBorder: "rgba(248,113,113,0.35)",
+  infoBg: "rgba(14,165,233,0.15)",
+  infoText: colors.sky300,
+  infoBorder: "rgba(125,211,252,0.35)",
   shadow: "rgba(0,0,0,0.55)",
+  scrim: "rgba(2,6,23,0.72)",
 };
 
 /**
@@ -167,6 +214,7 @@ export const ownerPalette: Palette = {
   bg: colors.slate100,
   surface: colors.white,
   inset: colors.slate100,
+  header: colors.white,
   border: colors.slate200,
   text: colors.slate900,
   textMuted: colors.slate500,
@@ -177,13 +225,27 @@ export const ownerPalette: Palette = {
   accentText: colors.white,
   activeSoft: colors.orange100,
   activeText: colors.orange700,
+  successBg: colors.emerald100,
+  successText: colors.emerald700,
+  successBorder: colors.emerald300,
+  warningBg: "#FEF3C7",
+  warningText: "#B45309",
+  warningBorder: "#FCD34D",
+  dangerBg: colors.red100,
+  dangerText: colors.red600,
+  dangerBorder: colors.red200,
+  infoBg: "#DBEAFE",
+  infoText: "#1D4ED8",
+  infoBorder: "#93C5FD",
   shadow: "rgba(15,23,42,0.08)",
+  scrim: "rgba(15,23,42,0.42)",
 };
 
 export const ownerDarkPalette: Palette = {
   bg: colors.slate950,
   surface: colors.slate900,
   inset: colors.slate800,
+  header: colors.slate950,
   border: "rgba(255,255,255,0.10)",
   text: colors.slate100,
   textMuted: colors.slate400,
@@ -194,7 +256,20 @@ export const ownerDarkPalette: Palette = {
   accentText: colors.white,
   activeSoft: "rgba(249,115,22,0.15)",
   activeText: colors.orange300,
+  successBg: "rgba(16,185,129,0.15)",
+  successText: colors.emerald300,
+  successBorder: "rgba(52,211,153,0.35)",
+  warningBg: "rgba(245,158,11,0.15)",
+  warningText: colors.amber300,
+  warningBorder: "rgba(252,211,77,0.35)",
+  dangerBg: "rgba(239,68,68,0.15)",
+  dangerText: colors.red400,
+  dangerBorder: "rgba(248,113,113,0.35)",
+  infoBg: "rgba(14,165,233,0.15)",
+  infoText: colors.sky300,
+  infoBorder: "rgba(125,211,252,0.35)",
   shadow: "rgba(0,0,0,0.45)",
+  scrim: "rgba(2,6,23,0.72)",
 };
 
 /**

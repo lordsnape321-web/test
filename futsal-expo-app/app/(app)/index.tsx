@@ -419,13 +419,13 @@ export default function HomeScreen() {
         </View>
 
         {loading ? (
-          <ResponsiveGrid columns={bp.md ? 3 : 1}>
+          <ResponsiveGrid columns={bp.cardColumns}>
             {[0, 1, 2].map((i) => (
               <View key={i} style={[styles.skeleton, { backgroundColor: c.surface, height: 256, marginBottom: 0 }]} />
             ))}
           </ResponsiveGrid>
         ) : (
-          <ResponsiveGrid columns={bp.md ? 3 : 1}>
+          <ResponsiveGrid columns={bp.cardColumns}>
             {matches.map((m) => (
               <MatchCard key={m.id} m={m} />
             ))}

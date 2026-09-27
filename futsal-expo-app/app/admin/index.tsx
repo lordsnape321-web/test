@@ -56,7 +56,7 @@ function advanceReceivableFor(b: Booking) {
  */
 export default function OwnerHome() {
   const { user } = useAuth();
-  const { colors: c, isDark } = useTheme();
+  const { colors: c } = useTheme();
   const router = useRouter();
   const [venues, setVenues] = useState<Venue[]>([]);
   const [bookings, setBookings] = useState<Booking[]>([]);
@@ -208,9 +208,9 @@ export default function OwnerHome() {
           </Text>
           <Pressable
             onPress={() => router.push("/admin/venues")}
-            style={[styles.emptyBtn, { backgroundColor: isDark ? "#FFFFFF" : "#0F172A" }]}
+            style={[styles.emptyBtn, { backgroundColor: c.primary }]}
           >
-            <Text style={[styles.emptyBtnText, { color: isDark ? "#0F172A" : "#FFFFFF" }]}>
+            <Text style={[styles.emptyBtnText, { color: c.primaryText }]}>
               + List my first venue
             </Text>
           </Pressable>
@@ -294,17 +294,17 @@ export default function OwnerHome() {
                 styles.kpiCard,
                 {
                   backgroundColor: c.surface,
-                  borderColor: k.hot ? colors.orange500 : c.border,
+                  borderColor: k.hot ? c.primary : c.border,
                 },
               ]}
             >
               <View
                 style={[
                   styles.kpiIcon,
-                  { backgroundColor: k.hot ? colors.orange500 : isDark ? "#FFFFFF" : "#0F172A" },
+                  { backgroundColor: k.hot ? c.primary : c.text },
                 ]}
               >
-                <Icon size={18} color={k.hot ? "#FFFFFF" : isDark ? "#0F172A" : "#FFFFFF"} />
+                <Icon size={18} color={k.hot ? c.primaryText : c.surface} />
               </View>
               <Text style={[styles.kpiValue, { color: c.text }]} numberOfLines={1}>
                 {k.value}
@@ -323,15 +323,15 @@ export default function OwnerHome() {
         <View style={[styles.panel, { backgroundColor: c.surface, borderColor: c.border }]}>
           <View style={styles.panelHead}>
             <View style={styles.panelTitleRow}>
-              <Clock size={16} color={colors.orange500} />
+              <Clock size={16} color={c.accent} />
               <Text style={[styles.panelTitle, { color: c.text }]}>Awaiting your approval</Text>
             </View>
             <Pressable onPress={() => router.push("/admin/requests")}>
-              <Text style={styles.link}>View all →</Text>
+              <Text style={[styles.link, { color: c.accent }]}>View all →</Text>
             </Pressable>
           </View>
           {pending.length === 0 ? (
-            <View style={[styles.inlineEmpty, { backgroundColor: isDark ? "#1E293B" : "#F8FAFC" }]}>
+            <View style={[styles.inlineEmpty, { backgroundColor: c.inset }]}>
               <Text style={[styles.inlineEmptyText, { color: c.textFaint }]}>
                 No pending requests. New bookings from players will appear here. ✅
               </Text>
@@ -340,7 +340,7 @@ export default function OwnerHome() {
             pending.slice(0, 4).map((b) => (
               <View
                 key={b.id}
-                style={[styles.approveRow, { borderColor: c.border, backgroundColor: isDark ? "#0F172A" : "#F8FAFC" }]}
+                style={[styles.approveRow, { borderColor: c.border, backgroundColor: c.inset }]}
               >
                 <View style={styles.grow}>
                   <Text style={[styles.approveName, { color: c.text }]} numberOfLines={1}>
@@ -351,7 +351,7 @@ export default function OwnerHome() {
                     {formatTime12(b.startTime)}
                   </Text>
                   {advanceReceivableFor(b) > 0 ? (
-                    <Text style={[styles.approveAdvance, { color: isDark ? "#FDBA74" : "#C2410C" }]} numberOfLines={1}>
+                    <Text style={[styles.approveAdvance, { color: c.warningText }]} numberOfLines={1}>
                       💳 Advance receivable {formatNPR(advanceReceivableFor(b))} • awaiting player
                     </Text>
                   ) : null}
@@ -359,18 +359,31 @@ export default function OwnerHome() {
                 <Pressable
                   onPress={() => void decide(b.id, true)}
                   disabled={acting === b.id || advanceReceivableFor(b) > 0}
-                  style={[styles.approveBtn, { opacity: acting === b.id || advanceReceivableFor(b) > 0 ? 0.5 : 1 }]}
+                  style={[
+                    styles.approveBtn,
+                    {
+                      backgroundColor: c.primary,
+                      opacity: acting === b.id || advanceReceivableFor(b) > 0 ? 0.5 : 1,
+                    },
+                  ]}
                   accessibilityLabel="Accept"
                 >
-                  <Check size={16} color="#FFFFFF" strokeWidth={3} />
+                  <Check size={16} color={c.primaryText} strokeWidth={3} />
                 </Pressable>
                 <Pressable
                   onPress={() => void decide(b.id, false)}
                   disabled={acting === b.id}
-                  style={[styles.declineBtn, { opacity: acting === b.id ? 0.5 : 1 }]}
+                  style={[
+                    styles.declineBtn,
+                    {
+                      backgroundColor: c.dangerBg,
+                      borderColor: c.dangerBorder,
+                      opacity: acting === b.id ? 0.5 : 1,
+                    },
+                  ]}
                   accessibilityLabel="Decline"
                 >
-                  <X size={16} color="#DC2626" strokeWidth={3} />
+                  <X size={16} color={c.dangerText} strokeWidth={3} />
                 </Pressable>
               </View>
             ))
@@ -389,7 +402,7 @@ export default function OwnerHome() {
         <View style={styles.panelHead}>
           <Text style={[styles.panelTitle, { color: c.text }]}>My venues</Text>
           <Pressable onPress={() => router.push("/admin/venues")}>
-            <Text style={styles.link}>Manage →</Text>
+            <Text style={[styles.link, { color: c.accent }]}>Manage →</Text>
           </Pressable>
         </View>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.venueStrip}>
@@ -397,7 +410,7 @@ export default function OwnerHome() {
             <Pressable
               key={v.id}
               onPress={() => router.push("/admin/venues")}
-              style={[styles.venueCard, { borderColor: c.border, backgroundColor: isDark ? "#0F172A" : "#F8FAFC" }]}
+              style={[styles.venueCard, { borderColor: c.border, backgroundColor: c.inset }]}
             >
               {v.imageUrl ? (
                 <Image source={{ uri: v.imageUrl }} style={styles.venueImg} />
@@ -420,10 +433,10 @@ export default function OwnerHome() {
       <View style={styles.twoCol}>
         <Pressable
           onPress={() => router.push("/admin/leagues")}
-          style={[styles.promoCard, { borderColor: isDark ? "rgba(5,150,105,0.35)" : "#A7F3D0", backgroundColor: c.surface }]}
+          style={[styles.promoCard, { borderColor: c.successBorder, backgroundColor: c.surface }]}
         >
-          <View style={[styles.promoIcon, { backgroundColor: colors.emerald600 }]}>
-            <Trophy size={18} color="#FFFFFF" />
+          <View style={[styles.promoIcon, { backgroundColor: c.primary }]}>
+            <Trophy size={18} color={c.primaryText} />
           </View>
           <View style={styles.grow}>
             <Text style={[styles.promoTitle, { color: c.text }]}>
@@ -438,10 +451,10 @@ export default function OwnerHome() {
         </Pressable>
         <Pressable
           onPress={() => router.push("/admin/bookings")}
-          style={[styles.promoCard, { borderColor: isDark ? "rgba(99,102,241,0.35)" : "#C7D2FE", backgroundColor: c.surface }]}
+          style={[styles.promoCard, { borderColor: c.infoBorder, backgroundColor: c.surface }]}
         >
-          <View style={[styles.promoIcon, { backgroundColor: "#4F46E5" }]}>
-            <Swords size={18} color="#FFFFFF" />
+          <View style={[styles.promoIcon, { backgroundColor: c.activeText }]}>
+            <Swords size={18} color={c.primaryText} />
           </View>
           <View style={styles.grow}>
             <Text style={[styles.promoTitle, { color: c.text }]}>Competition score desk</Text>
@@ -552,7 +565,6 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: radius.xl,
-    backgroundColor: colors.emerald600,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -560,7 +572,6 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: radius.xl,
-    backgroundColor: "#FEE2E2",
     alignItems: "center",
     justifyContent: "center",
   },

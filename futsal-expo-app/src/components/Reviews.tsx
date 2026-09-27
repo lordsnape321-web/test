@@ -42,7 +42,8 @@ export type Review = {
 };
 
 export function Stars({ value, size = 16 }: { value: number; size?: number }) {
-  const empty = useTheme().isDark ? "rgba(255,255,255,0.10)" : "#E7E5E4";
+  const { colors: c } = useTheme();
+  const empty = c.border;
   return (
     <View style={styles.starsRow}>
       {[1, 2, 3, 4, 5].map((i) => (
@@ -64,7 +65,8 @@ export function StarInput({
   value: number;
   onChange: (v: number) => void;
 }) {
-  const empty = useTheme().isDark ? "rgba(255,255,255,0.10)" : "#E7E5E4";
+  const { colors: c } = useTheme();
+  const empty = c.border;
   return (
     <View style={styles.starInputRow}>
       {[1, 2, 3, 4, 5].map((i) => (
@@ -102,7 +104,7 @@ export function ReviewsSection({
   onChanged?: () => void;
 }) {
   const { user } = useAuth();
-  const { colors: c, isDark } = useTheme();
+  const { colors: c } = useTheme();
   const [reviews, setReviews] = useState<Review[]>([]);
   const [loading, setLoading] = useState(true);
   const [rating, setRating] = useState(5);
@@ -191,17 +193,17 @@ export function ReviewsSection({
     }
   }
 
-  const cardBg = isDark ? "rgba(255,255,255,0.04)" : c.surface;
+  const cardBg = c.surface;
 
   return (
     <View style={[styles.card, { backgroundColor: cardBg, borderColor: c.border }]}>
       <View style={styles.headerRow}>
         <View style={styles.headerTitle}>
-          <MessageCircleHeart size={16} color={colors.orange500} />
-          <Text style={[styles.headerText, { color: colors.orange500 }]}>What players say 💬</Text>
+          <MessageCircleHeart size={16} color={c.accent} />
+          <Text style={[styles.headerText, { color: c.accent }]}>What players say 💬</Text>
         </View>
         {reviews.length > 0 ? (
-          <View style={[styles.avgPill, { backgroundColor: isDark ? "rgba(245,158,11,0.10)" : "#FFFBEB" }]}>
+          <View style={[styles.avgPill, { backgroundColor: c.warningBg }]}>
             <Stars value={avg} size={12} />
             <Text style={[styles.avgText, { color: c.text }]}>
               {avg} • {reviews.length} review{reviews.length !== 1 ? "s" : ""}
@@ -213,10 +215,10 @@ export function ReviewsSection({
       {canReview && !showForm ? (
         <Pressable
           onPress={openForm}
-          style={[styles.cta, { borderColor: isDark ? "rgba(249,115,22,0.4)" : "#FDBA74", backgroundColor: isDark ? "rgba(249,115,22,0.10)" : "#FFF7ED" }]}
+          style={[styles.cta, { borderColor: c.warningBorder, backgroundColor: c.warningBg }]}
           accessibilityRole="button"
         >
-          <Text style={[styles.ctaText, { color: isDark ? colors.orange300 : "#C2410C" }]}>
+          <Text style={[styles.ctaText, { color: c.warningText }]}>
             {mine ? `Update your review of ${venueName} ⭐` : `Played at ${venueName}? Share some love ⭐`}
           </Text>
         </Pressable>
@@ -226,14 +228,14 @@ export function ReviewsSection({
           One review per venue — posting again updates yours, it won&apos;t add a second 🔒
         </Text>
       ) : null}
-      {error && !showForm ? <Text style={styles.error}>{error}</Text> : null}
+      {error && !showForm ? <Text style={[styles.error, { color: c.dangerText }]}>{error}</Text> : null}
 
       {showForm ? (
-        <View style={[styles.form, { borderColor: isDark ? "rgba(249,115,22,0.25)" : "#FED7AA", backgroundColor: isDark ? "rgba(249,115,22,0.05)" : "rgba(255,247,237,0.6)" }]}>
+        <View style={[styles.form, { borderColor: c.warningBorder, backgroundColor: c.warningBg }]}>
           {mine ? (
             <View style={styles.updatingRow}>
-              <RotateCcw size={14} color={colors.orange500} />
-              <Text style={[styles.updatingText, { color: isDark ? colors.orange300 : "#C2410C" }]}>
+              <RotateCcw size={14} color={c.accent} />
+              <Text style={[styles.updatingText, { color: c.warningText }]}>
                 Updating your review — it replaces the old one, no second review 🔒
               </Text>
             </View>
@@ -248,12 +250,12 @@ export function ReviewsSection({
                   style={[
                     styles.gameChip,
                     {
-                      backgroundColor: bookingId === "" ? colors.emerald600 : c.surface,
-                      borderColor: bookingId === "" ? colors.emerald600 : c.border,
+                      backgroundColor: bookingId === "" ? c.primary : c.surface,
+                      borderColor: bookingId === "" ? c.primary : c.border,
                     },
                   ]}
                 >
-                  <Text style={{ color: bookingId === "" ? "#FFFFFF" : c.text, fontSize: fontSize.sm, fontWeight: "700" }}>
+                  <Text style={{ color: bookingId === "" ? c.primaryText : c.text, fontSize: fontSize.sm, fontWeight: "700" }}>
                     General visit
                   </Text>
                 </Pressable>
@@ -265,10 +267,10 @@ export function ReviewsSection({
                       onPress={() => setBookingId(String(b.id))}
                       style={[
                         styles.gameChip,
-                        { backgroundColor: on ? colors.emerald600 : c.surface, borderColor: on ? colors.emerald600 : c.border },
+                        { backgroundColor: on ? c.primary : c.surface, borderColor: on ? c.primary : c.border },
                       ]}
                     >
-                      <Text style={{ color: on ? "#FFFFFF" : c.text, fontSize: fontSize.sm, fontWeight: "700" }}>
+                      <Text style={{ color: on ? c.primaryText : c.text, fontSize: fontSize.sm, fontWeight: "700" }}>
                         {b.label}
                       </Text>
                     </Pressable>
@@ -301,7 +303,7 @@ export function ReviewsSection({
           <Text style={[styles.counter, { color: c.textFaint }]}>
             {message.trim().length}/1000 • min 3 characters 💬
           </Text>
-          {error ? <Text style={styles.error}>{error}</Text> : null}
+          {error ? <Text style={[styles.error, { color: c.dangerText }]}>{error}</Text> : null}
 
           <View style={styles.formActions}>
             <Pressable
@@ -317,11 +319,11 @@ export function ReviewsSection({
             <Pressable
               onPress={() => void submit()}
               disabled={saving}
-              style={[styles.submitBtn, { opacity: saving ? 0.55 : 1 }]}
+              style={[styles.submitBtn, { backgroundColor: c.primary, opacity: saving ? 0.55 : 1 }]}
               accessibilityRole="button"
             >
-              {saving ? <ActivityIndicator size="small" color="#FFFFFF" /> : null}
-              <Text style={styles.submitText}>
+              {saving ? <ActivityIndicator size="small" color={c.primaryText} /> : null}
+              <Text style={[styles.submitText, { color: c.primaryText }]}>
                 {saving ? "Saving…" : mine ? "Update review 💛" : "Post review 💛"}
               </Text>
             </Pressable>
@@ -332,11 +334,11 @@ export function ReviewsSection({
       {loading ? (
         <View style={{ marginTop: space[3], gap: space[2.5] }}>
           {[0, 1].map((i) => (
-            <View key={i} style={[styles.skeleton, { backgroundColor: isDark ? "rgba(255,255,255,0.05)" : "#FAFAF9" }]} />
+            <View key={i} style={[styles.skeleton, { backgroundColor: c.inset }]} />
           ))}
         </View>
       ) : reviews.length === 0 ? (
-        <Text style={[styles.empty, { backgroundColor: isDark ? "rgba(255,255,255,0.05)" : "#FAFAF9", color: c.textFaint }]}>
+        <Text style={[styles.empty, { backgroundColor: c.inset, color: c.textFaint }]}>
           No reviews yet — be the first to play here and tell the story! 🌟
         </Text>
       ) : (
@@ -344,7 +346,7 @@ export function ReviewsSection({
           {reviews.map((r) => (
             <View
               key={r.id}
-              style={[styles.reviewRow, { backgroundColor: isDark ? "rgba(255,255,255,0.05)" : "rgba(250,250,249,0.6)", borderColor: isDark ? "rgba(255,255,255,0.05)" : "#FAFAF9" }]}
+              style={[styles.reviewRow, { backgroundColor: c.inset, borderColor: c.border }]}
             >
               <View style={styles.reviewHead}>
                 <Avatar user={{ name: r.userName, avatarColor: r.avatarColor, avatarUrl: r.avatarUrl }} size={36} />
@@ -352,7 +354,7 @@ export function ReviewsSection({
                   <Text style={[styles.reviewer, { color: c.text }]} numberOfLines={1}>
                     {r.userName}
                     {r.userId === user?.id ? (
-                      <Text style={styles.youTag}>  YOU</Text>
+                      <Text style={[styles.youTag, { color: c.successText, backgroundColor: c.successBg }]}>  YOU</Text>
                     ) : null}
                   </Text>
                   <Text style={[styles.reviewMeta, { color: c.textFaint }]}>
@@ -366,7 +368,7 @@ export function ReviewsSection({
                   <Text style={[styles.lockEmoji, { color: c.textFaint }]}>🔒</Text>
                 ) : null}
               </View>
-              <Text style={[styles.reviewBody, { color: isDark ? "#CBD5E1" : "#57534E" }]}>
+              <Text style={[styles.reviewBody, { color: c.textMuted }]}>
                 “{r.message}”
               </Text>
             </View>
@@ -459,7 +461,7 @@ const styles = StyleSheet.create({
     textAlignVertical: "top",
   },
   counter: { fontSize: fontSize.xs, marginTop: -space[2] },
-  error: { fontSize: fontSize.xs, fontWeight: "700", color: "#EF4444" },
+  error: { fontSize: fontSize.xs, fontWeight: "700" },
   formActions: { flexDirection: "row", gap: space[2] },
   laterBtn: {
     flex: 1,
@@ -476,10 +478,9 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: space[2],
     borderRadius: radius["2xl"],
-    backgroundColor: colors.orange500,
     paddingVertical: space[3],
   },
-  submitText: { color: "#FFFFFF", fontSize: fontSize.sm, fontWeight: "900" },
+  submitText: { fontSize: fontSize.sm, fontWeight: "900" },
   skeleton: { height: 80, borderRadius: radius["2xl"] },
   empty: {
     marginTop: space[3],
@@ -500,8 +501,6 @@ const styles = StyleSheet.create({
   youTag: {
     fontSize: fontSize["2xs"],
     fontWeight: "900",
-    color: colors.emerald700,
-    backgroundColor: "rgba(16,185,129,0.15)",
     borderRadius: radius.full,
     paddingHorizontal: 6,
     paddingVertical: 1,

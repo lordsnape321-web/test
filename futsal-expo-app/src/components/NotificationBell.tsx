@@ -16,7 +16,7 @@ import { colors as brand, fontSize, radius, space } from "@/theme";
  */
 export function NotificationBell({ variant }: { variant?: "dark" | "light" }) {
   const { user, isOwner } = useAuth();
-  const { colors: c, isDark } = useTheme();
+  const { colors: c } = useTheme();
   const router = useRouter();
   const [unread, setUnread] = useState(0);
   const [open, setOpen] = useState(false);
@@ -51,10 +51,13 @@ export function NotificationBell({ variant }: { variant?: "dark" | "light" }) {
     router.push(isOwner ? "/admin/notifications" : "/notifications");
   }
 
-  const isDarkHeader = variant === "dark" || isDark;
-  const btnBg = isDarkHeader ? brand.slate900 : brand.white;
-  const btnBorder = isDarkHeader ? "rgba(255,255,255,0.10)" : brand.stone200;
-  const btnFg = isDarkHeader ? brand.slate300 : brand.stone600;
+  // The control follows the active palette rather than the browser/device
+  // scheme. This matters on Owner Studio where the slate light palette is not
+  // the same surface as the player light palette.
+  const btnBg = c.surface;
+  const btnBorder = c.border;
+  const btnFg = c.textMuted;
+  void variant;
 
   return (
     <View style={styles.wrap}>
@@ -81,11 +84,11 @@ export function NotificationBell({ variant }: { variant?: "dark" | "light" }) {
             <Text style={[styles.popTitle, { color: c.text }]}>Notifications</Text>
             <View style={styles.popActions}>
               <Pressable onPress={() => { setOpen(false); router.push(isOwner ? "/admin/notifications" : "/notifications"); }} style={styles.viewAll}>
-                <Text style={styles.viewAllText}>View all</Text>
+                <Text style={[styles.viewAllText, { color: c.accent }]}>View all</Text>
               </Pressable>
               <Pressable onPress={() => void markAll()} style={styles.markAll}>
-                <CheckCheck size={14} color={brand.emerald600} />
-                <Text style={styles.markAllText}>Mark all read</Text>
+                <CheckCheck size={14} color={c.accent} />
+                <Text style={[styles.markAllText, { color: c.accent }]}>Mark all read</Text>
               </Pressable>
             </View>
           </View>
@@ -161,9 +164,9 @@ const styles = StyleSheet.create({
   popTitle: { fontSize: fontSize.sm, fontWeight: "900" },
   popActions: { flexDirection: "row", alignItems: "center", gap: space[2] },
   viewAll: { paddingHorizontal: 2, paddingVertical: 2 },
-  viewAllText: { fontSize: fontSize.xs, fontWeight: "800", color: brand.orange600 },
+  viewAllText: { fontSize: fontSize.xs, fontWeight: "800" },
   markAll: { flexDirection: "row", alignItems: "center", gap: 4 },
-  markAllText: { fontSize: fontSize.xs, fontWeight: "800", color: brand.emerald600 },
+  markAllText: { fontSize: fontSize.xs, fontWeight: "800" },
   popRow: {
     flexDirection: "row",
     alignItems: "center",
