@@ -13,9 +13,9 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  *
  * Money columns on the row (paid_amount, deposit_amount, …) are mirrors for
  * quick listing. The truth lives in the ledger (booking_payments +
- * booking_extras) and is recomputed by App\Support\BookingLedger, exactly as it
- * contract: a booking paid as 700 eSewa + 500 Khalti + 500 cash is
- * three traceable rows, never one "paid" flag.
+ * booking_extras) and is recomputed by App\Support\BookingLedger.
+ * A booking paid as 700 eSewa + 500 Khalti + 500 cash is three traceable rows,
+ * never one "paid" flag.
  */
 class Booking extends Model
 {

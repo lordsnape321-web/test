@@ -23,9 +23,10 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { VenueCard } from "@/components/cards";
+import { Notice } from "@/components/ui";
 import { useAuth } from "@/context/AuthContext";
 import { useTheme } from "@/context/ThemeContext";
-import { fetchVenues } from "@/api";
+import { fetchVenues, seedDemo } from "@/api";
 import { CITY_OPTIONS } from "@/lib/futsal";
 import { validateSearch } from "@/lib/validation";
 import { useBreakpoints } from "@/lib/responsive";
@@ -62,6 +63,7 @@ export default function VenuesScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [q, setQ] = useState(qParam ?? "");
   const [searchError, setSearchError] = useState("");
+  const [loadError, setLoadError] = useState("");
 
   const homeCity = user?.defaultCity ?? "All Cities";
   const initialCity = cityParam && CITY_OPTIONS.includes(cityParam) ? cityParam : "All Cities";
@@ -87,10 +89,30 @@ export default function VenuesScreen() {
   }, [cityTouched, homeCity]);
 
   const load = useCallback(async () => {
+    let seedError: unknown = null;
+
+    // A fresh Laravel database can be populated from the idempotent demo seed.
+    // Keep this best-effort so existing production data still loads when the
+    // optional seed route is disabled.
     try {
-      setVenues(await fetchVenues());
-    } catch {
-      // Keep the filters and empty state usable while the API is offline.
+      await seedDemo();
+    } catch (error) {
+      seedError = error;
+    }
+
+    try {
+      const next = await fetchVenues();
+      setVenues(next);
+      setLoadError(
+        next.length === 0 && seedError
+          ? seedError instanceof Error
+            ? seedError.message
+            : "The Laravel API could not seed or read venue data."
+          : "",
+      );
+    } catch (error) {
+      setVenues([]);
+      setLoadError(error instanceof Error ? error.message : "Could not load venues from Laravel.");
     } finally {
       setLoading(false);
     }
@@ -155,6 +177,7 @@ export default function VenuesScreen() {
         ]}
         ListHeaderComponent={
           <>
+            {loadError ? <Notice message={loadError} /> : null}
             <View style={styles.eyebrowRow}>
               <HeartHandshake size={14} color={colors.orange500} />
               <Text style={styles.eyebrow}>Pick your second home</Text>
