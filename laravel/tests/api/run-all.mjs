@@ -44,13 +44,30 @@ const env = {
   BASE_URL: process.env.BASE_URL || 'http://127.0.0.1:8000',
 };
 
-if (!process.env.DATABASE_URL) {
-  // Matches the .env.example defaults; override if your MySQL differs.
-  env.DATABASE_URL = 'mysql://root@127.0.0.1:3306/futsal';
-}
+// Never inherit the Next.js app's Postgres URL: that would point the two
+// database-backed suites at the wrong server.
+delete env.DATABASE_URL;
+
+const { Client } = await import('./mysql.mjs');
 
 console.log(`\n— live API suites against ${env.BASE_URL} —`);
-console.log(`   database: ${env.DATABASE_URL.replace(/:[^:@]*@/, ':****@')}`);
+console.log(`   database: ${new Client().describe()}   (from laravel/.env)`);
+
+/*
+ * Fail fast, and say why. Without this, a server that isn't up produces four
+ * identical ECONNREFUSED stack traces and nothing that points at the cause.
+ */
+try {
+  const res = await fetch(`${env.BASE_URL}/api/health`, { signal: AbortSignal.timeout(5000) });
+
+  if (!res.ok) {
+    throw new Error(`/api/health answered ${res.status}`);
+  }
+} catch (err) {
+  console.error(`\n❌  nothing answered at ${env.BASE_URL}/api/health — ${err.message}`);
+  console.error(`    start the backend first:  cd laravel && php artisan serve\n`);
+  process.exit(1);
+}
 
 const results = [];
 

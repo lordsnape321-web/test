@@ -81,9 +81,14 @@ npm install                                   # one dependency: mysql2
 BASE_URL=http://127.0.0.1:8000 npm test
 ```
 
-`BASE_URL` defaults to `http://127.0.0.1:8000` and `DATABASE_URL` to
-`mysql://root@127.0.0.1:3306/futsal`; override either. The suites need a
-running server and a seeded database.
+`BASE_URL` defaults to `http://127.0.0.1:8000`. The suites need a running
+server and a seeded database.
+
+Database credentials are read from **`laravel/.env`** — `DB_HOST`, `DB_PORT`,
+`DB_DATABASE`, `DB_USERNAME`, `DB_PASSWORD` — so there is nothing to configure
+twice. Set `DATABASE_URL` to override, but only a `mysql://` URL is honoured:
+the Next.js app exports a Postgres URL under that same name, and the runner
+ignores it rather than quietly querying the wrong server.
 
 Where the suites come from, and why it's split:
 

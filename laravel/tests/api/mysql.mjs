@@ -18,14 +18,72 @@
  *   count(*)::int →  count(*)
  *
  * Everything else in those suites is plain SQL that both engines accept.
+ *
+ * Credentials come from Laravel's own `.env` (DB_HOST / DB_PORT / DB_DATABASE /
+ * DB_USERNAME / DB_PASSWORD), so there is nothing to configure twice. A
+ * `DATABASE_URL` in the environment wins, but only if it is a MySQL one — the
+ * Next.js app exports a Postgres URL under that name, and picking it up here
+ * would be the wrong database.
  */
 
 import mysql from 'mysql2/promise';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const DSN = process.env.DATABASE_URL || 'mysql://root@127.0.0.1:3306/futsal';
+const here = path.dirname(fileURLToPath(import.meta.url));
+const laravelEnv = path.resolve(here, '..', '..', '.env'); // laravel/.env
+
+/** A deliberately small .env reader — just `KEY=value`, quotes optional. */
+function readLaravelEnv() {
+  let text;
+
+  try {
+    text = readFileSync(laravelEnv, 'utf8');
+  } catch {
+    return {};
+  }
+
+  const out = {};
+
+  for (const line of text.split('\n')) {
+    const m = /^\s*([A-Z0-9_]+)\s*=\s*(.*)$/.exec(line);
+
+    if (!m) {
+      continue;
+    }
+
+    out[m[1]] = m[2].trim().replace(/^["'](.*)["']$/, '$1');
+  }
+
+  return out;
+}
+
+function dsnFromLaravelEnv() {
+  const e = readLaravelEnv();
+
+  const host = e.DB_HOST || '127.0.0.1';
+  const port = e.DB_PORT || '3306';
+  const database = e.DB_DATABASE || 'futsal';
+  const user = e.DB_USERNAME || 'root';
+  const password = e.DB_PASSWORD || '';
+
+  return `mysql://${encodeURIComponent(user)}:${encodeURIComponent(password)}@${host}:${port}/${database}`;
+}
+
+function resolveDsn() {
+  const fromEnv = process.env.DATABASE_URL;
+
+  // Ignore a Postgres URL: that is the other backend's variable, not ours.
+  if (fromEnv && fromEnv.startsWith('mysql://')) {
+    return fromEnv;
+  }
+
+  return dsnFromLaravelEnv();
+}
 
 function configFrom(dsn) {
-  // Accept a URL; fall back to treating a bare host as a local socket user.
+  // Accept a URL; fall back to treating a bare name as the database name.
   if (!/^mysql:\/\//.test(dsn)) {
     return { host: '127.0.0.1', port: 3306, user: 'root', password: '', database: dsn };
   }
@@ -81,9 +139,16 @@ function coerce(row, fields) {
 }
 
 export class Client {
-  constructor(_connectionString) {
-    this.connectionString = _connectionString || DSN;
+  constructor(connectionString) {
+    this.connectionString = connectionString || resolveDsn();
     this.conn = null;
+  }
+
+  /** Where we ended up connecting, with the password masked. */
+  describe() {
+    const c = configFrom(this.connectionString);
+
+    return `mysql://${c.user}:****@${c.host}:${c.port}/${c.database}`;
   }
 
   async connect() {
