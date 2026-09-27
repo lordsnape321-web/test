@@ -1,37 +1,35 @@
 /**
  * The one place that knows where the backend lives.
  *
- * This is the React Native counterpart of src/lib/api.ts in the Next.js app.
- * The contract is deliberately the same shape — apiUrl / apiFetch / apiGet — so
- * screens port across without their call sites changing.
+ * This is the network seam for the Expo app. Every screen goes through this
+ * module, so the client has one backend origin and one error-handling path.
  *
  * Two things differ from the web version, both because React Native is not a
  * browser:
  *
- *   1. The env prefix is EXPO_PUBLIC_, not NEXT_PUBLIC_. Expo inlines only
- *      EXPO_PUBLIC_* variables into the bundle at build time.
+ *   1. Expo inlines only EXPO_PUBLIC_* variables into the bundle at build time,
+ *      so the backend setting must use that prefix.
  *   2. There is no origin. A relative path like "/api/venues" is not a valid URL
  *      here and fetch() will throw, so a base is mandatory rather than optional.
  *
- * Point this at the running Next.js API during the migration:
+ * The backend is Laravel (`../laravel`) and listens on port 8000 locally:
  *
- *   EXPO_PUBLIC_API_BASE=http://localhost:3000      # iOS simulator
- *   EXPO_PUBLIC_API_BASE=http://10.0.2.2:3000       # Android emulator
- *   EXPO_PUBLIC_API_BASE=http://192.168.1.20:3000   # physical device, same Wi-Fi
+ *   EXPO_PUBLIC_API_BASE=http://localhost:8000      # iOS simulator
+ *   EXPO_PUBLIC_API_BASE=http://10.0.2.2:8000       # Android emulator
+ *   EXPO_PUBLIC_API_BASE=http://192.168.1.20:8000   # physical device, same Wi-Fi
  *
  * `localhost` on a device is the device itself, not your machine — that is the
- * most common reason a fresh Expo app cannot reach a local API.
- *
- * Later, swap the same variable to the Laravel host and nothing else changes.
+ * most common reason a fresh Expo app cannot reach a local API. Set this value
+ * to the Laravel host before creating a native build.
  */
 
-const NATIVE_DEFAULT_BASE = "http://localhost:3000";
+const NATIVE_DEFAULT_BASE = "http://localhost:8000";
 const API_TIMEOUT_MS = 20_000;
 
 /**
  * Browsers must never be shipped a localhost API URL: on a user's device that
  * points back to the user's own machine. Web uses same-origin `/api` calls and
- * the Expo dev server proxies them to the Next.js app; native keeps the useful
+ * the Expo dev server proxies them to the Laravel service; native uses the
  * simulator default and can be overridden with EXPO_PUBLIC_API_BASE.
  */
 const configuredBase = process.env.EXPO_PUBLIC_API_BASE?.trim() ?? "";
@@ -117,9 +115,9 @@ function networkMessage(url: string, e: unknown): string {
 /**
  * GET/POST and parse JSON, throwing ApiError on a non-2xx response.
  *
- * The Next.js app's screens each hand-rolled `if (!res.ok)`. Doing it once here
- * means every screen gets the server's actual error message instead of a
- * generic one — which matters because these routes return specific strings like
+ * Screens should not hand-roll `if (!res.ok)`. Doing it once here means every
+ * screen gets Laravel's actual error message instead of a generic one — which
+ * matters because these routes return specific strings like
  * "That court is already booked for this slot".
  *
  * A network-level failure (fetch throws, no response) is also converted to an

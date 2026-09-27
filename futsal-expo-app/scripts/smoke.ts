@@ -9,7 +9,7 @@
  *       pay (eSewa, sandbox) → re-read ledger → assert settled.
  *
  * Run via: npm run smoke   (bundles with esbuild, then executes in Node)
- * Requires the backend at EXPO_PUBLIC_API_BASE (default http://localhost:3000).
+ * Requires the Laravel backend at EXPO_PUBLIC_API_BASE (default http://localhost:8000).
  */
 
 import {

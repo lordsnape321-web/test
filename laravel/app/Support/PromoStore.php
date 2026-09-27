@@ -10,7 +10,7 @@ use App\Models\Venue;
  * The database side of promo codes — `src/lib/promo-store.ts`.
  *
  * The rules live in `App\Support\Promos`; anything that has to read rows lives
- * here, mirroring the split the Next.js app used.
+ * here, keeping the database-facing code separate from the pure rules.
  */
 class PromoStore
 {

@@ -1,9 +1,9 @@
 /**
  * Types for the slice of the API this app uses.
  *
- * Every field here was read off a live response from the Next.js API rather
- * than copied from the Drizzle schema, because the routes reshape rows before
- * returning them (a booking carries a nested `venue` and `court`, for example).
+ * Every field here follows the live Laravel response contract rather than a
+ * database schema, because the routes reshape rows before returning them (a
+ * booking carries a nested `venue` and `court`, for example).
  *
  * Only the fields the UI actually renders are declared. The API returns more;
  * leaving the rest out keeps this readable and stops the app depending on
@@ -363,7 +363,7 @@ export type LoyaltyProgress = {
  * League shapes — a 1:1 copy of the web app's `league-store.ts` type block.
  * The server reshapes the tournament row (counts, standings, viewer context),
  * so these mirror what GET /api/tournaments and GET /api/tournaments/:id
- * actually return rather than the Drizzle schema.
+ * actually return rather than an internal database schema.
  */
 export type LeagueSummary = {
   id: number;

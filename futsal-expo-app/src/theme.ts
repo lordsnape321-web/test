@@ -1,9 +1,9 @@
 /**
  * Design tokens for the native app.
  *
- * Every value here is transcribed from the Next.js app's src/app/globals.css and
- * the component class strings, not invented. React Native has no Tailwind, so
- * the design system lives here as plain constants that screens compose.
+ * These values preserve the established Futsal Nepal design language. React
+ * Native has no Tailwind, so the design system lives here as plain constants
+ * that screens compose.
  *
  * The web app has two distinct looks and both are represented:
  *   - Player app: warm peach (#FFF9F0) light / slate-950 dark, stone text,

@@ -33,8 +33,8 @@ import type {
  * and owner management.
  *
  * Each function is one route. Keeping them here rather than inline in screens
- * means the route paths and request shapes are written down exactly once, which
- * is what makes the eventual Laravel swap a one-file change.
+ * means the route paths and request shapes are written down exactly once, so
+ * every screen stays aligned with the Laravel API contract.
  */
 
 /* ── auth ────────────────────────────────────────────────────────────────── */
@@ -45,7 +45,7 @@ export function signup(input: {
   email: string;
   phone: string;
   password: string;
-  /** Player or venue-owner account; the web API defaults to player. */
+  /** Player or venue-owner account; Laravel defaults to player. */
   role?: "player" | "owner";
   level?: string;
   position?: string;

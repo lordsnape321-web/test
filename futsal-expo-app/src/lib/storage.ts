@@ -3,10 +3,9 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 /**
  * Small client-side persistence: the session id and a few UI preferences.
  *
- * This is the React Native counterpart of src/lib/storage.ts in the Next.js app,
- * which wrapped localStorage. The two cannot share an implementation because
- * AsyncStorage is asynchronous and localStorage is not — that asymmetry is the
- * single real difference between the two platforms for this concern.
+ * AsyncStorage is asynchronous, so this module keeps a hydrated in-memory
+ * cache for render-time reads and mirrors writes to durable storage. That keeps
+ * session restoration predictable on both native and web Expo builds.
  *
  * The design mirrors the web version: an in-memory map is the source of truth
  * for synchronous reads, and AsyncStorage is the durable backing store. Call
@@ -23,7 +22,7 @@ let ready = false;
 /** Keys this app persists. Keeping the list explicit lets init hydrate them. */
 export const STORAGE_KEYS = {
   session: "futsal.session.userId",
-  // Same key as the web ThemeProvider so Expo web and Next.js keep the mode aligned.
+  // Keep the theme key stable across native and Expo web builds.
   theme: "futsal-theme",
 } as const;
 

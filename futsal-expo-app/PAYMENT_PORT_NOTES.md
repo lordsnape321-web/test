@@ -1,9 +1,9 @@
 # Payment routes — intentional React Native substitution
 
-The Next.js source has `/payment/esewa` and `/payment/khalti` gateway
+The legacy web client had `/payment/esewa` and `/payment/khalti` gateway
 redirect/callback pages (plus deep-link return handling). React Native has no
 browser navigation stack for those hosted test gateways, so this app keeps the
-same server contract without porting those pages 1:1:
+same Laravel server contract without porting those pages 1:1:
 
 - `initiateEsewa` / `verifyEsewa` and `initiateKhalti` / `verifyKhalti` are the
   only steps the player booking flow needs (same API routes as web).

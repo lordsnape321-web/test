@@ -34,13 +34,11 @@ use Illuminate\Support\Facades\Route;
 |--------------------------------------------------------------------------
 |
 | Every route the Expo app calls. The paths and response shapes are the
-| contract the app was written against — `docs/api-routes.md` in the Next.js
-| app is the generated inventory, and the suites in its `tests/api/` can be
-| pointed at this host with BASE_URL to check the port.
+| public mobile API contract; the acceptance suites in `tests/api/` can be
+| pointed at this host with BASE_URL to verify it.
 |
 | Authentication: none. The app holds the signed-in user in AsyncStorage and
-| passes `userId` on the requests that need to know who is acting, exactly as
-| it did against the Next.js API.
+| passes `userId` on the requests that need to know who is acting.
 |
 */
 

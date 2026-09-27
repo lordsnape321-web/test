@@ -5,7 +5,7 @@ namespace App\Support;
 use Carbon\CarbonInterface;
 
 /**
- * The formatting and time helpers the Next.js app kept in `src/lib/futsal.ts`.
+ * Formatting and time helpers shared by the Futsal Nepal API contract.
  *
  * Everything here is pure: no database, no request, nothing that can throw on
  * bad input. That is what lets the API, the notification bodies and the seeders
@@ -31,7 +31,7 @@ class Futsal
 
     /**
      * "Rs. 1,500" — grouped the Nepali way (1,00,000), matching
-     * `n.toLocaleString("en-IN")` on the Next.js side.
+     * `n.toLocaleString("en-IN")` in the client.
      */
     public static function formatNPR(mixed $n): string
     {

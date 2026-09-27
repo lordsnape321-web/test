@@ -43,7 +43,7 @@ class Notifier
         }
     }
 
-    /** Convenience wrapper matching the call sites in the Next.js routes. */
+    /** Convenience wrapper used by the API controllers. */
     public static function notify(int $userId, string $type, string $title, string $message = '', string $link = ''): ?Notification
     {
         return self::send([

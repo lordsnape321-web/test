@@ -21,9 +21,8 @@
  *
  * Credentials come from Laravel's own `.env` (DB_HOST / DB_PORT / DB_DATABASE /
  * DB_USERNAME / DB_PASSWORD), so there is nothing to configure twice. A
- * `DATABASE_URL` in the environment wins, but only if it is a MySQL one — the
- * Next.js app exports a Postgres URL under that name, and picking it up here
- * would be the wrong database.
+ * `DATABASE_URL` in the environment wins, but only if it is a MySQL one; a
+ * PostgreSQL URL is ignored so these tests cannot target the wrong database.
  */
 
 import mysql from 'mysql2/promise';
@@ -74,7 +73,7 @@ function dsnFromLaravelEnv() {
 function resolveDsn() {
   const fromEnv = process.env.DATABASE_URL;
 
-  // Ignore a Postgres URL: that is the other backend's variable, not ours.
+  // Ignore a PostgreSQL URL: this runner is for Laravel's MySQL database.
   if (fromEnv && fromEnv.startsWith('mysql://')) {
     return fromEnv;
   }

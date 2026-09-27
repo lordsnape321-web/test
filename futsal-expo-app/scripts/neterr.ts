@@ -21,7 +21,8 @@ function check(label: string, cond: boolean, detail = "") {
 async function main() {
   console.log("\n=== network-failure message test ===\n");
   try {
-    // Port 59999 — nothing listens here, so fetch rejects before any response.
+    // With the default Laravel origin, this should reject when the local API is
+    // not running, before any HTTP response is received.
     await apiJson("/api/auth/login", { method: "POST", json: { email: "a@b.c", password: "x" } });
     check("fetch threw", false, "expected a throw, got a response");
   } catch (e) {

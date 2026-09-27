@@ -7,17 +7,20 @@ const config = getDefaultConfig(__dirname);
 /**
  * Expo web uses same-origin `/api/*` URLs so a browser never tries to call
  * localhost directly. During development Metro forwards those requests to the
- * existing Next.js app. Native builds still use EXPO_PUBLIC_API_BASE directly.
+ * Laravel API. Native builds use EXPO_PUBLIC_API_BASE directly.
  *
- * Set EXPO_WEB_API_PROXY when the API is not on the default local port, for
- * example `https://api.example.com` or `http://127.0.0.1:3000`.
+ * Set EXPO_WEB_API_PROXY when the Laravel API is not on the default local port,
+ * for example `https://api.example.com` or `http://127.0.0.1:8000`. The public
+ * API base is accepted as a fallback so local web and native configuration can
+ * share one `.env` value.
  */
-const proxyOrigin = process.env.EXPO_WEB_API_PROXY || "http://127.0.0.1:3000";
+const proxyOrigin =
+  process.env.EXPO_WEB_API_PROXY || process.env.EXPO_PUBLIC_API_BASE || "http://127.0.0.1:8000";
 let proxyTarget;
 try {
   proxyTarget = new URL(proxyOrigin);
 } catch {
-  proxyTarget = new URL("http://127.0.0.1:3000");
+  proxyTarget = new URL("http://127.0.0.1:8000");
 }
 
 const upstreamRequest = proxyTarget.protocol === "https:" ? https.request : http.request;

@@ -1,4 +1,8 @@
-# FutsalNepal — futsal court booking app
+# FutsalNepal — archived web application
+
+> This directory is retained as historical reference only. The active product now
+> uses `futsal-expo-app/` for Expo and `laravel/` for the API. It is no longer a
+> runtime dependency and can be removed after any historical material is kept.
 
 A Next.js 16 (App Router) + Drizzle ORM + PostgreSQL app for booking futsal courts in Nepal: browse
 venues, pick a court and time slot, book it, pay via eSewa/Khalti (simulated), join open matches,

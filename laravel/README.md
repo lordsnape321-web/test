@@ -1,33 +1,24 @@
 # Futsal Nepal — Laravel API
 
-The backend for the Futsal Nepal Expo app, ported route-for-route out of the
-Next.js app (`react-expo-laravel-futsal-app/`) into a standalone, **backend-only**
-Laravel 12 service on **MySQL**.
+The standalone Laravel 12 backend for the Futsal Nepal Expo app. This service is
+backend-only: there are no Blade pages, no Inertia frontend, and no dependency on
+the retired web application. Every client-facing operation is JSON under
+`/api`.
 
-There is no frontend here: no Blade, no Inertia, no session or cookie login.
-Everything this app does is JSON under `/api`.
-
-## Why this exists
-
-The Expo app used to talk to the Next.js app's `/api` folder. That worked, but it
-tied the mobile API to a web framework, a React build and a serverless runtime.
-This directory is the same API, same paths, same JSON shapes and same status
-codes — with the rules (booking windows, ledger maths, loyalty, leagues, promos)
-moved into plain PHP classes the mobile app, the web UI and the tests can share.
-
-**The HTTP contract is unchanged.** Every request keeps the shape the app already
-sends — including authentication, which is still the acting player's id in the
-query string or the body (`GET /api/bookings?userId=3`,
-`POST /api/notifications/read-all {userId}`). Nothing in the Expo app has to
-change to move over.
+The Expo frontend lives in `../futsal-expo-app`. It talks to this service using
+the API origin configured by `EXPO_PUBLIC_API_BASE` (port `8000` locally).
 
 ## Requirements
 
 | | |
 |---|---|
 | PHP | ^8.2 |
-| Database | **MySQL** 8 (or MariaDB 10.6+) |
 | Composer | 2.x |
+| Database | MySQL 8 or MariaDB 10.6+ |
+
+SQLite can be used for a quick local run by changing `DB_CONNECTION` and
+creating `database/database.sqlite`, but MySQL is the supported deployment
+configuration.
 
 ## Getting started
 
@@ -38,7 +29,7 @@ cp .env.example .env
 php artisan key:generate
 ```
 
-Point `.env` at your MySQL instance:
+Configure the database in `.env`:
 
 ```dotenv
 DB_CONNECTION=mysql
@@ -49,144 +40,93 @@ DB_USERNAME=root
 DB_PASSWORD=
 ```
 
-Then build the schema and load the demo data:
+Build the schema and load the demo data:
 
 ```bash
-php artisan migrate        # 23 tables
-php artisan db:seed        # or: curl -X POST http://127.0.0.1:8000/api/seed
-php artisan serve
+php artisan migrate --seed
+php artisan serve --host=0.0.0.0 --port=8000
 ```
 
-Check it answered:
+Check that the API answered:
 
 ```bash
 curl http://127.0.0.1:8000/api/health
 ```
 
-If a route you just added answers `404 … could not be found`, clear the route
-cache — Laravel will happily serve a cached route table that predates it:
+`POST /api/seed` is idempotent and can be used to top up an existing database.
+If a newly added route answers 404, clear Laravel's cached route table:
 
 ```bash
 php artisan optimize:clear
-php artisan route:list --path=seed
+php artisan route:list --path=api
 ```
+
+## Expo connection
+
+The Expo client is already configured for this API. From
+`futsal-expo-app/.env`, use the address visible from the device:
+
+| Client | `EXPO_PUBLIC_API_BASE` |
+|---|---|
+| iOS simulator | `http://localhost:8000` |
+| Android emulator | `http://10.0.2.2:8000` |
+| Physical device | `http://<computer-LAN-IP>:8000` |
+
+For an Expo web preview, Metro forwards same-origin `/api` requests to this
+service. `CORS_ALLOWED_ORIGINS=*` is suitable for local development; list the
+real web origins before production.
+
+Payment return links are built from `APP_URL`, while app/deep-link return links
+use `APP_WEB_URL`. Set both to the deployed API and app origins when publishing.
 
 ## Running the acceptance suite
 
-Six live HTTP suites, one command, from `laravel/tests/api`:
+All six live API suites are self-contained in `tests/api`:
 
 ```bash
-cd laravel/tests/api
-npm install                                   # one dependency: mysql2
+cd tests/api
+npm install
 BASE_URL=http://127.0.0.1:8000 npm test
 ```
 
-`BASE_URL` defaults to `http://127.0.0.1:8000`. The suites need a running
-server and a seeded database.
+The runner defaults to `http://127.0.0.1:8000`, checks `/api/health` first, and
+reads MySQL credentials from `laravel/.env`. The two ledger suites also inspect
+MySQL rows to verify gateway payments and settlement locks; the other four are
+HTTP-only. No other project directory is required to run these tests.
 
-Database credentials are read from **`laravel/.env`** — `DB_HOST`, `DB_PORT`,
-`DB_DATABASE`, `DB_USERNAME`, `DB_PASSWORD` — so there is nothing to configure
-twice. Set `DATABASE_URL` to override, but only a `mysql://` URL is honoured:
-the Next.js app exports a Postgres URL under that same name, and the runner
-ignores it rather than quietly querying the wrong server.
+## API contract
 
-Where the suites come from, and why it's split:
+The endpoint paths and JSON response shapes are the contract consumed by the
+Expo app. Requests currently carry the acting user's id in the query string or
+JSON body, for example `GET /api/bookings?userId=3` and
+`POST /api/notifications/read-all {"userId":3}`. The mobile client stores the
+safe user object in AsyncStorage and sends the relevant id with each action.
 
-- **`ledger.mjs` and `settlement-lock.mjs` live here.** They were ported from
-  the Next.js app because they open a database connection of their own — to read
-  `booking_payments` directly, and to back-date `bookings.settled_at` so the
-  five-minute settlement lock can be tested without waiting five minutes. There
-  is no HTTP route for either, and there shouldn't be one. `mysql.mjs` gives
-  them a Postgres-shaped client over MySQL, translating the three Postgres-isms
-  they use (`$1` placeholders, `interval '6 minutes'`, `count(*)::int`) and
-  putting MySQL's string-typed DECIMAL columns back into numbers.
-- **The other four are run from `react-expo-laravel-futsal-app/tests/api/`, not
-  copied.** `gateway`, `venue-defaults`, `deposit-split` and `court-delete` are
-  pure HTTP, so both backends run the *same* files — which is the point of this
-  whole exercise.
+Bearer-token authentication can be introduced later by changing the actor
+resolution seam without changing route payloads. Controllers already keep
+request validation and authorization separate from the persistence models.
 
-> The Next.js app's own runner (`npm run test:api` in that directory) will skip
-> all six against this backend: it picks players by querying Postgres first, and
-> treats that failure as "no players available". Use `npm test` here instead.
+## Project layout
 
-## Seeding `/api/seed`
-
-Idempotent on purpose. Hitting it against a database that already has venues
-*backfills* whatever a newer build added (password hashes, venue owners, reviews,
-promo codes, squads) and answers `Already seeded` with a report of what it topped
-up. Hitting it against an empty database builds the whole demo world: nine
-players, six grounds, fourteen pitches, bookings, open games, five squads with
-rosters and pending queues in both directions, reviews, promo codes and two
-leagues — one open and owner-hosted, one private and player-hosted.
-
-It is the same dataset `php artisan db:seed` produces, so a fresh checkout can be
-populated either way.
-
-## How the port is laid out
-
-The Next.js app split its logic three ways, and so does this one:
-
-| Next.js | Laravel | What lives there |
+| Layer | Location | Responsibility |
 |---|---|---|
-| `src/lib/*.ts` (pure rules) | `app/Support/*.php` | Arithmetic and policy — no database, no framework |
-| `src/lib/*-store.ts` / `src/db` | `app/Support/*Store.php` + `app/Models` | Reading and joining rows |
-| `src/app/api/**/route.ts` | `app/Http/Controllers/Api/*.php` | HTTP: validate → act → shape the reply |
+| HTTP | `app/Http/Controllers/Api` | Validate requests and shape JSON responses |
+| Models | `app/Models` | MySQL records and response serialization |
+| Rules | `app/Support` | Booking, ledger, loyalty, promo, team, and league policy |
+| Services | `app/Services` | Booking presentation and notifications |
+| Routes | `routes/api.php` | The complete `/api` surface |
+| Schema | `database/migrations` | The 23-table application schema |
+| Tests | `tests/api` | Live HTTP and database acceptance suites |
 
-`app/Support/` is the interesting half. `Futsal` (money formatting, slots, time),
-`BookingLedger` (per-player splits, settlement, the edit window),
-`AdvancePayment` / `LedgerRecord` / `Loyalty` (trust score, no-show rules,
-vouchers), `Promos` (discount maths, windows), `Teams` (squads, consent, quotas),
-`TeamStore`, `League` (tables, brackets, groups, the money lock) and `LeagueStore`
-are ports of the TypeScript originals — same names, same numbers, so a bug fixed
-on one side is a bug fixed on the other.
-
-Two things were added, and they are the reason the port exists:
-
-- **`app/Http/Middleware/ResolveActor.php`** — reads `userId` off the query string
-  or the body and hangs the acting player off the request, so every controller
-  asks `$request->input('userId')` and gets the same answer.
-- **`app/Http/Controllers/Api/ApiController.php`** — the shared `ok()` / `fail()`
-  helpers, so a 409 says "squad full 👥" with the same body everywhere.
-
-## Authentication today, and the swap later
-
-Today: the acting player's id travels in the request, exactly as it did in the
-Next.js app. `ResolveActor` resolves it; controllers authorise against it.
-
-Later: when the app is ready for bearer tokens, Sanctum is already installed as
-the intended shape. The swap is one file — change `ResolveActor` to prefer
-`$request->bearerToken()` (or `$request->user()`) and fall back to the `userId`
-parameter for older clients. Because every controller already reads the actor off
-the request rather than straight out of `$_GET`, no controller changes.
-
-## Route inventory
-
-82 endpoints across 47 route files, matching `docs/api-routes.md`:
-
-| Area | Endpoints |
-|---|---|
-| Health, stats, availability | 3 |
-| Auth (signup / login / reset / change-password) | 4 |
-| Users, venues, courts | 9 |
-| Bookings (+ ledger, team payments, payment requests) | 10 |
-| Payments (eSewa, Khalti) | 4 |
-| Open matches | 3 |
-| Notifications | 5 |
-| Vouchers, reviews | 4 |
-| Squads, invites, requests, players | 20 |
-| Leagues (tournaments) | 16 |
-| Promo codes | 5 |
-| Seed | 1 |
-
-## Environment
-
-`.env.example` is annotated. The knobs that change behaviour:
+## Environment knobs
 
 | Variable | Meaning |
 |---|---|
-| `SETTLE_EDIT_WINDOW_MINUTES` | How long a settlement stays editable (5, the same as the Next.js app) |
-| `ESEWA_*`, `KHALTI_*` | Gateway credentials. **Unset = local simulator**: the initiate routes hand back a mock link instead of failing, so the app is fully testable offline |
-| `PROMO_*`, `LOYALTY_*` | Discount ceilings and trust-score thresholds |
+| `APP_URL` | API origin used for gateway return URLs |
+| `APP_WEB_URL` | Expo/web origin used in app return links |
+| `CORS_ALLOWED_ORIGINS` | Comma-separated production web origins, or `*` locally |
+| `SETTLE_EDIT_WINDOW_MINUTES` | Settlement correction window, five minutes by default |
+| `ESEWA_*`, `KHALTI_*` | Gateway credentials; blank values enable local simulators |
 
 ## Tests
 
@@ -194,6 +134,4 @@ the request rather than straight out of `$_GET`, no controller changes.
 php artisan test
 ```
 
-## License
-
-MIT.
+MIT License.
