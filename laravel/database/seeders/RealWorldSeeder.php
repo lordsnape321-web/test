@@ -1006,7 +1006,7 @@ class RealWorldSeeder extends Seeder
         $captain = (int) $team->captain_id;
         $reference = 'SEED-ENTRY-'.$leagueIndex.'-'.$teamIndex;
 
-        $entryPayment = function (string $kind, string $ref, int $amount, string $how, string $note = '') {
+        $entryPayment = function (string $kind, string $ref, int $amount, string $how) use ($tournament, $team, $captain): void {
             TournamentPayment::firstOrCreate(
                 [
                     'tournament_id' => $tournament->id,
