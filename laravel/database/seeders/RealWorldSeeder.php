@@ -979,24 +979,41 @@ class RealWorldSeeder extends Seeder
     }
 
     /**
-     * @param  list<Tournament>  $leagues
+     * @param  array{tournaments: list<Tournament>, entries: array<int, list<TournamentTeam>>}  $leagues
      * @param  list<Team>  $teams
      * @param  list<Court>  $courts
      * @param  array<int, list<Booking>>  $fixtureBookings
      */
     private function createTournamentFixtures(array $leagues, array $teams, array $courts, array $fixtureBookings): void
     {
-        foreach ($leagues as $leagueIndex => $league) {
-            $entries = TournamentTeam::where('tournament_id', $league->id)->where('status', 'approved')->orderBy('id')->get()->values();
-            $fixtureRows = [];
+        $teamById = [];
+        foreach ($teams as $team) {
+            $teamById[(int) $team->id] = $team;
+        }
 
-            for ($index = 0; $index < min(8, max(0, $entries->count() - 1)); $index++) {
-                $home = Team::find($entries[$index]->team_id);
-                $away = Team::find($entries[($index + 1) % $entries->count()]->team_id);
+        foreach ($leagues['tournaments'] as $leagueIndex => $league) {
+            // Same approved entries the bookings were built from, in draw order.
+            $entries = collect($leagues['entries'][$league->id] ?? [])
+                ->filter(fn (TournamentTeam $entry) => $entry->status === 'approved')
+                ->values();
+            $entryCount = $entries->count();
+
+            if ($entryCount < 2) {
+                continue;
+            }
+
+            for ($index = 0; $index < min(8, $entryCount - 1); $index++) {
+                $home = $teamById[(int) $entries[$index]->team_id] ?? null;
+                $away = $teamById[(int) $entries[($index + 1) % $entryCount]->team_id] ?? null;
+
+                if (! $home || ! $away) {
+                    continue;
+                }
+
                 $past = $leagueIndex === 0 && $index < 3;
                 $booking = $fixtureBookings[$league->id][$index] ?? null;
                 $date = $booking?->date ?? now()->addDays(28 + ($leagueIndex * 10) + $index)->toDateString();
-                $fixtureRows[] = TournamentMatch::firstOrCreate(
+                $fixture = TournamentMatch::firstOrCreate(
                     [
                         'tournament_id' => $league->id,
                         'round' => $leagueIndex === 0 ? 'Group A' : 'Quarter-final',
@@ -1026,7 +1043,7 @@ class RealWorldSeeder extends Seeder
 
                 if ($index < 2) {
                     TournamentMedia::firstOrCreate(
-                        ['tournament_id' => $league->id, 'match_id' => $fixtureRows[$index]->id, 'url' => Futsal::VENUE_IMAGES[($leagueIndex + $index + 1) % count(Futsal::VENUE_IMAGES)]],
+                        ['tournament_id' => $league->id, 'match_id' => $fixture->id, 'url' => Futsal::VENUE_IMAGES[($leagueIndex + $index + 1) % count(Futsal::VENUE_IMAGES)]],
                         [
                             'kind' => 'link',
                             'caption' => $past ? 'Full-time team photo from the group fixture' : 'Ground and pitch information for match day',
