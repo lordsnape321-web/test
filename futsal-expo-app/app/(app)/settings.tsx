@@ -137,17 +137,13 @@ export default function SettingsScreen() {
 
   if (!ready) return null;
 
-  const avatarUser = {
-    name: user.name,
-    avatarColor: (user as { avatarColor?: string }).avatarColor ?? colors.emerald600,
-    avatarUrl: user.avatarUrl,
-  };
-
   // Signed out, this is a shorter screen. Appearance, help and support never
   // needed an account in the first place, and taking them away from a visitor is
-  // the exact bug that made them unreachable before. Past this return `user` is
-  // non-null, which is what lets the account sections below read `user.name`
-  // without a cast.
+  // the exact bug that made them unreachable before.
+  //
+  // This has to come before anything that reads `user.name`: the guest branch
+  // is the one place `user` is legitimately null, and reaching past it is how
+  // "Cannot read property 'name' of null" happens.
   if (!user) {
     return (
       <SafeAreaView style={[styles.flex, { backgroundColor: c.bg }]} edges={["top"]}>
@@ -247,6 +243,14 @@ export default function SettingsScreen() {
       </SafeAreaView>
     );
   }
+
+  // Past the signed-out return above, `user` is non-null. Declaring the avatar
+  // here rather than higher up is what keeps the guest branch reachable.
+  const avatarUser = {
+    name: user.name,
+    avatarColor: (user as { avatarColor?: string }).avatarColor ?? colors.emerald600,
+    avatarUrl: user.avatarUrl,
+  };
 
   return (
     <SafeAreaView style={[styles.flex, { backgroundColor: c.bg }]} edges={["top"]}>
