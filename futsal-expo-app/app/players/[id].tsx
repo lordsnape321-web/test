@@ -30,6 +30,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { fetchPlayerDossier, sendTeamInvite, teamRequestAction, withdrawTeamInvite } from "@/api";
 import { Avatar } from "@/components/Avatar";
 import { PlayerRatingBadge } from "@/components/PlayerRating";
+import { ReviewScroller } from "@/components/Reviews";
 import { Spinner } from "@/components/ui";
 import { useAuth } from "@/context/AuthContext";
 import { useTheme } from "@/context/ThemeContext";
@@ -508,24 +509,26 @@ export default function PlayerDossierScreen() {
               No reviews written yet — playing first, talking later 😄
             </Text>
           ) : (
-            <View style={styles.list}>
-              {data.reviews.map((r) => (
-                <View
-                  key={r.id}
-                  style={[styles.reviewRow, { backgroundColor: isDark ? "rgba(255,255,255,0.05)" : tokens.stone50 }]}
-                >
-                  <Text style={[styles.reviewHead, { color: c.text }]}>
-                    <Text style={styles.stars}>
-                      {"★".repeat(r.rating)}
-                      <Text style={{ color: tokens.stone300 }}>{"★".repeat(5 - r.rating)}</Text>
+            <View style={{ marginTop: space[3] }}>
+              <ReviewScroller count={data.reviews.length} gap={space[2]}>
+                {data.reviews.map((r) => (
+                  <View
+                    key={r.id}
+                    style={[styles.reviewRow, { backgroundColor: isDark ? "rgba(255,255,255,0.05)" : tokens.stone50 }]}
+                  >
+                    <Text style={[styles.reviewHead, { color: c.text }]}>
+                      <Text style={styles.stars}>
+                        {"★".repeat(r.rating)}
+                        <Text style={{ color: tokens.stone300 }}>{"★".repeat(5 - r.rating)}</Text>
+                      </Text>
+                      {r.venueName}
                     </Text>
-                    {r.venueName}
-                  </Text>
-                  {r.message ? (
-                    <Text style={[styles.reviewMsg, { color: c.textMuted }]}>{r.message}</Text>
-                  ) : null}
-                </View>
-              ))}
+                    {r.message ? (
+                      <Text style={[styles.reviewMsg, { color: c.textMuted }]}>{r.message}</Text>
+                    ) : null}
+                  </View>
+                ))}
+              </ReviewScroller>
             </View>
           )}
         </View>

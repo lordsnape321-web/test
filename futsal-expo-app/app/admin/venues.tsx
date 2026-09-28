@@ -28,7 +28,7 @@ import {
 import { Avatar } from "@/components/Avatar";
 import { ImagePicker } from "@/components/ImagePicker";
 import { PromoManager } from "@/components/PromoManager";
-import { Stars } from "@/components/Reviews";
+import { ReviewScroller, Stars } from "@/components/Reviews";
 import {
   createCourt,
   createVenue,
@@ -961,35 +961,37 @@ export default function OwnerVenues() {
                   </Text>
                 </View>
               ) : (
-                reviews.map((r) => (
-                  <View
-                    key={r.id}
-                    style={[
-                      styles.reviewRow,
-                      { borderColor: c.border, backgroundColor: isDark ? "#0F172A" : "#F8FAFC" },
-                    ]}
-                  >
-                    <View style={styles.reviewHead}>
-                      <Avatar
-                        user={{
-                          name: r.userName,
-                          avatarColor: r.avatarColor,
-                          avatarUrl: r.avatarUrl,
-                        }}
-                      />
-                      <View style={styles.grow}>
-                        <Text style={[styles.reviewName, { color: c.text }]} numberOfLines={1}>
-                          {r.userName}
-                        </Text>
-                        <Text style={[styles.reviewDate, { color: c.textFaint }]}>
-                          {r.createdAt ? new Date(r.createdAt).toLocaleDateString() : ""}
-                        </Text>
+                <ReviewScroller count={reviews.length}>
+                  {reviews.map((r) => (
+                    <View
+                      key={r.id}
+                      style={[
+                        styles.reviewRow,
+                        { borderColor: c.border, backgroundColor: isDark ? "#0F172A" : "#F8FAFC" },
+                      ]}
+                    >
+                      <View style={styles.reviewHead}>
+                        <Avatar
+                          user={{
+                            name: r.userName,
+                            avatarColor: r.avatarColor,
+                            avatarUrl: r.avatarUrl,
+                          }}
+                        />
+                        <View style={styles.grow}>
+                          <Text style={[styles.reviewName, { color: c.text }]} numberOfLines={1}>
+                            {r.userName}
+                          </Text>
+                          <Text style={[styles.reviewDate, { color: c.textFaint }]}>
+                            {r.createdAt ? new Date(r.createdAt).toLocaleDateString() : ""}
+                          </Text>
+                        </View>
+                        <Stars value={r.rating} size={14} />
                       </View>
-                      <Stars value={r.rating} size={14} />
+                      <Text style={[styles.reviewMsg, { color: c.textMuted }]}>“{r.message}”</Text>
                     </View>
-                    <Text style={[styles.reviewMsg, { color: c.textMuted }]}>“{r.message}”</Text>
-                  </View>
-                ))
+                  ))}
+                </ReviewScroller>
               )
             ) : (
               <PromoManager
