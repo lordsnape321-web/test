@@ -9,15 +9,11 @@ import {
   Crown,
   EyeOff,
   HelpCircle,
-  LifeBuoy,
   Lock,
   LogIn,
   LogOut,
-  Mail,
   MapPin,
-  Monitor,
   Moon,
-  RotateCcw,
   ShieldCheck,
   Sun,
   Trophy,
@@ -25,8 +21,8 @@ import {
   Users,
   Zap,
 } from "lucide-react-native";
-import React, { useCallback, useEffect, useRef, useState } from "react";
-import { Alert, Linking, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import React, { useEffect, useRef, useState } from "react";
+import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Avatar } from "@/components/Avatar";
 import { useAuth } from "@/context/AuthContext";
@@ -64,18 +60,12 @@ const SECTIONS = [
   { id: "activity", label: "Your activity", icon: Activity, needsAccount: true },
   { id: "account", label: "Account", icon: ShieldCheck, needsAccount: true },
   { id: "help", label: "Help & about", icon: HelpCircle, needsAccount: false },
-  { id: "support", label: "Support", icon: LifeBuoy, needsAccount: false },
 ] as const;
 
 /** What a signed-out visitor can actually open — no locks, no empty panels. */
 const GUEST_SECTIONS = SECTIONS.filter((s) => !s.needsAccount);
 
 type SectionId = (typeof SECTIONS)[number]["id"];
-
-/** The app version shown in Support, read from the installed binary. */
-const APP_VERSION = "1.0.0";
-
-const SUPPORT_EMAIL = "hello@futsalnepal.app";
 
 export default function SettingsScreen() {
   const { colors: c, mode, setMode, isDark } = useTheme();
@@ -137,9 +127,9 @@ export default function SettingsScreen() {
 
   if (!ready) return null;
 
-  // Signed out, this is a shorter screen. Appearance, help and support never
-  // needed an account in the first place, and taking them away from a visitor is
-  // the exact bug that made them unreachable before.
+  // Signed out, this is a shorter screen. Appearance and help never needed an
+  // account in the first place, and taking them away from a visitor is the exact
+  // bug that made them unreachable before.
   //
   // This has to come before anything that reads `user.name`: the guest branch
   // is the one place `user` is legitimately null, and reaching past it is how
@@ -238,7 +228,7 @@ export default function SettingsScreen() {
             </Text>
           ) : null}
 
-          <DeviceSections section={section} setSection={setSection} setMsg={setMsg} />
+          <DeviceSections section={section} setSection={setSection} />
         </ScrollView>
       </SafeAreaView>
     );
@@ -576,13 +566,13 @@ export default function SettingsScreen() {
           </>
         ) : null}
 
-        <DeviceSections section={section} setSection={setSection} setMsg={setMsg} />
+        <DeviceSections section={section} setSection={setSection} />
       </ScrollView>
     </SafeAreaView>
   );
 }
 /**
- * The sections that need no account: appearance, help and support.
+ * The sections that need no account: appearance and help.
  *
  * They are one component because both versions of this screen render them — a
  * signed-in player and a signed-out visitor get the same device settings, and
@@ -593,179 +583,103 @@ export default function SettingsScreen() {
 function DeviceSections({
   section,
   setSection,
-  setMsg,
 }: {
   section: SectionId;
   setSection: (s: SectionId) => void;
-  setMsg: (m: { ok: boolean; text: string } | null) => void;
 }) {
   const { colors: c, mode, setMode, isDark } = useTheme();
   const router = useRouter();
 
-  const openSupportEmail = useCallback(() => {
-    const url = `mailto:${SUPPORT_EMAIL}?subject=FutsalNepal%20app`;
-    void Linking.openURL(url).catch(() => {
-      setMsg({ ok: false, text: `Could not open mail — write to us at ${SUPPORT_EMAIL}` });
-    });
-  }, [setMsg]);
-
-  const resetDeviceSettings = useCallback(() => {
-    const run = () => {
-      setMode("system");
-      setMsg({ ok: true, text: "Back to defaults — the theme follows your device again" });
-    };
-
-    Alert.alert(
-      "Reset this device's settings?",
-      "The theme goes back to following your device. Your account is untouched.",
-      [
-        { text: "Cancel", style: "cancel" },
-        { text: "Reset", style: "destructive", onPress: run },
-      ],
-    );
-  }, [setMode]);
-
   return (
     <View>
-{/* ---------- APPEARANCE ---------- */}
-{section === "appearance" ? (
-  <>
-    <PanelHead
-      icon={Sun}
-      title="Appearance"
-      text="Day pitch or floodlights. Remembered on this device."
-    />
-    <View style={styles.themeRow}>
-      {(
-        [
-          { id: "light", label: "Light", text: "Sunny clubhouse", icon: Sun },
-          { id: "dark", label: "Dark", text: "Night game under lights", icon: Moon },
-          { id: "system", label: "System", text: "Follows your phone", icon: Monitor },
-        ] as const
-      ).map((t) => {
-        // With mode="system", highlight whichever theme is actually resolved.
-        const active =
-          mode === t.id ||
-          (mode === "system" && ((t.id === "dark") === isDark));
-        return (
-          <Pressable
-            key={t.id}
-            onPress={() => setMode(t.id)}
-            accessibilityRole="button"
-            accessibilityState={{ selected: active }}
-            style={[
-              styles.themeCard,
-              {
-                borderColor: active ? c.primary : c.border,
-                backgroundColor: active ? c.activeSoft : c.surface,
-              },
-            ]}
-          >
-            <View
-              style={[
-                styles.themeIcon,
-                { backgroundColor: active ? c.primary : c.inset },
-              ]}
-            >
-              <t.icon size={20} color={active ? c.primaryText : c.textMuted} />
-            </View>
-            <Text style={[styles.themeLabel, { color: c.text }]}>
-              {t.label} {active ? "✓" : ""}
-            </Text>
-            <Text style={[styles.themeText, { color: c.textMuted }]}>{t.text}</Text>
-          </Pressable>
-        );
-      })}
+      {/* ---------- APPEARANCE ---------- */}
+      {section === "appearance" ? (
+        <>
+          <PanelHead
+            icon={Sun}
+            title="Appearance"
+            text="Day pitch or floodlights. Remembered on this device."
+          />
+          <View style={styles.themeRow}>
+            {(
+              [
+                { id: "light", label: "Light", text: "Sunny clubhouse", icon: Sun },
+                { id: "dark", label: "Dark", text: "Night game under lights", icon: Moon },
+              ] as const
+            ).map((t) => {
+              // A stored "system" preference has no button of its own any more, so
+              // light/dark still highlight whichever theme actually resolved — the
+              // highlight stays truthful for anyone who already had it set.
+              const active =
+                mode === t.id || (mode === "system" && ((t.id === "dark") === isDark));
+              return (
+                <Pressable
+                  key={t.id}
+                  onPress={() => setMode(t.id)}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: active }}
+                  style={[
+                    styles.themeCard,
+                    {
+                      borderColor: active ? c.primary : c.border,
+                      backgroundColor: active ? c.activeSoft : c.surface,
+                    },
+                  ]}
+                >
+                  <View
+                    style={[
+                      styles.themeIcon,
+                      { backgroundColor: active ? c.primary : c.inset },
+                    ]}
+                  >
+                    <t.icon size={20} color={active ? c.primaryText : c.textMuted} />
+                  </View>
+                  <Text style={[styles.themeLabel, { color: c.text }]}>
+                    {t.label} {active ? "✓" : ""}
+                  </Text>
+                  <Text style={[styles.themeText, { color: c.textMuted }]}>{t.text}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </>
+      ) : null}
+
+      {/* ---------- HELP ---------- */}
+      {section === "help" ? (
+        <>
+          <PanelHead
+            icon={HelpCircle}
+            title="Help and about"
+            text="The short version of how this place runs."
+          />
+          <View style={[styles.card, { backgroundColor: c.surface, borderColor: c.border }]}>
+            <HelpPara label="Booking." color={c.text}>
+              A real person at the venue confirms every request — you will get an alert
+              when they do.
+            </HelpPara>
+            <HelpPara label="Paying." color={c.text}>
+              eSewa and Khalti run in test mode here, and cash at the counter is always
+              fine.
+            </HelpPara>
+            <HelpPara label="Leagues." color={c.text}>
+              A squad locks its place with at least a 25% deposit. Back out and 10% of what
+              you paid comes back; the rest stays with the league.
+            </HelpPara>
+            <HelpPara label="Where things live." color={c.text}>
+              League matches are inside the Matches screen. Alerts are behind the bell.
+              Profile, theme and account are here.
+            </HelpPara>
+          </View>
+          <Row
+            icon={Trophy}
+            title="Back to the home page"
+            sub="FutsalNepal — made with 💚 for players, by players"
+            onPress={() => router.push("/(app)")}
+          />
+        </>
+      ) : null}
     </View>
-  </>
-) : null}
-
-{/* ---------- HELP ---------- */}
-{section === "help" ? (
-  <>
-    <PanelHead
-      icon={HelpCircle}
-      title="Help and about"
-      text="The short version of how this place runs."
-    />
-    <View style={[styles.card, { backgroundColor: c.surface, borderColor: c.border }]}>
-      <HelpPara label="Booking." color={c.text}>
-        A real person at the venue confirms every request — you will get an alert when they
-        do.
-      </HelpPara>
-      <HelpPara label="Paying." color={c.text}>
-        eSewa and Khalti run in test mode here, and cash at the counter is always fine.
-      </HelpPara>
-      <HelpPara label="Leagues." color={c.text}>
-        A squad locks its place with at least a 25% deposit. Back out and 10% of what you
-        paid comes back; the rest stays with the league.
-      </HelpPara>
-      <HelpPara label="Where things live." color={c.text}>
-        League matches are inside the Matches screen. Alerts are behind the bell. Profile,
-        theme and account are here.
-      </HelpPara>
-    </View>
-    <Row
-      icon={Trophy}
-      title="Back to the home page"
-      sub="FutsalNepal — made with 💚 for players, by players"
-      onPress={() => router.push("/(app)")}
-    />
-  </>
-) : null}
-
-{/* ---------- SUPPORT ---------- */}
-{section === "support" ? (
-  <>
-    <PanelHead
-      icon={LifeBuoy}
-      title="Support"
-      text="Stuck on something, or just want to tell us it went well?"
-    />
-    <Row
-      icon={Mail}
-      title="Email us"
-      sub={SUPPORT_EMAIL}
-      onPress={openSupportEmail}
-    />
-    <Row
-      icon={HelpCircle}
-      title="How this place works"
-      sub="Bookings, deposits, refunds and who decides what"
-      onPress={() => setSection("help")}
-    />
-    <Row
-      icon={CalendarCheck}
-      title="Your bookings"
-      sub={user ? "Everything you have reserved" : "Sign in to see your reservations"}
-      onPress={() => router.push("/(app)/bookings")}
-    />
-    <Row
-      icon={MapPin}
-      title="Find a court"
-      sub="Courts, times and live availability"
-      onPress={() => router.push("/(app)/venues")}
-    />
-
-    <View style={[styles.card, { backgroundColor: c.surface, borderColor: c.border }]}>
-      <Text style={[styles.statGroupLabel, { color: c.textFaint }]}>This device</Text>
-      <AccountRow label="Theme" value={mode === "system" ? "Follows the phone" : mode === "dark" ? "Dark" : "Light"} />
-      <AccountRow label="App version" value={APP_VERSION} />
-
-      <Pressable
-        onPress={resetDeviceSettings}
-        accessibilityRole="button"
-        style={[styles.resetBtn, { borderColor: c.border }]}
-      >
-        <RotateCcw size={16} color={c.text} />
-        <Text style={[styles.resetText, { color: c.text }]}>Reset device settings</Text>
-      </Pressable>
-      <Text style={[styles.resetHint, { color: c.textFaint }]}>
-        Appearance only. Your account, bookings and history are never touched.
-      </Text>
-    </View>
-  </>
-) : null}    </View>
   );
 }
 
@@ -936,20 +850,6 @@ const styles = StyleSheet.create({
   gateBtnText: { fontSize: fontSize.sm, fontWeight: "900" },
 
 
-  /* Support */
-  resetBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: space[2],
-    borderRadius: radius.xl,
-    borderWidth: 1,
-    paddingHorizontal: space[4],
-    paddingVertical: 12,
-    marginTop: space[3],
-  },
-  resetText: { fontSize: fontSize.sm, fontWeight: "900" },
-  resetHint: { fontSize: fontSize.xs, lineHeight: 16, marginTop: space[2] },
 
   heading: { flexDirection: "row", alignItems: "center", gap: space[4] },
   h1: { fontSize: fontSize["3xl"], fontWeight: "900" },
