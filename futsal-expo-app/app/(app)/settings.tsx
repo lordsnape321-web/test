@@ -26,11 +26,10 @@ import {
   Zap,
 } from "lucide-react-native";
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { Alert, Linking, Platform, Pressable, ScrollView, StyleSheet, Switch, Text, View } from "react-native";
+import { Alert, Linking, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Avatar } from "@/components/Avatar";
 import { useAuth } from "@/context/AuthContext";
-import { usePrefs } from "@/context/PrefsContext";
 import { useTheme } from "@/context/ThemeContext";
 import { fetchNotifications, markAllNotificationsRead } from "@/api";
 import { CITY_OPTIONS } from "@/lib/futsal";
@@ -59,7 +58,6 @@ import { colors, fontSize, radius, space } from "@/theme";
  */
 
 const SECTIONS = [
-  { id: "browse", label: "Browse mode", icon: EyeOff, needsAccount: false },
   { id: "profile", label: "Profile", icon: UserIcon, needsAccount: true },
   { id: "alerts", label: "Alerts", icon: Bell, needsAccount: true },
   { id: "appearance", label: "Appearance", icon: Sun, needsAccount: false },
@@ -82,10 +80,9 @@ const SUPPORT_EMAIL = "hello@futsalnepal.app";
 export default function SettingsScreen() {
   const { colors: c, mode, setMode, isDark } = useTheme();
   const { user, ready, isOwner, signOut, updateProfile } = useAuth();
-  const { browseMode, setBrowseMode } = usePrefs();
   const router = useRouter();
 
-  const [section, setSection] = useState<SectionId>(user ? "profile" : "browse");
+  const [section, setSection] = useState<SectionId>(user ? "profile" : "appearance");
   const [notes, setNotes] = useState<AppNotification[]>([]);
   const [notesLoading, setNotesLoading] = useState(true);
   const [citySaving, setCitySaving] = useState(false);
@@ -146,7 +143,7 @@ export default function SettingsScreen() {
     avatarUrl: user.avatarUrl,
   };
 
-  // Signed out, this is a shorter screen. Appearance, browse mode and help never
+  // Signed out, this is a shorter screen. Appearance, help and support never
   // needed an account in the first place, and taking them away from a visitor is
   // the exact bug that made them unreachable before. Past this return `user` is
   // non-null, which is what lets the account sections below read `user.name`
@@ -581,7 +578,7 @@ export default function SettingsScreen() {
   );
 }
 /**
- * The sections that need no account: browse mode, appearance, help and support.
+ * The sections that need no account: appearance, help and support.
  *
  * They are one component because both versions of this screen render them — a
  * signed-in player and a signed-out visitor get the same device settings, and
@@ -599,7 +596,6 @@ function DeviceSections({
   setMsg: (m: { ok: boolean; text: string } | null) => void;
 }) {
   const { colors: c, mode, setMode, isDark } = useTheme();
-  const { browseMode, setBrowseMode } = usePrefs();
   const router = useRouter();
 
   const openSupportEmail = useCallback(() => {
@@ -612,117 +608,21 @@ function DeviceSections({
   const resetDeviceSettings = useCallback(() => {
     const run = () => {
       setMode("system");
-      setBrowseMode(false);
-      setMsg({ ok: true, text: "Back to defaults — theme follows your device again" });
+      setMsg({ ok: true, text: "Back to defaults — the theme follows your device again" });
     };
 
     Alert.alert(
       "Reset this device's settings?",
-      "Theme and browse mode go back to their defaults. Your account is untouched.",
+      "The theme goes back to following your device. Your account is untouched.",
       [
         { text: "Cancel", style: "cancel" },
         { text: "Reset", style: "destructive", onPress: run },
       ],
     );
-  }, [setMode, setBrowseMode]);
+  }, [setMode]);
 
   return (
     <View>
-{/* ---------- BROWSE MODE ---------- */}
-{section === "browse" ? (
-  <>
-    <PanelHead
-      icon={EyeOff}
-      title="Browse mode"
-      text="Look around without being asked to sign in."
-    />
-    <View style={[styles.card, { backgroundColor: c.surface, borderColor: c.border }]}>
-      <View style={styles.switchRow}>
-        <View style={styles.grow}>
-          <Text style={[styles.switchTitle, { color: c.text }]}>
-            Turn off sign-in prompts
-          </Text>
-          <Text style={[styles.switchSub, { color: c.textMuted }]}>
-            Signed-out screens keep their buttons, but the Log in and Join free boxes turn
-            into quiet outlines instead of full-colour call to actions.
-          </Text>
-        </View>
-        <Switch
-          value={browseMode}
-          onValueChange={setBrowseMode}
-          accessibilityLabel="Browse mode"
-          trackColor={{ false: c.border, true: c.primary }}
-          thumbColor={
-            Platform.OS === "android" ? (browseMode ? c.primaryText : c.surface) : undefined
-          }
-        />
-      </View>
-
-      {/* A live preview, so "muted" is something you can see rather
-          than something you have to take on trust. */}
-      <View style={[styles.browsePreview, { backgroundColor: c.inset }]}>
-        <Text style={[styles.browsePreviewTitle, { color: c.textMuted }]}>
-          {browseMode ? "With browse mode on" : "With browse mode off"}
-        </Text>
-        <View style={styles.previewRow}>
-          <View
-            style={[
-              styles.previewPill,
-              browseMode
-                ? { borderWidth: 1, borderColor: c.border, backgroundColor: c.surface }
-                : { backgroundColor: c.primary },
-            ]}
-          >
-            <Text
-              style={[
-                styles.previewPillText,
-                { color: browseMode ? c.text : c.primaryText },
-              ]}
-            >
-              Log in
-            </Text>
-          </View>
-          <View
-            style={[
-              styles.previewPill,
-              { borderWidth: 1, borderColor: c.border, backgroundColor: c.surface },
-            ]}
-          >
-            <Text
-              style={[
-                styles.previewPillText,
-                { color: browseMode ? c.textMuted : c.text },
-              ]}
-            >
-              Join free
-            </Text>
-          </View>
-        </View>
-      </View>
-    </View>
-
-    <View style={[styles.card, { backgroundColor: c.surface, borderColor: c.border }]}>
-      <Text style={[styles.statGroupLabel, { color: c.textFaint }]}>What it does</Text>
-      <HelpPara label="Mutes the prompts." color={c.text}>
-        The Bookings, Profile and Notifications screens stop asking every time you open them
-        while signed out.
-      </HelpPara>
-      <HelpPara label="Changes nothing else." color={c.text}>
-        Courts, open games, squads and league tables are already open to everyone and stay
-        exactly as they are.
-      </HelpPara>
-      <HelpPara label="Lives on this device." color={c.text}>
-        It is a phone setting, not an account one, so it never follows you to another
-        device and nothing is sent anywhere.
-      </HelpPara>
-      <HelpPara label="Only while signed out." color={c.text}>
-        It does nothing once you sign in — your bookings, alerts and receipts belong to your
-        account either way.
-      </HelpPara>
-    </View>
-  </>
-) : null}
-
 {/* ---------- APPEARANCE ---------- */}
 {section === "appearance" ? (
   <>
@@ -846,7 +746,6 @@ function DeviceSections({
     <View style={[styles.card, { backgroundColor: c.surface, borderColor: c.border }]}>
       <Text style={[styles.statGroupLabel, { color: c.textFaint }]}>This device</Text>
       <AccountRow label="Theme" value={mode === "system" ? "Follows the phone" : mode === "dark" ? "Dark" : "Light"} />
-      <AccountRow label="Browse mode" value={browseMode ? "On — prompts muted" : "Off"} />
       <AccountRow label="App version" value={APP_VERSION} />
 
       <Pressable
@@ -858,7 +757,7 @@ function DeviceSections({
         <Text style={[styles.resetText, { color: c.text }]}>Reset device settings</Text>
       </Pressable>
       <Text style={[styles.resetHint, { color: c.textFaint }]}>
-        Theme and browse mode only. Your account, bookings and history are never touched.
+        Appearance only. Your account, bookings and history are never touched.
       </Text>
     </View>
   </>
@@ -1032,24 +931,6 @@ const styles = StyleSheet.create({
   },
   gateBtnText: { fontSize: fontSize.sm, fontWeight: "900" },
 
-  /* Browse mode */
-  switchRow: { flexDirection: "row", alignItems: "center", gap: space[3] },
-  switchTitle: { fontSize: fontSize.base, fontWeight: "900" },
-  switchSub: { fontSize: fontSize.sm, lineHeight: 18, marginTop: 2 },
-  browsePreview: { borderRadius: radius["2xl"], padding: space[4], marginTop: space[4] },
-  browsePreviewTitle: {
-    fontSize: 10,
-    fontWeight: "900",
-    textTransform: "uppercase",
-    letterSpacing: 0.8,
-  },
-  previewRow: { flexDirection: "row", gap: space[2], marginTop: space[2] },
-  previewPill: {
-    borderRadius: radius.full,
-    paddingHorizontal: space[4],
-    paddingVertical: 8,
-  },
-  previewPillText: { fontSize: fontSize.xs, fontWeight: "900" },
 
   /* Support */
   resetBtn: {

@@ -5,7 +5,6 @@ import {
   ChevronRight,
   ChevronUp,
   Clock,
-  EyeOff,
   Gift,
   Globe,
   Hourglass,
@@ -51,7 +50,6 @@ import { ReceiptUploader, ReceiptViewer, isOnlineMethod } from "@/components/Rec
 import { StarInput } from "@/components/Reviews";
 import { Button, Notice, Pill, Spinner } from "@/components/ui";
 import { useAuth } from "@/context/AuthContext";
-import { usePrefs } from "@/context/PrefsContext";
 import { useTheme } from "@/context/ThemeContext";
 import { hoursUntilGame, type PlayerStats } from "@/lib/loyalty";
 import { formatNPR, formatTime12, gamePlayed, prettyDate } from "@/lib/futsal";
@@ -117,7 +115,6 @@ function cancellationMoneyLabel(status?: string) {
 export default function BookingsScreen() {
   const { colors: c, isDark } = useTheme();
   const { user, ready } = useAuth();
-  const { browseMode } = usePrefs();
   const router = useRouter();
 
   const [bookings, setBookings] = useState<DiaryBooking[]>([]);
@@ -432,84 +429,37 @@ export default function BookingsScreen() {
     }
   }
 
-  // Signed-out: the web page shows a "your games live here" card.
+  // Signed-out: the web page shows a "your games live here" card. Nobody is
+  // logged in here, so the pair of buttons is the only way onward — and it is
+  // tuned to that: a soft filled Log in against a quiet Join free, rather than
+  // the full-strength green the signed-in screens use for a real action.
   if (ready && !user) {
-    // Browse mode is a signed-out player saying "I'm here to look, not to
-    // sign up". The full-width green call to action is the wrong volume for
-    // that, so it steps back to quiet outlines and says what is actually
-    // waiting behind it. Everything else on this screen is untouched.
-    const quiet = browseMode;
-
     return (
       <SafeAreaView style={[styles.flex, styles.center, { backgroundColor: c.bg }]} edges={["top"]}>
         <View style={[styles.signedOutCard, { backgroundColor: c.surface, borderColor: c.border }]}>
-          {quiet ? (
-            <View style={[styles.signedOutIcon, { backgroundColor: c.inset }]}>
-              <CalendarCheck size={32} color={c.textMuted} />
-            </View>
-          ) : (
-            <View style={[styles.signedOutIcon, { backgroundColor: c.primary }]}>
-              <CalendarCheck size={32} color={c.primaryText} />
-            </View>
-          )}
-
-          <Text style={[styles.signedOutTitle, { color: c.text }]}>
-            {quiet ? "Browse mode is on 🧘" : "Your games live here ⚽"}
-          </Text>
+          <View style={[styles.signedOutIcon, { backgroundColor: c.activeSoft }]}>
+            <CalendarCheck size={32} color={c.activeText} />
+          </View>
+          <Text style={[styles.signedOutTitle, { color: c.text }]}>Your games live here ⚽</Text>
           <Text style={[styles.signedOutBody, { color: c.textMuted }]}>
-            {quiet
-              ? "Bookings belong to an account, so this stays empty until you sign in. Everything else — courts, open games, squads — is open to you as it is."
-              : "Log in to see upcoming kickabouts, receipts and venue passes. Takes 10 seconds — promise!"}
+            Bookings belong to an account, so this stays empty until you sign in. Courts, open
+            games and squads are all open to you right now.
           </Text>
-
-          {quiet ? (
-            <View style={[styles.browseChip, { backgroundColor: c.inset, borderColor: c.border }]}>
-              <EyeOff size={13} color={c.textMuted} />
-              <Text style={[styles.browseChipText, { color: c.textMuted }]}>
-                Sign-in prompts are muted until you turn browse mode off
-              </Text>
-            </View>
-          ) : null}
-
           <View style={styles.signedOutActions}>
             <Pressable
               onPress={() => router.push("/login")}
-              style={[
-                styles.signedOutBtn,
-                quiet
-                  ? { borderWidth: 1, borderColor: c.border, backgroundColor: c.surface }
-                  : { backgroundColor: c.primary },
-              ]}
+              style={[styles.signedOutBtn, { backgroundColor: c.activeSoft, borderColor: c.successBorder }]}
             >
-              <LogIn size={16} color={quiet ? c.text : c.primaryText} />
-              <Text style={[styles.signedOutBtnText, { color: quiet ? c.text : c.primaryText }]}>
-                Log in
-              </Text>
+              <LogIn size={16} color={c.activeText} />
+              <Text style={[styles.signedOutBtnText, { color: c.activeText }]}>Log in</Text>
             </Pressable>
             <Pressable
               onPress={() => router.push("/signup")}
-              style={[
-                styles.signedOutBtn,
-                quiet ? { borderWidth: 1, borderColor: c.border } : { borderColor: c.border },
-              ]}
+              style={[styles.signedOutBtn, { borderColor: c.border, backgroundColor: c.surface }]}
             >
-              <Text style={[styles.signedOutBtnText, { color: quiet ? c.textMuted : c.text }]}>
-                Join free
-              </Text>
+              <Text style={[styles.signedOutBtnText, { color: c.textMuted }]}>Join free</Text>
             </Pressable>
           </View>
-
-          {quiet ? (
-            <Pressable
-              onPress={() => router.push("/(app)/settings")}
-              accessibilityRole="button"
-              style={styles.turnOffLink}
-            >
-              <Text style={[styles.turnOffText, { color: c.textMuted }]}>
-                Turn browse mode off
-              </Text>
-            </Pressable>
-          ) : null}
         </View>
       </SafeAreaView>
     );
@@ -1780,19 +1730,4 @@ const styles = StyleSheet.create({
     minHeight: 44,
   },
   signedOutBtnText: { color: "#FFFFFF", fontSize: fontSize.sm, fontWeight: "900" },
-
-  /* Browse mode: the sign-in prompt says what it is instead of shouting. */
-  browseChip: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    borderWidth: 1,
-    borderRadius: radius.full,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    marginTop: space[3],
-  },
-  browseChipText: { fontSize: fontSize.xs, fontWeight: "700" },
-  turnOffLink: { marginTop: space[3], paddingVertical: 4 },
-  turnOffText: { fontSize: fontSize.xs, fontWeight: "700" },
 });

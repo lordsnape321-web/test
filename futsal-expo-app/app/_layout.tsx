@@ -13,7 +13,6 @@ import { ActivityIndicator, Text, TextInput, View } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { AuthProvider, useAuth } from "@/context/AuthContext";
 import { ThemeProvider, useTheme } from "@/context/ThemeContext";
-import { PrefsProvider } from "@/context/PrefsContext";
 import { MobileNav } from "@/components/MobileNav";
 import { Navbar } from "@/components/Navbar";
 import { TurfBackdrop } from "@/components/TurfBackdrop";
@@ -35,10 +34,9 @@ import {
  * system font and looks like a different product.
  *
  * Order matters here. SafeAreaProvider has to wrap anything that reads insets,
- * ThemeProvider has to wrap anything that reads colours, PrefsProvider has to
- * wrap anything that reads a device preference, and AuthProvider has to wrap
- * every screen that gates on sign-in. Putting them in this order means the
- * screens below can assume all four exist.
+ * ThemeProvider has to wrap anything that reads colours, and AuthProvider has to
+ * wrap every screen that gates on sign-in. Putting them in this order means the
+ * screens below can assume all three exist.
  */
 function useAppFontDefaults(loaded: boolean) {
   React.useEffect(() => {
@@ -74,14 +72,10 @@ export default function RootLayout() {
   return (
     <SafeAreaProvider>
       <ThemeProvider>
-        {/* Prefs sits outside Auth on purpose: browse mode is a device
-            preference, so a signed-out player can still turn it on. */}
-        <PrefsProvider>
-          <AuthProvider>
-            <ThemedStatusBar />
-            <Shell />
-          </AuthProvider>
-        </PrefsProvider>
+        <AuthProvider>
+          <ThemedStatusBar />
+          <Shell />
+        </AuthProvider>
       </ThemeProvider>
     </SafeAreaProvider>
   );

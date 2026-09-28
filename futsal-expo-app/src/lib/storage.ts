@@ -24,9 +24,6 @@ export const STORAGE_KEYS = {
   session: "futsal.session.userId",
   // Keep the theme key stable across native and Expo web builds.
   theme: "futsal-theme",
-  // "Browse mode" — the signed-out mode a player can switch on so the app
-  // stops asking them to sign in. Device-local, like the theme.
-  browseMode: "futsal-browse-mode",
 } as const;
 
 const HYDRATE = Object.values(STORAGE_KEYS);
