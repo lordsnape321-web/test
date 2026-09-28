@@ -682,7 +682,7 @@ class BookingController extends ApiController
                 $visibility === 'competition'
                     ? 'Fair-play shield: '.Futsal::formatNPR($depositAmount).' ('.$depDecision['percent'].'%) deposit will open after the opposition captain accepts this competition request. It’s non-refundable if you cancel — show up and your trust climbs! 💪'
                     : 'Fair-play shield: pay '.Futsal::formatNPR($depositAmount).' ('.$depDecision['percent'].'%) upfront via eSewa/Khalti test to lock this booking. It’s non-refundable if you cancel — show up and your trust climbs! 💪',
-                '/bookings'
+                '/bookings?focus=' . $booking->id
             );
         }
 
@@ -698,7 +698,7 @@ class BookingController extends ApiController
                     .($tournamentName ? " It counts towards {$tournamentName}." : '')
                     .' Payment policy: '.($competitionPaymentPolicy === 'loser_pays' ? 'the losing squad pays' : 'fair split between both squads')
                     .'. Open My Bookings to accept or decline. The venue owner is only notified after you accept. ⚽',
-                '/bookings'
+                '/bookings?focus=' . $booking->id
             );
         }
 
@@ -963,7 +963,7 @@ class BookingController extends ApiController
                 'booking_confirmed',
                 "✅ Booking confirmed — {$where}",
                 'Your '.($court->name ?? 'court')." booking for {$when} was accepted by the venue. See you on the turf!",
-                '/bookings'
+                '/bookings?focus=' . $booking->id
             );
 
             if ($venue) {
@@ -986,7 +986,7 @@ class BookingController extends ApiController
                 "🎉 Hope you had a blast at {$where}!",
                 'How was your game? Drop a quick review with stars + a message — it helps the venue and other players! ⭐'
                 .($trust ? " Trust {$trust['before']} → {$trust['after']} (+".Loyalty::TRUST_COMPLETE_BOOST.") {$label['emoji']} — keep showing up! 💪" : ''),
-                '/bookings'
+                '/bookings?focus=' . $booking->id
             );
         }
 
@@ -999,7 +999,7 @@ class BookingController extends ApiController
                 'booking_rejected',
                 "❌ Booking declined — {$where}",
                 'Sorry, the venue couldn’t accommodate your '.($court->name ?? 'court')." request for {$when}. Please try another slot.",
-                '/bookings'
+                '/bookings?focus=' . $booking->id
             );
         }
 
@@ -1029,7 +1029,7 @@ class BookingController extends ApiController
                     .($hadDeposit ? ' Your '.Futsal::formatNPR($depositAmount).' deposit will be refunded 💸' : '')
                     .($cancellationReceived > 0 ? ' '.Futsal::formatNPR($cancellationReceived).' was already received; the venue will record the refund decision in Owner Studio.' : '')
                     .' No trust lost — not your fault! 💛',
-                    '/bookings'
+                    '/bookings?focus=' . $booking->id
                 );
             } else {
                 $trust = $this->adjustTrust((int) $next->user_id, 'cancel');
@@ -1061,7 +1061,7 @@ class BookingController extends ApiController
                             'info',
                             '🚫 Competition request cancelled',
                             ($next->booker_name ?: 'The other captain')." cancelled the {$opponent->name} fixture for {$when}. It no longer needs your decision.",
-                            '/bookings'
+                            '/bookings?focus=' . $booking->id
                         );
                     }
                 }
@@ -1076,7 +1076,7 @@ class BookingController extends ApiController
                     .' Heads up: 3+ cancels in a month pauses new bookings, and it lowers your reliability stars ⭐'
                     .($trust ? " Trust {$trust['before']} → {$trust['after']} (−".Loyalty::TRUST_CANCEL_PENALTY.').' : '')
                     .' Play on!',
-                    '/bookings'
+                    '/bookings?focus=' . $booking->id
                 );
             }
         }
@@ -1087,7 +1087,7 @@ class BookingController extends ApiController
                 'payment',
                 "💰 Payment received — {$where}",
                 'Your payment for '.($court->name ?? 'court')." on {$when} is confirmed. Receipt available in My Bookings.",
-                '/bookings'
+                '/bookings?focus=' . $booking->id
             );
         }
 
@@ -1097,7 +1097,7 @@ class BookingController extends ApiController
                 'payment',
                 "🛡️ Deposit confirmed — {$where}",
                 'Your upfront deposit for '.($court->name ?? 'court')." on {$when} is confirmed. Pay the rest at the venue — and show up to grow trust! 💪",
-                '/bookings'
+                '/bookings?focus=' . $booking->id
             );
         }
 
@@ -1156,7 +1156,7 @@ class BookingController extends ApiController
                     '🚫 Competition request cancelled',
                     'The competition booking for '.Futsal::prettyDate($prev->date).' at '.Futsal::formatTime12($prev->start_time)
                     .' was cancelled. It no longer needs your decision.',
-                    '/bookings'
+                    '/bookings?focus=' . $prev->id
                 );
             }
         }
@@ -1367,7 +1367,7 @@ class BookingController extends ApiController
                 "{$venue->name} asked you to pay ".Futsal::formatNPR($requested).' in advance for '
                 .($court->name ?? 'your court')." on {$when}. Choose eSewa or Khalti from My Bookings; the verified payment will be added to the booking ledger."
                 .($requested === (int) $next->total_price ? ' This is the full court amount.' : ''),
-                '/bookings'
+                '/bookings?focus=' . $booking->id
             );
         } else {
             Notifier::notify(
@@ -1375,7 +1375,7 @@ class BookingController extends ApiController
                 'info',
                 "✅ No advance required — {$venue->name}",
                 'The venue does not require an advance for '.($court->name ?? 'your court')." on {$when}. Your normal payment choice remains unchanged.",
-                '/bookings'
+                '/bookings?focus=' . $booking->id
             );
         }
 
@@ -1465,7 +1465,7 @@ class BookingController extends ApiController
                 'info',
                 "✅ {$opponent->name} accepted your competition request",
                 "{$fixture} at {$where} for {$when} is now with the venue owner for final approval. Payment policy: {$policy}.",
-                '/bookings'
+                '/bookings?focus=' . $booking->id
             );
         } else {
             // The owner is deliberately not told: the row stays in history and
@@ -1475,7 +1475,7 @@ class BookingController extends ApiController
                 'booking_rejected',
                 "❌ {$opponent->name} declined the competition request",
                 "{$fixture} at {$where} for {$when} was declined by the opposition captain, so it was not sent to the venue owner.",
-                '/bookings'
+                '/bookings?focus=' . $booking->id
             );
         }
 
@@ -1547,7 +1547,7 @@ class BookingController extends ApiController
             $choice === 'refunded'
                 ? Futsal::formatNPR($received)." received for booking #FN-{$resolved->id} is marked refunded by the venue owner."
                 : Futsal::formatNPR($received)." received for cancelled booking #FN-{$resolved->id} was recorded as retained by the venue owner. Contact the venue if you need clarification.",
-            '/bookings'
+            '/bookings?focus=' . $booking->id
         );
 
         return $this->ok(['booking' => $resolved->toArray()]);

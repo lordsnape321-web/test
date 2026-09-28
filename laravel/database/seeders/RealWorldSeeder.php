@@ -2879,11 +2879,22 @@ class RealWorldSeeder extends Seeder
         $public = $bookings['public'][0] ?? null;
         $pending = collect($bookings['all'])->firstWhere('status', 'pending');
 
+        // Seeded bells point at the same exact rows the live ones do, so demo
+        // notifications behave like production ones instead of dumping the
+        // reader on a tab and making them go and find the thing.
+        $bookingIdFor = static fn ($userId): string => '/bookings?focus='
+            .(string) (collect($bookings['all'])->firstWhere('user_id', $userId)?->id ?? '');
+        $matchIdFor = static function (int $bookingId): string {
+            $matchId = OpenMatch::where('booking_id', $bookingId)->value('id');
+
+            return '/matches?focus='.(string) ($matchId ?? '');
+        };
+
         $notifications = [
-            [$players[0], 'booking_confirmed', 'Your Satdobato court is confirmed', 'The Himalayan Turf slot is ready. Bring the team by 7:15 pm for the 7:30 kick-off.', '/bookings', true],
+            [$players[0], 'booking_confirmed', 'Your Satdobato court is confirmed', 'The Himalayan Turf slot is ready. Bring the team by 7:15 pm for the 7:30 kick-off.', $bookingIdFor($players[0]->id), true],
             [$players[0], 'team_invite', 'New team invitation', 'Satdobato Strikers invited you to train with the squad this week.', '/teams', false],
             [$players[9], 'match_join', 'A player joined your open game', 'Your Tuesday Touches match has another player on the list.', '/matches', false],
-            [$players[14], 'payment_request', 'Team share due', 'Your captain asked you to settle the remaining share for this week\'s booking.', '/bookings', false],
+            [$players[14], 'payment_request', 'Team share due', 'Your captain asked you to settle the remaining share for this week\'s booking.', $bookingIdFor($players[14]->id), false],
             [$players[24], 'league_update', 'League entry approved', 'Your team is listed in the Bagmati 5-a-side Winter League draw.', '/leagues', true],
             [$players[60], 'league_registration', 'Weekend cup registration is open', 'Pokhara Lakeside Weekend Cup is accepting team entries until the published closing date.', '/leagues', false],
             [$players[95], 'league_registration', 'Your Friday league is ready', 'The Lalitpur Women\'s Friday League has a new fixture window for captains.', '/leagues', false],
@@ -2901,7 +2912,7 @@ class RealWorldSeeder extends Seeder
                 'match_join',
                 'A player joined your open game',
                 'Your '.Futsal::formatTime12((string) $publicBooking->start_time).' game at '.$public['venue']->name.' has another player on the list.',
-                '/matches',
+                $matchIdFor((int) $publicBooking->id),
                 false,
             ];
         }
@@ -2912,7 +2923,7 @@ class RealWorldSeeder extends Seeder
                 'advance_payment',
                 'Advance payment requested',
                 'The desk needs half of the '.(int) $pending->total_price.' before the slot is held. Settle it from My Bookings.',
-                '/bookings',
+                '/bookings?focus='.(string) $pending->id,
                 false,
             ];
         }
@@ -2957,11 +2968,15 @@ class RealWorldSeeder extends Seeder
                 continue;
             }
 
-            Notification::firstOrCreate(
-                ['user_id' => $user->id, 'title' => $title, 'link' => $link],
+            // Keyed on user + title, not on the link: the link now carries a
+            // `?focus=` id, so keying on it would re-create every row as a
+            // duplicate on a re-seed. updateOrCreate refreshes the link instead.
+            Notification::updateOrCreate(
+                ['user_id' => $user->id, 'title' => $title],
                 [
                     'type' => $type,
                     'message' => $message,
+                    'link' => $link,
                     'is_read' => $read,
                 ]
             );

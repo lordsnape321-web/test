@@ -529,7 +529,7 @@ class EsewaController extends ApiController
             'payment',
             '✅ Team share paid',
             'Your '.Futsal::formatNPR($amount).' eSewa share for booking #FN-'.$booking->id.' is confirmed and recorded in the booking ledger.',
-            '/bookings'
+            '/bookings?focus=' . $booking->id
         );
 
         return $teamPayment->fresh();
@@ -596,7 +596,7 @@ class EsewaController extends ApiController
             'payment',
             '✅ Teammate payment received',
             'Your teammate paid '.Futsal::formatNPR($amount).' via eSewa for booking #FN-'.$booking->id.'. The venue has the money in its booking ledger.',
-            '/bookings'
+            '/bookings?focus=' . $booking->id
         );
 
         return $request->fresh();

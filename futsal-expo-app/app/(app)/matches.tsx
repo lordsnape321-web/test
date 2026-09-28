@@ -8,6 +8,7 @@ import {
   HandHeart,
   Hourglass,
   MapPin,
+  Sparkles,
   Minus,
   Plus,
   Trophy,
@@ -15,7 +16,7 @@ import {
   X,
   Zap,
 } from "lucide-react-native";
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   Modal,
   Pressable,
@@ -108,6 +109,13 @@ export default function MatchesScreen() {
   // redirect, shared links). Native carries that as a route param; the state
   // below stays the source of truth after mount, same as before.
   const { tab: tabParam } = useLocalSearchParams<{ tab?: string }>();
+  // A bell link arrives as /matches?focus=<matchId>. Without it the user is
+  // dropped on the Matches tab with the game they were told about nowhere in
+  // sight, and has to hunt for it by name.
+  const { focus } = useLocalSearchParams<{ focus?: string }>();
+  const focusId = focus ? Number(focus) : null;
+  const scrollRef = useRef<ScrollView>(null);
+  const [focusY, setFocusY] = useState<number | null>(null);
   const [tab, setTab] = useState<"open" | "leagues">(
     tabParam === "leagues" ? "leagues" : "open",
   );
@@ -231,9 +239,15 @@ export default function MatchesScreen() {
   }
 
   const bp = useBreakpoints();
+  useEffect(() => {
+    if (focusY == null) return;
+    scrollRef.current?.scrollTo({ y: Math.max(0, focusY - space[4]), animated: true });
+  }, [focusY, filter]);
+
   return (
     <SafeAreaView style={[styles.flex, { backgroundColor: c.bg }]} edges={["top"]}>
       <ScrollView
+        ref={scrollRef}
         contentContainerStyle={[
           styles.content,
           {
@@ -376,16 +390,23 @@ export default function MatchesScreen() {
               </View>
             ) : (
               filtered.map((m) => (
-                <OpenMatchCard
+                <View
                   key={m.id}
-                  m={m}
-                  joining={joining === m.id}
-                  deciding={deciding}
-                  onAsk={() => askToPlay(m)}
-                  onToggle={() => toggleJoin(m)}
-                  onDecide={decide}
-                  onPay={() => payShare(m)}
-                />
+                  onLayout={(e) => {
+                    if (m.id === focusId) setFocusY(e.nativeEvent.layout.y);
+                  }}
+                >
+                  <OpenMatchCard
+                    m={m}
+                    highlighted={m.id === focusId}
+                    joining={joining === m.id}
+                    deciding={deciding}
+                    onAsk={() => askToPlay(m)}
+                    onToggle={() => toggleJoin(m)}
+                    onDecide={decide}
+                    onPay={() => payShare(m)}
+                  />
+                </View>
               ))
             )}
           </>
@@ -419,6 +440,7 @@ export default function MatchesScreen() {
 
 function OpenMatchCard({
   m,
+  highlighted = false,
   joining,
   deciding,
   onAsk,
@@ -427,6 +449,8 @@ function OpenMatchCard({
   onPay,
 }: {
   m: Match;
+  /** True when this card is the one a notification deep link pointed at. */
+  highlighted?: boolean;
   joining: boolean;
   deciding: string | null;
   onAsk: () => void;
@@ -452,7 +476,21 @@ function OpenMatchCard({
   const queue = (m.requests ?? []).filter((r) => r.status === JOIN_PENDING);
 
   return (
-    <View style={[styles.card, { backgroundColor: c.surface, borderColor: c.border }]}>
+    <View
+      style={[
+        styles.card,
+        { backgroundColor: c.surface, borderColor: highlighted ? c.primary : c.border },
+        highlighted ? styles.cardFocused : null,
+      ]}
+    >
+      {highlighted ? (
+        <View style={[styles.focusBar, { backgroundColor: c.activeSoft }]}>
+          <Sparkles size={13} color={c.primary} />
+          <Text style={[styles.focusBarText, { color: c.activeText }]} numberOfLines={1}>
+            Opened from your notification
+          </Text>
+        </View>
+      ) : null}
       <View style={styles.cardHead}>
         <View style={styles.grow}>
           <Text style={[styles.cardTitle, { color: c.text }]}>{m.title}</Text>
@@ -1587,6 +1625,15 @@ const styles = StyleSheet.create({
     padding: space[5],
     marginTop: space[4],
   },
+  cardFocused: { borderWidth: 2 },
+  focusBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: space[2],
+    paddingHorizontal: space[4],
+    paddingVertical: space[2],
+  },
+  focusBarText: { fontSize: fontSize.xs, fontWeight: "900", letterSpacing: 0.4, flex: 1 },
   cardHead: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: space[3] },
   cardTitle: { fontSize: fontSize.lg, fontWeight: "800" },
   cardSub: { fontSize: fontSize.sm, color: colors.stone500, marginTop: 2 },

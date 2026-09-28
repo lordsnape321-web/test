@@ -1,4 +1,4 @@
-import { useFocusEffect, useRouter } from "expo-router";
+import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import {
   CalendarCheck,
   ChevronDown,
@@ -15,13 +15,14 @@ import {
   QrCode,
   ReceiptText,
   Shield,
+  Sparkles,
   Star,
   Swords,
   Ticket,
   Wallet,
   XCircle,
 } from "lucide-react-native";
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -121,6 +122,14 @@ export default function BookingsScreen() {
   const [playerStats, setPlayerStats] = useState<PlayerStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<"upcoming" | "past" | "cancelled">("upcoming");
+
+  // A notification link arrives as /bookings?focus=<bookingId>. Without this the
+  // bell dropped you on the Bookings tab with the right booking somewhere in a
+  // long list and no sign of which one it was talking about.
+  const { focus } = useLocalSearchParams<{ focus?: string }>();
+  const focusId = focus ? Number(focus) : null;
+  const scrollRef = useRef<ScrollView>(null);
+  const [focusY, setFocusY] = useState<number | null>(null);
   const [cancelling, setCancelling] = useState<number | null>(null);
   const [viewReceipt, setViewReceipt] = useState<string | null>(null);
   const [uploadFor, setUploadFor] = useState<number | null>(null);
@@ -210,6 +219,32 @@ export default function BookingsScreen() {
     if (tab === "past") return bookings.filter(played);
     return bookings.filter((b) => !gone(b.status) && !played(b) && b.date >= today);
   }, [bookings, tab, today]);
+
+  // The three sub-tabs partition the list, so a deep link has to pick the right
+  // one itself — otherwise the booking the notification is about is filtered
+  // out of view and the user is left hunting again. Re-runs on every `load()`
+  // refresh, which is what we want: the booking may only just have arrived.
+  useEffect(() => {
+    if (focusId == null || Number.isNaN(focusId)) return;
+    const target = bookings.find((b) => b.id === focusId);
+    if (!target) return;
+    const wanted = gone(target.status)
+      ? "cancelled"
+      : played(target)
+        ? "past"
+        : "upcoming";
+    setTab((current) => (current === wanted ? current : wanted));
+    setFocusY(null); // the card re-lays-out in the new tab
+  }, [focusId, bookings, today]);
+
+  // The list is a plain map inside a ScrollView, so the focused card reports
+  // its own offset and we scroll once it is known.
+  useEffect(() => {
+    if (focusY == null) return;
+    scrollRef.current?.scrollTo({ y: Math.max(0, focusY - space[4]), animated: true });
+  }, [focusY, tab]);
+
+  const focusedBooking = focusId == null ? null : bookings.find((b) => b.id === focusId) ?? null;
 
   const pendingCount = bookings.filter((b) => b.status === "pending" && b.date >= today).length;
   const competitionRequestCount = bookings.filter(
@@ -468,6 +503,7 @@ export default function BookingsScreen() {
   return (
     <SafeAreaView style={[styles.flex, { backgroundColor: c.bg }]} edges={["top"]}>
       <ScrollView
+        ref={scrollRef}
         contentContainerStyle={[
           styles.scroll,
           {
@@ -566,6 +602,26 @@ export default function BookingsScreen() {
           })}
         </View>
 
+        {/* A bell tap lands here with `?focus=` set. Say so, and offer the way
+            out, so "it opened the wrong thing" is never the user's conclusion. */}
+        {focusedBooking ? (
+          <View style={[styles.focusNotice, { backgroundColor: c.activeSoft, borderColor: c.primary }]}>
+            <Sparkles size={16} color={c.primary} />
+            <Text style={[styles.focusNoticeText, { color: c.activeText }]} numberOfLines={2}>
+              Jumped to the booking from your notification —{" "}
+              {focusedBooking.venue?.name ?? "your court"} on {focusedBooking.date}.
+            </Text>
+            <Pressable
+              onPress={() => router.setParams({ focus: undefined })}
+              accessibilityRole="button"
+              accessibilityLabel="Stop highlighting this booking"
+              hitSlop={8}
+            >
+              <XCircle size={18} color={c.textMuted} />
+            </Pressable>
+          </View>
+        ) : null}
+
         <View style={[styles.tabShell, { backgroundColor: c.surface, borderColor: c.border }]}>
           {(["upcoming", "past", "cancelled"] as const).map((t) => {
             const label = t === "upcoming" ? "Coming up" : t === "past" ? "Played" : "Cancelled";
@@ -617,75 +673,82 @@ export default function BookingsScreen() {
           </View>
         ) : (
           filtered.map((b) => (
-            <BookingCard
+            <View
               key={b.id}
-              booking={b}
-              tab={tab}
-              mine={myReviewAt(b.venue?.id)}
-              reviewable={reviewable(b)}
-              cancelling={cancelling === b.id}
-              paying={paying === b.id}
-              uploadFor={uploadFor === b.id}
-              uploading={uploading}
-              reviewFor={reviewFor === b.id}
-              reviewStars={reviewStars}
-              reviewMsg={reviewMsg}
-              reviewError={reviewError}
-              reviewSaving={reviewSaving}
-              onCancel={() => void cancel(b)}
-              onPay={() => void payNow(b)}
-              onPayAdvance={(method) => void payNow(b, method)}
-              needsOnlinePay={needsOnlinePay(b)}
-              teamShare={user ? b.teamPayments?.find((share) => share.userId === user.id) ?? null : null}
-              teamMethodOpen={teamMethodFor === b.id}
-              teamMethod={teamMethod}
-              teamSaving={teamSaving === b.id}
-              onOpenTeamMethod={() => {
-                const share = b.teamPayments?.find((item) => item.userId === user?.id);
-                setTeamMethodFor(teamMethodFor === b.id ? null : b.id);
-                setTeamMethod((share?.paymentMethod as "eSewa" | "Khalti" | "Cash at Venue") || "eSewa");
+              onLayout={(e) => {
+                if (b.id === focusId) setFocusY(e.nativeEvent.layout.y);
               }}
-              onTeamMethodChange={setTeamMethod}
-              onSaveTeamMethod={() => void saveTeamMethod(b)}
-              onPayTeamShare={() => {
-                const share = b.teamPayments?.find((item) => item.userId === user?.id);
-                if (share) payTeamShare(b, share);
-              }}
-              payLabel={payLabel(b)}
-              onOpenReceipt={() => setViewReceipt(b.receiptUrl ?? "")}
-              onToggleUpload={() =>
-                setUploadFor((u) => (u === b.id ? null : b.id))
-              }
-              onSaveReceipt={(url) => void saveReceipt(b.id, url)}
-              onToggleReview={() => {
-                if (reviewFor === b.id) {
-                  setReviewFor(null);
-                  return;
+            >
+              <BookingCard
+                booking={b}
+                highlighted={b.id === focusId}
+                tab={tab}
+                mine={myReviewAt(b.venue?.id)}
+                reviewable={reviewable(b)}
+                cancelling={cancelling === b.id}
+                paying={paying === b.id}
+                uploadFor={uploadFor === b.id}
+                uploading={uploading}
+                reviewFor={reviewFor === b.id}
+                reviewStars={reviewStars}
+                reviewMsg={reviewMsg}
+                reviewError={reviewError}
+                reviewSaving={reviewSaving}
+                onCancel={() => void cancel(b)}
+                onPay={() => void payNow(b)}
+                onPayAdvance={(method) => void payNow(b, method)}
+                needsOnlinePay={needsOnlinePay(b)}
+                teamShare={user ? b.teamPayments?.find((share) => share.userId === user.id) ?? null : null}
+                teamMethodOpen={teamMethodFor === b.id}
+                teamMethod={teamMethod}
+                teamSaving={teamSaving === b.id}
+                onOpenTeamMethod={() => {
+                  const share = b.teamPayments?.find((item) => item.userId === user?.id);
+                  setTeamMethodFor(teamMethodFor === b.id ? null : b.id);
+                  setTeamMethod((share?.paymentMethod as "eSewa" | "Khalti" | "Cash at Venue") || "eSewa");
+                }}
+                onTeamMethodChange={setTeamMethod}
+                onSaveTeamMethod={() => void saveTeamMethod(b)}
+                onPayTeamShare={() => {
+                  const share = b.teamPayments?.find((item) => item.userId === user?.id);
+                  if (share) payTeamShare(b, share);
+                }}
+                payLabel={payLabel(b)}
+                onOpenReceipt={() => setViewReceipt(b.receiptUrl ?? "")}
+                onToggleUpload={() =>
+                  setUploadFor((u) => (u === b.id ? null : b.id))
                 }
-                const mine = myReviewAt(b.venue?.id);
-                setReviewStars(mine?.rating ?? 5);
-                setReviewMsg(mine?.message ?? "");
-                setReviewFor(b.id);
-                setReviewError("");
-              }}
-              onReviewStars={setReviewStars}
-              onReviewMsg={(t) => {
-                setReviewMsg(t);
-                setReviewError("");
-              }}
-              onSubmitReview={() => {
-                const card = filtered.find((x) => x.id === b.id);
-                if (card) void submitReview(card);
-              }}
-              onOpenBooking={() => router.push(`/booking/${b.id}`)}
-              competitionActing={competitionDecision === b.id}
-              onCompetitionAction={(action) => void decideCompetition(b, action)}
-              isDark={isDark}
-              muted={c.textMuted}
-              surface={c.surface}
-              border={c.border}
-              text={c.text}
-            />
+                onSaveReceipt={(url) => void saveReceipt(b.id, url)}
+                onToggleReview={() => {
+                  if (reviewFor === b.id) {
+                    setReviewFor(null);
+                    return;
+                  }
+                  const mine = myReviewAt(b.venue?.id);
+                  setReviewStars(mine?.rating ?? 5);
+                  setReviewMsg(mine?.message ?? "");
+                  setReviewFor(b.id);
+                  setReviewError("");
+                }}
+                onReviewStars={setReviewStars}
+                onReviewMsg={(t) => {
+                  setReviewMsg(t);
+                  setReviewError("");
+                }}
+                onSubmitReview={() => {
+                  const card = filtered.find((x) => x.id === b.id);
+                  if (card) void submitReview(card);
+                }}
+                onOpenBooking={() => router.push(`/booking/${b.id}`)}
+                competitionActing={competitionDecision === b.id}
+                onCompetitionAction={(action) => void decideCompetition(b, action)}
+                isDark={isDark}
+                muted={c.textMuted}
+                surface={c.surface}
+                border={b.id === focusId ? c.primary : c.border}
+                text={c.text}
+              />
+            </View>
           ))
         )}
       </ScrollView>
@@ -696,6 +759,7 @@ export default function BookingsScreen() {
 
 function BookingCard({
   booking: b,
+  highlighted = false,
   tab,
   mine,
   reviewable,
@@ -738,6 +802,8 @@ function BookingCard({
   text,
 }: {
   booking: DiaryBooking;
+  /** True when this card is the one a notification deep link pointed at. */
+  highlighted?: boolean;
   tab: "upcoming" | "past" | "cancelled";
   mine: MyReview | null;
   reviewable: boolean;
@@ -821,7 +887,21 @@ function BookingCard({
           : "danger";
 
   return (
-    <View style={[styles.card, { backgroundColor: surface, borderColor: border }]}>
+    <View
+      style={[
+        styles.card,
+        { backgroundColor: surface, borderColor: border },
+        highlighted ? styles.cardFocused : null,
+      ]}
+    >
+      {highlighted ? (
+        <View style={[styles.focusBar, { backgroundColor: border }]}>
+          <Sparkles size={13} color={border} />
+          <Text style={[styles.focusBarText, { color: border }]} numberOfLines={1}>
+            Opened from your notification
+          </Text>
+        </View>
+      ) : null}
       <View style={styles.cardTop}>
         {b.venue?.imageUrl ? (
           <Image source={{ uri: b.venue.imageUrl }} style={styles.cardImg} />
@@ -1497,6 +1577,26 @@ const styles = StyleSheet.create({
     marginTop: space[3],
     overflow: "hidden",
   },
+  focusNotice: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: space[3],
+    marginTop: space[3],
+    paddingHorizontal: space[4],
+    paddingVertical: space[3],
+    borderRadius: radius["2xl"],
+    borderWidth: 1,
+  },
+  focusNoticeText: { flex: 1, fontSize: fontSize.sm, lineHeight: 19, fontWeight: "700" },
+  cardFocused: { borderWidth: 2 },
+  focusBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: space[2],
+    paddingHorizontal: space[4],
+    paddingVertical: space[2],
+  },
+  focusBarText: { fontSize: fontSize.xs, fontWeight: "900", letterSpacing: 0.4, flex: 1 },
   cardTop: { flexDirection: "row", alignItems: "stretch" },
   cardImg: { width: 96, minHeight: 132, alignSelf: "stretch" },
   cardBody: { flex: 1, minWidth: 0, padding: space[4] },

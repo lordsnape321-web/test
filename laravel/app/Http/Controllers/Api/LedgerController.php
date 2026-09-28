@@ -254,7 +254,7 @@ class LedgerController extends ApiController
             'Payment settled ✅',
             Futsal::formatNPR($before['totals']['paid']).' received for your game'
             .($before['totals']['surplus'] > 0 ? ' — '.Futsal::formatNPR($before['totals']['surplus']).' change is due back to you' : '').'.',
-            '/bookings'
+            '/bookings?focus=' . $booking->id
         );
 
         // Re-read rather than reusing `$booking`: it still carries the

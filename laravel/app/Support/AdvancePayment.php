@@ -116,7 +116,7 @@ class AdvancePayment
                     'booking_cancelled',
                     '⌛ Booking cancelled — advance not received',
                     ($venue->name ?? 'The venue')." did not receive the requested {$amount} advance within 30 minutes for {$when}, so booking #FN-{$booking->id} was cancelled automatically.",
-                    '/bookings'
+                    '/bookings?focus=' . $booking->id
                 );
 
                 if ($venue?->owner_id) {

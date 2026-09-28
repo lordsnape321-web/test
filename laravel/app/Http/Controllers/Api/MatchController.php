@@ -352,7 +352,7 @@ class MatchController extends ApiController
             'match_join',
             $wantsToPay ? '✅ '.($player->name ?? 'A player').' is in and has paid' : '🙋 '.($player->name ?? 'A player').' asked to play',
             $hostNotice,
-            '/matches'
+            '/matches?focus=' . $match->id
         );
 
         if ($autoAccepts) {
@@ -362,7 +362,7 @@ class MatchController extends ApiController
                 "🎉 You're in for {$match->title}",
                 'You paid your share of Rs '.$paidAmount.' up front, so your spot is settled — see you on the pitch! '
                 .($positionsNeeded === [] ? '' : 'You are down as '.$position.'.'),
-                '/matches'
+                '/matches?focus=' . $match->id
             );
 
             return $this->ok([
@@ -517,7 +517,7 @@ class MatchController extends ApiController
                 '💰 '.($playerName === 'A player' ? 'The host' : 'Please pay').' — '.($match->title ?? 'the game').' needs your share',
                 ($match->title ?? 'The game').' is asking for Rs '.(int) $match->price_per_player.' up front to hold your spot. '
                 .'Pay and you’re in automatically; your request stays open either way.',
-                '/matches'
+                '/matches?focus=' . $match->id
             );
 
             return $this->ok([
@@ -541,7 +541,7 @@ class MatchController extends ApiController
                 "🛡️ {$match->title} is full without you",
                 "The host passed on your request for \"{$match->title}\" — the game may have filled up, or they needed a different position. "
                 .'Nothing was charged, and you can ask again for a future game.',
-                '/matches'
+                '/matches?focus=' . $match->id
             );
 
             return $this->ok([
@@ -585,7 +585,7 @@ class MatchController extends ApiController
             'match_join',
             "🎉 You're in for {$match->title}",
             'The host accepted your request — you’re on the pitch for "'.$match->title.'".'.$paidNote,
-            '/matches'
+            '/matches?focus=' . $match->id
         );
 
         return $this->ok([
@@ -685,7 +685,7 @@ class MatchController extends ApiController
             '💰 '.($player->name ?? 'A player').' paid up',
             "\"{$match->title}\" — Rs {$amount} received, so ".($player->name ?? 'they').' is in automatically. '
             .'Thanks for asking for the share up front.',
-            '/matches'
+            '/matches?focus=' . $match->id
         );
 
         return $this->ok([

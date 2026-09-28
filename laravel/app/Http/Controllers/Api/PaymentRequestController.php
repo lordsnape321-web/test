@@ -193,7 +193,7 @@ class PaymentRequestController extends ApiController
                 .' for '.($court->name ?? 'the court')." on {$when}. Choose eSewa or Khalti; the verified payment goes into booking #FN-{$booking->id}."
                 .($purpose === 'advance' && $deadline ? ' Pay before '.$deadline->format('g:i A').' — the booking cancels 30 minutes after the venue’s advance request.' : '')
                 .($note !== '' ? " Note: {$note}" : ''),
-                '/bookings'
+                '/bookings?focus=' . $booking->id
             );
         }
 
