@@ -17,6 +17,7 @@ import {
   Star,
   Trophy,
   Users,
+  X,
   Zap,
 } from "lucide-react-native";
 import React, { useCallback, useEffect, useRef, useState } from "react";
@@ -153,6 +154,14 @@ export default function HomeScreen() {
     router.push({ pathname: "/venues", params: { q: q.trim(), city } });
   }, [city, q, router]);
 
+  // Wipes the text and any error, and leaves the cursor in the field so the
+  // user can just start typing the next search. The city picker is untouched —
+  // that is a separate choice, with its own control right beside it.
+  const clearHeroSearch = useCallback(() => {
+    setQ("");
+    setSearchError("");
+  }, []);
+
   const statTiles = [
     { n: `${stats?.venues ?? "—"}`, l: "Courts near you" },
     { n: `${stats?.players ?? "—"}+`, l: "Happy players" },
@@ -208,6 +217,19 @@ export default function HomeScreen() {
                 returnKeyType="search"
                 style={[styles.searchInput, { color: c.text }]}
               />
+              {/* Only while there is something to wipe — an always-on ✕ clutters
+                  the empty state, which is where most people start. */}
+              {q ? (
+                <Pressable
+                  onPress={clearHeroSearch}
+                  accessibilityRole="button"
+                  accessibilityLabel="Clear the search text"
+                  hitSlop={10}
+                  style={({ pressed }) => [styles.searchClear, { opacity: pressed ? 0.6 : 1 }]}
+                >
+                  <X size={16} color={c.textFaint} />
+                </Pressable>
+              ) : null}
             </View>
             <View style={[styles.searchField, styles.cityField, bp.sm ? styles.cityFieldWide : null, { backgroundColor: c.inset }]}>
               <MapPin size={16} color={c.textFaint} />
@@ -758,6 +780,7 @@ const styles = StyleSheet.create({
     minHeight: 48,
   },
   searchFieldWide: { flex: 1, width: 0 },
+  searchClear: { padding: 2 },
   searchInput: { flex: 1, minWidth: 0, height: 48, fontSize: fontSize.base, fontWeight: "600", paddingVertical: 0 },
   cityField: { position: "relative", paddingRight: space[2] },
   cityFieldWide: { width: 176, marginTop: 0, flexShrink: 0 },

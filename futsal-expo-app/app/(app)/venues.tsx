@@ -1,5 +1,5 @@
 import Slider from "@react-native-community/slider";
-import { useLocalSearchParams } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import {
   Banknote,
   ChevronDown,
@@ -56,6 +56,7 @@ export default function VenuesScreen() {
   const { colors: c } = useTheme();
   const { user } = useAuth();
   const { q: qParam, city: cityParam } = useLocalSearchParams<{ q?: string; city?: string }>();
+  const router = useRouter();
   const bp = useBreakpoints();
 
   const [venues, setVenues] = useState<Venue[]>([]);
@@ -101,6 +102,20 @@ export default function VenuesScreen() {
     setCity(cityParam);
     setCityTouched(true);
   }, [cityParam]);
+
+  /**
+   * Clearing has to take the route param with it, not just the visible text.
+   * Leaving `?q=chabahil` in the URL while the box reads empty is what made
+   * "clear, then search the same thing again" silently do nothing: the next
+   * search pushed byte-identical params, so `qParam` never changed, the sync
+   * effect above never re-fired, and the list stayed unfiltered.
+   */
+  const clearSearch = useCallback(() => {
+    setQ("");
+    setSearchError("");
+    router.setParams({ q: undefined, city: undefined });
+    setCityTouched(false);
+  }, [router]);
 
   // The web version seeds the city from the URL, then falls back to home city.
   useEffect(() => {
@@ -216,7 +231,7 @@ export default function VenuesScreen() {
                   {city !== "All Cities" ? ` in ${city}` : ""}
                 </Text>
                 <Pressable
-                  onPress={() => setQ("")}
+                  onPress={clearSearch}
                   accessibilityRole="button"
                   accessibilityLabel="Clear search"
                   style={({ pressed }) => [styles.clearBtn, { opacity: pressed ? 0.7 : 1 }]}
