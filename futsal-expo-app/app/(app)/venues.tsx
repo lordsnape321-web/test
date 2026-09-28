@@ -83,6 +83,25 @@ export default function VenuesScreen() {
     { value: "price-high", label: "Price: high → low" },
   ];
 
+  // The Courts tab stays mounted once it has been visited, so a `useState`
+  // initialiser only ever sees the params of the *first* mount. Without these
+  // two effects, searching from the landing page while the tab is already warm
+  // just changed tabs and silently kept the old query — the user landed on the
+  // right screen with the wrong list and had to type it again. Same pattern the
+  // Matches screen uses for its `?tab=` deep link.
+  useEffect(() => {
+    setQ(qParam ?? "");
+    setSearchError("");
+  }, [qParam]);
+
+  useEffect(() => {
+    // Absent or unrecognised city: leave the field alone so the home-city
+    // fallback below still applies. Only a real choice marks it as touched.
+    if (!cityParam || !CITY_OPTIONS.includes(cityParam)) return;
+    setCity(cityParam);
+    setCityTouched(true);
+  }, [cityParam]);
+
   // The web version seeds the city from the URL, then falls back to home city.
   useEffect(() => {
     if (!cityTouched && homeCity && CITY_OPTIONS.includes(homeCity)) setCity(homeCity);
@@ -182,11 +201,35 @@ export default function VenuesScreen() {
               <HeartHandshake size={14} color={colors.orange500} />
               <Text style={[styles.eyebrow, { color: c.accent }]}>Pick your second home</Text>
             </View>
-            <Text style={[styles.h1, { color: c.text }]}>Courts near you</Text>
-            <Text style={[styles.subtitle, { color: c.textMuted }]}>
-              {filtered.length} welcoming venues • honest prices • real people confirm your game
-              {homeCity !== "All Cities" ? ` • 🏠 home: ${homeCity}` : ""}
+            <Text style={[styles.h1, { color: c.text }]}>
+              {safeQ ? "Search results" : "Courts near you"}
             </Text>
+            {/* Say out loud what the list is actually filtered by. Arriving from
+                the landing page search used to look identical to opening the tab,
+                which is why it read as "it just changed the tab". */}
+            {safeQ ? (
+              <View style={styles.resultRow}>
+                <Text style={[styles.resultText, { color: c.textMuted }]} numberOfLines={2}>
+                  {filtered.length === 0
+                    ? `No court matches “${safeQ}”`
+                    : `${filtered.length} ${filtered.length === 1 ? "court" : "courts"} matching “${safeQ}”`}
+                  {city !== "All Cities" ? ` in ${city}` : ""}
+                </Text>
+                <Pressable
+                  onPress={() => setQ("")}
+                  accessibilityRole="button"
+                  accessibilityLabel="Clear search"
+                  style={({ pressed }) => [styles.clearBtn, { opacity: pressed ? 0.7 : 1 }]}
+                >
+                  <Text style={[styles.clearText, { color: c.textMuted }]}>Clear</Text>
+                </Pressable>
+              </View>
+            ) : (
+              <Text style={[styles.subtitle, { color: c.textMuted }]}>
+                {filtered.length} welcoming venues • honest prices • real people confirm your game
+                {homeCity !== "All Cities" ? ` • 🏠 home: ${homeCity}` : ""}
+              </Text>
+            )}
 
             {/* Filters */}
             <View style={[styles.filterCard, { backgroundColor: c.surface, borderColor: c.border }]}>
@@ -423,6 +466,22 @@ const styles = StyleSheet.create({
   },
   h1: { fontSize: fontSize["4xl"], fontWeight: "900", marginTop: 4 },
   subtitle: { fontSize: fontSize.base, color: colors.stone500, marginTop: 4 },
+
+  resultRow: {
+    marginTop: 6,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: space[3],
+  },
+  resultText: { flex: 1, fontSize: fontSize.base, lineHeight: 21 },
+  clearBtn: {
+    paddingHorizontal: space[3],
+    paddingVertical: 6,
+    borderRadius: radius["2xl"],
+    borderWidth: 1,
+    borderColor: colors.stone300,
+  },
+  clearText: { fontSize: fontSize.sm, fontWeight: "800" },
 
   filterCard: {
     marginTop: space[5],
