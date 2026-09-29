@@ -890,6 +890,25 @@ function BookingCard({
   // One source of truth, shared with the full detail page.
   const money = moneyOf(b);
   const balance = money.balance;
+  // The status the viewer acts on. For a team game the player's obligation is
+  // their OWN share — once it is paid the chip must say "Paid", not the squad's
+  // remaining balance, which belongs to the other players and would read as
+  // "still due / payment not done" after they had just paid.
+  const statusView = teamShare
+    ? teamShare.paymentStatus === "paid"
+      ? { status: "paid" as const, label: "Paid" }
+      : (() => {
+          const due = Math.max(0, Number(teamShare.amountDue ?? 0));
+          const paid = Math.min(due, Math.max(0, Number(teamShare.paidAmount ?? 0)));
+          return {
+            status: (paid > 0 ? "deposit_paid" : "pending") as "deposit_paid" | "pending",
+            label:
+              paid > 0
+                ? `Your share · ${formatNPR(due - paid)} left`
+                : `Your share · ${formatNPR(due)} due`,
+          };
+        })()
+    : { status: money.status, label: money.label };
   const method = String(b.paymentMethod ?? "");
   const competitionPending = b.competition?.competitionStatus === "pending";
   const competitionDeclined =
@@ -978,16 +997,16 @@ function BookingCard({
                   style={[
                     styles.paymentStatusChip,
                     {
-                      color: money.status === "paid"
+                      color: statusView.status === "paid"
                         ? semantic.emerald
-                        : money.status === "pending"
+                        : statusView.status === "pending"
                           ? semantic.amber
                           : textFaint(muted),
-                      backgroundColor: money.status === "paid" ? (isDark ? "rgba(16,185,129,0.18)" : "#ECFDF5") : money.status === "pending" ? (isDark ? "rgba(245,158,11,0.16)" : "#FFFBEB") : (isDark ? "rgba(148,163,184,0.16)" : "#F1F5F9"),
+                      backgroundColor: statusView.status === "paid" ? (isDark ? "rgba(16,185,129,0.18)" : "#ECFDF5") : statusView.status === "pending" ? (isDark ? "rgba(245,158,11,0.16)" : "#FFFBEB") : (isDark ? "rgba(148,163,184,0.16)" : "#F1F5F9"),
                     },
                   ]}
                 >
-                  {money.label}
+                  {statusView.label}
                 </Text>
               </View>
             </View>

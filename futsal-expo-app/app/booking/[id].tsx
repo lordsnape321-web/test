@@ -198,6 +198,24 @@ export default function BookingDetail() {
   const isTeamBooking = (booking.teamPayments?.length ?? 0) > 0;
   const squadDue = money.received + money.balance;
   const teamShare = booking.teamPayments?.find((share) => share.userId === user?.id) ?? null;
+  // For a team game the player's obligation is their OWN share. Once it is
+  // paid the pill must say "Paid" — the squad's remaining balance belongs to
+  // the other members and would read as "still due" after they had just paid.
+  const statusView = teamShare
+    ? teamShare.paymentStatus === "paid"
+      ? { status: "paid" as const, label: "Paid" }
+      : (() => {
+          const due = Math.max(0, Number(teamShare.amountDue ?? 0));
+          const paid = Math.min(due, Math.max(0, Number(teamShare.paidAmount ?? 0)));
+          return {
+            status: (paid > 0 ? "deposit_paid" : "pending") as "deposit_paid" | "pending",
+            label:
+              paid > 0
+                ? `Your share · ${formatNPR(due - paid)} left`
+                : `Your share · ${formatNPR(due)} due`,
+          };
+        })()
+    : { status: money.status, label: money.label };
   const advanceDue = booking.status !== "cancelled" && booking.status !== "rejected" && booking.advancePaymentRequired && booking.advancePaymentStatus !== "paid" ? booking.advancePaymentAmount ?? 0 : 0;
   const competitionWaiting = booking.competition?.competitionStatus === "pending";
   const requestedForMe = booking.paymentRequests?.filter(
@@ -265,8 +283,8 @@ export default function BookingDetail() {
         <View style={styles.pillRow}>
           <Pill label={booking.status} tone={booking.status === "confirmed" ? "success" : "warning"} />
           <Pill
-            label={money.label}
-            tone={money.status === "paid" ? "success" : money.status === "deposit_paid" ? "warning" : "danger"}
+            label={statusView.label}
+            tone={statusView.status === "paid" ? "success" : statusView.status === "deposit_paid" ? "warning" : "danger"}
           />
         </View>
         <View style={styles.paymentLabels}>
@@ -283,7 +301,7 @@ export default function BookingDetail() {
                   : "Per player — see team details")
               : paymentMethodLabel(booking.paymentMethod)}
           </Text>
-          <Text style={[styles.paymentLabel, { color: colors.textMuted }]}>Payment status: {money.label}</Text>
+          <Text style={[styles.paymentLabel, { color: colors.textMuted }]}>Payment status: {statusView.label}</Text>
         </View>
 
         {error ? <Notice message={error} /> : null}
