@@ -386,6 +386,11 @@ export default function BookingsScreen() {
     if (myShare && myShare.paymentStatus !== "paid") {
       return `Pay my share ${formatNPR(Math.max(0, (myShare.amountDue ?? 0) - (myShare.paidAmount ?? 0)))} 💳`;
     }
+    if ((b.teamPayments?.length ?? 0) > 0) {
+      // Team game, but this account has no share row — the money goes to the
+      // venue's desk and no player share settles, so say so on the button.
+      return `Pay ${formatNPR(moneyOf(b).balance)} to the venue 💳`;
+    }
     return `Pay ${formatNPR(moneyOf(b).balance)} balance 💳`;
   }
 

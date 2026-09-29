@@ -319,6 +319,12 @@ export default function BookingDetail() {
             tone={teamShare.paymentStatus === "paid" ? "success" : "info"}
           />
         ) : null}
+        {isTeamBooking && user && !teamShare ? (
+          <Notice
+            message="Your account isn't on this squad's payment list, so the pay button settles the venue's balance — not a player share — and the status stays 'Nothing paid yet'. Ask the captain to add you to the squad, then your share will show here."
+            tone="info"
+          />
+        ) : null}
         {teamShare && teamShare.paymentStatus !== "paid" ? (
           <Card style={{ marginTop: space["3"] }}>
             <Text style={[styles.cardTitle, { color: colors.text }]}>Settle your share</Text>
@@ -475,7 +481,7 @@ export default function BookingDetail() {
                   return (
                     <View key={player.id} style={[styles.teamPlayerRow, { backgroundColor: colors.bg, borderColor: colors.border }]}>
                       <View style={styles.grow}>
-                        <Text style={[styles.teamPlayerName, { color: colors.text }]}>{player.name}{player.role === "captain" ? " · captain" : ""}</Text>
+                        <Text style={[styles.teamPlayerName, { color: colors.text }]}>{player.name}{player.role === "captain" ? " · captain" : ""}{user && player.id === user.id ? " (you)" : ""}</Text>
                         <Text style={[styles.meta, { color: colors.textMuted }]}>Due {formatNPR(due)} · Paid {formatNPR(paid)} · Method: {paymentMethodLabel(share?.paymentMethod)}</Text>
                         {remaining > 0 ? <Text style={[styles.teamRemaining, { color: "#B45309" }]}>Remaining {formatNPR(remaining)}</Text> : null}
                         {share?.gatewayTxnId ? <Text style={[styles.hint, { color: colors.textFaint }]}>Gateway reference: {share.gatewayTxnId.slice(0, 18)}</Text> : null}
@@ -589,6 +595,33 @@ export default function BookingDetail() {
                   disabled={busy !== null}
                 />
               )
+            ) : isTeamBooking ? (
+              <>
+                {/*
+                  No share row for this player: the old generic "Pay with eSewa"
+                  charged the venue balance, which never settles a player share
+                  — the booking then read "Nothing paid yet" after a verified
+                  payment. Label what the money actually does.
+                */}
+                <Button
+                  label="Pay venue balance with eSewa"
+                  onPress={() => pay("esewa")}
+                  loading={busy === "esewa"}
+                  disabled={busy !== null}
+                />
+                <Button
+                  label="Pay venue balance with Khalti"
+                  variant="secondary"
+                  onPress={() => pay("khalti")}
+                  loading={busy === "khalti"}
+                  disabled={busy !== null}
+                  style={{ marginTop: space["2"] }}
+                />
+                <Text style={[styles.hint, { color: colors.textFaint }]}>
+                  This settles the venue's desk, not a player share — your account isn't on this
+                  squad's payment list, so the share status will not change.
+                </Text>
+              </>
             ) : (
               <>
                 <Button
