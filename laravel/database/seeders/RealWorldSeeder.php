@@ -1852,6 +1852,14 @@ class RealWorldSeeder extends Seeder
             ? $booking->payment_method
             : null;
 
+        // A database seeded before the squad rows got their own ledger lines
+        // still holds the old booking-level rows for this game. Drop the
+        // seed-owned ones so the same money is counted once; a row a player
+        // actually paid carries a MOCK- reference and is never touched.
+        BookingPayment::where('booking_id', $booking->id)
+            ->where('reference', 'like', 'SEED-%')
+            ->delete();
+
         $collected = 0;
 
         foreach ($memberIds as $position => $memberId) {
@@ -1868,19 +1876,47 @@ class RealWorldSeeder extends Seeder
 
             $method = $settled && $share > 0 ? ($onlineMethod ?? 'Cash at Venue') : '';
 
+            $intended = [
+                'team_id' => $team->id,
+                'amount_due' => $share,
+                'payment_method' => $method,
+                'payment_status' => $share === 0 || $settled ? 'paid' : 'pending',
+                'paid_amount' => ($share === 0 || $settled) ? $share : 0,
+                'gateway_txn_id' => $settled && $share > 0 && $onlineMethod !== null
+                    ? 'SEED-TEAM-'.$booking->id.'-'.$position
+                    : '',
+            ];
+
             $row = BookingTeamPayment::firstOrCreate(
                 ['booking_id' => $booking->id, 'user_id' => $memberId],
-                [
-                    'team_id' => $team->id,
-                    'amount_due' => $share,
-                    'payment_method' => $method,
-                    'payment_status' => $share === 0 || $settled ? 'paid' : 'pending',
-                    'paid_amount' => ($share === 0 || $settled) ? $share : 0,
-                    'gateway_txn_id' => $settled && $share > 0 && $onlineMethod !== null
-                        ? 'SEED-TEAM-'.$booking->id.'-'.$position
-                        : '',
-                ]
+                $intended
             );
+
+            // Databases seeded by an older version of this seeder carry
+            // inconsistent share rows. Two repairs, each with a fingerprint
+            // that cannot hit a row a person actually wrote:
+            //
+            //  - a MOCK- reference is a live gateway payment; if it was made
+            //    under code that forgot to stamp the method, fix the label
+            //    only — the money and the status stay as the gateway wrote
+            //    them;
+            //  - a row with money on it but no method is a seed row from
+            //    before the seeder named how the money moved; restore the
+            //    intended method and reference.
+            //
+            // Everything else — an unpaid row, a captain's collection, a
+            // method the player chose in the app — is left exactly as is.
+            $txn = (string) $row->gateway_txn_id;
+
+            if (str_starts_with($txn, 'MOCK-')) {
+                if (trim((string) $row->payment_method) === '') {
+                    $row->forceFill([
+                        'payment_method' => str_starts_with($txn, 'MOCK-ESEWA-') ? 'eSewa' : 'Khalti',
+                    ])->save();
+                }
+            } elseif ((int) $row->paid_amount > 0 && trim((string) $row->payment_method) === '') {
+                $row->forceFill($intended)->save();
+            }
 
             if ($row->payment_status === 'paid' && (int) $row->paid_amount > 0) {
                 $collected += (int) $row->paid_amount;

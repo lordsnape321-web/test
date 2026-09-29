@@ -56,6 +56,7 @@ import { useTheme } from "@/context/ThemeContext";
 import { hoursUntilGame, type PlayerStats } from "@/lib/loyalty";
 import { formatNPR, formatTime12, gamePlayed, prettyDate } from "@/lib/futsal";
 import { moneyOf } from "@/lib/money";
+import { APP_BUILD } from "@/lib/build";
 import { validateMessage } from "@/lib/validation";
 import type { Booking } from "@/lib/types";
 import { colors, fontSize, radius, space } from "@/theme";
@@ -766,6 +767,15 @@ export default function BookingsScreen() {
             </View>
           ))
         )}
+        {/*
+          Build stamp: which commit's UI you are actually running. If this does
+          not match the Laravel `/api/health` `build` field (or the hash you
+          were told to expect), a stale bundle or stale server is the problem
+          — not the data.
+        */}
+        <Text style={{ color: c.textFaint, fontSize: 11, textAlign: "center", paddingVertical: 14, opacity: 0.75 }}>
+          build {APP_BUILD}
+        </Text>
       </ScrollView>
       {viewReceipt ? <ReceiptViewer url={viewReceipt} onClose={() => setViewReceipt(null)} /> : null}
       {ledgerFor != null && user ? (

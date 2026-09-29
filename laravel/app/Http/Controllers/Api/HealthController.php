@@ -8,6 +8,14 @@ use Illuminate\Support\Facades\DB;
 class HealthController extends ApiController
 {
     /**
+     * The git short-SHA of the commit this API is running. Update it with
+     * every push — the app and the curl check compare against it, so a stale
+     * `php artisan serve` process or an un-pulled checkout announces itself
+     * instead of looking like the data is broken.
+     */
+    public const BUILD = 'eb7f31f';
+
+    /**
      * GET /api/health — is the API up, and can it reach the database?
      *
      * A database failure is deliberately returned as a structured 503 instead
@@ -21,7 +29,7 @@ class HealthController extends ApiController
         try {
             DB::select('select 1');
 
-            return $this->ok(['ok' => true]);
+            return $this->ok(['ok' => true, 'build' => self::BUILD]);
         } catch (\Throwable $e) {
             report($e);
 
