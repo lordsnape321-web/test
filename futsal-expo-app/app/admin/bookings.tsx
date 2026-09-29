@@ -1,4 +1,4 @@
-import { useFocusEffect } from "expo-router";
+import { useFocusEffect, useLocalSearchParams } from "expo-router";
 import {
   CalendarCheck,
   Check,
@@ -97,11 +97,14 @@ export default function OwnerBookings() {
   const [ledgerFor, setLedgerFor] = useState<Booking | null>(null);
   const [resolvingCancellation, setResolvingCancellation] = useState<number | null>(null);
 
-  const load = useCallback(async () => {
-    const [b, v] = await Promise.all([fetchBookings({ refresh: true }), fetchVenues()]);
+  const { refresh } = useLocalSearchParams<{ refresh?: string }>();
+  const shouldRefresh = refresh !== undefined;
+
+  const load = useCallback(async (forceRefresh = false) => {
+    const [b, v] = await Promise.all([fetchBookings({ refresh: forceRefresh || shouldRefresh }), fetchVenues()]);
     setBookings(b);
     setVenues(v.map((x) => ({ id: x.id, ownerId: x.ownerId ?? null })));
-  }, []);
+  }, [shouldRefresh]);
 
   useFocusEffect(
     useCallback(() => {
@@ -114,6 +117,12 @@ export default function OwnerBookings() {
       })();
     }, [load]),
   );
+
+  useEffect(() => {
+    if (shouldRefresh && user) {
+      void load(true);
+    }
+  }, [shouldRefresh, user, load]);
 
   useEffect(() => {
     if (!scoreFor) return;

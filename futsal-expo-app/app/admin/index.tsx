@@ -1,4 +1,4 @@
-import { useFocusEffect, useRouter } from "expo-router";
+import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import {
   ArrowRight,
   Banknote,
@@ -11,7 +11,7 @@ import {
   Trophy,
   X,
 } from "lucide-react-native";
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Image,
@@ -63,11 +63,14 @@ export default function OwnerHome() {
   const [loading, setLoading] = useState(true);
   const [acting, setActing] = useState<number | null>(null);
 
-  const load = useCallback(async () => {
-    const [v, b] = await Promise.all([fetchVenues(), fetchBookings({ refresh: true })]);
+  const { refresh } = useLocalSearchParams<{ refresh?: string }>();
+  const shouldRefresh = refresh !== undefined;
+
+  const load = useCallback(async (forceRefresh = false) => {
+    const [v, b] = await Promise.all([fetchVenues(), fetchBookings({ refresh: forceRefresh || shouldRefresh })]);
     setVenues(v);
     setBookings(b);
-  }, []);
+  }, [shouldRefresh]);
 
   useFocusEffect(
     useCallback(() => {
@@ -80,6 +83,12 @@ export default function OwnerHome() {
       })();
     }, [load]),
   );
+
+  useEffect(() => {
+    if (shouldRefresh && user) {
+      void load(true);
+    }
+  }, [shouldRefresh, user, load]);
 
   const myVenues = useMemo(
     () => venues.filter((v) => user && v.ownerId === user.id),
