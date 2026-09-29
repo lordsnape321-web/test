@@ -1,4 +1,4 @@
-import { useFocusEffect, useRouter } from "expo-router";
+import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import {
   CalendarCheck,
   ChevronDown,
@@ -15,13 +15,14 @@ import {
   QrCode,
   ReceiptText,
   Shield,
+  Sparkles,
   Star,
   Swords,
   Ticket,
   Wallet,
   XCircle,
 } from "lucide-react-native";
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -38,6 +39,7 @@ import {
   chooseBookingTeamPayment,
   decideCompetitionBooking,
   fetchBookings,
+  fetchHealth,
   fetchReviews,
   fetchUserStats,
   patchBooking,
@@ -49,10 +51,13 @@ import { PlayerRatingBadge } from "@/components/PlayerRating";
 import { ReceiptUploader, ReceiptViewer, isOnlineMethod } from "@/components/ReceiptUploader";
 import { StarInput } from "@/components/Reviews";
 import { Button, Notice, Pill, Spinner } from "@/components/ui";
+import TeamLedgerPanel from "@/components/TeamLedgerPanel";
 import { useAuth } from "@/context/AuthContext";
 import { useTheme } from "@/context/ThemeContext";
 import { hoursUntilGame, type PlayerStats } from "@/lib/loyalty";
 import { formatNPR, formatTime12, gamePlayed, prettyDate } from "@/lib/futsal";
+import { moneyOf } from "@/lib/money";
+import { APP_BUILD } from "@/lib/build";
 import { validateMessage } from "@/lib/validation";
 import type { Booking } from "@/lib/types";
 import { colors, fontSize, radius, space } from "@/theme";
@@ -121,6 +126,14 @@ export default function BookingsScreen() {
   const [playerStats, setPlayerStats] = useState<PlayerStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<"upcoming" | "past" | "cancelled">("upcoming");
+
+  // A notification link arrives as /bookings?focus=<bookingId>. Without this the
+  // bell dropped you on the Bookings tab with the right booking somewhere in a
+  // long list and no sign of which one it was talking about.
+  const { focus } = useLocalSearchParams<{ focus?: string }>();
+  const focusId = focus ? Number(focus) : null;
+  const scrollRef = useRef<ScrollView>(null);
+  const [focusY, setFocusY] = useState<number | null>(null);
   const [cancelling, setCancelling] = useState<number | null>(null);
   const [viewReceipt, setViewReceipt] = useState<string | null>(null);
   const [uploadFor, setUploadFor] = useState<number | null>(null);
@@ -136,9 +149,15 @@ export default function BookingsScreen() {
   const [payError, setPayError] = useState("");
   const [competitionDecision, setCompetitionDecision] = useState<number | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  // Which Laravel the app is actually talking to, from /api/health. Shown
+  // beside the app's own build stamp so a stale server vs. a stale bundle is
+  // visible on screen instead of being guessed at.
+  const [apiHealth, setApiHealth] = useState<string | null>(null);
   const [teamMethodFor, setTeamMethodFor] = useState<number | null>(null);
   const [teamMethod, setTeamMethod] = useState<"eSewa" | "Khalti" | "Cash at Venue">("eSewa");
   const [teamSaving, setTeamSaving] = useState<number | null>(null);
+  // Which booking's squad ledger the captain has open, if any.
+  const [ledgerFor, setLedgerFor] = useState<number | null>(null);
 
   const load = useCallback(async (refresh = false) => {
     if (!user) return;
@@ -178,6 +197,12 @@ export default function BookingsScreen() {
   useFocusEffect(
     useCallback(() => {
       let active = true;
+      // One health check per focus — feeds the build-stamp footer, never the data.
+      if (user) {
+        void fetchHealth()
+          .then((h) => setApiHealth(h.build ?? "unknown"))
+          .catch(() => setApiHealth("unreachable"));
+      }
       (async () => {
         // Do not block the diary on demo-data seeding. The booking API is the
         // source of truth and a slow seed endpoint used to make this screen look
@@ -210,6 +235,32 @@ export default function BookingsScreen() {
     if (tab === "past") return bookings.filter(played);
     return bookings.filter((b) => !gone(b.status) && !played(b) && b.date >= today);
   }, [bookings, tab, today]);
+
+  // The three sub-tabs partition the list, so a deep link has to pick the right
+  // one itself — otherwise the booking the notification is about is filtered
+  // out of view and the user is left hunting again. Re-runs on every `load()`
+  // refresh, which is what we want: the booking may only just have arrived.
+  useEffect(() => {
+    if (focusId == null || Number.isNaN(focusId)) return;
+    const target = bookings.find((b) => b.id === focusId);
+    if (!target) return;
+    const wanted = gone(target.status)
+      ? "cancelled"
+      : played(target)
+        ? "past"
+        : "upcoming";
+    setTab((current) => (current === wanted ? current : wanted));
+    setFocusY(null); // the card re-lays-out in the new tab
+  }, [focusId, bookings, today]);
+
+  // The list is a plain map inside a ScrollView, so the focused card reports
+  // its own offset and we scroll once it is known.
+  useEffect(() => {
+    if (focusY == null) return;
+    scrollRef.current?.scrollTo({ y: Math.max(0, focusY - space[4]), animated: true });
+  }, [focusY, tab]);
+
+  const focusedBooking = focusId == null ? null : bookings.find((b) => b.id === focusId) ?? null;
 
   const pendingCount = bookings.filter((b) => b.status === "pending" && b.date >= today).length;
   const competitionRequestCount = bookings.filter(
@@ -258,14 +309,20 @@ export default function BookingsScreen() {
       if (overrideMethod && b.advancePaymentRequired && b.advancePaymentStatus !== "paid") {
         await patchBooking(b.id, { paymentMethod: method, actor: "player", actorId: user?.id });
       }
+      // On a team booking the member settles their own share — never the
+      // squad's whole balance, which belongs to the other members too.
+      const myShare = user ? b.teamPayments?.find((item) => item.userId === user.id) : undefined;
+      const shareOutstanding = myShare ? Math.max(0, (myShare.amountDue ?? 0) - (myShare.paidAmount ?? 0)) : 0;
+      const payingMyShare = Boolean(myShare && myShare.paymentStatus !== "paid" && shareOutstanding > 0);
       const amount = Math.max(0, b.advancePaymentRequired && b.advancePaymentStatus !== "paid"
         ? b.advancePaymentAmount ?? 0
         : b.depositRequired && b.depositStatus !== "paid"
           ? b.depositAmount ?? 0
-          : b.totalPrice - b.paidAmount);
+          : payingMyShare ? shareOutstanding : moneyOf(b).balance);
+      const shareQuery = payingMyShare ? `&teamPaymentId=${myShare!.id}` : "";
       const path = method === "eSewa"
-        ? `/payment/esewa/mock?bookingId=${b.id}&amount=${encodeURIComponent(String(amount))}&userId=${user?.id ?? 0}`
-        : `/payment/khalti/mock?bookingId=${b.id}&amount=${encodeURIComponent(String(amount))}&pidx=mock-pidx&userId=${user?.id ?? 0}`;
+        ? `/payment/esewa/mock?bookingId=${b.id}&amount=${encodeURIComponent(String(amount))}&userId=${user?.id ?? 0}${shareQuery}`
+        : `/payment/khalti/mock?bookingId=${b.id}&amount=${encodeURIComponent(String(amount))}&pidx=mock-pidx&userId=${user?.id ?? 0}${shareQuery}`;
       router.push(path as never);
     } catch (e) {
       setPayError(e instanceof Error ? e.message : "Could not start the payment");
@@ -313,8 +370,7 @@ export default function BookingsScreen() {
   /** Specs may say "pending" before wallet capture; treat like unpaid. */
   return (
     (b.advancePaymentRequired && b.advancePaymentStatus !== "paid") ||
-    b.paymentStatus === "unpaid" ||
-    b.paymentStatus === "pending" ||
+    (user ? b.teamPayments?.some((item) => item.userId === user.id && item.paymentStatus !== "paid") : moneyOf(b).status === "pending") ||
     (!!b.depositRequired && b.depositStatus !== "paid")
   );
   }
@@ -326,7 +382,16 @@ export default function BookingsScreen() {
     if (b.depositRequired && b.depositStatus !== "paid") {
       return `Pay ${formatNPR(b.depositAmount ?? 0)} deposit 🛡️`;
     }
-    return `Pay ${formatNPR(Math.max(0, b.totalPrice - b.paidAmount))} balance 💳`;
+    const myShare = user ? b.teamPayments?.find((item) => item.userId === user.id) : undefined;
+    if (myShare && myShare.paymentStatus !== "paid") {
+      return `Pay my share ${formatNPR(Math.max(0, (myShare.amountDue ?? 0) - (myShare.paidAmount ?? 0)))} 💳`;
+    }
+    if ((b.teamPayments?.length ?? 0) > 0) {
+      // Team game, but this account has no share row — the money goes to the
+      // venue's desk and no player share settles, so say so on the button.
+      return `Pay ${formatNPR(moneyOf(b).balance)} to the venue 💳`;
+    }
+    return `Pay ${formatNPR(moneyOf(b).balance)} balance 💳`;
   }
 
   async function submitReview(b: DiaryBooking) {
@@ -429,32 +494,35 @@ export default function BookingsScreen() {
     }
   }
 
-  // Signed-out: the web page shows a "your games live here" card.
+  // Signed-out: the web page shows a "your games live here" card. Nobody is
+  // logged in here, so the pair of buttons is the only way onward — and it is
+  // tuned to that: a soft filled Log in against a quiet Join free, rather than
+  // the full-strength green the signed-in screens use for a real action.
   if (ready && !user) {
     return (
       <SafeAreaView style={[styles.flex, styles.center, { backgroundColor: c.bg }]} edges={["top"]}>
         <View style={[styles.signedOutCard, { backgroundColor: c.surface, borderColor: c.border }]}>
-          <View style={[styles.signedOutIcon, { backgroundColor: c.primary }]}>
-            <CalendarCheck size={32} color={c.primaryText} />
+          <View style={[styles.signedOutIcon, { backgroundColor: c.activeSoft }]}>
+            <CalendarCheck size={32} color={c.activeText} />
           </View>
           <Text style={[styles.signedOutTitle, { color: c.text }]}>Your games live here ⚽</Text>
           <Text style={[styles.signedOutBody, { color: c.textMuted }]}>
-            Log in to see upcoming kickabouts, receipts and venue passes. Takes 10 seconds —
-            promise!
+            Bookings belong to an account, so this stays empty until you sign in. Courts, open
+            games and squads are all open to you right now.
           </Text>
           <View style={styles.signedOutActions}>
             <Pressable
               onPress={() => router.push("/login")}
-              style={[styles.signedOutBtn, { backgroundColor: c.primary }]}
+              style={[styles.signedOutBtn, { backgroundColor: c.activeSoft, borderColor: c.successBorder }]}
             >
-              <LogIn size={16} color={c.primaryText} />
-              <Text style={styles.signedOutBtnText}>Log in</Text>
+              <LogIn size={16} color={c.activeText} />
+              <Text style={[styles.signedOutBtnText, { color: c.activeText }]}>Log in</Text>
             </Pressable>
             <Pressable
               onPress={() => router.push("/signup")}
-              style={[styles.signedOutBtn, { borderColor: c.border }]}
+              style={[styles.signedOutBtn, { borderColor: c.border, backgroundColor: c.surface }]}
             >
-              <Text style={[styles.signedOutBtnText, { color: c.text }]}>Join free</Text>
+              <Text style={[styles.signedOutBtnText, { color: c.textMuted }]}>Join free</Text>
             </Pressable>
           </View>
         </View>
@@ -465,6 +533,7 @@ export default function BookingsScreen() {
   return (
     <SafeAreaView style={[styles.flex, { backgroundColor: c.bg }]} edges={["top"]}>
       <ScrollView
+        ref={scrollRef}
         contentContainerStyle={[
           styles.scroll,
           {
@@ -563,6 +632,26 @@ export default function BookingsScreen() {
           })}
         </View>
 
+        {/* A bell tap lands here with `?focus=` set. Say so, and offer the way
+            out, so "it opened the wrong thing" is never the user's conclusion. */}
+        {focusedBooking ? (
+          <View style={[styles.focusNotice, { backgroundColor: c.activeSoft, borderColor: c.primary }]}>
+            <Sparkles size={16} color={c.primary} />
+            <Text style={[styles.focusNoticeText, { color: c.activeText }]} numberOfLines={2}>
+              Jumped to the booking from your notification —{" "}
+              {focusedBooking.venue?.name ?? "your court"} on {focusedBooking.date}.
+            </Text>
+            <Pressable
+              onPress={() => router.setParams({ focus: undefined })}
+              accessibilityRole="button"
+              accessibilityLabel="Stop highlighting this booking"
+              hitSlop={8}
+            >
+              <XCircle size={18} color={c.textMuted} />
+            </Pressable>
+          </View>
+        ) : null}
+
         <View style={[styles.tabShell, { backgroundColor: c.surface, borderColor: c.border }]}>
           {(["upcoming", "past", "cancelled"] as const).map((t) => {
             const label = t === "upcoming" ? "Coming up" : t === "past" ? "Played" : "Cancelled";
@@ -614,85 +703,114 @@ export default function BookingsScreen() {
           </View>
         ) : (
           filtered.map((b) => (
-            <BookingCard
+            <View
               key={b.id}
-              booking={b}
-              tab={tab}
-              mine={myReviewAt(b.venue?.id)}
-              reviewable={reviewable(b)}
-              cancelling={cancelling === b.id}
-              paying={paying === b.id}
-              uploadFor={uploadFor === b.id}
-              uploading={uploading}
-              reviewFor={reviewFor === b.id}
-              reviewStars={reviewStars}
-              reviewMsg={reviewMsg}
-              reviewError={reviewError}
-              reviewSaving={reviewSaving}
-              onCancel={() => void cancel(b)}
-              onPay={() => void payNow(b)}
-              onPayAdvance={(method) => void payNow(b, method)}
-              needsOnlinePay={needsOnlinePay(b)}
-              teamShare={user ? b.teamPayments?.find((share) => share.userId === user.id) ?? null : null}
-              teamMethodOpen={teamMethodFor === b.id}
-              teamMethod={teamMethod}
-              teamSaving={teamSaving === b.id}
-              onOpenTeamMethod={() => {
-                const share = b.teamPayments?.find((item) => item.userId === user?.id);
-                setTeamMethodFor(teamMethodFor === b.id ? null : b.id);
-                setTeamMethod((share?.paymentMethod as "eSewa" | "Khalti" | "Cash at Venue") || "eSewa");
+              onLayout={(e) => {
+                if (b.id === focusId) setFocusY(e.nativeEvent.layout.y);
               }}
-              onTeamMethodChange={setTeamMethod}
-              onSaveTeamMethod={() => void saveTeamMethod(b)}
-              onPayTeamShare={() => {
-                const share = b.teamPayments?.find((item) => item.userId === user?.id);
-                if (share) payTeamShare(b, share);
-              }}
-              payLabel={payLabel(b)}
-              onOpenReceipt={() => setViewReceipt(b.receiptUrl ?? "")}
-              onToggleUpload={() =>
-                setUploadFor((u) => (u === b.id ? null : b.id))
-              }
-              onSaveReceipt={(url) => void saveReceipt(b.id, url)}
-              onToggleReview={() => {
-                if (reviewFor === b.id) {
-                  setReviewFor(null);
-                  return;
+            >
+              <BookingCard
+                booking={b}
+                highlighted={b.id === focusId}
+                tab={tab}
+                mine={myReviewAt(b.venue?.id)}
+                reviewable={reviewable(b)}
+                cancelling={cancelling === b.id}
+                paying={paying === b.id}
+                uploadFor={uploadFor === b.id}
+                uploading={uploading}
+                reviewFor={reviewFor === b.id}
+                reviewStars={reviewStars}
+                reviewMsg={reviewMsg}
+                reviewError={reviewError}
+                reviewSaving={reviewSaving}
+                onCancel={() => void cancel(b)}
+                onPay={() => void payNow(b)}
+                onPayAdvance={(method) => void payNow(b, method)}
+                needsOnlinePay={needsOnlinePay(b)}
+                teamShare={user ? b.teamPayments?.find((share) => share.userId === user.id) ?? null : null}
+                teamMethodOpen={teamMethodFor === b.id}
+                teamMethod={teamMethod}
+                teamSaving={teamSaving === b.id}
+                onOpenTeamMethod={() => {
+                  const share = b.teamPayments?.find((item) => item.userId === user?.id);
+                  setTeamMethodFor(teamMethodFor === b.id ? null : b.id);
+                  setTeamMethod((share?.paymentMethod as "eSewa" | "Khalti" | "Cash at Venue") || "eSewa");
+                }}
+                onTeamMethodChange={setTeamMethod}
+                onSaveTeamMethod={() => void saveTeamMethod(b)}
+                onPayTeamShare={() => {
+                  const share = b.teamPayments?.find((item) => item.userId === user?.id);
+                  if (share) payTeamShare(b, share);
+                }}
+                isTeamCaptain={!!user && b.userId === user.id && !!b.teamName}
+                onOpenTeamLedger={() => setLedgerFor(b.id)}
+                payLabel={payLabel(b)}
+                onOpenReceipt={() => setViewReceipt(b.receiptUrl ?? "")}
+                onToggleUpload={() =>
+                  setUploadFor((u) => (u === b.id ? null : b.id))
                 }
-                const mine = myReviewAt(b.venue?.id);
-                setReviewStars(mine?.rating ?? 5);
-                setReviewMsg(mine?.message ?? "");
-                setReviewFor(b.id);
-                setReviewError("");
-              }}
-              onReviewStars={setReviewStars}
-              onReviewMsg={(t) => {
-                setReviewMsg(t);
-                setReviewError("");
-              }}
-              onSubmitReview={() => {
-                const card = filtered.find((x) => x.id === b.id);
-                if (card) void submitReview(card);
-              }}
-              onOpenBooking={() => router.push(`/booking/${b.id}`)}
-              competitionActing={competitionDecision === b.id}
-              onCompetitionAction={(action) => void decideCompetition(b, action)}
-              isDark={isDark}
-              muted={c.textMuted}
-              surface={c.surface}
-              border={c.border}
-              text={c.text}
-            />
+                onSaveReceipt={(url) => void saveReceipt(b.id, url)}
+                onToggleReview={() => {
+                  if (reviewFor === b.id) {
+                    setReviewFor(null);
+                    return;
+                  }
+                  const mine = myReviewAt(b.venue?.id);
+                  setReviewStars(mine?.rating ?? 5);
+                  setReviewMsg(mine?.message ?? "");
+                  setReviewFor(b.id);
+                  setReviewError("");
+                }}
+                onReviewStars={setReviewStars}
+                onReviewMsg={(t) => {
+                  setReviewMsg(t);
+                  setReviewError("");
+                }}
+                onSubmitReview={() => {
+                  const card = filtered.find((x) => x.id === b.id);
+                  if (card) void submitReview(card);
+                }}
+                onOpenBooking={() => router.push(`/booking/${b.id}`)}
+                competitionActing={competitionDecision === b.id}
+                onCompetitionAction={(action) => void decideCompetition(b, action)}
+                isDark={isDark}
+                muted={c.textMuted}
+                surface={c.surface}
+                border={b.id === focusId ? c.primary : c.border}
+                text={c.text}
+              />
+            </View>
           ))
         )}
+        {/*
+          Build stamp: which commit's UI you are actually running. If this does
+          not match the Laravel `/api/health` `build` field (or the hash you
+          were told to expect), a stale bundle or stale server is the problem
+          — not the data.
+        */}
+        <Text style={{ color: c.textFaint, fontSize: 11, textAlign: "center", paddingVertical: 14, opacity: 0.75 }}>
+          app build {APP_BUILD}
+          {apiHealth ? ` · api ${apiHealth}` : ""}
+        </Text>
       </ScrollView>
       {viewReceipt ? <ReceiptViewer url={viewReceipt} onClose={() => setViewReceipt(null)} /> : null}
+      {ledgerFor != null && user ? (
+        <TeamLedgerPanel
+          bookingId={ledgerFor}
+          actorId={user.id}
+          bookingLabel={filtered.find((x) => x.id === ledgerFor)?.teamName ?? ""}
+          onClose={() => setLedgerFor(null)}
+          onChanged={() => void load()}
+        />
+      ) : null}
     </SafeAreaView>
   );
 }
 
 function BookingCard({
   booking: b,
+  highlighted = false,
   tab,
   mine,
   reviewable,
@@ -717,6 +835,9 @@ function BookingCard({
   onTeamMethodChange,
   onSaveTeamMethod,
   onPayTeamShare,
+  /** True when this booking's player is the captain of the squad. */
+  isTeamCaptain,
+  onOpenTeamLedger,
   payLabel,
   onOpenReceipt,
   onToggleUpload,
@@ -735,6 +856,8 @@ function BookingCard({
   text,
 }: {
   booking: DiaryBooking;
+  /** True when this card is the one a notification deep link pointed at. */
+  highlighted?: boolean;
   tab: "upcoming" | "past" | "cancelled";
   mine: MyReview | null;
   reviewable: boolean;
@@ -759,6 +882,8 @@ function BookingCard({
   onTeamMethodChange: (method: "eSewa" | "Khalti" | "Cash at Venue") => void;
   onSaveTeamMethod: () => void;
   onPayTeamShare: () => void;
+  isTeamCaptain: boolean;
+  onOpenTeamLedger: () => void;
   payLabel: string;
   onOpenReceipt: () => void;
   onToggleUpload: () => void;
@@ -779,7 +904,28 @@ function BookingCard({
   const isPublic = b.visibility === "public";
   const isPlayed = played(b);
   const isGone = b.status === "cancelled" || b.status === "rejected";
-  const balance = b.totalPrice - b.paidAmount;
+  // One source of truth, shared with the full detail page.
+  const money = moneyOf(b);
+  const balance = money.balance;
+  // The status the viewer acts on. For a team game the player's obligation is
+  // their OWN share — once it is paid the chip must say "Paid", not the squad's
+  // remaining balance, which belongs to the other players and would read as
+  // "still due / payment not done" after they had just paid.
+  const statusView = teamShare
+    ? teamShare.paymentStatus === "paid"
+      ? { status: "paid" as const, label: "Paid" }
+      : (() => {
+          const due = Math.max(0, Number(teamShare.amountDue ?? 0));
+          const paid = Math.min(due, Math.max(0, Number(teamShare.paidAmount ?? 0)));
+          return {
+            status: (paid > 0 ? "deposit_paid" : "pending") as "deposit_paid" | "pending",
+            label:
+              paid > 0
+                ? `Your share · ${formatNPR(due - paid)} left`
+                : `Your share · ${formatNPR(due)} due`,
+          };
+        })()
+    : { status: money.status, label: money.label };
   const method = String(b.paymentMethod ?? "");
   const competitionPending = b.competition?.competitionStatus === "pending";
   const competitionDeclined =
@@ -809,16 +955,28 @@ function BookingCard({
           : "warning";
 
   const payTone =
-    b.paymentStatus === "paid"
+    money.status === "paid"
       ? "success"
-      : b.paymentStatus === "overpaid"
-        ? "info"
-        : b.paymentStatus === "deposit_paid"
-          ? "warning"
-          : "danger";
+      : money.status === "deposit_paid"
+        ? "warning"
+        : "danger";
 
   return (
-    <View style={[styles.card, { backgroundColor: surface, borderColor: border }]}>
+    <View
+      style={[
+        styles.card,
+        { backgroundColor: surface, borderColor: border },
+        highlighted ? styles.cardFocused : null,
+      ]}
+    >
+      {highlighted ? (
+        <View style={[styles.focusBar, { backgroundColor: border }]}>
+          <Sparkles size={13} color={border} />
+          <Text style={[styles.focusBarText, { color: border }]} numberOfLines={1}>
+            Opened from your notification
+          </Text>
+        </View>
+      ) : null}
       <View style={styles.cardTop}>
         {b.venue?.imageUrl ? (
           <Image source={{ uri: b.venue.imageUrl }} style={styles.cardImg} />
@@ -856,16 +1014,16 @@ function BookingCard({
                   style={[
                     styles.paymentStatusChip,
                     {
-                      color: b.paymentStatus === "paid"
+                      color: statusView.status === "paid"
                         ? semantic.emerald
-                        : b.paymentStatus === "pending"
+                        : statusView.status === "pending"
                           ? semantic.amber
                           : textFaint(muted),
-                      backgroundColor: b.paymentStatus === "paid" ? (isDark ? "rgba(16,185,129,0.18)" : "#ECFDF5") : b.paymentStatus === "pending" ? (isDark ? "rgba(245,158,11,0.16)" : "#FFFBEB") : (isDark ? "rgba(148,163,184,0.16)" : "#F1F5F9"),
+                      backgroundColor: statusView.status === "paid" ? (isDark ? "rgba(16,185,129,0.18)" : "#ECFDF5") : statusView.status === "pending" ? (isDark ? "rgba(245,158,11,0.16)" : "#FFFBEB") : (isDark ? "rgba(148,163,184,0.16)" : "#F1F5F9"),
                     },
                   ]}
                 >
-                  {paymentStatusLabel(b.paymentStatus)}
+                  {statusView.label}
                 </Text>
               </View>
             </View>
@@ -969,6 +1127,29 @@ function BookingCard({
                   ) : null}
                 </>
               )}
+            </View>
+          ) : null}
+          {b.teamName && isTeamCaptain ? (
+            <View style={[styles.teamPaymentCard, { backgroundColor: isDark ? "rgba(16,185,129,0.12)" : "#F0FDF4", borderColor: isDark ? "rgba(52,211,153,0.25)" : "#BBF7D0" }]}>
+              <View style={styles.teamPaymentHead}>
+                <View style={styles.grow}>
+                  <Text style={[styles.teamPaymentTitle, { color: isDark ? "#A7F3D0" : "#065F46" }]}>👑 Captain&apos;s ledger</Text>
+                  <Text style={[styles.teamPaymentHint, { color: muted }]}>
+                    You fronted this booking, so keep the squad honest: record who handed over
+                    what, in cash or by wallet, and watch what is still outstanding.
+                  </Text>
+                </View>
+              </View>
+              <View style={styles.teamPaymentActions}>
+                <Pressable
+                  onPress={onOpenTeamLedger}
+                  style={[styles.chip, { backgroundColor: surface, borderWidth: 1, borderColor: border }]}
+                  accessibilityRole="button"
+                  accessibilityLabel="Open the squad ledger"
+                >
+                  <Text style={[styles.chipText, { color: text }]}>Open squad ledger</Text>
+                </Pressable>
+              </View>
             </View>
           ) : null}
           {b.teamName && teamShare ? (
@@ -1261,10 +1442,10 @@ function BookingCard({
                 </Text>
               </View>
             ) : null}
-            {b.paidAmount > 0 ? (
+            {money.received > 0 ? (
               <View style={[styles.chip, { backgroundColor: "rgba(14,165,233,0.10)" }]}>
                 <Text style={[styles.chipText, { color: semantic.sky }]}>
-                  💰 {formatNPR(b.paidAmount)} verified
+                  💰 {formatNPR(money.received)} verified
                   {b.gatewayTxnId ? ` • ${b.gatewayTxnId.slice(0, 12)}` : ""}
                 </Text>
               </View>
@@ -1494,6 +1675,26 @@ const styles = StyleSheet.create({
     marginTop: space[3],
     overflow: "hidden",
   },
+  focusNotice: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: space[3],
+    marginTop: space[3],
+    paddingHorizontal: space[4],
+    paddingVertical: space[3],
+    borderRadius: radius["2xl"],
+    borderWidth: 1,
+  },
+  focusNoticeText: { flex: 1, fontSize: fontSize.sm, lineHeight: 19, fontWeight: "700" },
+  cardFocused: { borderWidth: 2 },
+  focusBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: space[2],
+    paddingHorizontal: space[4],
+    paddingVertical: space[2],
+  },
+  focusBarText: { fontSize: fontSize.xs, fontWeight: "900", letterSpacing: 0.4, flex: 1 },
   cardTop: { flexDirection: "row", alignItems: "stretch" },
   cardImg: { width: 96, minHeight: 132, alignSelf: "stretch" },
   cardBody: { flex: 1, minWidth: 0, padding: space[4] },

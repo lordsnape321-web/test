@@ -131,6 +131,9 @@ class LedgerController extends ApiController
             'recorded_by' => $actorId,
         ]);
 
+        // The cached columns follow the ledger, never the other way round.
+        BookingLedger::syncCachedState($booking);
+
         $next = $this->payload($booking);
         $stillOwed = $next['totals']['balance'];
         $recorded = Futsal::formatNPR($request->input('amount'));
@@ -166,6 +169,8 @@ class LedgerController extends ApiController
         // Voided, not deleted — the row stays so the audit trail is complete.
         $row->forceFill(['voided_at' => now(), 'voided_by' => $actorId])->save();
 
+        BookingLedger::syncCachedState($booking);
+
         return $this->ok([
             'ok' => true,
             'ledger' => $this->payload($booking),
@@ -187,6 +192,8 @@ class LedgerController extends ApiController
             'amount' => (int) $request->input('amount'),
             'recorded_by' => $actorId,
         ]);
+
+        BookingLedger::syncCachedState($booking);
 
         $next = $this->payload($booking);
 
@@ -218,6 +225,8 @@ class LedgerController extends ApiController
 
         $row->forceFill(['voided_at' => now(), 'voided_by' => $actorId])->save();
 
+        BookingLedger::syncCachedState($booking);
+
         return $this->ok([
             'ok' => true,
             'ledger' => $this->payload($booking),
@@ -244,9 +253,12 @@ class LedgerController extends ApiController
         $booking->forceFill([
             'settled_at' => now(),
             'settled_by' => $actorId,
-            'paid_amount' => $before['totals']['paid'],
-            'payment_status' => 'paid',
         ])->save();
+
+        // The money columns come from the ledger, not from the act of
+        // settling: a booking settled with an extra still owing is not paid,
+        // and the card must not say it is.
+        BookingLedger::syncCachedState($booking);
 
         Notifier::notify(
             (int) $booking->user_id,
@@ -254,12 +266,12 @@ class LedgerController extends ApiController
             'Payment settled ✅',
             Futsal::formatNPR($before['totals']['paid']).' received for your game'
             .($before['totals']['surplus'] > 0 ? ' — '.Futsal::formatNPR($before['totals']['surplus']).' change is due back to you' : '').'.',
-            '/bookings'
+            '/bookings?focus=' . $booking->id
         );
 
         // Re-read rather than reusing `$booking`: it still carries the
-        // pre-settlement payment status, and echoing that would make the panel
-        // show "pending" over a booking the database has just marked paid.
+        // pre-settlement money columns, and echoing those would make the panel
+        // disagree with the database for one request.
         $next = $this->payload($booking->fresh());
 
         return $this->ok([

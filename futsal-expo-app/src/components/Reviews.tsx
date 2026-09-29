@@ -41,6 +41,59 @@ export type Review = {
   userLevel: string;
 };
 
+/**
+ * How tall a review list may grow before it starts scrolling on its own.
+ * About three cards: enough to form an impression while looking, small enough
+ * that a venue with fifty reviews never pushes the rest of the page away.
+ */
+const REVIEW_LIST_MAX_HEIGHT = 340;
+
+/**
+ * A review list that scrolls inside the page instead of growing with it.
+ *
+ * The parent is already a vertical ScrollView, so this needs
+ * `nestedScrollEnabled` or Android hands every touch straight to the outer one
+ * and the list cannot be scrolled at all. The hint only appears once there is
+ * genuinely more to read, and it takes its colour from the theme like
+ * everything else here.
+ */
+export function ReviewScroller({
+  count,
+  gap = space[2.5],
+  children,
+}: {
+  count: number;
+  gap?: number;
+  children: React.ReactNode;
+}) {
+  const { colors: c } = useTheme();
+  const overflows = count > 3;
+
+  return (
+    <View>
+      <ScrollView
+        style={styles.reviewScroller}
+        nestedScrollEnabled
+        // Always allowed: one very long review can overflow the box on its own,
+        // even when there is only one of them.
+        showsVerticalScrollIndicator
+        scrollEventThrottle={32}
+        contentContainerStyle={[
+          overflows ? styles.reviewScrollerContent : null,
+          { gap },
+        ]}
+      >
+        {children}
+      </ScrollView>
+      {overflows ? (
+        <Text style={[styles.reviewScrollHint, { color: c.textFaint }]}>
+          ↕ Scroll for all {count} reviews
+        </Text>
+      ) : null}
+    </View>
+  );
+}
+
 export function Stars({ value, size = 16 }: { value: number; size?: number }) {
   const { colors: c } = useTheme();
   const empty = c.border;
@@ -342,37 +395,39 @@ export function ReviewsSection({
           No reviews yet — be the first to play here and tell the story! 🌟
         </Text>
       ) : (
-        <View style={{ marginTop: space[3], gap: space[2.5] }}>
-          {reviews.map((r) => (
-            <View
-              key={r.id}
-              style={[styles.reviewRow, { backgroundColor: c.inset, borderColor: c.border }]}
-            >
-              <View style={styles.reviewHead}>
-                <Avatar user={{ name: r.userName, avatarColor: r.avatarColor, avatarUrl: r.avatarUrl }} size={36} />
-                <View style={styles.grow}>
-                  <Text style={[styles.reviewer, { color: c.text }]} numberOfLines={1}>
-                    {r.userName}
-                    {r.userId === user?.id ? (
-                      <Text style={[styles.youTag, { color: c.successText, backgroundColor: c.successBg }]}>  YOU</Text>
-                    ) : null}
-                  </Text>
-                  <Text style={[styles.reviewMeta, { color: c.textFaint }]}>
-                    {r.userLevel ? `${r.userLevel} • ` : ""}
-                    {timeAgo(r.createdAt)}
-                    {r.updatedAt ? ` • updated ${timeAgo(r.updatedAt)}` : ""}
-                  </Text>
+        <View style={{ marginTop: space[3] }}>
+          <ReviewScroller count={reviews.length}>
+            {reviews.map((r) => (
+              <View
+                key={r.id}
+                style={[styles.reviewRow, { backgroundColor: c.inset, borderColor: c.border }]}
+              >
+                <View style={styles.reviewHead}>
+                  <Avatar user={{ name: r.userName, avatarColor: r.avatarColor, avatarUrl: r.avatarUrl }} size={36} />
+                  <View style={styles.grow}>
+                    <Text style={[styles.reviewer, { color: c.text }]} numberOfLines={1}>
+                      {r.userName}
+                      {r.userId === user?.id ? (
+                        <Text style={[styles.youTag, { color: c.successText, backgroundColor: c.successBg }]}>  YOU</Text>
+                      ) : null}
+                    </Text>
+                    <Text style={[styles.reviewMeta, { color: c.textFaint }]}>
+                      {r.userLevel ? `${r.userLevel} • ` : ""}
+                      {timeAgo(r.createdAt)}
+                      {r.updatedAt ? ` • updated ${timeAgo(r.updatedAt)}` : ""}
+                    </Text>
+                  </View>
+                  <Stars value={r.rating} size={14} />
+                  {r.userId === user?.id ? (
+                    <Text style={[styles.lockEmoji, { color: c.textFaint }]}>🔒</Text>
+                  ) : null}
                 </View>
-                <Stars value={r.rating} size={14} />
-                {r.userId === user?.id ? (
-                  <Text style={[styles.lockEmoji, { color: c.textFaint }]}>🔒</Text>
-                ) : null}
+                <Text style={[styles.reviewBody, { color: c.textMuted }]}>
+                  “{r.message}”
+                </Text>
               </View>
-              <Text style={[styles.reviewBody, { color: c.textMuted }]}>
-                “{r.message}”
-              </Text>
-            </View>
-          ))}
+            ))}
+          </ReviewScroller>
         </View>
       )}
     </View>
@@ -380,6 +435,17 @@ export function ReviewsSection({
 }
 
 const styles = StyleSheet.create({
+  // maxHeight is what makes this its own scroller; without it a nested
+  // ScrollView has nothing to clip against and just grows with the page.
+  reviewScroller: { maxHeight: REVIEW_LIST_MAX_HEIGHT },
+  // A little right padding keeps the scrollbar off the card borders.
+  reviewScrollerContent: { paddingRight: space[2] },
+  reviewScrollHint: {
+    fontSize: fontSize.xs,
+    fontWeight: "700",
+    textAlign: "center",
+    marginTop: space[2],
+  },
   card: {
     borderRadius: radius["3xl"],
     borderWidth: 1,

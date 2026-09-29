@@ -3,6 +3,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { BookingVenueName } from "@/components/BookingVenueName";
+import TeamLedgerPanel from "@/components/TeamLedgerPanel";
 import { Button, Card, Field, Notice, Pill, Spinner } from "@/components/ui";
 import {
   chooseBookingPayment,
@@ -10,12 +11,14 @@ import {
   createBookingPaymentRequest,
   fetchBooking,
   fetchLedger,
+  settleTeamShare,
 } from "@/api";
 import { useAuth } from "@/context/AuthContext";
 import { useTheme } from "@/context/ThemeContext";
 import { ApiError } from "@/lib/api";
 import { formatWindowLeft } from "@/lib/booking-ledger";
 import { formatNPR, prettyDate } from "@/lib/futsal";
+import { moneyOf } from "@/lib/money";
 import type { Booking, Ledger } from "@/lib/types";
 import { fontSize, space } from "@/theme";
 
@@ -54,6 +57,13 @@ export default function BookingDetail() {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  // Settling your own share: to the captain in cash, or straight at the venue.
+  const [settleTo, setSettleTo] = useState<"captain" | "venue" | null>(null);
+  const [settleMethod, setSettleMethod] = useState("Cash at Venue");
+  const [settleBusy, setSettleBusy] = useState(false);
+  const [settleError, setSettleError] = useState<string | null>(null);
+  // The captain's own money ledger for this team booking.
+  const [squadLedgerOpen, setSquadLedgerOpen] = useState(false);
   const [requestPayerIds, setRequestPayerIds] = useState<string[]>([]);
   const [requestAmount, setRequestAmount] = useState("");
   const [requestNote, setRequestNote] = useState("");
@@ -179,7 +189,33 @@ export default function BookingDetail() {
 
   const { totals, window: settleWin } = ledger;
   const balance = totals.balance;
+
+  // The card and this page derive the same word from the same helper, so the
+  // pill here can never contradict the card. For a team booking the helper
+  // looks at the players' shares (captain or venue — both settle the player),
+  // not the venue's desk ledger alone.
+  const money = moneyOf(booking);
+  const isTeamBooking = (booking.teamPayments?.length ?? 0) > 0;
+  const squadDue = money.received + money.balance;
   const teamShare = booking.teamPayments?.find((share) => share.userId === user?.id) ?? null;
+  // For a team game the player's obligation is their OWN share. Once it is
+  // paid the pill must say "Paid" — the squad's remaining balance belongs to
+  // the other members and would read as "still due" after they had just paid.
+  const statusView = teamShare
+    ? teamShare.paymentStatus === "paid"
+      ? { status: "paid" as const, label: "Paid" }
+      : (() => {
+          const due = Math.max(0, Number(teamShare.amountDue ?? 0));
+          const paid = Math.min(due, Math.max(0, Number(teamShare.paidAmount ?? 0)));
+          return {
+            status: (paid > 0 ? "deposit_paid" : "pending") as "deposit_paid" | "pending",
+            label:
+              paid > 0
+                ? `Your share · ${formatNPR(due - paid)} left`
+                : `Your share · ${formatNPR(due)} due`,
+          };
+        })()
+    : { status: money.status, label: money.label };
   const advanceDue = booking.status !== "cancelled" && booking.status !== "rejected" && booking.advancePaymentRequired && booking.advancePaymentStatus !== "paid" ? booking.advancePaymentAmount ?? 0 : 0;
   const competitionWaiting = booking.competition?.competitionStatus === "pending";
   const requestedForMe = booking.paymentRequests?.filter(
@@ -201,6 +237,26 @@ export default function BookingDetail() {
     (teamShare
       ? teamShare.paymentStatus !== "paid" && ["eSewa", "Khalti"].includes(teamShare.paymentMethod)
       : advanceDue > 0 || (!booking.advancePaymentRequired && balance > 0));
+  async function settleShare() {
+    if (!user || !teamShare || !settleTo) return;
+    setSettleBusy(true);
+    setSettleError(null);
+    try {
+      const res = await settleTeamShare(bookingId, user.id, {
+        actorId: user.id,
+        paidTo: settleTo,
+        method: settleMethod,
+      });
+      setSuccess(res.message ?? "Share settled ✅");
+      setSettleTo(null);
+      await load();
+    } catch (e) {
+      setSettleError(e instanceof Error ? e.message : "Couldn't record that payment 🙏");
+    } finally {
+      setSettleBusy(false);
+    }
+  }
+
   const captainCanRequest = Boolean(
     user && booking.teamId && booking.userId === user.id && booking.status !== "cancelled" && booking.status !== "rejected",
   );
@@ -227,13 +283,25 @@ export default function BookingDetail() {
         <View style={styles.pillRow}>
           <Pill label={booking.status} tone={booking.status === "confirmed" ? "success" : "warning"} />
           <Pill
-            label={paymentStatusLabel(booking.paymentStatus)}
-            tone={balance > 0 ? "danger" : "success"}
+            label={statusView.label}
+            tone={statusView.status === "paid" ? "success" : statusView.status === "deposit_paid" ? "warning" : "danger"}
           />
         </View>
         <View style={styles.paymentLabels}>
-          <Text style={[styles.paymentLabel, { color: colors.textMuted }]}>Payment method: {paymentMethodLabel(booking.paymentMethod)}</Text>
-          <Text style={[styles.paymentLabel, { color: colors.textMuted }]}>Payment status: {paymentStatusLabel(booking.paymentStatus)}</Text>
+          {/*
+            Team games are paid per player, so the booking-level method (the
+            booker's original choice) is wrong to show — it stayed "Cash at
+            venue" long after a player paid eSewa. Show the method on the
+            player's own share instead, which is what they actually paid with.
+          */}
+          <Text style={[styles.paymentLabel, { color: colors.textMuted }]}>
+            Payment method: {isTeamBooking
+              ? (teamShare?.paymentMethod
+                  ? `${paymentMethodLabel(teamShare.paymentMethod)} (your share)`
+                  : "Per player — see team details")
+              : paymentMethodLabel(booking.paymentMethod)}
+          </Text>
+          <Text style={[styles.paymentLabel, { color: colors.textMuted }]}>Payment status: {statusView.label}</Text>
         </View>
 
         {error ? <Notice message={error} /> : null}
@@ -250,6 +318,70 @@ export default function BookingDetail() {
             message={`Team share: ${formatNPR(teamShare.amountDue)}. ${teamShare.paymentStatus === "paid" ? `Verified via ${teamShare.paymentMethod}.` : teamShare.paymentMethod ? `Selected method: ${teamShare.paymentMethod}.` : "Select eSewa, Khalti, or Cash at Venue from My Bookings."}`}
             tone={teamShare.paymentStatus === "paid" ? "success" : "info"}
           />
+        ) : null}
+        {isTeamBooking && user && !teamShare ? (
+          <Notice
+            message="Your account isn't on this squad's payment list, so the pay button settles the venue's balance — not a player share — and the status stays 'Nothing paid yet'. Ask the captain to add you to the squad, then your share will show here."
+            tone="info"
+          />
+        ) : null}
+        {teamShare && teamShare.paymentStatus !== "paid" ? (
+          <Card style={{ marginTop: space["3"] }}>
+            <Text style={[styles.cardTitle, { color: colors.text }]}>Settle your share</Text>
+            <Text style={[styles.meta, { color: colors.textMuted }]}>
+              {formatNPR(teamShare.amountDue - teamShare.paidAmount)} outstanding. Hand it to{" "}
+              {booking.userId === user?.id ? "the captain" : "your captain"} in cash, or pay the venue
+              directly — either way it is recorded against this booking and adds up, so paying in two
+              places still reads as one settled share.
+            </Text>
+
+            {settleError ? <Notice message={settleError} tone="error" /> : null}
+
+            {settleTo ? (
+              <View style={{ gap: space["3"] }}>
+                <View style={styles.playerChoices}>
+                  {(["captain", "venue"] as const).map((where) => (
+                    <Button
+                      key={where}
+                      label={where === "captain" ? "To the captain" : "To the venue"}
+                      variant={settleTo === where ? "primary" : "ghost"}
+                      onPress={() => setSettleTo(where)}
+                      style={styles.playerButton}
+                    />
+                  ))}
+                </View>
+
+                <View style={styles.playerChoices}>
+                  {(["Cash at Venue", "eSewa", "Khalti"] as const)
+                    .filter((m) => !(settleTo === "venue" && m === "Cash at Venue"))
+                    .map((m) => (
+                      <Button
+                        key={m}
+                        label={m}
+                        variant={settleMethod === m ? "primary" : "ghost"}
+                        onPress={() => setSettleMethod(m)}
+                        style={styles.playerButton}
+                      />
+                    ))}
+                </View>
+                <Text style={[styles.hint, { color: colors.textFaint }]}>
+                  {settleTo === "venue" && settleMethod !== "Cash at Venue"
+                    ? "Card payment at the venue is recorded on the venue's ledger."
+                    : "Cash handed over is recorded on your captain's ledger."}
+                </Text>
+
+                <Button
+                  label={`Record ${formatNPR(teamShare.amountDue - teamShare.paidAmount)} as ${settleMethod}`}
+                  onPress={() => void settleShare()}
+                  loading={settleBusy}
+                  disabled={settleBusy}
+                />
+                <Button label="Cancel" variant="ghost" onPress={() => setSettleTo(null)} />
+              </View>
+            ) : (
+              <Button label="Record a payment" onPress={() => setSettleTo("captain")} />
+            )}
+          </Card>
         ) : null}
         {requestedForMe.map((request) => (
           <Card key={request.id} style={{ marginTop: space["3"] }}>
@@ -277,38 +409,42 @@ export default function BookingDetail() {
         ))}
         {captainCanRequest ? (
           <Card style={{ marginTop: space["3"] }}>
-            <Text style={[styles.cardTitle, { color: colors.text }]}>Ask a teammate to pay</Text>
-            <Text style={[styles.meta, { color: colors.textMuted }]}>Choose one player and an exact amount. Their verified eSewa or Khalti payment is recorded against this booking.</Text>
-            <Text style={[styles.meta, { color: colors.textMuted }]}>Select one or more teammates. The amount below is requested from each selected player.</Text>
-            <View style={styles.playerChoices}>
-              {(booking.teamPlayers ?? []).filter((player) => player.id !== user?.id).map((player) => {
-                const selected = requestPayerIds.includes(String(player.id));
-                return (
-                  <Button
-                    key={player.id}
-                    label={selected ? `✓ ${player.name}` : player.name}
-                    variant={selected ? "primary" : "ghost"}
-                    onPress={() => setRequestPayerIds((current) => selected ? current.filter((id) => id !== String(player.id)) : [...current, String(player.id)])}
-                    style={styles.playerButton}
-                  />
-                );
-              })}
+            {/* Card lays its children out flush and Field has no bottom margin,
+                so without a gap here the "Send payment request" button sat
+                against the note box and read as part of it. */}
+            <View style={{ gap: space["3"] }}>
+              <Text style={[styles.cardTitle, { color: colors.text }]}>Ask a teammate to pay</Text>
+              <Text style={[styles.meta, { color: colors.textMuted }]}>Tick everyone who owes you. The amount below is requested from each one, and their verified eSewa or Khalti payment is recorded against this booking.</Text>
+              <View style={styles.playerChoices}>
+                {(booking.teamPlayers ?? []).filter((player) => player.id !== user?.id).map((player) => {
+                  const selected = requestPayerIds.includes(String(player.id));
+                  return (
+                    <Button
+                      key={player.id}
+                      label={selected ? `✓ ${player.name}` : player.name}
+                      variant={selected ? "primary" : "ghost"}
+                      onPress={() => setRequestPayerIds((current) => selected ? current.filter((id) => id !== String(player.id)) : [...current, String(player.id)])}
+                      style={styles.playerButton}
+                    />
+                  );
+                })}
+              </View>
+              <Field
+                label="Amount from each player in NPR"
+                value={requestAmount}
+                onChangeText={setRequestAmount}
+                placeholder="For example, 500"
+                keyboardType="numeric"
+              />
+              <Field
+                label="Note (optional)"
+                value={requestNote}
+                onChangeText={setRequestNote}
+                placeholder="What should this cover?"
+                multiline
+              />
+              <Button label="Send payment request" onPress={() => void requestMoney()} loading={requestBusy} disabled={requestBusy} />
             </View>
-            <Field
-              label="Amount from each player in NPR"
-              value={requestAmount}
-              onChangeText={setRequestAmount}
-              placeholder="For example, 500"
-              keyboardType="numeric"
-            />
-            <Field
-              label="Note (optional)"
-              value={requestNote}
-              onChangeText={setRequestNote}
-              placeholder="What should this cover?"
-              multiline
-            />
-            <Button label="Send payment request" onPress={() => void requestMoney()} loading={requestBusy} disabled={requestBusy} />
           </Card>
         ) : null}
 
@@ -326,6 +462,14 @@ export default function BookingDetail() {
               </View>
               <Text style={[styles.expandText, { color: colors.textMuted }]}>{teamDetailsOpen ? "Hide" : "Open"}</Text>
             </Pressable>
+            {user ? (
+              <Button
+                label="Open squad ledger"
+                variant="secondary"
+                onPress={() => setSquadLedgerOpen(true)}
+                style={{ marginTop: space["2"] }}
+              />
+            ) : null}
             {teamDetailsOpen ? (
               <View style={styles.teamDetailsBody}>
                 <Text style={[styles.subTitle, { color: colors.textMuted }]}>Payment choices by player</Text>
@@ -337,7 +481,7 @@ export default function BookingDetail() {
                   return (
                     <View key={player.id} style={[styles.teamPlayerRow, { backgroundColor: colors.bg, borderColor: colors.border }]}>
                       <View style={styles.grow}>
-                        <Text style={[styles.teamPlayerName, { color: colors.text }]}>{player.name}{player.role === "captain" ? " · captain" : ""}</Text>
+                        <Text style={[styles.teamPlayerName, { color: colors.text }]}>{player.name}{player.role === "captain" ? " · captain" : ""}{user && player.id === user.id ? " (you)" : ""}</Text>
                         <Text style={[styles.meta, { color: colors.textMuted }]}>Due {formatNPR(due)} · Paid {formatNPR(paid)} · Method: {paymentMethodLabel(share?.paymentMethod)}</Text>
                         {remaining > 0 ? <Text style={[styles.teamRemaining, { color: "#B45309" }]}>Remaining {formatNPR(remaining)}</Text> : null}
                         {share?.gatewayTxnId ? <Text style={[styles.hint, { color: colors.textFaint }]}>Gateway reference: {share.gatewayTxnId.slice(0, 18)}</Text> : null}
@@ -372,11 +516,19 @@ export default function BookingDetail() {
             <MoneyRow key={`x${x.id}`} label={x.label} value={formatNPR(x.amount)} colors={colors} />
           ))}
           <View style={[styles.divider, { backgroundColor: colors.border }]} />
+          {isTeamBooking ? (
+            <MoneyRow
+              label="Squad shares"
+              value={formatNPR(money.received) + " of " + formatNPR(squadDue)}
+              colors={colors}
+              tone={money.balance === 0 ? "credit" : "due"}
+            />
+          ) : null}
           <MoneyRow label="Owed" value={formatNPR(totals.owed)} colors={colors} />
           <MoneyRow label="Paid" value={formatNPR(totals.paid)} colors={colors} />
           <View style={[styles.divider, { backgroundColor: colors.border }]} />
           <MoneyRow
-            label={balance > 0 ? "Balance due" : "Surplus"}
+            label={balance > 0 ? (isTeamBooking ? "Venue balance" : "Balance due") : "Surplus"}
             value={formatNPR(balance > 0 ? balance : totals.surplus)}
             colors={colors}
             strong
@@ -443,6 +595,33 @@ export default function BookingDetail() {
                   disabled={busy !== null}
                 />
               )
+            ) : isTeamBooking ? (
+              <>
+                {/*
+                  No share row for this player: the old generic "Pay with eSewa"
+                  charged the venue balance, which never settles a player share
+                  — the booking then read "Nothing paid yet" after a verified
+                  payment. Label what the money actually does.
+                */}
+                <Button
+                  label="Pay venue balance with eSewa"
+                  onPress={() => pay("esewa")}
+                  loading={busy === "esewa"}
+                  disabled={busy !== null}
+                />
+                <Button
+                  label="Pay venue balance with Khalti"
+                  variant="secondary"
+                  onPress={() => pay("khalti")}
+                  loading={busy === "khalti"}
+                  disabled={busy !== null}
+                  style={{ marginTop: space["2"] }}
+                />
+                <Text style={[styles.hint, { color: colors.textFaint }]}>
+                  This settles the venue's desk, not a player share — your account isn't on this
+                  squad's payment list, so the share status will not change.
+                </Text>
+              </>
             ) : (
               <>
                 <Button
@@ -475,12 +654,23 @@ export default function BookingDetail() {
                   ? "This booking was cancelled."
                   : booking.status === "rejected"
                     ? "This competition request was declined and was not sent to the venue owner."
-                    : "This booking is fully paid. Enjoy the game! ⚽"
+                    : teamShare
+                      ? "Your share is settled. Enjoy the game! ⚽"
+                      : "This booking is fully paid. Enjoy the game! ⚽"
             }
             tone={competitionWaiting || booking.status === "cancelled" || booking.status === "rejected" ? "error" : "success"}
           />
         )}
       </ScrollView>
+      {squadLedgerOpen && user ? (
+        <TeamLedgerPanel
+          bookingId={bookingId}
+          actorId={user.id}
+          bookingLabel={booking?.teamName ?? ""}
+          onClose={() => setSquadLedgerOpen(false)}
+          onChanged={() => void load()}
+        />
+      ) : null}
     </SafeAreaView>
   );
 }

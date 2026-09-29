@@ -17,12 +17,16 @@ class OpenMatch extends Model
     protected $table = 'open_matches';
 
     /**
+     * `positions_needed` is a JSON array of the spots this host is short of,
+     * and it is what makes the host's queue answerable rather than a free
+     * slot anyone can take. Empty/absent means "anyone welcome".
+     *
      * @var list<string>
      */
     protected $fillable = [
         'title', 'venue_id', 'court_id', 'organizer_id', 'date', 'start_time', 'end_time',
         'price_per_player', 'max_players', 'crew_size', 'level', 'status', 'description',
-        'booking_id', 'charge_mode',
+        'booking_id', 'charge_mode', 'positions_needed',
     ];
 
     /**

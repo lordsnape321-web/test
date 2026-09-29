@@ -158,6 +158,11 @@ export type Booking = {
     teamId: number;
     userId: number;
     payerName?: string;
+    userName?: string;
+    userAvatarColor?: string;
+    userAvatarUrl?: string;
+    userLevel?: string;
+    isBookingCaptain?: boolean;
     amountDue: number;
     paymentMethod: string;
     paymentStatus: string;
@@ -242,6 +247,45 @@ export type MatchPlayer = {
   avatarUrl?: string | null;
 };
 
+/**
+ * One player waiting on a host, as the host's queue shows it.
+ *
+ * `slot` is the spot they asked to fill; `playerPosition` is their usual role,
+ * which is a different thing — anyone can stand in goal for one game.
+ */
+export type MatchJoinRequest = {
+  id: number;
+  matchId: number;
+  userId: number;
+  name: string;
+  level: string;
+  playerPosition: string;
+  avatarColor?: string | null;
+  avatarUrl?: string | null;
+  status: string;
+  slot: string;
+  message?: string | null;
+  paidAmount: number;
+  payMethod: string;
+  paymentSummary: string;
+  paid: boolean;
+  paymentRequested: boolean;
+  autoAccepted: boolean;
+  createdAt?: string | null;
+  decidedAt?: string | null;
+};
+
+/** Where the logged-in player stands with one game. */
+export type MatchViewer = {
+  isHost: boolean;
+  isIn: boolean;
+  requestStatus: string | null;
+  requestId: number | null;
+  position: string | null;
+  paidAmount: number;
+  paymentRequested: boolean;
+};
+
 /** GET /api/matches → { matches } */
 export type Match = {
   id: number;
@@ -260,6 +304,13 @@ export type Match = {
   openSpots?: number;
   crewSize?: number;
   otherJoined?: number;
+  /** Requests waiting on the host. They hold no spot, so they are not a count. */
+  pendingCount?: number;
+  /** The spots this host said it was short of. Empty = anyone welcome. */
+  positionsNeeded?: string[];
+  viewer?: MatchViewer | null;
+  /** Only ever filled for the host — nobody else can see who asked. */
+  requests?: MatchJoinRequest[] | null;
   bookingId?: number | null;
   courtId?: number | null;
   venueId?: number | null;
@@ -298,6 +349,61 @@ export type LedgerTeamPayment = {
   paymentStatus: string;
   paidAmount: number;
   gatewayTxnId: string;
+};
+
+/* ── the captain's ledger ───────────────────────────────────────────────── */
+
+/**
+ * One line in a captain's ledger: "this squad member handed over this much,
+ * in this medium, on this date". `recordedByName` is the captain who keyed it
+ * in. Mirrors `team_ledger_entries` on the server.
+ */
+export type TeamLedgerEntry = {
+  id: number;
+  userId: number;
+  userName: string;
+  amount: number;
+  method: string;
+  note: string;
+  recordedByName: string;
+  createdAt: string | null;
+};
+
+/**
+ * A squad member as the captain sees them: their real name from the users
+ * table, what they owe, and what they have actually handed over.
+ */
+export type TeamLedgerMember = {
+  shareId: number;
+  userId: number;
+  userName: string;
+  userAvatarColor: string;
+  userAvatarUrl: string;
+  userLevel: string;
+  isYou: boolean;
+  /** True when this member captains the squad the booking was made for. */
+  isCaptain?: boolean;
+  amountDue: number;
+  collected: number;
+  outstanding: number;
+  /**
+   * `none` when the squad member has no share split out at all — they are on
+   * the roster but were not charged for this booking.
+   */
+  status: "none" | "pending" | "partial" | "paid" | string;
+  declaredMethod: string;
+  entries: TeamLedgerEntry[];
+};
+
+export type TeamLedger = {
+  bookingId: number;
+  date: string;
+  teamId: number;
+  teamName: string;
+  isCaptain: boolean;
+  actorId: number;
+  members: TeamLedgerMember[];
+  totals: { due: number; collected: number; outstanding: number };
 };
 
 export type Ledger = {
@@ -811,6 +917,8 @@ export type PlayerDossier = {
   matches: {
     organized: PlayerMatchRow[];
     joined: PlayerMatchRow[];
+    /** Finished games, newest first — where a recorded payment shows up. */
+    played?: PlayerMatchRow[];
   };
   myQueue: Array<{
     kind: "request" | "invite";
@@ -854,6 +962,12 @@ export type PlayerMatchRow = {
   endTime: string;
   level: string;
   status: string;
+  /** The price on the listing — a quote, not a receipt. */
   pricePerPlayer: number;
+  /**
+   * What the owner actually recorded this player handing over for the game,
+   * or null when no payment has been recorded yet.
+   */
+  amountPaid: number | null;
   venueName: string;
 };

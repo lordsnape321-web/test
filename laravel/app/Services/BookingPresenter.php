@@ -17,6 +17,7 @@ use App\Models\User;
 use App\Models\Venue;
 use App\Support\BookingLedger;
 use App\Support\Loyalty;
+use App\Support\OpenGames;
 
 /**
  * Turns booking rows into the payload the app renders.
@@ -75,9 +76,16 @@ class BookingPresenter
             ->keyBy('booking_id');
 
         $matchIds = $matches->pluck('id')->all();
+        // A linked listing shows who is actually on it. Requests still waiting
+        // on the host are deliberately left out — the booking screen is not the
+        // place to show an unanswered ask as a settled player.
         $joinsByMatch = $matchIds === []
             ? []
-            : MatchJoin::whereIn('match_id', $matchIds)->get()->groupBy('match_id')->all();
+            : MatchJoin::whereIn('match_id', $matchIds)
+                ->where('status', OpenGames::JOIN_ACCEPTED)
+                ->get()
+                ->groupBy('match_id')
+                ->all();
 
         $teamIds = $rows->pluck('team_id')->filter()->unique()->values()->all();
         $opponentIds = $rows->pluck('opponent_team_id')->filter()->unique()->values()->all();
@@ -87,6 +95,27 @@ class BookingPresenter
         $membersByTeam = $teamIds === []
             ? []
             : TeamMember::whereIn('team_id', $teamIds)->get()->groupBy('team_id')->all();
+
+        // The squad behind each booking, not just the person who booked it.
+        //
+        // `teamPlayers`, `teamPayments` and `paymentRequests` all name people
+        // through this map, but it was loaded from the bookings' own user_ids —
+        // which is the booker and nobody else. A captain's teammates were
+        // therefore unresolvable and fell through to "Player", so "Ask a
+        // teammate to pay" offered a row of identical nameless buttons and
+        // nobody could tell who they were asking. One extra query for the
+        // member ids that are not already in hand; the bookers are kept.
+        $memberIds = collect($membersByTeam)
+            ->flatten(1)
+            ->map(fn (TeamMember $member) => (int) $member->user_id)
+            ->unique()
+            ->diff($userIds)
+            ->values()
+            ->all();
+
+        if ($memberIds !== []) {
+            $users = $users->union(User::whereIn('id', $memberIds)->get()->keyBy('id'));
+        }
 
         $tournamentIds = $rows->pluck('tournament_id')->filter()->unique()->values()->all();
         $tournaments = $tournamentIds === [] ? collect() : Tournament::whereIn('id', $tournamentIds)->get()->keyBy('id');

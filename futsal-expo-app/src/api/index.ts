@@ -9,6 +9,7 @@ import type {
   LoyaltyProgress,
   ManagedTeam,
   Match,
+  MatchJoinRequest,
   LeagueDetail,
   LeagueMediaRow,
   LeagueSummary,
@@ -17,6 +18,7 @@ import type {
   TeamCard,
   TeamDetail,
   TeamInvite,
+  TeamLedger,
   TeamRosterRow,
   TeamSearchHit,
   TeamSentInvite,
@@ -212,26 +214,43 @@ export async function fetchStats(): Promise<SiteStats | null> {
 
 /* ── open matches ────────────────────────────────────────────────────────── */
 
-/** GET /api/matches → { matches } */
-export async function fetchMatches(): Promise<Match[]> {
-  const data = await apiJson<{ matches?: Match[] }>(`/api/matches`);
+/**
+ * GET /api/matches → { matches }
+ *
+ * `userId` is not decoration: it is what fills in the viewer's own request on
+ * each game, and — for a host — the queue of players waiting on them.
+ */
+export async function fetchMatches(userId?: number): Promise<Match[]> {
+  const query = userId ? `?userId=${userId}` : "";
+  const data = await apiJson<{ matches?: Match[] }>(`/api/matches${query}`);
   return data.matches ?? [];
 }
 
-/** POST /api/matches/:id/join — take a spot in an open game. */
+/**
+ * POST /api/matches/:id/join — ask for a spot.
+ *
+ * This files a request the host answers; it does not put the player on the
+ * pitch. `position` is the spot they are filling, and `payInAdvance` offers
+ * their share up front — which the server settles automatically, because money
+ * in front of the host is a commitment. A host can still accept someone who
+ * sends nothing.
+ */
 export function joinMatch(
   matchId: number,
-  userId: number,
-  crewSize = 1,
+  input: {
+    userId: number;
+    position?: string;
+    message?: string;
+    payInAdvance?: boolean;
+    paidAmount?: number;
+    payMethod?: string;
+  },
 ): Promise<Record<string, unknown>> {
-  return apiJson(`/api/matches/${matchId}/join`, {
-    method: "POST",
-    json: { userId, crewSize },
-  });
+  return apiJson(`/api/matches/${matchId}/join`, { method: "POST", json: input });
 }
 
 /**
- * DELETE /api/matches/:id/join?userId= — give a spot back.
+ * DELETE /api/matches/:id/join?userId= — withdraw a request or give a spot back.
  *
  * Note the asymmetry with joinMatch: the web app sends userId in the *query
  * string* here but in the *body* for the POST. Kept identical so both apps hit
@@ -239,6 +258,45 @@ export function joinMatch(
  */
 export function leaveMatch(matchId: number, userId: number): Promise<Record<string, unknown>> {
   return apiJson(`/api/matches/${matchId}/join?userId=${userId}`, { method: "DELETE" });
+}
+
+/** GET /api/matches/:id/joins?organizerId= — the host's queue of players. */
+export async function fetchMatchJoins(
+  matchId: number,
+  organizerId: number,
+): Promise<MatchJoinRequest[]> {
+  const data = await apiJson<{ joins?: MatchJoinRequest[] }>(
+    `/api/matches/${matchId}/joins?organizerId=${organizerId}`,
+  );
+  return data.joins ?? [];
+}
+
+/**
+ * POST /api/matches/:id/joins — the host answers a request.
+ *
+ * `accept` takes the spot and is allowed whether or not any money came in
+ * ("accept without it" is a real answer). `decline` sends it back. `askPayment`
+ * asks for the share up front and leaves the request exactly where it is.
+ */
+export function decideMatchJoin(
+  matchId: number,
+  input: { organizerId: number; joinId: number; action: "accept" | "decline" | "askPayment" },
+): Promise<Record<string, unknown>> {
+  return apiJson(`/api/matches/${matchId}/joins`, { method: "POST", json: input });
+}
+
+/**
+ * POST /api/matches/:id/joins/pay — the share lands.
+ *
+ * This is the "accept by default if paid" rule for the case where the host asked
+ * for the money after the fact: paying settles the request on its own, exactly
+ * as paying up front does.
+ */
+export function payMatchJoin(
+  matchId: number,
+  input: { userId: number; joinId: number; amount?: number; payMethod?: string },
+): Promise<Record<string, unknown>> {
+  return apiJson(`/api/matches/${matchId}/joins/pay`, { method: "POST", json: input });
 }
 
 /** POST /api/matches — host a new open game. */
@@ -257,11 +315,18 @@ export function createMatch(input: {
   chargeMode: string;
   level: string;
   description: string;
+  /** Spots the host is short of. Empty/omitted = anyone welcome. */
+  positionsNeeded?: string[];
 }): Promise<Record<string, unknown>> {
   return apiJson(`/api/matches`, { method: "POST", json: input });
 }
 
 /* ── bookings ────────────────────────────────────────────────────────────── */
+
+/** GET /api/health → { ok, build }. Which Laravel is the app actually talking to. */
+export async function fetchHealth(): Promise<{ ok: boolean; build?: string }> {
+  return apiJson("/api/health");
+}
 
 /** GET /api/bookings → { bookings } */
 export async function fetchBookings(params?: {
@@ -377,6 +442,60 @@ export function verifyKhalti(
   return apiJson("/api/payments/khalti/verify", {
     method: "POST",
     json: { bookingId, pidx, mockApprove, teamPaymentId, paymentRequestId, userId },
+  });
+}
+
+/* ── the captain's ledger ───────────────────────────────────────────────── */
+
+/**
+ * GET /api/bookings/:id/team-ledger → every squad member with their real
+ * name, their share, and what they have actually handed over.
+ *
+ * Nothing here is assembled on the device: the names come from the users
+ * table, the amounts from `booking_team_payments`, and the lines from
+ * `team_ledger_entries`. The panel renders this and nothing else.
+ */
+export function fetchTeamLedger(
+  bookingId: number,
+  actorId: number,
+): Promise<TeamLedger> {
+  return apiJson(`/api/bookings/${bookingId}/team-ledger?actorId=${actorId}`);
+}
+
+/**
+ * POST /api/bookings/:id/team-ledger — { action: "collect" | "void", ... }.
+ *
+ * `collect` is how a captain says "teammate X just handed me this much, in
+ * cash", which the server writes to the database and reflects on that
+ * member's share. `void` takes back a line keyed in by mistake; the row is
+ * kept and marked voided, so the trail survives.
+ */
+export function teamLedgerAction(
+  bookingId: number,
+  body: Record<string, unknown>,
+): Promise<{ ledger?: TeamLedger; message?: string; error?: string }> {
+  return apiJson(`/api/bookings/${bookingId}/team-ledger`, {
+    method: "POST",
+    json: body,
+  });
+}
+
+/**
+ * POST /api/bookings/:id/team-payments/:userId/settle
+ *
+ * A squad member settling their own share. `paidTo` decides which ledger the
+ * money lands in — `captain` for a cash hand-over, `venue` for a card payment
+ * at the ground — and the share adds both up, so paying in two places reads as
+ * one settled share rather than two half-payments nobody can reconcile.
+ */
+export function settleTeamShare(
+  bookingId: number,
+  userId: number,
+  input: { actorId: number; paidTo: "captain" | "venue"; method: string; amount?: number; note?: string },
+): Promise<{ ok?: boolean; teamPayment?: unknown; message?: string; error?: string }> {
+  return apiJson(`/api/bookings/${bookingId}/team-payments/${userId}/settle`, {
+    method: "POST",
+    json: input,
   });
 }
 

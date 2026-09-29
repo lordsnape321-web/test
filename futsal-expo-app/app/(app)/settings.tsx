@@ -7,8 +7,10 @@ import {
   CheckCheck,
   ChevronRight,
   Crown,
+  EyeOff,
   HelpCircle,
   Lock,
+  LogIn,
   LogOut,
   MapPin,
   Moon,
@@ -19,7 +21,7 @@ import {
   Users,
   Zap,
 } from "lucide-react-native";
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Avatar } from "@/components/Avatar";
@@ -32,33 +34,45 @@ import type { AppNotification } from "@/lib/types";
 import { colors, fontSize, radius, space } from "@/theme";
 
 /**
- * Settings — a port of the web app's app/settings/page.tsx.
+ * Settings — a port of the web app's app/settings/page.tsx, plus the two
+ * sections a phone needs that a signed-out visitor also has to be able to
+ * reach.
  *
- * Same six sections in the same order, same copy, same rows. The web version
- * uses a left rail that becomes a horizontal scroller on a phone; a phone-first
- * app only ever needs the scroller, so that is what this renders.
+ * The important change is that **this screen no longer needs an account.** It
+ * used to `return null` when signed out, which quietly took Appearance and Help
+ * — the two things that do not need a login — off the table for exactly the
+ * people who had not signed in yet. Sections that genuinely require an account
+ * stay in the rail with a lock on them and explain themselves when tapped,
+ * rather than disappearing.
+ *
+ * The web version uses a left rail that becomes a horizontal scroller on a
+ * phone; a phone-first app only ever needs the scroller, so that is what this
+ * renders.
  *
  * Alerts are *listed* here but still owned by the bell — this panel shows the
  * unread count and a short preview, matching the original's split.
  */
 
 const SECTIONS = [
-  { id: "profile", label: "Profile", icon: UserIcon },
-  { id: "alerts", label: "Alerts", icon: Bell },
-  { id: "appearance", label: "Appearance", icon: Sun },
-  { id: "activity", label: "Your activity", icon: Activity },
-  { id: "account", label: "Account", icon: ShieldCheck },
-  { id: "help", label: "Help & about", icon: HelpCircle },
+  { id: "profile", label: "Profile", icon: UserIcon, needsAccount: true },
+  { id: "alerts", label: "Alerts", icon: Bell, needsAccount: true },
+  { id: "appearance", label: "Appearance", icon: Sun, needsAccount: false },
+  { id: "activity", label: "Your activity", icon: Activity, needsAccount: true },
+  { id: "account", label: "Account", icon: ShieldCheck, needsAccount: true },
+  { id: "help", label: "Help & about", icon: HelpCircle, needsAccount: false },
 ] as const;
+
+/** What a signed-out visitor can actually open — no locks, no empty panels. */
+const GUEST_SECTIONS = SECTIONS.filter((s) => !s.needsAccount);
 
 type SectionId = (typeof SECTIONS)[number]["id"];
 
 export default function SettingsScreen() {
   const { colors: c, mode, setMode, isDark } = useTheme();
-  const { user, isOwner, signOut, updateProfile } = useAuth();
+  const { user, ready, isOwner, signOut, updateProfile } = useAuth();
   const router = useRouter();
 
-  const [section, setSection] = useState<SectionId>("profile");
+  const [section, setSection] = useState<SectionId>(user ? "profile" : "appearance");
   const [notes, setNotes] = useState<AppNotification[]>([]);
   const [notesLoading, setNotesLoading] = useState(true);
   const [citySaving, setCitySaving] = useState(false);
@@ -77,6 +91,17 @@ export default function SettingsScreen() {
   useEffect(() => {
     void loadNotes();
   }, [loadNotes]);
+
+  // The first render happens before the session is read, so the default tab is
+  // picked without knowing who is arriving. Once a signed-in player shows up,
+  // open the panel they came for instead of the guest default.
+  const wasSignedOut = useRef(!user);
+  useEffect(() => {
+    if (wasSignedOut.current && user) {
+      wasSignedOut.current = false;
+      setSection("profile");
+    }
+  }, [user]);
 
   const unread = notes.filter((n) => !n.isRead).length;
 
@@ -100,8 +125,117 @@ export default function SettingsScreen() {
     }
   }
 
-  if (!user) return null;
+  if (!ready) return null;
 
+  // Signed out, this is a shorter screen. Appearance and help never needed an
+  // account in the first place, and taking them away from a visitor is the exact
+  // bug that made them unreachable before.
+  //
+  // This has to come before anything that reads `user.name`: the guest branch
+  // is the one place `user` is legitimately null, and reaching past it is how
+  // "Cannot read property 'name' of null" happens.
+  if (!user) {
+    return (
+      <SafeAreaView style={[styles.flex, { backgroundColor: c.bg }]} edges={["top"]}>
+        <ScrollView
+          contentContainerStyle={[
+            styles.content,
+            { paddingHorizontal: space[4], maxWidth: 1280, width: "100%", alignSelf: "center" },
+          ]}
+        >
+          <View style={styles.heading}>
+            <View style={[styles.guestAvatar, { backgroundColor: c.inset, borderColor: c.border }]}>
+              <EyeOff size={22} color={c.textMuted} />
+            </View>
+            <View style={styles.grow}>
+              <Text style={[styles.h1, { color: c.text }]}>Settings</Text>
+              <Text style={[styles.subheading, { color: c.textMuted }]} numberOfLines={1}>
+                Browsing without an account
+              </Text>
+            </View>
+          </View>
+
+          {/* What an account adds, said plainly rather than left to be discovered. */}
+          <View style={[styles.card, styles.gate, { backgroundColor: c.surface, borderColor: c.border }]}>
+            <View style={[styles.gateIcon, { backgroundColor: c.inset }]}>
+              <Lock size={20} color={c.textMuted} />
+            </View>
+            <Text style={[styles.gateTitle, { color: c.text }]}>Four more sections with an account</Text>
+            <Text style={[styles.gateBody, { color: c.textMuted }]}>
+              Profile, Alerts, Your activity and Account hold everything that belongs to one person
+              rather than one device. Everything below works right now.
+            </Text>
+            <View style={styles.gateActions}>
+              <Pressable
+                onPress={() => router.push("/login")}
+                accessibilityRole="button"
+                style={[styles.gateBtn, { backgroundColor: c.primary }]}
+              >
+                <LogIn size={16} color={c.primaryText} />
+                <Text style={[styles.gateBtnText, { color: c.primaryText }]}>Log in</Text>
+              </Pressable>
+              <Pressable
+                onPress={() => router.push("/signup")}
+                accessibilityRole="button"
+                style={[styles.gateBtn, { borderWidth: 1, borderColor: c.border }]}
+              >
+                <Text style={[styles.gateBtnText, { color: c.text }]}>Join free</Text>
+              </Pressable>
+            </View>
+          </View>
+
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={styles.rail}
+            contentContainerStyle={styles.railContent}
+          >
+            {GUEST_SECTIONS.map((s) => {
+              const active = section === s.id;
+              return (
+                <Pressable
+                  key={s.id}
+                  onPress={() => setSection(s.id)}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: active }}
+                  style={[
+                    styles.railItem,
+                    active
+                      ? { backgroundColor: c.primary }
+                      : { backgroundColor: c.surface, borderColor: c.border, borderWidth: 1 },
+                  ]}
+                >
+                  <s.icon size={16} color={active ? c.primaryText : c.text} />
+                  <Text style={[styles.railText, { color: active ? c.primaryText : c.text }]}>
+                    {s.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+
+          {msg ? (
+            <Text
+              style={[
+                styles.msg,
+                {
+                  backgroundColor: msg.ok ? c.successBg : c.dangerBg,
+                  color: msg.ok ? c.successText : c.dangerText,
+                },
+              ]}
+            >
+              {msg.text}
+            </Text>
+          ) : null}
+
+          <DeviceSections section={section} setSection={setSection} />
+        </ScrollView>
+      </SafeAreaView>
+    );
+  }
+
+  // Past the signed-out return above, `user` is non-null. Declaring the avatar
+  // here rather than higher up is what keeps the guest branch reachable.
   const avatarUser = {
     name: user.name,
     avatarColor: (user as { avatarColor?: string }).avatarColor ?? colors.emerald600,
@@ -123,12 +257,19 @@ export default function SettingsScreen() {
       >
         {/* Heading */}
         <View style={styles.heading}>
-          <Avatar user={avatarUser} size={56} />
+          {avatarUser ? (
+            <Avatar user={avatarUser} size={56} />
+          ) : (
+            <View style={[styles.guestAvatar, { backgroundColor: c.inset, borderColor: c.border }]}>
+              <EyeOff size={22} color={c.textMuted} />
+            </View>
+          )}
           <View style={styles.grow}>
             <Text style={[styles.h1, { color: c.text }]}>Settings</Text>
             <Text style={[styles.subheading, { color: c.textMuted }]} numberOfLines={1}>
-              {user.name} •{" "}
-              {isOwner ? "Venue owner" : `${user.level ?? "Player"} • ${user.position ?? ""}`}
+              {user
+                ? `${user.name} • ${isOwner ? "Venue owner" : `${user.level ?? "Player"} • ${user.position ?? ""}`}`
+                : "Browsing without an account"}
             </Text>
           </View>
         </View>
@@ -326,58 +467,6 @@ export default function SettingsScreen() {
           </>
         ) : null}
 
-        {/* ---------- APPEARANCE ---------- */}
-        {section === "appearance" ? (
-          <>
-            <PanelHead
-              icon={Sun}
-              title="Appearance"
-              text="Day pitch or floodlights. Remembered on this device."
-            />
-            <View style={styles.themeRow}>
-              {(
-                [
-                  { id: "light", label: "Light", text: "Sunny clubhouse", icon: Sun },
-                  { id: "dark", label: "Dark", text: "Night game under lights", icon: Moon },
-                ] as const
-              ).map((t) => {
-                // With mode="system", highlight whichever theme is actually resolved.
-                const active =
-                  mode === t.id ||
-                  (mode === "system" && ((t.id === "dark") === isDark));
-                return (
-                  <Pressable
-                    key={t.id}
-                    onPress={() => setMode(t.id)}
-                    accessibilityRole="button"
-                    accessibilityState={{ selected: active }}
-                    style={[
-                      styles.themeCard,
-                      {
-                        borderColor: active ? c.primary : c.border,
-                        backgroundColor: active ? c.activeSoft : c.surface,
-                      },
-                    ]}
-                  >
-                    <View
-                      style={[
-                        styles.themeIcon,
-                        { backgroundColor: active ? c.primary : c.inset },
-                      ]}
-                    >
-                      <t.icon size={20} color={active ? c.primaryText : c.textMuted} />
-                    </View>
-                    <Text style={[styles.themeLabel, { color: c.text }]}>
-                      {t.label} {active ? "✓" : ""}
-                    </Text>
-                    <Text style={[styles.themeText, { color: c.textMuted }]}>{t.text}</Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-          </>
-        ) : null}
-
         {/* ---------- ACTIVITY ---------- */}
         {section === "activity" ? (
           <>
@@ -477,41 +566,120 @@ export default function SettingsScreen() {
           </>
         ) : null}
 
-        {/* ---------- HELP ---------- */}
-        {section === "help" ? (
-          <>
-            <PanelHead
-              icon={HelpCircle}
-              title="Help and about"
-              text="The short version of how this place runs."
-            />
-            <View style={[styles.card, { backgroundColor: c.surface, borderColor: c.border }]}>
-              <HelpPara label="Booking." color={c.text}>
-                A real person at the venue confirms every request — you will get an alert when they
-                do.
-              </HelpPara>
-              <HelpPara label="Paying." color={c.text}>
-                eSewa and Khalti run in test mode here, and cash at the counter is always fine.
-              </HelpPara>
-              <HelpPara label="Leagues." color={c.text}>
-                A squad locks its place with at least a 25% deposit. Back out and 10% of what you
-                paid comes back; the rest stays with the league.
-              </HelpPara>
-              <HelpPara label="Where things live." color={c.text}>
-                League matches are inside the Matches screen. Alerts are behind the bell. Profile,
-                theme and account are here.
-              </HelpPara>
-            </View>
-            <Row
-              icon={Trophy}
-              title="Back to the home page"
-              sub="FutsalNepal — made with 💚 for players, by players"
-              onPress={() => router.push("/(app)")}
-            />
-          </>
-        ) : null}
+        <DeviceSections section={section} setSection={setSection} />
       </ScrollView>
     </SafeAreaView>
+  );
+}
+/**
+ * The sections that need no account: appearance and help.
+ *
+ * They are one component because both versions of this screen render them — a
+ * signed-in player and a signed-out visitor get the same device settings, and
+ * only the four account sections differ. Extracting them is also what keeps
+ * TypeScript honest: the account sections stay inline in the branch where
+ * `user` has already been narrowed to non-null.
+ */
+function DeviceSections({
+  section,
+  setSection,
+}: {
+  section: SectionId;
+  setSection: (s: SectionId) => void;
+}) {
+  const { colors: c, mode, setMode, isDark } = useTheme();
+  const router = useRouter();
+
+  return (
+    <View>
+      {/* ---------- APPEARANCE ---------- */}
+      {section === "appearance" ? (
+        <>
+          <PanelHead
+            icon={Sun}
+            title="Appearance"
+            text="Day pitch or floodlights. Remembered on this device."
+          />
+          <View style={styles.themeRow}>
+            {(
+              [
+                { id: "light", label: "Light", text: "Sunny clubhouse", icon: Sun },
+                { id: "dark", label: "Dark", text: "Night game under lights", icon: Moon },
+              ] as const
+            ).map((t) => {
+              // A stored "system" preference has no button of its own any more, so
+              // light/dark still highlight whichever theme actually resolved — the
+              // highlight stays truthful for anyone who already had it set.
+              const active =
+                mode === t.id || (mode === "system" && ((t.id === "dark") === isDark));
+              return (
+                <Pressable
+                  key={t.id}
+                  onPress={() => setMode(t.id)}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: active }}
+                  style={[
+                    styles.themeCard,
+                    {
+                      borderColor: active ? c.primary : c.border,
+                      backgroundColor: active ? c.activeSoft : c.surface,
+                    },
+                  ]}
+                >
+                  <View
+                    style={[
+                      styles.themeIcon,
+                      { backgroundColor: active ? c.primary : c.inset },
+                    ]}
+                  >
+                    <t.icon size={20} color={active ? c.primaryText : c.textMuted} />
+                  </View>
+                  <Text style={[styles.themeLabel, { color: c.text }]}>
+                    {t.label} {active ? "✓" : ""}
+                  </Text>
+                  <Text style={[styles.themeText, { color: c.textMuted }]}>{t.text}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </>
+      ) : null}
+
+      {/* ---------- HELP ---------- */}
+      {section === "help" ? (
+        <>
+          <PanelHead
+            icon={HelpCircle}
+            title="Help and about"
+            text="The short version of how this place runs."
+          />
+          <View style={[styles.card, { backgroundColor: c.surface, borderColor: c.border }]}>
+            <HelpPara label="Booking." color={c.text}>
+              A real person at the venue confirms every request — you will get an alert
+              when they do.
+            </HelpPara>
+            <HelpPara label="Paying." color={c.text}>
+              eSewa and Khalti run in test mode here, and cash at the counter is always
+              fine.
+            </HelpPara>
+            <HelpPara label="Leagues." color={c.text}>
+              A squad locks its place with at least a 25% deposit. Back out and 10% of what
+              you paid comes back; the rest stays with the league.
+            </HelpPara>
+            <HelpPara label="Where things live." color={c.text}>
+              League matches are inside the Matches screen. Alerts are behind the bell.
+              Profile, theme and account are here.
+            </HelpPara>
+          </View>
+          <Row
+            icon={Trophy}
+            title="Back to the home page"
+            sub="FutsalNepal — made with 💚 for players, by players"
+            onPress={() => router.push("/(app)")}
+          />
+        </>
+      ) : null}
+    </View>
   );
 }
 
@@ -641,6 +809,47 @@ const styles = StyleSheet.create({
   flex: { flex: 1 },
   grow: { flex: 1 },
   content: { padding: space[4], paddingBottom: space[12] },
+
+  /* Signed-out heading: no avatar to show, so the mark says what state you are in. */
+  guestAvatar: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  /* A locked section while signed out. */
+  gate: { alignItems: "center", paddingVertical: space[6] },
+  gateIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  gateTitle: { fontSize: fontSize.lg, fontWeight: "900", marginTop: space[3], textAlign: "center" },
+  gateBody: {
+    fontSize: fontSize.sm,
+    lineHeight: 19,
+    textAlign: "center",
+    marginTop: space[2],
+    maxWidth: 380,
+  },
+  gateActions: { flexDirection: "row", flexWrap: "wrap", gap: space[2], marginTop: space[4] },
+  gateBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    borderRadius: radius.xl,
+    paddingHorizontal: space[5],
+    paddingVertical: 10,
+  },
+  gateBtnText: { fontSize: fontSize.sm, fontWeight: "900" },
+
+
 
   heading: { flexDirection: "row", alignItems: "center", gap: space[4] },
   h1: { fontSize: fontSize["3xl"], fontWeight: "900" },

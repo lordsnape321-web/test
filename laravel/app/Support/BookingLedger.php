@@ -2,6 +2,11 @@
 
 namespace App\Support;
 
+use App\Models\Booking;
+use App\Models\BookingExtra;
+use App\Models\BookingPayment;
+use App\Models\BookingTeamPayment;
+
 /**
  * The money side of a booking — `src/lib/booking-ledger.ts`.
  *
@@ -50,6 +55,81 @@ class BookingLedger
         }
 
         return $total;
+    }
+
+    /**
+     * Re-derive the booking's cached money columns from the live ledger.
+     *
+     * `bookings.paid_amount` and `bookings.payment_status` are a denormalized
+     * copy of the ledger — kept for list screens and search, where opening
+     * every ledger is too expensive. That copy is only as honest as its
+     * writers, and this method is the only writer it should have, after
+     * booking creation:
+     *
+     *   balance 0            → "paid"
+     *   some money in, rest due → "deposit_paid" if it covers the deposit,
+     *                              otherwise "pending"
+     *   nothing in           → leave whatever was there (creation sets it)
+     *
+     * Note the comparison is against `owed` (price + live extras), not just
+     * `total_price` — a booking that was fully paid and then had an extra
+     * charged to it is owing again, and the cache must say so.
+     *
+     * A team booking's obligation is the players' shares, and a share settled
+     * to the captain is as settled as one paid at the venue — the gateway's
+     * team path used that same convention for these columns, so the cache
+     * follows it. The venue ledger alone would stamp a fully paid game
+     * "pending" whenever the money sat in the captain's pocket.
+     */
+    public static function syncCachedState(Booking $booking): void
+    {
+        $id = (int) $booking->id;
+
+        $shares = BookingTeamPayment::where('booking_id', $id)->get();
+
+        if ($shares->isNotEmpty()) {
+            $collected = 0;
+            $due = 0;
+
+            foreach ($shares as $share) {
+                $due += max(0, (int) $share->amount_due);
+                $collected += min(max(0, (int) $share->amount_due), max(0, (int) $share->paid_amount));
+            }
+
+            $paid = $collected;
+            $balance = max(0, $due - $paid);
+            $total = max(0, (int) $booking->total_price);
+        } else {
+            $totals = self::ledgerTotals(
+                $booking->total_price,
+                BookingExtra::where('booking_id', $id)->get(),
+                BookingPayment::where('booking_id', $id)->get()
+            );
+
+            $paid = $totals['paid'];
+            $balance = $totals['balance'];
+            $total = max(0, (int) $booking->total_price);
+        }
+
+        $next = [
+            'paid_amount' => min($total, $paid),
+        ];
+
+        if ($balance === 0) {
+            if ($paid > 0) {
+                $next['payment_status'] = 'paid';
+            }
+        } elseif ((bool) $booking->deposit_required && $paid >= (int) $booking->deposit_amount) {
+            $next['payment_status'] = 'deposit_paid';
+        } else {
+            $next['payment_status'] = 'pending';
+        }
+
+        if ((bool) $booking->deposit_required) {
+            $next['deposit_status'] = $paid >= (int) $booking->deposit_amount ? 'paid' : 'pending';
+        }
+
+        $booking->forceFill($next)->save();
     }
 
     /**
