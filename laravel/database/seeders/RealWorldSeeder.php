@@ -1213,6 +1213,12 @@ class RealWorldSeeder extends Seeder
             $depositRequired = ! $isFreeCovered
                 && $depositDecision['required']
                 && $status === 'confirmed';
+
+            // A squad night is settled by shares — a personal upfront deposit
+            // would charge the booker twice on the same court.
+            if ($team && $status === 'confirmed') {
+                $depositRequired = false;
+            }
             $depositAmount = $depositRequired
                 ? Loyalty::depositAmountFor($totalPrice, $depositDecision['percent'])
                 : 0;
@@ -1759,7 +1765,10 @@ class RealWorldSeeder extends Seeder
      */
     private function addBookingLedger(Booking $booking, ?Team $team, User $owner, int $index, string $status, int $paidAmount, int $price): void
     {
-        if ($paidAmount > 0) {
+        // A squad night's venue money is driven by the shares below — one row
+        // per settled online share, exactly what the gateway writes live. A
+        // booking-level row on top of that would double-count the same money.
+        if ($paidAmount > 0 && ! $team) {
             // Gateway money lands as one row; a cash balance is a second row the
             // desk records when the player settles at the counter.
             $isOnline = $booking->payment_method !== 'Cash at Venue' && $booking->payment_method !== 'Free Play 🎁';
@@ -1795,7 +1804,8 @@ class RealWorldSeeder extends Seeder
         }
 
         // Extras: water, bibs, a second ball — the small lines on a real bill.
-        if ($index % 7 === 2) {
+        // A squad bill is the shares, nothing on top, so both stay equal.
+        if (! $team && $index % 7 === 2) {
             BookingExtra::firstOrCreate(
                 ['booking_id' => $booking->id, 'label' => 'Water and bib hire'],
                 [
@@ -1805,7 +1815,7 @@ class RealWorldSeeder extends Seeder
             );
         }
 
-        if ($index % 11 === 5) {
+        if (! $team && $index % 11 === 5) {
             BookingExtra::firstOrCreate(
                 ['booking_id' => $booking->id, 'label' => 'Extra match ball'],
                 [
@@ -1835,31 +1845,61 @@ class RealWorldSeeder extends Seeder
         $baseShare = intdiv((int) $price, $count);
         $remainder = max(0, (int) $price - $baseShare * $count);
 
+        // The squad's planned online method. A settled share names how the
+        // money actually moved — online (it reached the venue), or cash in
+        // the captain's pocket.
+        $onlineMethod = in_array($booking->payment_method, ['eSewa', 'Khalti'], true)
+            ? $booking->payment_method
+            : null;
+
+        $collected = 0;
+
         foreach ($memberIds as $position => $memberId) {
             $share = $baseShare + ($remainder-- > 0 ? 1 : 0);
             $isBooker = $memberId === (int) $booking->user_id;
 
-            // The captain's row is settled; the rest depends on how the night
-            // went — a finished game is paid, an upcoming one is not.
+            // A finished game is settled; on a confirmed one the two members
+            // beside the booker have handed in theirs. The booker settles
+            // their own share in the app — the row is left open on purpose so
+            // the flow can actually be exercised.
             $settled = $status === 'completed'
                 ? true
-                : ($status === 'confirmed' && $position < 2);
+                : ($status === 'confirmed' && $position < 2 && ! $isBooker);
 
-            BookingTeamPayment::firstOrCreate(
+            $method = $settled && $share > 0 ? ($onlineMethod ?? 'Cash at Venue') : '';
+
+            $row = BookingTeamPayment::firstOrCreate(
                 ['booking_id' => $booking->id, 'user_id' => $memberId],
                 [
                     'team_id' => $team->id,
                     'amount_due' => $share,
-                    'payment_method' => $settled && $isBooker
-                        ? ($position % 2 === 0 ? 'eSewa' : 'Cash at Venue')
-                        : '',
+                    'payment_method' => $method,
                     'payment_status' => $share === 0 || $settled ? 'paid' : 'pending',
                     'paid_amount' => ($share === 0 || $settled) ? $share : 0,
-                    'gateway_txn_id' => $settled && $isBooker && $position % 2 === 0
+                    'gateway_txn_id' => $settled && $share > 0 && $onlineMethod !== null
                         ? 'SEED-TEAM-'.$booking->id.'-'.$position
                         : '',
                 ]
             );
+
+            if ($row->payment_status === 'paid' && (int) $row->paid_amount > 0) {
+                $collected += (int) $row->paid_amount;
+
+                // Online share money has already reached the venue — the same
+                // fact the gateway writes live, so the desk's ledger shows it.
+                if ($onlineMethod !== null) {
+                    BookingPayment::firstOrCreate(
+                        ['booking_id' => $booking->id, 'reference' => 'SEED-TEAM-'.$booking->id.'-'.$position],
+                        [
+                            'amount' => (int) $row->paid_amount,
+                            'method' => $onlineMethod,
+                            'note' => 'Squad share settled online.',
+                            'source' => 'gateway',
+                            'recorded_by' => (int) $memberId,
+                        ]
+                    );
+                }
+            }
 
             // Someone still owing their share gets a request naming the game.
             if ($status === 'pending' && ! $settled && $position === 3) {
@@ -1875,6 +1915,50 @@ class RealWorldSeeder extends Seeder
                     ]
                 );
             }
+        }
+
+        // A finished game on a cash plan still ends with the venue holding
+        // the money — the desk collects it after the whistle.
+        if ($status === 'completed' && $onlineMethod === null && $collected > 0) {
+            BookingPayment::firstOrCreate(
+                ['booking_id' => $booking->id, 'reference' => 'SEED-TEAM-'.$booking->id.'-DESK'],
+                [
+                    'amount' => (int) $price,
+                    'method' => 'Cash at Venue',
+                    'note' => 'Squad shares collected at the desk after the game.',
+                    'source' => 'owner',
+                    'recorded_by' => $owner->id,
+                ]
+            );
+        }
+
+        // A cancelled squad game: the venue already had the money, and the
+        // cancellation snapshot says what happened to it.
+        if ($status === 'cancelled' && $price > 0) {
+            BookingPayment::firstOrCreate(
+                ['booking_id' => $booking->id, 'reference' => 'SEED-TEAM-'.$booking->id.'-DESK'],
+                [
+                    'amount' => (int) $price,
+                    'method' => $onlineMethod ?? 'Cash at Venue',
+                    'note' => 'Squad balance collected at the desk.',
+                    'source' => $onlineMethod !== null ? 'gateway' : 'owner',
+                    'recorded_by' => $owner->id,
+                ]
+            );
+        }
+
+        // The booking's money columns follow the squad — every settled share
+        // counts, whatever pocket the money is in. The gateway uses the same
+        // convention, so a re-run and a live payment agree. Cancelled and
+        // rejected rows keep their creation values: the cancellation snapshot
+        // owns that money story.
+        if (! in_array($status, ['cancelled', 'rejected'], true)) {
+            $booking->forceFill([
+                'paid_amount' => min((int) $price, $collected),
+                'payment_status' => $price > 0
+                    ? ($collected >= (int) $price ? 'paid' : ($collected > 0 ? 'pending' : $booking->payment_status))
+                    : $booking->payment_status,
+            ])->save();
         }
     }
 

@@ -297,14 +297,20 @@ export default function BookingsScreen() {
       if (overrideMethod && b.advancePaymentRequired && b.advancePaymentStatus !== "paid") {
         await patchBooking(b.id, { paymentMethod: method, actor: "player", actorId: user?.id });
       }
+      // On a team booking the member settles their own share — never the
+      // squad's whole balance, which belongs to the other members too.
+      const myShare = user ? b.teamPayments?.find((item) => item.userId === user.id) : undefined;
+      const shareOutstanding = myShare ? Math.max(0, (myShare.amountDue ?? 0) - (myShare.paidAmount ?? 0)) : 0;
+      const payingMyShare = Boolean(myShare && myShare.paymentStatus !== "paid" && shareOutstanding > 0);
       const amount = Math.max(0, b.advancePaymentRequired && b.advancePaymentStatus !== "paid"
         ? b.advancePaymentAmount ?? 0
         : b.depositRequired && b.depositStatus !== "paid"
           ? b.depositAmount ?? 0
-          : moneyOf(b).balance);
+          : payingMyShare ? shareOutstanding : moneyOf(b).balance);
+      const shareQuery = payingMyShare ? `&teamPaymentId=${myShare!.id}` : "";
       const path = method === "eSewa"
-        ? `/payment/esewa/mock?bookingId=${b.id}&amount=${encodeURIComponent(String(amount))}&userId=${user?.id ?? 0}`
-        : `/payment/khalti/mock?bookingId=${b.id}&amount=${encodeURIComponent(String(amount))}&pidx=mock-pidx&userId=${user?.id ?? 0}`;
+        ? `/payment/esewa/mock?bookingId=${b.id}&amount=${encodeURIComponent(String(amount))}&userId=${user?.id ?? 0}${shareQuery}`
+        : `/payment/khalti/mock?bookingId=${b.id}&amount=${encodeURIComponent(String(amount))}&pidx=mock-pidx&userId=${user?.id ?? 0}${shareQuery}`;
       router.push(path as never);
     } catch (e) {
       setPayError(e instanceof Error ? e.message : "Could not start the payment");
@@ -352,7 +358,7 @@ export default function BookingsScreen() {
   /** Specs may say "pending" before wallet capture; treat like unpaid. */
   return (
     (b.advancePaymentRequired && b.advancePaymentStatus !== "paid") ||
-    moneyOf(b).status === "pending" ||
+    (user ? b.teamPayments?.some((item) => item.userId === user.id && item.paymentStatus !== "paid") : moneyOf(b).status === "pending") ||
     (!!b.depositRequired && b.depositStatus !== "paid")
   );
   }
@@ -363,6 +369,10 @@ export default function BookingsScreen() {
     }
     if (b.depositRequired && b.depositStatus !== "paid") {
       return `Pay ${formatNPR(b.depositAmount ?? 0)} deposit 🛡️`;
+    }
+    const myShare = user ? b.teamPayments?.find((item) => item.userId === user.id) : undefined;
+    if (myShare && myShare.paymentStatus !== "paid") {
+      return `Pay my share ${formatNPR(Math.max(0, (myShare.amountDue ?? 0) - (myShare.paidAmount ?? 0)))} 💳`;
     }
     return `Pay ${formatNPR(moneyOf(b).balance)} balance 💳`;
   }

@@ -195,6 +195,8 @@ export default function BookingDetail() {
   // looks at the players' shares (captain or venue — both settle the player),
   // not the venue's desk ledger alone.
   const money = moneyOf(booking);
+  const isTeamBooking = (booking.teamPayments?.length ?? 0) > 0;
+  const squadDue = money.received + money.balance;
   const teamShare = booking.teamPayments?.find((share) => share.userId === user?.id) ?? null;
   const advanceDue = booking.status !== "cancelled" && booking.status !== "rejected" && booking.advancePaymentRequired && booking.advancePaymentStatus !== "paid" ? booking.advancePaymentAmount ?? 0 : 0;
   const competitionWaiting = booking.competition?.competitionStatus === "pending";
@@ -478,11 +480,19 @@ export default function BookingDetail() {
             <MoneyRow key={`x${x.id}`} label={x.label} value={formatNPR(x.amount)} colors={colors} />
           ))}
           <View style={[styles.divider, { backgroundColor: colors.border }]} />
+          {isTeamBooking ? (
+            <MoneyRow
+              label="Squad shares"
+              value={formatNPR(money.received) + " of " + formatNPR(squadDue)}
+              colors={colors}
+              tone={money.balance === 0 ? "credit" : "due"}
+            />
+          ) : null}
           <MoneyRow label="Owed" value={formatNPR(totals.owed)} colors={colors} />
           <MoneyRow label="Paid" value={formatNPR(totals.paid)} colors={colors} />
           <View style={[styles.divider, { backgroundColor: colors.border }]} />
           <MoneyRow
-            label={balance > 0 ? "Balance due" : "Surplus"}
+            label={balance > 0 ? (isTeamBooking ? "Venue balance" : "Balance due") : "Surplus"}
             value={formatNPR(balance > 0 ? balance : totals.surplus)}
             colors={colors}
             strong

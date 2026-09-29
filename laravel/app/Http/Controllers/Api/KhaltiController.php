@@ -371,7 +371,6 @@ class KhaltiController extends ApiController
             'paid_amount' => $newPaid,
             'advance_payment_status' => $payingAdvance ? 'paid' : $booking->advance_payment_status,
             // Once the advance is covered the rest is cash at the desk.
-            'payment_method' => $payingAdvance && $newPaid < (int) $booking->total_price ? 'Cash at Venue' : $booking->payment_method,
             'deposit_status' => (bool) $booking->deposit_required && $newPaid >= (int) $booking->deposit_amount
                 ? 'paid'
                 : $booking->deposit_status,
@@ -429,6 +428,7 @@ class KhaltiController extends ApiController
 
         $teamPayment->forceFill([
             'payment_status' => 'paid',
+            'payment_method' => 'Khalti',
             'paid_amount' => $amount,
             'gateway_txn_id' => mb_substr($reference, 0, 100),
         ])->save();
@@ -455,7 +455,6 @@ class KhaltiController extends ApiController
                 ? 'paid'
                 : $booking->deposit_status,
             'advance_payment_status' => (bool) $booking->advance_payment_required ? ($advancePaid ? 'paid' : 'pending') : 'none',
-            'payment_method' => $advancePaid && $paidTotal < (int) $booking->total_price ? 'Cash at Venue' : $booking->payment_method,
             'gateway_txn_id' => mb_substr($reference, 0, 100),
         ])->save();
 
@@ -509,9 +508,6 @@ class KhaltiController extends ApiController
             'paid_amount' => $newPaid,
             'payment_status' => $newPaid >= (int) $booking->total_price ? 'paid' : 'pending',
             'advance_payment_status' => (bool) $booking->advance_payment_required ? ($advancePaid ? 'paid' : 'pending') : 'none',
-            'payment_method' => $request->purpose === 'advance' && $newPaid < (int) $booking->total_price
-                ? 'Cash at Venue'
-                : $booking->payment_method,
         ])->save();
 
         LedgerRecord::recordGatewayPayment([
