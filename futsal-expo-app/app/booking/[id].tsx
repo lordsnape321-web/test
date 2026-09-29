@@ -1,4 +1,4 @@
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import React, { useCallback, useEffect, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -92,6 +92,13 @@ export default function BookingDetail() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  // Refresh ledger/booking when returning from payment screen
+  useFocusEffect(
+    useCallback(() => {
+      void load();
+    }, [bookingId, user?.id])
+  );
 
   /**
    * Pay via a gateway.
