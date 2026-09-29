@@ -911,6 +911,8 @@ export type PlayerDossier = {
   matches: {
     organized: PlayerMatchRow[];
     joined: PlayerMatchRow[];
+    /** Finished games, newest first — where a recorded payment shows up. */
+    played?: PlayerMatchRow[];
   };
   myQueue: Array<{
     kind: "request" | "invite";
@@ -954,6 +956,12 @@ export type PlayerMatchRow = {
   endTime: string;
   level: string;
   status: string;
+  /** The price on the listing — a quote, not a receipt. */
   pricePerPlayer: number;
+  /**
+   * What the owner actually recorded this player handing over for the game,
+   * or null when no payment has been recorded yet.
+   */
+  amountPaid: number | null;
   venueName: string;
 };

@@ -96,6 +96,27 @@ class BookingPresenter
             ? []
             : TeamMember::whereIn('team_id', $teamIds)->get()->groupBy('team_id')->all();
 
+        // The squad behind each booking, not just the person who booked it.
+        //
+        // `teamPlayers`, `teamPayments` and `paymentRequests` all name people
+        // through this map, but it was loaded from the bookings' own user_ids —
+        // which is the booker and nobody else. A captain's teammates were
+        // therefore unresolvable and fell through to "Player", so "Ask a
+        // teammate to pay" offered a row of identical nameless buttons and
+        // nobody could tell who they were asking. One extra query for the
+        // member ids that are not already in hand; the bookers are kept.
+        $memberIds = collect($membersByTeam)
+            ->flatten(1)
+            ->map(fn (TeamMember $member) => (int) $member->user_id)
+            ->unique()
+            ->diff($userIds)
+            ->values()
+            ->all();
+
+        if ($memberIds !== []) {
+            $users = $users->union(User::whereIn('id', $memberIds)->get()->keyBy('id'));
+        }
+
         $tournamentIds = $rows->pluck('tournament_id')->filter()->unique()->values()->all();
         $tournaments = $tournamentIds === [] ? collect() : Tournament::whereIn('id', $tournamentIds)->get()->keyBy('id');
 

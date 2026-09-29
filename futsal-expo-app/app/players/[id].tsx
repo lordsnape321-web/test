@@ -7,6 +7,7 @@ import {
   Hash,
   MapPin,
   MessageSquare,
+  Receipt,
   Send,
   Shield,
   ShieldAlert,
@@ -34,7 +35,7 @@ import { ReviewScroller } from "@/components/Reviews";
 import { Spinner } from "@/components/ui";
 import { useAuth } from "@/context/AuthContext";
 import { useTheme } from "@/context/ThemeContext";
-import { initials } from "@/lib/futsal";
+import { formatNPR, initials } from "@/lib/futsal";
 import { timeAgo } from "@/lib/time";
 import type { PlayerDossier, PlayerMatchRow } from "@/lib/types";
 import { colors as tokens, fontSize, radius, space } from "@/theme";
@@ -498,6 +499,17 @@ export default function PlayerDossierScreen() {
           </Text>
           <MatchList rows={data.matches.joined} empty="Nothing on the calendar yet." />
         </View>
+        {data.matches.played && data.matches.played.length > 0 ? (
+          <View style={[styles.card, { backgroundColor: c.surface, borderColor: c.border }]}>
+            <Text style={[styles.sectionTitle, { color: c.textMuted }]}>
+              <Receipt size={14} color={c.textMuted} /> Games played
+            </Text>
+            <Text style={[styles.hint, { color: c.textFaint }]}>
+              What the owner recorded for each finished game.
+            </Text>
+            <MatchList rows={data.matches.played} empty="" />
+          </View>
+        ) : null}
 
         {/* ------------------------------------------------------- reviews */}
         <View style={[styles.card, { backgroundColor: c.surface, borderColor: c.border }]}>
@@ -562,6 +574,11 @@ function MatchList({ rows, empty }: { rows: PlayerMatchRow[]; empty: string }) {
               {m.startTime}–{m.endTime}
               {m.venueName ? ` • ${m.venueName}` : ""} • Rs. {m.pricePerPlayer}
             </Text>
+            {m.amountPaid != null ? (
+              <Text style={[styles.matchPaid, { color: c.successText }]} numberOfLines={1}>
+                Paid {formatNPR(m.amountPaid)}
+              </Text>
+            ) : null}
           </View>
           <Pressable onPress={() => router.push("/(app)/matches")}>
             <Text style={styles.matchLink}>open match</Text>
@@ -864,6 +881,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   dateChipText: { fontSize: 10, fontWeight: "900" },
+  matchPaid: { fontSize: fontSize.xs, fontWeight: "800", marginTop: 2 },
   matchTitle: { fontSize: fontSize.sm, fontWeight: "900" },
   matchMeta: { fontSize: 10, fontWeight: "600", marginTop: 1 },
   matchLink: {

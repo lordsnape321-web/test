@@ -65,7 +65,7 @@ export default function TeamLedgerPanel({
   onClose,
   onChanged,
 }: Props) {
-  const { c, isDark } = useTheme();
+  const { colors: c, isDark } = useTheme();
 
   const [ledger, setLedger] = useState<TeamLedger | null>(null);
   const [error, setError] = useState("");

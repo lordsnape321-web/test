@@ -2,6 +2,8 @@
 
 namespace App\Support;
 
+use App\Models\BookingPayment;
+use App\Models\BookingTeamPayment;
 use App\Models\MatchJoin;
 use App\Models\OpenMatch;
 use App\Models\Review;
@@ -646,7 +648,7 @@ class TeamStore
     public static function playerMatchActivity(int $userId): array
     {
         if ($userId <= 0) {
-            return ['organized' => [], 'joined' => []];
+            return ['organized' => [], 'joined' => [], 'played' => []];
         }
 
         $allMatches = OpenMatch::all();
@@ -662,6 +664,37 @@ class TeamStore
             ->all();
         $today = now()->toDateString();
 
+        // What the player actually handed over, per game.
+        //
+        // `price_per_player` is the price on the listing, which is a quote and
+        // not a receipt — the owner records what was really taken once the
+        // game is done, and until that happens the player has no way to see
+        // their own history reconcile. A game can be paid two ways: a team
+        // booking, where each member's share sits in `booking_team_payments`,
+        // and a solo booking, where the venue's ledger holds the instalments.
+        // Both are read here, and the team share wins when a game has both.
+        $bookingIds = $allMatches->pluck('booking_id')->filter()->unique()->values()->all();
+
+        $paidByBooking = $bookingIds === [] ? [] : BookingPayment::whereIn('booking_id', $bookingIds)
+            ->whereNull('voided_at')
+            ->get()
+            ->groupBy('booking_id')
+            ->map(fn ($rows) => (int) $rows->sum('amount'))
+            ->all();
+
+        $sharePaid = $bookingIds === [] ? [] : BookingTeamPayment::whereIn('booking_id', $bookingIds)
+            ->where('user_id', $userId)
+            ->get()
+            ->keyBy('booking_id')
+            ->map(fn (BookingTeamPayment $row) => (int) $row->paid_amount)
+            ->all();
+
+        $amountPaid = fn (OpenMatch $m) => $m->booking_id == null
+            ? 0
+            : ((int) ($sharePaid[$m->booking_id] ?? 0) > 0
+                ? (int) $sharePaid[$m->booking_id]
+                : (int) ($paidByBooking[$m->booking_id] ?? 0));
+
         $shape = fn (OpenMatch $m) => [
             'id' => $m->id,
             'title' => $m->title,
@@ -671,15 +704,36 @@ class TeamStore
             'level' => $m->level,
             'status' => $m->status,
             'pricePerPlayer' => (int) $m->price_per_player,
+            // Null until the owner records the payment, so the games list can
+            // say "not recorded yet" rather than implying the player owes it.
+            'amountPaid' => $amountPaid($m) > 0 ? $amountPaid($m) : null,
             'venueName' => $venues->get((int) $m->venue_id)?->name ?? '',
         ];
 
         $upcoming = fn (OpenMatch $m) => (string) $m->date >= $today
             && in_array($m->status, ['open', 'confirmed'], true);
 
+        // A game is over once its date has passed, whatever the status column
+        // still says. Keying off the date rather than a status value means a
+        // listing left at "confirmed" does not quietly hide a match that has
+        // already been paid for.
+        $over = fn (OpenMatch $m) => (string) $m->date < $today
+            && ! in_array($m->status, ['cancelled', 'declined'], true);
+
+        $involved = fn (OpenMatch $m) => (int) $m->organizer_id === $userId
+            || in_array((int) $m->id, $joinedIds, true);
+
         return [
             'organized' => $allMatches->filter(fn (OpenMatch $m) => (int) $m->organizer_id === $userId && $upcoming($m))->map($shape)->values()->all(),
             'joined' => $allMatches->filter(fn (OpenMatch $m) => in_array((int) $m->id, $joinedIds, true) && $upcoming($m))->map($shape)->values()->all(),
+            // Played games are where the money actually lands — the owner
+            // records a payment once the game is done — so without this the
+            // amount a player paid was recorded but never shown back to them.
+            'played' => $allMatches->filter(fn (OpenMatch $m) => $involved($m) && $over($m))
+                ->sortByDesc(fn (OpenMatch $m) => (string) $m->date)
+                ->map($shape)
+                ->values()
+                ->all(),
         ];
     }
 }
