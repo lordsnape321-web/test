@@ -270,7 +270,19 @@ export default function BookingDetail() {
           />
         </View>
         <View style={styles.paymentLabels}>
-          <Text style={[styles.paymentLabel, { color: colors.textMuted }]}>Payment method: {paymentMethodLabel(booking.paymentMethod)}</Text>
+          {/*
+            Team games are paid per player, so the booking-level method (the
+            booker's original choice) is wrong to show — it stayed "Cash at
+            venue" long after a player paid eSewa. Show the method on the
+            player's own share instead, which is what they actually paid with.
+          */}
+          <Text style={[styles.paymentLabel, { color: colors.textMuted }]}>
+            Payment method: {isTeamBooking
+              ? (teamShare?.paymentMethod
+                  ? `${paymentMethodLabel(teamShare.paymentMethod)} (your share)`
+                  : "Per player — see team details")
+              : paymentMethodLabel(booking.paymentMethod)}
+          </Text>
           <Text style={[styles.paymentLabel, { color: colors.textMuted }]}>Payment status: {money.label}</Text>
         </View>
 
