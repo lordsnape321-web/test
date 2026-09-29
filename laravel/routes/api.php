@@ -18,6 +18,7 @@ use App\Http\Controllers\Api\SeedController;
 use App\Http\Controllers\Api\StatsController;
 use App\Http\Controllers\Api\TeamController;
 use App\Http\Controllers\Api\TeamInviteController;
+use App\Http\Controllers\Api\TeamLedgerController;
 use App\Http\Controllers\Api\TeamPaymentController;
 use App\Http\Controllers\Api\TournamentController;
 use App\Http\Controllers\Api\TournamentMatchController;
@@ -81,6 +82,11 @@ Route::post('/bookings/{id}/ledger', [LedgerController::class, 'store'])->whereN
 // Each member's share of a team booking.
 Route::get('/bookings/{id}/team-payments', [TeamPaymentController::class, 'index'])->whereNumber('id');
 Route::post('/bookings/{id}/team-payments', [TeamPaymentController::class, 'store'])->whereNumber('id');
+
+// The captain's own ledger: what each squad member has handed over, and by
+// which medium. Separate from the venue's ledger on purpose — see TeamLedgerController.
+Route::get('/bookings/{id}/team-ledger', [TeamLedgerController::class, 'show'])->whereNumber('id');
+Route::post('/bookings/{id}/team-ledger', [TeamLedgerController::class, 'store'])->whereNumber('id');
 
 // A captain's directed request for a teammate to pay the venue.
 Route::get('/bookings/{id}/payment-requests', [PaymentRequestController::class, 'index'])->whereNumber('id');

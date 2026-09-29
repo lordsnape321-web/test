@@ -50,6 +50,7 @@ import { PlayerRatingBadge } from "@/components/PlayerRating";
 import { ReceiptUploader, ReceiptViewer, isOnlineMethod } from "@/components/ReceiptUploader";
 import { StarInput } from "@/components/Reviews";
 import { Button, Notice, Pill, Spinner } from "@/components/ui";
+import TeamLedgerPanel from "@/components/TeamLedgerPanel";
 import { useAuth } from "@/context/AuthContext";
 import { useTheme } from "@/context/ThemeContext";
 import { hoursUntilGame, type PlayerStats } from "@/lib/loyalty";
@@ -148,6 +149,8 @@ export default function BookingsScreen() {
   const [teamMethodFor, setTeamMethodFor] = useState<number | null>(null);
   const [teamMethod, setTeamMethod] = useState<"eSewa" | "Khalti" | "Cash at Venue">("eSewa");
   const [teamSaving, setTeamSaving] = useState<number | null>(null);
+  // Which booking's squad ledger the captain has open, if any.
+  const [ledgerFor, setLedgerFor] = useState<number | null>(null);
 
   const load = useCallback(async (refresh = false) => {
     if (!user) return;
@@ -713,6 +716,8 @@ export default function BookingsScreen() {
                   const share = b.teamPayments?.find((item) => item.userId === user?.id);
                   if (share) payTeamShare(b, share);
                 }}
+                isTeamCaptain={!!user && b.userId === user.id && !!b.teamName}
+                onOpenTeamLedger={() => setLedgerFor(b.id)}
                 payLabel={payLabel(b)}
                 onOpenReceipt={() => setViewReceipt(b.receiptUrl ?? "")}
                 onToggleUpload={() =>
@@ -753,6 +758,15 @@ export default function BookingsScreen() {
         )}
       </ScrollView>
       {viewReceipt ? <ReceiptViewer url={viewReceipt} onClose={() => setViewReceipt(null)} /> : null}
+      {ledgerFor != null && user ? (
+        <TeamLedgerPanel
+          bookingId={ledgerFor}
+          actorId={user.id}
+          bookingLabel={filtered.find((x) => x.id === ledgerFor)?.teamName ?? ""}
+          onClose={() => setLedgerFor(null)}
+          onChanged={() => void load()}
+        />
+      ) : null}
     </SafeAreaView>
   );
 }
@@ -784,6 +798,9 @@ function BookingCard({
   onTeamMethodChange,
   onSaveTeamMethod,
   onPayTeamShare,
+  /** True when this booking's player is the captain of the squad. */
+  isTeamCaptain,
+  onOpenTeamLedger,
   payLabel,
   onOpenReceipt,
   onToggleUpload,
@@ -828,6 +845,8 @@ function BookingCard({
   onTeamMethodChange: (method: "eSewa" | "Khalti" | "Cash at Venue") => void;
   onSaveTeamMethod: () => void;
   onPayTeamShare: () => void;
+  isTeamCaptain: boolean;
+  onOpenTeamLedger: () => void;
   payLabel: string;
   onOpenReceipt: () => void;
   onToggleUpload: () => void;
@@ -1052,6 +1071,29 @@ function BookingCard({
                   ) : null}
                 </>
               )}
+            </View>
+          ) : null}
+          {b.teamName && isTeamCaptain ? (
+            <View style={[styles.teamPaymentCard, { backgroundColor: isDark ? "rgba(16,185,129,0.12)" : "#F0FDF4", borderColor: isDark ? "rgba(52,211,153,0.25)" : "#BBF7D0" }]}>
+              <View style={styles.teamPaymentHead}>
+                <View style={styles.grow}>
+                  <Text style={[styles.teamPaymentTitle, { color: isDark ? "#A7F3D0" : "#065F46" }]}>👑 Captain&apos;s ledger</Text>
+                  <Text style={[styles.teamPaymentHint, { color: muted }]}>
+                    You fronted this booking, so keep the squad honest: record who handed over
+                    what, in cash or by wallet, and watch what is still outstanding.
+                  </Text>
+                </View>
+              </View>
+              <View style={styles.teamPaymentActions}>
+                <Pressable
+                  onPress={onOpenTeamLedger}
+                  style={[styles.chip, { backgroundColor: surface, borderWidth: 1, borderColor: border }]}
+                  accessibilityRole="button"
+                  accessibilityLabel="Open the squad ledger"
+                >
+                  <Text style={[styles.chipText, { color: text }]}>Open squad ledger</Text>
+                </Pressable>
+              </View>
             </View>
           ) : null}
           {b.teamName && teamShare ? (

@@ -158,6 +158,11 @@ export type Booking = {
     teamId: number;
     userId: number;
     payerName?: string;
+    userName?: string;
+    userAvatarColor?: string;
+    userAvatarUrl?: string;
+    userLevel?: string;
+    isBookingCaptain?: boolean;
     amountDue: number;
     paymentMethod: string;
     paymentStatus: string;
@@ -344,6 +349,55 @@ export type LedgerTeamPayment = {
   paymentStatus: string;
   paidAmount: number;
   gatewayTxnId: string;
+};
+
+/* ── the captain's ledger ───────────────────────────────────────────────── */
+
+/**
+ * One line in a captain's ledger: "this squad member handed over this much,
+ * in this medium, on this date". `recordedByName` is the captain who keyed it
+ * in. Mirrors `team_ledger_entries` on the server.
+ */
+export type TeamLedgerEntry = {
+  id: number;
+  userId: number;
+  userName: string;
+  amount: number;
+  method: string;
+  note: string;
+  recordedByName: string;
+  createdAt: string | null;
+};
+
+/**
+ * A squad member as the captain sees them: their real name from the users
+ * table, what they owe, and what they have actually handed over.
+ */
+export type TeamLedgerMember = {
+  shareId: number;
+  userId: number;
+  userName: string;
+  userAvatarColor: string;
+  userAvatarUrl: string;
+  userLevel: string;
+  isYou: boolean;
+  amountDue: number;
+  collected: number;
+  outstanding: number;
+  status: string;
+  declaredMethod: string;
+  entries: TeamLedgerEntry[];
+};
+
+export type TeamLedger = {
+  bookingId: number;
+  date: string;
+  teamId: number;
+  teamName: string;
+  isCaptain: boolean;
+  actorId: number;
+  members: TeamLedgerMember[];
+  totals: { due: number; collected: number; outstanding: number };
 };
 
 export type Ledger = {

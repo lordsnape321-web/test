@@ -3,6 +3,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { BookingVenueName } from "@/components/BookingVenueName";
+import TeamLedgerPanel from "@/components/TeamLedgerPanel";
 import { Button, Card, Field, Notice, Pill, Spinner } from "@/components/ui";
 import {
   chooseBookingPayment,
@@ -54,6 +55,8 @@ export default function BookingDetail() {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  // The captain's own money ledger for this team booking.
+  const [squadLedgerOpen, setSquadLedgerOpen] = useState(false);
   const [requestPayerIds, setRequestPayerIds] = useState<string[]>([]);
   const [requestAmount, setRequestAmount] = useState("");
   const [requestNote, setRequestNote] = useState("");
@@ -326,6 +329,14 @@ export default function BookingDetail() {
               </View>
               <Text style={[styles.expandText, { color: colors.textMuted }]}>{teamDetailsOpen ? "Hide" : "Open"}</Text>
             </Pressable>
+            {user ? (
+              <Button
+                label="Open squad ledger"
+                variant="secondary"
+                onPress={() => setSquadLedgerOpen(true)}
+                style={{ marginTop: space["2"] }}
+              />
+            ) : null}
             {teamDetailsOpen ? (
               <View style={styles.teamDetailsBody}>
                 <Text style={[styles.subTitle, { color: colors.textMuted }]}>Payment choices by player</Text>
@@ -481,6 +492,15 @@ export default function BookingDetail() {
           />
         )}
       </ScrollView>
+      {squadLedgerOpen && user ? (
+        <TeamLedgerPanel
+          bookingId={bookingId}
+          actorId={user.id}
+          bookingLabel={booking?.teamName ?? ""}
+          onClose={() => setSquadLedgerOpen(false)}
+          onChanged={() => void load()}
+        />
+      ) : null}
     </SafeAreaView>
   );
 }

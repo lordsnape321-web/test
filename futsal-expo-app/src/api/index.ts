@@ -18,6 +18,7 @@ import type {
   TeamCard,
   TeamDetail,
   TeamInvite,
+  TeamLedger,
   TeamRosterRow,
   TeamSearchHit,
   TeamSentInvite,
@@ -436,6 +437,41 @@ export function verifyKhalti(
   return apiJson("/api/payments/khalti/verify", {
     method: "POST",
     json: { bookingId, pidx, mockApprove, teamPaymentId, paymentRequestId, userId },
+  });
+}
+
+/* ── the captain's ledger ───────────────────────────────────────────────── */
+
+/**
+ * GET /api/bookings/:id/team-ledger → every squad member with their real
+ * name, their share, and what they have actually handed over.
+ *
+ * Nothing here is assembled on the device: the names come from the users
+ * table, the amounts from `booking_team_payments`, and the lines from
+ * `team_ledger_entries`. The panel renders this and nothing else.
+ */
+export function fetchTeamLedger(
+  bookingId: number,
+  actorId: number,
+): Promise<TeamLedger> {
+  return apiJson(`/api/bookings/${bookingId}/team-ledger?actorId=${actorId}`);
+}
+
+/**
+ * POST /api/bookings/:id/team-ledger — { action: "collect" | "void", ... }.
+ *
+ * `collect` is how a captain says "teammate X just handed me this much, in
+ * cash", which the server writes to the database and reflects on that
+ * member's share. `void` takes back a line keyed in by mistake; the row is
+ * kept and marked voided, so the trail survives.
+ */
+export function teamLedgerAction(
+  bookingId: number,
+  body: Record<string, unknown>,
+): Promise<{ ledger?: TeamLedger; message?: string; error?: string }> {
+  return apiJson(`/api/bookings/${bookingId}/team-ledger`, {
+    method: "POST",
+    json: body,
   });
 }
 

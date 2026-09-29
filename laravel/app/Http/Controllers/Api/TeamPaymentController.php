@@ -55,7 +55,17 @@ class TeamPaymentController extends ApiController
 
         $rows = BookingTeamPayment::where('booking_id', $id)->orderBy('id')->get();
 
-        return $this->ok(['teamPayments' => $rows->map(fn (BookingTeamPayment $row) => $this->view($row))->all()]);
+        // One query for the whole squad's names, rather than one per row.
+        $people = User::whereIn('id', $rows->pluck('user_id')->all())
+            ->get()
+            ->keyBy('id')
+            ->all();
+
+        return $this->ok([
+            'teamPayments' => $rows->map(
+                fn (BookingTeamPayment $row) => $this->view($row, $people, (int) $row->user_id === $viewerId)
+            )->all(),
+        ]);
     }
 
     /** POST — record a member's chosen method for their share. */
@@ -117,7 +127,7 @@ class TeamPaymentController extends ApiController
         }
 
         if ($row->payment_status === 'paid') {
-            return $this->ok(['teamPayment' => $this->view($row)]);
+            return $this->ok(['teamPayment' => $this->view($row, $this->people([$row]), (int) $row->user_id === $userId)]);
         }
 
         $amountDue = (int) $row->amount_due;
@@ -144,21 +154,36 @@ class TeamPaymentController extends ApiController
         }
 
         return $this->ok([
-            'teamPayment' => $this->view($next),
+            'teamPayment' => $this->view($next, $this->people([$next]), (int) $next->user_id === $userId),
             'online' => in_array($method, Loyalty::ONLINE_PAYMENTS, true),
         ]);
     }
 
     /**
+     * The share rows, with the player they belong to.
+     *
+     * The name has to be resolved here, from the users table. The row only
+     * stores a user_id, and a client asked to show "who still owes what" had
+     * no way to turn that into a person — so it fell back to a generic label
+     * and the captain was looking at "Player" instead of their squad.
+     *
+     * @param  array<int, \Illuminate\Database\Eloquent\Model>  $people
      * @return array<string, mixed>
      */
-    private function view(BookingTeamPayment $row): array
+    private function view(BookingTeamPayment $row, array $people = [], bool $isCaptain = false): array
     {
+        $person = $people[(int) $row->user_id] ?? null;
+
         return [
             'id' => $row->id,
             'bookingId' => $row->booking_id,
             'teamId' => $row->team_id,
             'userId' => $row->user_id,
+            'userName' => $person?->name ?? 'Player',
+            'userAvatarColor' => $person?->avatar_color ?? '#10B981',
+            'userAvatarUrl' => $person?->avatar_url ?? '',
+            'userLevel' => $person?->level ?? '',
+            'isBookingCaptain' => $isCaptain,
             'amountDue' => (int) $row->amount_due,
             'paymentMethod' => $row->payment_method,
             'paymentStatus' => $row->payment_status,
@@ -167,6 +192,20 @@ class TeamPaymentController extends ApiController
             'esewaUuid' => $row->esewa_uuid,
             'khaltiPidx' => $row->khalti_pidx,
         ];
+    }
+
+    /**
+     * @param  array<int, mixed>  $rows
+     * @return array<int, \App\Models\User>
+     */
+    private function people(array $rows): array
+    {
+        $ids = array_values(array_unique(array_map(
+            fn ($row) => (int) $row->user_id,
+            $rows
+        )));
+
+        return User::whereIn('id', $ids)->get()->keyBy('id')->all();
     }
 
     private function venueOf(Booking $booking): ?Venue
