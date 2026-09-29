@@ -6,4 +6,4 @@
  * bundle (old Metro process, cached Expo Go build) is visible in the app
  * itself instead of being indistinguishable from "the data is broken".
  */
-export const APP_BUILD = "65e681f";
+export const APP_BUILD = "7871d87";
