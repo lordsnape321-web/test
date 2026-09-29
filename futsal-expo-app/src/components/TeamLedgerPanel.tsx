@@ -43,6 +43,70 @@ type Props = {
   onClose: () => void;
   /** Fires after every successful write so the booking card can re-read. */
   onChanged?: () => void;
+};
+
+/**
+ * The captain's ledger for a team booking.
+ *
+ * A captain fronts the whole cost at the venue and then chases the squad for
+ * it, so this is the same idea as the owner's payments panel one level down:
+ * record who handed over what, in which medium, and watch the outstanding
+ * total fall.
+ *
+ * Every number and every name on this screen comes from the server —
+ * `team_ledger_entries` and `booking_team_payments`, with the people resolved
+ * from the users table. Nothing is tallied in a local array and nothing is
+ * invented on the device, so what the captain sees here is the record, and a
+ * reload or a second phone shows the same thing.
+ */
+export default function TeamLedgerPanel({
+  bookingId,
+  actorId,
+  bookingLabel,
+  onClose,
+  onChanged,
+}: Props) {
+  const { colors: c, isDark } = useTheme();
+
+  const [ledger, setLedger] = useState<TeamLedger | null>(null);
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [busy, setBusy] = useState("");
+
+  // Which squad member the form is open for, and the fields it fills in.
+  const [forId, setForId] = useState<number | null>(null);
+  const [amount, setAmount] = useState("");
+  const [method, setMethod] = useState<string>("Cash at Venue");
+  const [note, setNote] = useState("");
+
+  // A member settling their own share, rather than the captain keying it in.
+  const [selfTo, setSelfTo] = useState<"captain" | "venue" | null>(null);
+  const [selfMethod, setSelfMethod] = useState("Cash at Venue");
+
+  useEffect(() => {
+    let dead = false;
+    fetchTeamLedger(bookingId, actorId)
+      .then((data) => {
+        if (!dead) setLedger(data);
+      })
+      .catch((e) => {
+        if (!dead) setError(e instanceof Error ? e.message : "Couldn't load the squad ledger 🙏");
+      });
+    return () => {
+      dead = true;
+    };
+  }, [bookingId, actorId]);
+
+  function openFor(member: TeamLedgerMember) {
+    setForId(member.userId);
+    // Seed with what they still owe, so the common case is one tap.
+    setAmount(String(member.outstanding));
+    setMethod(METHODS[0]);
+    setNote("");
+    setSelfTo(null);
+    setError("");
+    setNotice("");
+  }
 
   function closeForm() {
     setForId(null);
