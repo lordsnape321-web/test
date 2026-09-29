@@ -172,8 +172,23 @@ return new class extends Migration
                 continue;
             }
 
-            Schema::table($child, function (Blueprint $table) use ($child, $columns) {
-                foreach ($columns as $column) {
+            // MySQL has transactional DDL turned off: a migration that fails
+            // halfway leaves the constraints that did land in place, and a
+            // plain re-run would then fail on the first one it tries to add
+            // again. Skipping what is already there makes the migration
+            // safe to re-run after a partial failure, without a full
+            // `migrate:fresh` — which matters when the database is real.
+            $missing = array_values(array_filter(
+                $columns,
+                fn (string $column) => ! $this->hasConstraint($child, "{$child}_{$column}_fk")
+            ));
+
+            if ($missing === []) {
+                continue;
+            }
+
+            Schema::table($child, function (Blueprint $table) use ($child, $missing) {
+                foreach ($missing as $column) {
                     $table->foreign($column, "{$child}_{$column}_fk")
                         ->references('id')
                         ->on($this->parentOf($child, $column))
@@ -182,6 +197,16 @@ return new class extends Migration
                 }
             });
         }
+    }
+
+    private function hasConstraint(string $table, string $constraint): bool
+    {
+        return DB::selectOne(
+            'select 1 from information_schema.TABLE_CONSTRAINTS
+             where CONSTRAINT_SCHEMA = database() and TABLE_NAME = ? and CONSTRAINT_NAME = ?
+             limit 1',
+            [$table, $constraint]
+        ) !== null;
     }
 
     /**
@@ -199,48 +224,77 @@ return new class extends Migration
         throw new \LogicException("No declared parent for {$child}.{$column}");
     }
 
+    /**
+     * Cached nullability, read once from information_schema.
+     *
+     * @var array<string, bool>
+     */
+    private array $nullable = [];
+
+    /**
+     * `ON DELETE SET NULL` is only legal on a column that accepts NULL. Asking
+     * for it on a NOT NULL column fails with errno 150, "Foreign key
+     * constraint is incorrectly formed", and the message names the constraint
+     * rather than the cause.
+     *
+     * An earlier version of this migration kept a hand-written list of which
+     * columns were optional, and that list drifted from the schema until
+     * `tournament_media.tournament_id` was declared NOT NULL and then given a
+     * SET NULL constraint. The database already knows which columns accept
+     * NULL, so it is asked rather than guessed: a nullable link unlinks
+     * cleanly, and anything else refuses to be deleted out from under a child.
+     * A hand-kept list can now only be wrong about a schema fact, which is
+     * exactly the failure being removed.
+     */
+    private function isNullable(string $child, string $column): bool
+    {
+        $key = "{$child}.{$column}";
+
+        if (! array_key_exists($key, $this->nullable)) {
+            $row = DB::selectOne(
+                'select IS_NULLABLE from information_schema.COLUMNS
+                 where TABLE_SCHEMA = database() and TABLE_NAME = ? and COLUMN_NAME = ?',
+                [$child, $column]
+            );
+
+            if ($row === null) {
+                throw new \LogicException("No such column {$key} — the schema moved and this migration did not");
+            }
+
+            $this->nullable[$key] = strtoupper((string) $row->IS_NULLABLE) === 'YES';
+        }
+
+        return $this->nullable[$key];
+    }
+
+    /**
+     * Three behaviours, chosen deliberately.
+     *
+     * A derived row carries no meaning without its parent and goes with it. A
+     * nullable link is "not connected yet" and must not block a delete. A
+     * money or identity link is never allowed to dangle: a ledger entry that
+     * outlives its payer is not a ledger entry any more.
+     */
     private function deleteBehaviour(string $child, string $column): string
     {
-        $key = "$child.$column";
-
-        if (in_array($key, self::CASCADE, true)) {
+        if (in_array("{$child}.{$column}", self::CASCADE, true)) {
             return 'cascade';
         }
 
-        return in_array($key, self::OPTIONAL, true) ? 'set null' : 'restrict';
+        return $this->isNullable($child, $column) ? 'set null' : 'restrict';
     }
 
     /**
      * Rows that are derived from their parent and carry no independent
      * meaning. A notification only describes something that happened to a user;
      * keeping it after the user is gone would show a ghost in an inbox.
+     *
+     * @var list<string>
      */
-    /** @var list<string> */
     private const CASCADE = [
         'notifications.user_id',
         'team_requests.user_id',
         'team_invites.user_id',
-    ];
-
-    /** @var list<string> */
-    private const OPTIONAL = [
-        'tournament_media.tournament_id',
-        'tournament_media.match_id',
-        'tournament_matches.court_id',
-        'tournament_matches.booking_id',
-        'tournament_matches.home_team_id',
-        'tournament_matches.away_team_id',
-        'open_matches.booking_id',
-        'bookings.team_id',
-        'bookings.opponent_team_id',
-        'bookings.tournament_id',
-        'bookings.voucher_id',
-        'bookings.promo_id',
-        'reviews.booking_id',
-        'vouchers.used_booking_id',
-        'teams.home_venue_id',
-        'tournaments.venue_id',
-        'tournaments.court_id',
     ];
 
     /**
