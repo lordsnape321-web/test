@@ -323,6 +323,11 @@ export function createMatch(input: {
 
 /* ── bookings ────────────────────────────────────────────────────────────── */
 
+/** GET /api/health → { ok, build }. Which Laravel is the app actually talking to. */
+export async function fetchHealth(): Promise<{ ok: boolean; build?: string }> {
+  return apiJson("/api/health");
+}
+
 /** GET /api/bookings → { bookings } */
 export async function fetchBookings(params?: {
   userId?: number;

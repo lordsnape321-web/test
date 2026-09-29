@@ -39,6 +39,7 @@ import {
   chooseBookingTeamPayment,
   decideCompetitionBooking,
   fetchBookings,
+  fetchHealth,
   fetchReviews,
   fetchUserStats,
   patchBooking,
@@ -148,6 +149,10 @@ export default function BookingsScreen() {
   const [payError, setPayError] = useState("");
   const [competitionDecision, setCompetitionDecision] = useState<number | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  // Which Laravel the app is actually talking to, from /api/health. Shown
+  // beside the app's own build stamp so a stale server vs. a stale bundle is
+  // visible on screen instead of being guessed at.
+  const [apiHealth, setApiHealth] = useState<string | null>(null);
   const [teamMethodFor, setTeamMethodFor] = useState<number | null>(null);
   const [teamMethod, setTeamMethod] = useState<"eSewa" | "Khalti" | "Cash at Venue">("eSewa");
   const [teamSaving, setTeamSaving] = useState<number | null>(null);
@@ -192,6 +197,12 @@ export default function BookingsScreen() {
   useFocusEffect(
     useCallback(() => {
       let active = true;
+      // One health check per focus — feeds the build-stamp footer, never the data.
+      if (user) {
+        void fetchHealth()
+          .then((h) => setApiHealth(h.build ?? "unknown"))
+          .catch(() => setApiHealth("unreachable"));
+      }
       (async () => {
         // Do not block the diary on demo-data seeding. The booking API is the
         // source of truth and a slow seed endpoint used to make this screen look
@@ -774,7 +785,8 @@ export default function BookingsScreen() {
           — not the data.
         */}
         <Text style={{ color: c.textFaint, fontSize: 11, textAlign: "center", paddingVertical: 14, opacity: 0.75 }}>
-          build {APP_BUILD}
+          app build {APP_BUILD}
+          {apiHealth ? ` · api ${apiHealth}` : ""}
         </Text>
       </ScrollView>
       {viewReceipt ? <ReceiptViewer url={viewReceipt} onClose={() => setViewReceipt(null)} /> : null}
