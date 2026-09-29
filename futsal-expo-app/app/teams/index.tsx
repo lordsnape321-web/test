@@ -35,7 +35,6 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import {
   answerTeamInvite,
   createTeam,
-  fetchLeagues,
   fetchMyInvites,
   fetchTeams,
   fetchVenues,
@@ -44,13 +43,12 @@ import {
   seedDemo,
 } from "@/api";
 import { Avatar } from "@/components/Avatar";
-import { LeagueTable } from "@/components/LeagueTable";
 import { TeamManager } from "@/components/TeamManager";
 import { Notice, Spinner } from "@/components/ui";
 import { useAuth } from "@/context/AuthContext";
 import { useTheme } from "@/context/ThemeContext";
 import { initials } from "@/lib/futsal";
-import type { LeagueSummary, TeamCard, TeamInvite } from "@/lib/types";
+import type { TeamCard, TeamInvite } from "@/lib/types";
 import {
   TEAM_DESCRIPTION_MAX,
   normalizeTeamCode,
@@ -100,15 +98,31 @@ export default function TeamsScreen() {
   const [formError, setFormError] = useState("");
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [managing, setManaging] = useState<TeamCard | null>(null);
-  const [leagues, setLeagues] = useState<LeagueSummary[]>([]);
   const [notice, setNotice] = useState("");
   const [noticeBad, setNoticeBad] = useState(false);
   // `find` is what's typed, `q` is what has been submitted — searching on submit
   // keeps a keystroke from firing a request (and a re-seed) every time.
   const [find, setFind] = useState("");
   const [q, setQ] = useState("");
+
+  /**
+   * `find` is the text in the box, `q` is what the list was last fetched with.
+   * Both are reset together by `clearFind`, and the results line below always
+   * names `q` — so the list can never quietly disagree with what is on screen.
+   */
+  const submitFind = useCallback(() => {
+    setQ(find.trim());
+  }, [find]);
+
+  const clearFind = useCallback(() => {
+    setFind("");
+    setQ("");
+  }, []);
   const [invites, setInvites] = useState<TeamInvite[]>([]);
   const [quota, setQuota] = useState<Quota | null>(null);
+
+  const goLeagues = () =>
+    router.push({ pathname: "/(app)/matches", params: { tab: "leagues" } });
   const [answering, setAnswering] = useState<number | null>(null);
 
   /**
@@ -151,23 +165,6 @@ export default function TeamsScreen() {
       alive = false;
     };
   }, [load]);
-
-  // Live leagues this viewer may see (public ones, plus any private league they
-  // host or hold a place in). `viewerId` is what keeps a private league private.
-  useEffect(() => {
-    let alive = true;
-    (async () => {
-      try {
-        const rows = await fetchLeagues(user?.id);
-        if (alive) setLeagues(rows.slice(0, 12));
-      } catch {
-        if (alive) setLeagues([]);
-      }
-    })();
-    return () => {
-      alive = false;
-    };
-  }, [user?.id]);
 
   // Venues for the home-turf dropdowns — only courts that exist on the platform.
   useEffect(() => {
@@ -325,8 +322,6 @@ export default function TeamsScreen() {
 
   const goTeam = (id: number) => router.push(`/teams/${id}`);
   const goPlayer = (id: number) => router.push(`/players/${id}`);
-  const goLeagues = () =>
-    router.push({ pathname: "/(app)/matches", params: { tab: "leagues" } });
 
   if (!ready) {
     return (
@@ -390,30 +385,57 @@ export default function TeamsScreen() {
               <TextInput
                 value={find}
                 onChangeText={setFind}
-                onSubmitEditing={() => setQ(find)}
+                onSubmitEditing={submitFind}
                 returnKeyType="search"
-                placeholder="Search a team code — e.g. CHARGERS-4X7K"
+                placeholder="Search a team name or code — e.g. Chargers or CHARGERS-4X7K"
                 placeholderTextColor={c.textFaint}
-                autoCapitalize="characters"
+                // Deliberately not autoCapitalize="characters": the field is not
+                // only for codes, and the keyboard was rewriting every name the
+                // user typed. The API matches names case-insensitively and
+                // normalises codes server-side, so both work as typed.
+                autoCapitalize="none"
+                autoCorrect={false}
                 style={[styles.searchInput, { color: c.text }]}
               />
+              {/* Shown whenever there is text, not just after a submit — with a
+                  submitted-only clear you could type something and have no way
+                  to wipe it. */}
+              {find.length > 0 ? (
+                <Pressable
+                  onPress={clearFind}
+                  accessibilityRole="button"
+                  accessibilityLabel="Clear the team search"
+                  hitSlop={10}
+                  style={({ pressed }) => [styles.searchClear, { opacity: pressed ? 0.6 : 1 }]}
+                >
+                  <X size={16} color={c.textFaint} />
+                </Pressable>
+              ) : null}
             </View>
-            <Pressable onPress={() => setQ(find)} style={styles.searchBtn}>
+            <Pressable onPress={submitFind} style={styles.searchBtn}>
               <Text style={styles.searchBtnText}>Search</Text>
             </Pressable>
-            {q ? (
-              <Pressable
-                onPress={() => {
-                  setQ("");
-                  setFind("");
-                }}
-                style={[styles.clearBtn, { borderColor: c.border }]}
-              >
-                <X size={16} color={c.textMuted} />
-                <Text style={[styles.clearText, { color: c.textMuted }]}>Clear</Text>
-              </Pressable>
-            ) : null}
           </View>
+
+          {/* The league tables used to live here, but a standings table among a
+              list of squads made no sense. They sit with the league matches
+              now, so all that is left is a way across. */}
+          <Pressable
+            onPress={goLeagues}
+            accessibilityRole="button"
+            style={({ pressed }) => [
+              styles.leagueLink,
+              { borderColor: c.border, opacity: pressed ? 0.7 : 1 },
+            ]}
+          >
+            <Trophy size={15} color={c.primary} />
+            <Text style={[styles.leagueLinkText, { color: c.text }]}>
+              League tables and fixtures
+            </Text>
+            <Text style={[styles.leagueLinkGo, { color: c.textFaint }]}>
+              Matches → League matches →
+            </Text>
+          </Pressable>
 
           {notice ? (
             <Text
@@ -507,96 +529,6 @@ export default function TeamsScreen() {
             <Spinner label="Loading squads…" />
           ) : (
             <>
-              {/* League tables */}
-              <View style={[styles.card, { backgroundColor: c.surface, borderColor: c.border }]}>
-                <View style={styles.inlineBetween}>
-                  <Text style={[styles.cardTitle, { color: tokens.emerald700 }]}>
-                    <Trophy size={16} color={tokens.emerald700} /> League tables
-                  </Text>
-                  <Pressable onPress={goLeagues} style={styles.linkRow}>
-                    <Text style={styles.linkText}>All leagues</Text>
-                    <ArrowUpRight size={14} color={tokens.emerald700} />
-                  </Pressable>
-                </View>
-                {leagues.length === 0 ? (
-                  <View style={[styles.emptyBox, { borderColor: c.border }]}>
-                    <Text style={[styles.emptyTitle, { color: c.text }]}>
-                      No league is running right now 🏆
-                    </Text>
-                    <Text style={[styles.emptyBody, { color: c.textFaint }]}>
-                      Anyone can host one — a player, a captain, or a ground owner. Pick a format,
-                      set the entry fee and prize pool, then invite the squads.
-                    </Text>
-                    <Pressable onPress={goLeagues} style={styles.hostBtn}>
-                      <Plus size={14} color="#FFFFFF" />
-                      <Text style={styles.hostText}>Host a league</Text>
-                    </Pressable>
-                  </View>
-                ) : (
-                  <View style={styles.list}>
-                    {leagues.slice(0, 3).map((l) => {
-                      const status =
-                        l.status === "registration"
-                          ? { emoji: "📝", label: "Taking entries" }
-                          : l.status === "ongoing"
-                            ? { emoji: "⚽", label: "In progress" }
-                            : l.status === "completed"
-                              ? { emoji: "🏁", label: "Finished" }
-                              : { emoji: "🚫", label: "Cancelled" };
-                      const myTeamIds = (l.viewer?.myTeams ?? []).map((m) => m.teamId);
-                      return (
-                        <View key={l.id}>
-                          <View style={styles.leagueHead}>
-                            <Pressable
-                              onPress={() => router.push(`/leagues/${l.id}`)}
-                              style={styles.grow}
-                            >
-                              <Text style={[styles.leagueName, { color: c.text }]} numberOfLines={1}>
-                                {l.name}
-                              </Text>
-                            </Pressable>
-                            <Text style={styles.statusChip}>
-                              {status.emoji} {status.label}
-                            </Text>
-                            {l.visibility === "private" ? (
-                              <Text
-                                style={[
-                                  styles.privateChip,
-                                  isDark && {
-                                    backgroundColor: "rgba(245,158,11,0.15)",
-                                    color: "#FCD34D",
-                                  },
-                                ]}
-                              >
-                                🔒 Private
-                              </Text>
-                            ) : null}
-                            <Text style={[styles.leagueMeta, { color: c.textFaint }]}>
-                              {l.format} • {l.approvedTeams}/{l.maxTeams} squads
-                              {l.venueName ? ` • ${l.venueName}` : ""}
-                            </Text>
-                          </View>
-                          <View style={styles.leagueTable}>
-                            <LeagueTable
-                              standings={l.standings}
-                              highlightTeamIds={myTeamIds}
-                              emptyHint="No results in yet — the table fills up as matches are played."
-                            />
-                          </View>
-                        </View>
-                      );
-                    })}
-                    {leagues.length > 3 ? (
-                      <Pressable onPress={goLeagues} style={styles.moreLink}>
-                        <Text style={styles.moreLinkText}>
-                          +{leagues.length - 3} more league{leagues.length - 3 === 1 ? "" : "s"} →
-                        </Text>
-                      </Pressable>
-                    ) : null}
-                  </View>
-                )}
-              </View>
-
               {teams.length === 0 ? (
                 <View style={[styles.emptyCard, { borderColor: c.border, backgroundColor: c.surface }]}>
                   <Text style={[styles.emptyTitle, { color: c.text }]}>
@@ -1177,6 +1109,19 @@ const styles = StyleSheet.create({
     minWidth: 180,
   },
   searchInput: { flex: 1, fontSize: fontSize.base, fontWeight: "600", paddingVertical: 10 },
+  searchClear: { padding: 2 },
+  leagueLink: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: space[2.5],
+    marginTop: space[3],
+    paddingHorizontal: space[4],
+    paddingVertical: space[3],
+    borderRadius: radius["2xl"],
+    borderWidth: 1,
+  },
+  leagueLinkText: { flex: 1, fontSize: fontSize.sm, fontWeight: "800" },
+  leagueLinkGo: { fontSize: fontSize.xs, fontWeight: "800" },
   searchBtn: {
     backgroundColor: tokens.stone900,
     borderRadius: radius["2xl"],
@@ -1185,16 +1130,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   searchBtnText: { fontSize: fontSize.base, fontWeight: "900", color: "#FFFFFF" },
-  clearBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    borderWidth: 1,
-    borderRadius: radius["2xl"],
-    paddingHorizontal: space[4],
-    paddingVertical: space[3],
-  },
-  clearText: { fontSize: fontSize.base, fontWeight: "900" },
 
   notice: {
     borderRadius: radius["2xl"],
@@ -1293,84 +1228,10 @@ const styles = StyleSheet.create({
   },
   declineText: { fontSize: fontSize.xs, fontWeight: "900" },
 
-  card: {
-    borderRadius: radius["3xl"],
-    borderWidth: 1,
-    padding: space[5],
-    marginTop: space[6],
-    shadowColor: "rgba(180,120,60,0.08)",
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 1,
-    shadowRadius: 16,
-    elevation: 1,
-  },
-  cardTitle: {
-    fontSize: fontSize.xs,
-    fontWeight: "900",
-    textTransform: "uppercase",
-    letterSpacing: 1.5,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  inlineBetween: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: space[2],
-    flexWrap: "wrap",
-  },
-  linkRow: { flexDirection: "row", alignItems: "center", gap: 2 },
-  linkText: { fontSize: fontSize.xs, fontWeight: "900", color: tokens.emerald700 },
 
-  emptyBox: {
-    borderRadius: radius["2xl"],
-    borderWidth: 1,
-    borderStyle: "dashed",
-    padding: space[5],
-    alignItems: "center",
-    marginTop: space[3],
-  },
   emptyTitle: { fontSize: fontSize.base, fontWeight: "900", textAlign: "center" },
   emptyBody: { fontSize: fontSize.sm, fontWeight: "600", textAlign: "center", marginTop: 4 },
-  hostBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    backgroundColor: tokens.emerald600,
-    borderRadius: radius.full,
-    paddingHorizontal: space[4],
-    paddingVertical: space[2],
-    marginTop: space[3],
-  },
-  hostText: { fontSize: fontSize.sm, fontWeight: "900", color: "#FFFFFF" },
 
-  leagueHead: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8, marginTop: space[3] },
-  leagueName: { fontSize: fontSize.base, fontWeight: "900" },
-  statusChip: {
-    fontSize: 10,
-    fontWeight: "900",
-    backgroundColor: tokens.stone100,
-    color: tokens.stone600,
-    borderRadius: radius.full,
-    overflow: "hidden",
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-  },
-  privateChip: {
-    fontSize: 10,
-    fontWeight: "900",
-    backgroundColor: "#FEF3C7",
-    color: "#B45309",
-    borderRadius: radius.full,
-    overflow: "hidden",
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-  },
-  leagueMeta: { fontSize: fontSize.xs, fontWeight: "700" },
-  leagueTable: { marginTop: space[2] },
-  moreLink: { alignItems: "center", paddingVertical: space[2] },
-  moreLinkText: { fontSize: fontSize.xs, fontWeight: "900", color: tokens.emerald700 },
 
   emptyCard: {
     marginTop: space[6],

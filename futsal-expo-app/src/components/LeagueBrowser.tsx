@@ -25,6 +25,7 @@ import {
 import { LinearGradient } from "expo-linear-gradient";
 import { fetchLeagues } from "@/api";
 import { LeagueCard } from "@/components/LeagueCard";
+import { LeagueTable } from "@/components/LeagueTable";
 import { LeagueForm } from "@/components/LeagueForm";
 import { useAuth } from "@/context/AuthContext";
 import { useTheme } from "@/context/ThemeContext";
@@ -100,6 +101,22 @@ export function LeagueBrowser() {
       rows = rows.filter((l) => l.status === "registration" && l.approvedTeams < l.maxTeams);
     return rows;
   }, [leagues, q, filter]);
+
+  /**
+   * Leagues that are actually being played, with a table worth reading.
+   * This is what used to sit on the Teams page, where it had nothing to do
+   * with the squad list around it — a league standings table belongs with the
+   * league matches, not with teams. A league with no results yet is skipped,
+   * so the section never opens on an empty "no results in yet" table.
+   */
+  const inProgress = useMemo(
+    () =>
+      leagues
+        .filter((l) => l.status === "ongoing" && l.standings.length > 0)
+        .sort((a, b) => b.standings.length - a.standings.length)
+        .slice(0, 3),
+    [leagues],
+  );
 
   const stats = useMemo(() => {
     const playing = leagues.reduce((s, l) => s + l.approvedTeams, 0);
@@ -325,6 +342,58 @@ export function LeagueBrowser() {
         </View>
       )}
 
+      {/* League tables — the ones in progress, right where the league matches
+          are. Hidden while searching or filtering, since a table for a league
+          that is not in the list below would only be noise. */}
+      {!q && filter === "all" && inProgress.length > 0 ? (
+        <View
+          style={[
+            styles.tablesCard,
+            { backgroundColor: c.surface, borderColor: c.border },
+          ]}
+        >
+          <View style={styles.tablesHead}>
+            <Text style={[styles.tablesTitle, { color: c.text }]}>
+              <Trophy size={16} color={c.primary} /> League tables — in progress
+            </Text>
+            <Text style={[styles.tablesSub, { color: c.textFaint }]}>
+              Where every squad actually stands right now.
+            </Text>
+          </View>
+          {inProgress.map((l) => (
+            <View key={l.id} style={styles.tableBlock}>
+              <Pressable
+                onPress={() => router.push(`/leagues/${l.id}`)}
+                accessibilityRole="button"
+                style={styles.tableHead}
+              >
+                <View style={styles.grow}>
+                  <Text style={[styles.tableName, { color: c.text }]} numberOfLines={1}>
+                    {l.name}
+                  </Text>
+                  <Text style={[styles.tableMeta, { color: c.textFaint }]} numberOfLines={1}>
+                    {l.format} • {l.venueName || l.venueCity || "venue to be confirmed"}
+                  </Text>
+                </View>
+                <Text style={[styles.tableOpen, { color: c.primary }]}>Open →</Text>
+              </Pressable>
+              <LeagueTable
+                standings={l.standings}
+                highlightTeamIds={(l.viewer?.myTeams ?? []).map((m) => m.teamId)}
+                emptyHint="No results in yet — the table fills up as matches are played."
+              />
+            </View>
+          ))}
+          {leagues.some((l) => l.status === "ongoing") && inProgress.length < 3 ? (
+            <Text style={[styles.tablesFoot, { color: c.textFaint }]}>
+              {inProgress.length} of{" "}
+              {leagues.filter((l) => l.status === "ongoing").length} in-progress league(s)
+              have a table yet.
+            </Text>
+          ) : null}
+        </View>
+      ) : null}
+
       {/* How it works */}
       <View style={styles.howRow}>
         {[
@@ -520,6 +589,34 @@ const styles = StyleSheet.create({
   },
   ghostBtnText: { fontSize: fontSize.base, fontWeight: "900" },
   grid: { marginTop: space["6"], gap: space["4"] },
+
+  grow: { flex: 1, minWidth: 0 },
+  tablesCard: {
+    marginTop: space["6"],
+    borderRadius: radius["3xl"],
+    borderWidth: 1,
+    padding: space["5"],
+    gap: space["4"],
+  },
+  tablesHead: { gap: space[1] },
+  tablesTitle: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: space[2],
+    fontSize: fontSize.base,
+    fontWeight: "900",
+  },
+  tablesSub: { fontSize: fontSize.sm },
+  tableBlock: { gap: space[2] },
+  tableHead: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: space[3],
+  },
+  tableName: { fontSize: fontSize.base, fontWeight: "800" },
+  tableMeta: { fontSize: fontSize.xs, marginTop: 2 },
+  tableOpen: { fontSize: fontSize.xs, fontWeight: "900" },
+  tablesFoot: { fontSize: fontSize.xs, textAlign: "center" },
   howRow: {
     marginTop: space["8"],
     flexDirection: "row",
