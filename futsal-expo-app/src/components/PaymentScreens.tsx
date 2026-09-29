@@ -116,13 +116,13 @@ export function EsewaSuccessScreen() {
   const router = useRouter();
   const bookingId = one(params.bookingId);
   const mock = one(params.mock) === "1";
-  return <ResultScreen kind="success" gateway="eSewa" bookingId={bookingId} message={mock ? "eSewa test payment confirmed." : "Your eSewa response has been received."} onPrimary={() => router.replace("/bookings")} onSecondary={() => router.replace("/venues")} />;
+  return <ResultScreen kind="success" gateway="eSewa" bookingId={bookingId} message={mock ? "eSewa test payment confirmed." : "Your eSewa response has been received."} onPrimary={() => router.replace("/bookings?refresh=1")} onSecondary={() => router.replace("/venues")} />;
 }
 
 export function EsewaFailureScreen() {
   const params = useLocalSearchParams() as Params;
   const router = useRouter();
-  return <ResultScreen kind="failure" gateway="eSewa" bookingId={one(params.bookingId)} message="No money moved. Your booking is still waiting — pay from My Bookings whenever you are ready." onPrimary={() => router.replace("/bookings")} onSecondary={() => router.replace("/venues")} />;
+  return <ResultScreen kind="failure" gateway="eSewa" bookingId={one(params.bookingId)} message="No money moved. Your booking is still waiting — pay from My Bookings whenever you are ready." onPrimary={() => router.replace("/bookings?refresh=1")} onSecondary={() => router.replace("/venues")} />;
 }
 
 export function KhaltiCallbackScreen() {
@@ -151,7 +151,7 @@ export function KhaltiCallbackScreen() {
   }, [bookingId, params, state]);
 
   if (state === "loading") return <LoadingResult label="Verifying Khalti payment… 💜" />;
-  return <ResultScreen kind={state === "success" ? "success" : "failure"} gateway="Khalti" bookingId={bookingId} message={state === "success" ? "Khalti test payment confirmed." : message || "Could not verify the payment."} onPrimary={() => router.replace("/bookings")} onSecondary={() => router.replace("/venues")} />;
+  return <ResultScreen kind={state === "success" ? "success" : "failure"} gateway="Khalti" bookingId={bookingId} message={state === "success" ? "Khalti test payment confirmed." : message || "Could not verify the payment."} onPrimary={() => router.replace("/bookings?refresh=1")} onSecondary={() => router.replace("/venues")} />;
 }
 
 function LoadingResult({ label }: { label: string }) {
