@@ -207,7 +207,8 @@ export default function BookingsScreen() {
         // Do not block the diary on demo-data seeding. The booking API is the
         // source of truth and a slow seed endpoint used to make this screen look
         // frozen while the user was trying to review a game.
-        if (user) await load();
+        // CRITICAL: Use refresh=true on focus to bust cache after payment/other mutations.
+        if (user) await load(true);
         else setLoading(false);
       })();
       // Keep both captains' feeds synchronized while this screen is focused.
