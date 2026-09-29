@@ -87,6 +87,53 @@ const played = (b: {
 
 const gone = (status: string) => status === "cancelled" || status === "rejected";
 
+/**
+ * What the booking actually owes, read from the ledger.
+ *
+ * The card used to read `b.paidAmount` and `b.paymentStatus` — cached columns
+ * on the booking row — while the full detail read `ledger.totals.balance`.
+ * Two sources, so the card could say "Deposit paid" or "Paid" while the page
+ * underneath it said a balance was due, with no way for the two to agree. The
+ * cached columns are only refreshed when a booking is *settled*, so every
+ * payment the owner records in between left the card showing a stale figure.
+ *
+ * `paymentSummary` is built by the presenter from the same ledger the detail
+ * page opens, so both now read one number. The status word is derived from
+ * that same ledger rather than from the stored column.
+ */
+type MoneyView = {
+  received: number;
+  balance: number;
+  status: "paid" | "overpaid" | "deposit_paid" | "pending";
+  label: string;
+};
+
+function moneyOf(b: DiaryBooking): MoneyView {
+  const summary = b.paymentSummary;
+  const received = Math.max(0, Number(summary?.received ?? b.paidAmount ?? 0));
+  const balance = Math.max(0, Number(summary?.receivable ?? b.totalPrice - received));
+
+  if (balance === 0 && received > 0) {
+    return { received, balance, status: "paid", label: "Paid" };
+  }
+
+  if (balance === 0) {
+    return { received, balance, status: "paid", label: "Free — nothing to pay" };
+  }
+
+  // Something came in but the ledger still has a balance: the deposit case.
+  if (received > 0) {
+    return {
+      received,
+      balance,
+      status: "deposit_paid",
+      label: `Deposit paid · ${formatNPR(balance)} left`,
+    };
+  }
+
+  return { received, balance, status: "pending", label: "Nothing paid yet" };
+}
+
 function paymentStatusLabel(status: string) {
   return String(status || "unknown")
     .replace(/_/g, " ")
@@ -300,7 +347,7 @@ export default function BookingsScreen() {
         ? b.advancePaymentAmount ?? 0
         : b.depositRequired && b.depositStatus !== "paid"
           ? b.depositAmount ?? 0
-          : b.totalPrice - b.paidAmount);
+          : moneyOf(b).balance);
       const path = method === "eSewa"
         ? `/payment/esewa/mock?bookingId=${b.id}&amount=${encodeURIComponent(String(amount))}&userId=${user?.id ?? 0}`
         : `/payment/khalti/mock?bookingId=${b.id}&amount=${encodeURIComponent(String(amount))}&pidx=mock-pidx&userId=${user?.id ?? 0}`;
@@ -351,8 +398,7 @@ export default function BookingsScreen() {
   /** Specs may say "pending" before wallet capture; treat like unpaid. */
   return (
     (b.advancePaymentRequired && b.advancePaymentStatus !== "paid") ||
-    b.paymentStatus === "unpaid" ||
-    b.paymentStatus === "pending" ||
+    moneyOf(b).status === "pending" ||
     (!!b.depositRequired && b.depositStatus !== "paid")
   );
   }
@@ -364,7 +410,7 @@ export default function BookingsScreen() {
     if (b.depositRequired && b.depositStatus !== "paid") {
       return `Pay ${formatNPR(b.depositAmount ?? 0)} deposit 🛡️`;
     }
-    return `Pay ${formatNPR(Math.max(0, b.totalPrice - b.paidAmount))} balance 💳`;
+    return `Pay ${formatNPR(moneyOf(b).balance)} balance 💳`;
   }
 
   async function submitReview(b: DiaryBooking) {
@@ -867,7 +913,9 @@ function BookingCard({
   const isPublic = b.visibility === "public";
   const isPlayed = played(b);
   const isGone = b.status === "cancelled" || b.status === "rejected";
-  const balance = b.totalPrice - b.paidAmount;
+  // One source of truth, shared with the full detail page.
+  const money = moneyOf(b);
+  const balance = money.balance;
   const method = String(b.paymentMethod ?? "");
   const competitionPending = b.competition?.competitionStatus === "pending";
   const competitionDeclined =
@@ -897,11 +945,11 @@ function BookingCard({
           : "warning";
 
   const payTone =
-    b.paymentStatus === "paid"
+    money.status === "paid"
       ? "success"
-      : b.paymentStatus === "overpaid"
+      : money.status === "overpaid"
         ? "info"
-        : b.paymentStatus === "deposit_paid"
+        : money.status === "deposit_paid"
           ? "warning"
           : "danger";
 
@@ -958,16 +1006,16 @@ function BookingCard({
                   style={[
                     styles.paymentStatusChip,
                     {
-                      color: b.paymentStatus === "paid"
+                      color: money.status === "paid"
                         ? semantic.emerald
-                        : b.paymentStatus === "pending"
+                        : money.status === "pending"
                           ? semantic.amber
                           : textFaint(muted),
-                      backgroundColor: b.paymentStatus === "paid" ? (isDark ? "rgba(16,185,129,0.18)" : "#ECFDF5") : b.paymentStatus === "pending" ? (isDark ? "rgba(245,158,11,0.16)" : "#FFFBEB") : (isDark ? "rgba(148,163,184,0.16)" : "#F1F5F9"),
+                      backgroundColor: money.status === "paid" ? (isDark ? "rgba(16,185,129,0.18)" : "#ECFDF5") : money.status === "pending" ? (isDark ? "rgba(245,158,11,0.16)" : "#FFFBEB") : (isDark ? "rgba(148,163,184,0.16)" : "#F1F5F9"),
                     },
                   ]}
                 >
-                  {paymentStatusLabel(b.paymentStatus)}
+                  {money.label}
                 </Text>
               </View>
             </View>
@@ -1386,10 +1434,10 @@ function BookingCard({
                 </Text>
               </View>
             ) : null}
-            {b.paidAmount > 0 ? (
+            {money.received > 0 ? (
               <View style={[styles.chip, { backgroundColor: "rgba(14,165,233,0.10)" }]}>
                 <Text style={[styles.chipText, { color: semantic.sky }]}>
-                  💰 {formatNPR(b.paidAmount)} verified
+                  💰 {formatNPR(money.received)} verified
                   {b.gatewayTxnId ? ` • ${b.gatewayTxnId.slice(0, 12)}` : ""}
                 </Text>
               </View>

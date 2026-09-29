@@ -188,6 +188,12 @@ export default function BookingDetail() {
 
   const { totals, window: settleWin } = ledger;
   const balance = totals.balance;
+
+  // The card and this page now derive the same word from the same ledger
+  // numbers, instead of this page echoing the cached column next to a
+  // ledger balance that can disagree with it.
+  const received = Math.max(0, Number(booking.paymentSummary?.received ?? 0));
+  const payStatus = balance === 0 ? "paid" : received > 0 ? (booking.depositRequired ? "deposit_paid" : "pending") : "pending";
   const teamShare = booking.teamPayments?.find((share) => share.userId === user?.id) ?? null;
   const advanceDue = booking.status !== "cancelled" && booking.status !== "rejected" && booking.advancePaymentRequired && booking.advancePaymentStatus !== "paid" ? booking.advancePaymentAmount ?? 0 : 0;
   const competitionWaiting = booking.competition?.competitionStatus === "pending";
@@ -256,13 +262,13 @@ export default function BookingDetail() {
         <View style={styles.pillRow}>
           <Pill label={booking.status} tone={booking.status === "confirmed" ? "success" : "warning"} />
           <Pill
-            label={paymentStatusLabel(booking.paymentStatus)}
+            label={paymentStatusLabel(payStatus)}
             tone={balance > 0 ? "danger" : "success"}
           />
         </View>
         <View style={styles.paymentLabels}>
           <Text style={[styles.paymentLabel, { color: colors.textMuted }]}>Payment method: {paymentMethodLabel(booking.paymentMethod)}</Text>
-          <Text style={[styles.paymentLabel, { color: colors.textMuted }]}>Payment status: {paymentStatusLabel(booking.paymentStatus)}</Text>
+          <Text style={[styles.paymentLabel, { color: colors.textMuted }]}>Payment status: {paymentStatusLabel(payStatus)}</Text>
         </View>
 
         {error ? <Notice message={error} /> : null}

@@ -917,17 +917,15 @@ class BookingController extends ApiController
             $changes['status'] = (string) $request->input('status');
         }
 
-        if ($request->filled('paymentStatus')) {
-            $changes['payment_status'] = (string) $request->input('paymentStatus');
-        }
-
         if ($request->filled('paymentMethod')) {
             $changes['payment_method'] = (string) $request->input('paymentMethod');
         }
 
-        if ($request->filled('depositStatus')) {
-            $changes['deposit_status'] = (string) $request->input('depositStatus');
-        }
+        // `paymentStatus` and `depositStatus` are deliberately not client-
+        // writable: they are a cache of the ledger, and the only writers are
+        // booking creation, the payment gateways, and
+        // BookingLedger::syncCachedState. A client saying "paid" is exactly
+        // how the card started disagreeing with the ledger.
 
         if ($request->has('receiptUrl')) {
             $changes['receipt_url'] = mb_substr((string) $request->input('receiptUrl'), 0, 2000000);

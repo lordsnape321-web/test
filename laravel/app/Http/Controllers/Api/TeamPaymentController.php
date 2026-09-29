@@ -12,6 +12,7 @@ use App\Models\User;
 use App\Models\Venue;
 use App\Services\Notifier;
 use App\Support\AdvancePayment;
+use App\Support\BookingLedger;
 use App\Support\Futsal;
 use App\Support\Loyalty;
 use App\Support\TeamStore;
@@ -279,6 +280,11 @@ class TeamPaymentController extends ApiController
             'payment_method' => $method,
             'payment_status' => $paid >= (int) $share->amount_due ? 'paid' : 'partial',
         ])->save();
+
+        // The venue route put money in the venue's books; the booking's cached
+        // columns follow the ledger. The captain route is a no-op here, which
+        // is correct — the venue has not received that money yet.
+        BookingLedger::syncCachedState($booking);
 
         $person = User::find($userId);
         $left = max(0, (int) $share->amount_due - $paid);
