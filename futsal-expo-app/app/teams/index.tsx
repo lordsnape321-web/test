@@ -13,7 +13,6 @@ import {
   Send,
   Settings,
   Shield,
-  Trophy,
   Users,
   X,
 } from "lucide-react-native";
@@ -121,8 +120,6 @@ export default function TeamsScreen() {
   const [invites, setInvites] = useState<TeamInvite[]>([]);
   const [quota, setQuota] = useState<Quota | null>(null);
 
-  const goLeagues = () =>
-    router.push({ pathname: "/(app)/matches", params: { tab: "leagues" } });
   const [answering, setAnswering] = useState<number | null>(null);
 
   /**
@@ -387,7 +384,7 @@ export default function TeamsScreen() {
                 onChangeText={setFind}
                 onSubmitEditing={submitFind}
                 returnKeyType="search"
-                placeholder="Search a team name or code — e.g. Chargers or CHARGERS-4X7K"
+                placeholder="Team name or code"
                 placeholderTextColor={c.textFaint}
                 // Deliberately not autoCapitalize="characters": the field is not
                 // only for codes, and the keyboard was rewriting every name the
@@ -416,26 +413,6 @@ export default function TeamsScreen() {
               <Text style={styles.searchBtnText}>Search</Text>
             </Pressable>
           </View>
-
-          {/* The league tables used to live here, but a standings table among a
-              list of squads made no sense. They sit with the league matches
-              now, so all that is left is a way across. */}
-          <Pressable
-            onPress={goLeagues}
-            accessibilityRole="button"
-            style={({ pressed }) => [
-              styles.leagueLink,
-              { borderColor: c.border, opacity: pressed ? 0.7 : 1 },
-            ]}
-          >
-            <Trophy size={15} color={c.primary} />
-            <Text style={[styles.leagueLinkText, { color: c.text }]}>
-              League tables and fixtures
-            </Text>
-            <Text style={[styles.leagueLinkGo, { color: c.textFaint }]}>
-              Matches → League matches →
-            </Text>
-          </Pressable>
 
           {notice ? (
             <Text
@@ -1110,18 +1087,6 @@ const styles = StyleSheet.create({
   },
   searchInput: { flex: 1, fontSize: fontSize.base, fontWeight: "600", paddingVertical: 10 },
   searchClear: { padding: 2 },
-  leagueLink: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: space[2.5],
-    marginTop: space[3],
-    paddingHorizontal: space[4],
-    paddingVertical: space[3],
-    borderRadius: radius["2xl"],
-    borderWidth: 1,
-  },
-  leagueLinkText: { flex: 1, fontSize: fontSize.sm, fontWeight: "800" },
-  leagueLinkGo: { fontSize: fontSize.xs, fontWeight: "800" },
   searchBtn: {
     backgroundColor: tokens.stone900,
     borderRadius: radius["2xl"],

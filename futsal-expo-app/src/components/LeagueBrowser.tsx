@@ -109,14 +109,19 @@ export function LeagueBrowser() {
    * league matches, not with teams. A league with no results yet is skipped,
    * so the section never opens on an empty "no results in yet" table.
    */
-  const inProgress = useMemo(
+  const ongoing = useMemo(
     () =>
       leagues
         .filter((l) => l.status === "ongoing" && l.standings.length > 0)
-        .sort((a, b) => b.standings.length - a.standings.length)
-        .slice(0, 3),
+        .sort((a, b) => b.standings.length - a.standings.length),
     [leagues],
   );
+
+  // Collapsed shows three so the section does not bury the league list; the
+  // heading opens the rest, because "which league am I in" is a real question
+  // and there is no other way to answer it from here.
+  const [tablesOpen, setTablesOpen] = useState(false);
+  const inProgress = tablesOpen ? ongoing : ongoing.slice(0, 3);
 
   const stats = useMemo(() => {
     const playing = leagues.reduce((s, l) => s + l.approvedTeams, 0);
@@ -345,21 +350,36 @@ export function LeagueBrowser() {
       {/* League tables — the ones in progress, right where the league matches
           are. Hidden while searching or filtering, since a table for a league
           that is not in the list below would only be noise. */}
-      {!q && filter === "all" && inProgress.length > 0 ? (
+      {!q && filter === "all" && ongoing.length > 0 ? (
         <View
           style={[
             styles.tablesCard,
             { backgroundColor: c.surface, borderColor: c.border },
           ]}
         >
-          <View style={styles.tablesHead}>
-            <Text style={[styles.tablesTitle, { color: c.text }]}>
-              <Trophy size={16} color={c.primary} /> League tables — in progress
+          <Pressable
+            onPress={() => setTablesOpen((open) => !open)}
+            accessibilityRole="button"
+            accessibilityState={{ expanded: tablesOpen }}
+            accessibilityLabel={
+              tablesOpen ? "Collapse league tables" : "Show all ongoing league tables"
+            }
+            style={({ pressed }) => [styles.tablesHead, { opacity: pressed ? 0.7 : 1 }]}
+          >
+            <View style={styles.grow}>
+              <Text style={[styles.tablesTitle, { color: c.text }]}>
+                <Trophy size={16} color={c.primary} /> League tables — in progress
+              </Text>
+              <Text style={[styles.tablesSub, { color: c.textFaint }]}>
+                {tablesOpen
+                  ? `All ${ongoing.length} ongoing league${ongoing.length === 1 ? "" : "s"}.`
+                  : "Where every squad actually stands right now."}
+              </Text>
+            </View>
+            <Text style={[styles.tablesToggle, { color: c.primary }]}>
+              {tablesOpen ? "Show less" : `Show all ${ongoing.length}`}
             </Text>
-            <Text style={[styles.tablesSub, { color: c.textFaint }]}>
-              Where every squad actually stands right now.
-            </Text>
-          </View>
+          </Pressable>
           {inProgress.map((l) => (
             <View key={l.id} style={styles.tableBlock}>
               <Pressable
@@ -384,11 +404,9 @@ export function LeagueBrowser() {
               />
             </View>
           ))}
-          {leagues.some((l) => l.status === "ongoing") && inProgress.length < 3 ? (
+          {!tablesOpen && ongoing.length > 3 ? (
             <Text style={[styles.tablesFoot, { color: c.textFaint }]}>
-              {inProgress.length} of{" "}
-              {leagues.filter((l) => l.status === "ongoing").length} in-progress league(s)
-              have a table yet.
+              Showing {inProgress.length} of {ongoing.length}. Tap the heading for the rest.
             </Text>
           ) : null}
         </View>
@@ -598,7 +616,11 @@ const styles = StyleSheet.create({
     padding: space["5"],
     gap: space["4"],
   },
-  tablesHead: { gap: space[1] },
+  tablesHead: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: space[3],
+  },
   tablesTitle: {
     flexDirection: "row",
     alignItems: "center",
@@ -616,6 +638,7 @@ const styles = StyleSheet.create({
   tableName: { fontSize: fontSize.base, fontWeight: "800" },
   tableMeta: { fontSize: fontSize.xs, marginTop: 2 },
   tableOpen: { fontSize: fontSize.xs, fontWeight: "900" },
+  tablesToggle: { fontSize: fontSize.xs, fontWeight: "900" },
   tablesFoot: { fontSize: fontSize.xs, textAlign: "center" },
   howRow: {
     marginTop: space["8"],
