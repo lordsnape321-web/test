@@ -82,6 +82,10 @@ Route::post('/bookings/{id}/ledger', [LedgerController::class, 'store'])->whereN
 // Each member's share of a team booking.
 Route::get('/bookings/{id}/team-payments', [TeamPaymentController::class, 'index'])->whereNumber('id');
 Route::post('/bookings/{id}/team-payments', [TeamPaymentController::class, 'store'])->whereNumber('id');
+// A squad member settles their own share, to the captain or to the venue.
+Route::post('/bookings/{id}/team-payments/{userId}/settle', [TeamPaymentController::class, 'settle'])
+    ->whereNumber('id')
+    ->whereNumber('userId');
 
 // The captain's own ledger: what each squad member has handed over, and by
 // which medium. Separate from the venue's ledger on purpose — see TeamLedgerController.

@@ -381,10 +381,16 @@ export type TeamLedgerMember = {
   userAvatarUrl: string;
   userLevel: string;
   isYou: boolean;
+  /** True when this member captains the squad the booking was made for. */
+  isCaptain?: boolean;
   amountDue: number;
   collected: number;
   outstanding: number;
-  status: string;
+  /**
+   * `none` when the squad member has no share split out at all — they are on
+   * the roster but were not charged for this booking.
+   */
+  status: "none" | "pending" | "partial" | "paid" | string;
   declaredMethod: string;
   entries: TeamLedgerEntry[];
 };

@@ -475,6 +475,25 @@ export function teamLedgerAction(
   });
 }
 
+/**
+ * POST /api/bookings/:id/team-payments/:userId/settle
+ *
+ * A squad member settling their own share. `paidTo` decides which ledger the
+ * money lands in — `captain` for a cash hand-over, `venue` for a card payment
+ * at the ground — and the share adds both up, so paying in two places reads as
+ * one settled share rather than two half-payments nobody can reconcile.
+ */
+export function settleTeamShare(
+  bookingId: number,
+  userId: number,
+  input: { actorId: number; paidTo: "captain" | "venue"; method: string; amount?: number; note?: string },
+): Promise<{ ok?: boolean; teamPayment?: unknown; message?: string; error?: string }> {
+  return apiJson(`/api/bookings/${bookingId}/team-payments/${userId}/settle`, {
+    method: "POST",
+    json: input,
+  });
+}
+
 /** POST /api/bookings/:id/team-payments → save this member's method */
 export function chooseBookingTeamPayment(
   bookingId: number,

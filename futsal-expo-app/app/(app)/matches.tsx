@@ -223,10 +223,17 @@ export default function MatchesScreen() {
     setDeciding(`pay-${m.id}`);
     setError("");
     try {
+      // Only what is still owed. Sending the full share asked to be charged
+      // again for money already handed over when the player asked to play.
+      const outstanding = Math.max(0, m.pricePerPlayer - (m.viewer?.paidAmount ?? 0));
+      if (outstanding <= 0) {
+        setError("Your share for this game is already paid ✅");
+        return;
+      }
       const res = await payMatchJoin(m.id, {
         userId: user.id,
         joinId: requestId,
-        amount: m.pricePerPlayer,
+        amount: outstanding,
         payMethod: "eSewa",
       });
       setNotice(String(res.message ?? "You're in 🎉"));
@@ -474,6 +481,11 @@ function OpenMatchCard({
   const isCustom = (m.chargeMode ?? (m.bookingId ? "split" : "custom")) === "custom";
   const needed = m.positionsNeeded ?? [];
   const queue = (m.requests ?? []).filter((r) => r.status === JOIN_PENDING);
+
+  // What this player still owes for their spot, after anything already sent
+  // up front. The card and the full detail both read this, so they cannot
+  // disagree about whether the share is paid.
+  const shareOwed = Math.max(0, m.pricePerPlayer - (viewer?.paidAmount ?? 0));
 
   return (
     <View
@@ -772,7 +784,16 @@ function OpenMatchCard({
       {/* The host asked for the share. Rendered beside the button rather than
           inside it: nesting one pressable in another makes which one wins the
           tap a matter of layout order, and this one has to. */}
-      {pending && viewer?.paymentRequested ? (
+      {pending && viewer?.paymentRequested && shareOwed <= 0 ? (
+        <View style={[styles.joinButton, { backgroundColor: c.successBg, marginTop: space[2] }]}>
+          <Wallet size={16} color={c.successText} strokeWidth={2.5} />
+          <Text style={[styles.joinText, { color: c.successText }]}>
+            {formatNPR(viewer?.paidAmount ?? 0)} paid — nothing more owed, waiting on{" "}
+            {m.organizer?.name ?? "the host"} to add you
+          </Text>
+        </View>
+      ) : null}
+      {pending && viewer?.paymentRequested && shareOwed > 0 ? (
         <Pressable
           onPress={onPay}
           disabled={deciding === `pay-${m.id}`}
@@ -786,7 +807,7 @@ function OpenMatchCard({
           <Text style={[styles.joinText, { color: c.primaryText }]}>
             {deciding === `pay-${m.id}`
               ? "Paying…"
-              : `Host asked for ${formatNPR(m.pricePerPlayer)} — pay & you're in`}
+              : `Host asked for ${formatNPR(shareOwed)} — pay & you're in`}
           </Text>
         </Pressable>
       ) : null}

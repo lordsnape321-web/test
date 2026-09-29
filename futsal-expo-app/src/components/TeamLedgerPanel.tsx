@@ -5,6 +5,7 @@ import {
   Plus,
   ReceiptText,
   Users,
+  Wallet,
 } from "lucide-react-native";
 import React, { useEffect, useState } from "react";
 import {
@@ -21,7 +22,7 @@ import { useTheme } from "@/context/ThemeContext";
 import { formatNPR } from "@/lib/futsal";
 import type { TeamLedger, TeamLedgerMember } from "@/lib/types";
 import { fontSize, radius, space } from "@/theme";
-import { fetchTeamLedger, teamLedgerAction } from "@/api";
+import { fetchTeamLedger, settleTeamShare, teamLedgerAction } from "@/api";
 import { Avatar } from "@/components/Avatar";
 import { Picker } from "@/components/ThemedPicker";
 
@@ -42,68 +43,10 @@ type Props = {
   onClose: () => void;
   /** Fires after every successful write so the booking card can re-read. */
   onChanged?: () => void;
-};
-
-/**
- * The captain's ledger for a team booking.
- *
- * A captain fronts the whole cost at the venue and then chases the squad for
- * it, so this is the same idea as the owner's payments panel one level down:
- * record who handed over what, in which medium, and watch the outstanding
- * total fall.
- *
- * Every number and every name on this screen comes from the server —
- * `team_ledger_entries` and `booking_team_payments`, with the people resolved
- * from the users table. Nothing is tallied in a local array and nothing is
- * invented on the device, so what the captain sees here is the record, and a
- * reload or a second phone shows the same thing.
- */
-export default function TeamLedgerPanel({
-  bookingId,
-  actorId,
-  bookingLabel,
-  onClose,
-  onChanged,
-}: Props) {
-  const { colors: c, isDark } = useTheme();
-
-  const [ledger, setLedger] = useState<TeamLedger | null>(null);
-  const [error, setError] = useState("");
-  const [notice, setNotice] = useState("");
-  const [busy, setBusy] = useState("");
-
-  // Which squad member the "record payment" form is open for, and its fields.
-  const [forId, setForId] = useState<number | null>(null);
-  const [amount, setAmount] = useState("");
-  const [method, setMethod] = useState<string>("Cash at Venue");
-  const [note, setNote] = useState("");
-
-  useEffect(() => {
-    let dead = false;
-    fetchTeamLedger(bookingId, actorId)
-      .then((data) => {
-        if (!dead) setLedger(data);
-      })
-      .catch((e) => {
-        if (!dead) setError(e instanceof Error ? e.message : "Couldn't load the squad ledger 🙏");
-      });
-    return () => {
-      dead = true;
-    };
-  }, [bookingId, actorId]);
-
-  function openFor(member: TeamLedgerMember) {
-    setForId(member.userId);
-    // Seed with what they still owe, so the common case is one tap.
-    setAmount(String(member.outstanding));
-    setMethod(METHODS[0]);
-    setNote("");
-    setError("");
-    setNotice("");
-  }
 
   function closeForm() {
     setForId(null);
+    setSelfTo(null);
     setAmount("");
     setNote("");
     setError("");
@@ -128,6 +71,35 @@ export default function TeamLedgerPanel({
       if (res.ledger) setLedger(res.ledger);
       setNotice(res.message ?? "Recorded 💰");
       closeForm();
+      onChanged?.();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "That didn't work 🙏");
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function settleSelf() {
+    if (selfTo == null) return;
+    const member = members.find((m) => m.userId === forId);
+    if (!member) return;
+    setBusy("settle");
+    setError("");
+    setNotice("");
+    try {
+      const res = await settleTeamShare(bookingId, member.userId, {
+        actorId,
+        paidTo: selfTo,
+        method: selfMethod,
+      });
+      setNotice(res.message ?? "Share settled ✅");
+      closeForm();
+      // The settle endpoint answers with the updated share, not the whole
+      // ledger, so re-read rather than patch a number into it — the member's
+      // row changes shape when their share clears, not just its amount.
+      fetchTeamLedger(bookingId, actorId)
+        .then(setLedger)
+        .catch(() => undefined);
       onChanged?.();
     } catch (e) {
       setError(e instanceof Error ? e.message : "That didn't work 🙏");
@@ -324,8 +296,98 @@ export default function TeamLedgerPanel({
                   ))
                 )}
 
-                {/* the record-payment form, inline under this member */}
-                {editing ? (
+                {member.status === "none" ? (
+                  <Text style={[styles.noEntries, { color: c.textFaint }]}>
+                    On the roster, but no share was split out for this booking.
+                  </Text>
+                ) : null}
+
+                {/* one inline form: either the captain keys a member's
+                    payment in, or the member settles their own */}
+                {editing && selfTo ? (
+                  <View style={[styles.form, { borderColor: c.border }]}>
+                    <Text style={[styles.formHead, { color: c.text }]}>
+                      Your share — {formatNPR(members.find((m) => m.userId === member.userId)?.outstanding ?? 0)} outstanding
+                    </Text>
+                    <View style={styles.methodRow}>
+                      {(["captain", "venue"] as const).map((where) => (
+                        <Pressable
+                          key={where}
+                          onPress={() => setSelfTo(where)}
+                          style={[
+                            styles.methodChip,
+                            {
+                              backgroundColor: selfTo === where ? c.primary : c.surface,
+                              borderColor: selfTo === where ? c.primary : c.border,
+                            },
+                          ]}
+                          accessibilityRole="button"
+                        >
+                          <Text
+                            style={[
+                              styles.methodChipText,
+                              { color: selfTo === where ? c.primaryText : c.textMuted },
+                            ]}
+                          >
+                            {where === "captain" ? "To captain" : "To venue"}
+                          </Text>
+                        </Pressable>
+                      ))}
+                    </View>
+                    <View style={styles.methodRow}>
+                      {METHODS.filter((m) => !(selfTo === "venue" && m === "Cash at Venue")).map((m) => (
+                        <Pressable
+                          key={m}
+                          onPress={() => setSelfMethod(m)}
+                          style={[
+                            styles.methodChip,
+                            {
+                              backgroundColor: selfMethod === m ? c.primary : c.surface,
+                              borderColor: selfMethod === m ? c.primary : c.border,
+                            },
+                          ]}
+                          accessibilityRole="button"
+                        >
+                          <Text
+                            style={[
+                              styles.methodChipText,
+                              {
+                                color:
+                                  selfMethod === m ? c.primaryText : c.textMuted,
+                              },
+                            ]}
+                          >
+                            {m}
+                          </Text>
+                        </Pressable>
+                      ))}
+                    </View>
+                    <Text style={[styles.noEntries, { color: c.textFaint }]}>
+                      {selfTo === "venue" && selfMethod !== "Cash at Venue"
+                        ? "Recorded on the venue's ledger."
+                        : "Recorded on your captain's ledger."}
+                    </Text>
+                    <View style={styles.formBtns}>
+                      <Pressable onPress={closeForm} style={[styles.btnGhost, { borderColor: c.border }]} accessibilityRole="button">
+                        <Text style={[styles.btnGhostText, { color: c.textMuted }]}>Cancel</Text>
+                      </Pressable>
+                      <Pressable
+                        onPress={() => void settleSelf()}
+                        disabled={busy !== ""}
+                        style={[styles.btn, { backgroundColor: c.primary }]}
+                        accessibilityRole="button"
+                      >
+                        {busy === "settle" ? (
+                          <Loader2 size={15} color={c.primaryText} />
+                        ) : (
+                          <Text style={styles.btnText}>
+                            <CheckCheck size={14} color={c.primaryText} /> Record
+                          </Text>
+                        )}
+                      </Pressable>
+                    </View>
+                  </View>
+                ) : editing ? (
                   <View style={[styles.form, { borderColor: c.border }]}>
                     <Text style={[styles.formHead, { color: c.text }]}>
                       Record what {member.userName} handed over
@@ -384,7 +446,7 @@ export default function TeamLedgerPanel({
                       </Pressable>
                     </View>
                   </View>
-                ) : isCaptain && !settled ? (
+                ) : isCaptain && !settled && member.status !== "none" ? (
                   <Pressable
                     onPress={() => openFor(member)}
                     style={[styles.recordBtn, { borderColor: c.border }]}
@@ -393,6 +455,26 @@ export default function TeamLedgerPanel({
                   >
                     <Plus size={14} color={c.text} />
                     <Text style={[styles.recordText, { color: c.text }]}>Record payment</Text>
+                  </Pressable>
+                ) : member.isYou && !settled && member.status !== "none" ? (
+                  /* Your own share is yours to settle, and either side of it
+                     counts: handing the captain cash and paying the remainder
+                     at the venue add up to one settled share. */
+                  <Pressable
+                    onPress={() => {
+                      setForId(member.userId);
+                      setSelfTo("captain");
+                      setSelfMethod("Cash at Venue");
+                      setAmount(String(member.outstanding));
+                      setError("");
+                      setNotice("");
+                    }}
+                    style={[styles.recordBtn, { borderColor: c.border }]}
+                    accessibilityRole="button"
+                    accessibilityLabel="Settle your share"
+                  >
+                    <Wallet size={14} color={c.text} />
+                    <Text style={[styles.recordText, { color: c.text }]}>Settle your share</Text>
                   </Pressable>
                 ) : null}
               </View>
@@ -480,6 +562,9 @@ const styles = StyleSheet.create({
   btnGhost: { borderWidth: 1, borderRadius: radius.full, paddingHorizontal: space[4], paddingVertical: space[2] },
   btnGhostText: { fontSize: fontSize.sm, fontWeight: "600" },
 
+  methodRow: { flexDirection: "row", flexWrap: "wrap", gap: space[1] },
+  methodChip: { borderWidth: 1, borderRadius: radius.full, paddingHorizontal: space[3], paddingVertical: space[1] },
+  methodChipText: { fontSize: fontSize.sm, fontWeight: "700" },
   recordBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: space[1], borderWidth: 1, borderRadius: radius.full, paddingVertical: space[2] },
   recordText: { fontSize: fontSize.sm, fontWeight: "700" },
 

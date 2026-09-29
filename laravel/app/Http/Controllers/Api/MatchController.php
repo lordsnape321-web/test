@@ -641,9 +641,22 @@ class MatchController extends ApiController
         }
 
         $share = (int) $match->price_per_player;
+
+        // What is still owed, not what the client said to charge.
+        //
+        // A player can send money up front when they ask to play and then be
+        // asked by the host for the balance. Charging the full share again
+        // asked for money that had already been paid, and — because the old
+        // code assigned rather than added — silently replaced the earlier
+        // amount instead of recording both. The outstanding is worked out here
+        // so the client cannot talk the desk into a second charge, and the
+        // existing paid_amount is added to rather than overwritten.
+        $alreadyPaid = (int) $join->paid_amount;
+        $outstanding = max(0, $share - $alreadyPaid);
+
         $amount = OpenGames::advanceAmount(
-            $request->input('amount', $share),
-            $share,
+            $request->input('amount', $outstanding),
+            $outstanding,
             true
         );
 
@@ -666,7 +679,7 @@ class MatchController extends ApiController
         $autoAccepts = OpenGames::autoAccepts($amount);
 
         $join->forceFill([
-            'paid_amount' => $amount,
+            'paid_amount' => $alreadyPaid + $amount,
             'pay_method' => $method,
             'payment_ref' => 'SEED-JOIN-'.strtoupper(bin2hex(random_bytes(3))),
             'paid_at' => now(),

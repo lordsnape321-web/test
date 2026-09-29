@@ -233,37 +233,60 @@ class TeamLedgerController extends ApiController
     {
         $shares = BookingTeamPayment::where('booking_id', $booking->id)->orderBy('id')->get();
         $entries = TeamLedgerEntry::forBooking($booking->id)->orderBy('id')->get();
-
-        $people = User::whereIn('id', $shares->pluck('user_id')->all())->get()->keyBy('id');
         $team = $booking->team_id ? Team::find((int) $booking->team_id) : null;
+
+        // The whole squad, not only the members who happen to have a share row.
+        //
+        // A share is created when the cost is split, so a teammate who joined
+        // the squad later — or whose share was written off — had no row and
+        // simply did not appear. The captain was looking at a ledger of the
+        // people who happened to owe, not at the team they play for. The
+        // roster is the source of truth; a share, when one exists, supplies
+        // the amounts. Anyone with a share but no longer on the roster is
+        // still listed, because their money is still in the ledger.
+        $shareByUser = $shares->keyBy('user_id');
+        $rosterIds = $team ? TeamMember::where('team_id', $team->id)->orderBy('id')->pluck('user_id')->all() : [];
+
+        $memberIds = array_values(array_unique(array_merge(
+            array_map('intval', $rosterIds),
+            $shares->pluck('user_id')->map(fn ($id) => (int) $id)->all()
+        )));
+
+        $people = User::whereIn('id', $memberIds)->get()->keyBy('id');
 
         $due = 0;
         $paid = 0;
 
-        $members = $shares->map(function (BookingTeamPayment $share) use ($people, $entries, $actorId, &$due, &$paid) {
-            $person = $people->get((int) $share->user_id);
+        $members = collect($memberIds)->map(function (int $userId) use ($shareByUser, $people, $entries, $actorId, $team, &$due, &$paid) {
+            $share = $shareByUser->get($userId);
+            $person = $people->get($userId);
             $mine = $entries->filter(
-                fn (TeamLedgerEntry $e) => (int) $e->user_id === (int) $share->user_id && ! $e->voided_at
+                fn (TeamLedgerEntry $e) => (int) $e->user_id === $userId && ! $e->voided_at
             );
 
-            $amountDue = (int) $share->amount_due;
+            $amountDue = $share ? (int) $share->amount_due : 0;
             $collected = (int) $mine->sum('amount');
             $due += $amountDue;
             $paid += $collected;
 
             return [
-                'shareId' => $share->id,
-                'userId' => (int) $share->user_id,
+                // 0 rather than null: a squad member with no share row is a
+                // real person on the roster who simply has nothing split out.
+                'shareId' => $share ? (int) $share->id : 0,
+                'userId' => $userId,
                 'userName' => $person?->name ?? 'Player',
                 'userAvatarColor' => $person?->avatar_color ?? '#10B981',
                 'userAvatarUrl' => $person?->avatar_url ?? '',
                 'userLevel' => $person?->level ?? '',
-                'isYou' => (int) $share->user_id === $actorId,
+                'isYou' => $userId === $actorId,
+                'isCaptain' => $team ? TeamStore::isCaptain((int) $team->id, $userId) : false,
                 'amountDue' => $amountDue,
                 'collected' => $collected,
                 'outstanding' => max(0, $amountDue - $collected),
-                'status' => $collected <= 0 ? 'pending' : ($collected >= $amountDue ? 'paid' : 'partial'),
-                'declaredMethod' => $share->payment_method,
+                'status' => $amountDue <= 0
+                    ? 'none'
+                    : ($collected <= 0 ? 'pending' : ($collected >= $amountDue ? 'paid' : 'partial')),
+                'declaredMethod' => $share?->payment_method ?? '',
                 'entries' => $mine->map(fn (TeamLedgerEntry $e) => $this->entry($e, $people))->values()->all(),
             ];
         })->values()->all();
