@@ -281,9 +281,9 @@ class TeamPaymentController extends ApiController
             'payment_status' => $paid >= (int) $share->amount_due ? 'paid' : 'partial',
         ])->save();
 
-        // The venue route put money in the venue's books; the booking's cached
-        // columns follow the ledger. The captain route is a no-op here, which
-        // is correct — the venue has not received that money yet.
+        // The booking's cached columns follow the players' obligation, which
+        // is the shares: paying the captain settles the player exactly as
+        // paying the venue does, so both routes refresh the booking state.
         BookingLedger::syncCachedState($booking);
 
         $person = User::find($userId);

@@ -18,6 +18,7 @@ import { useTheme } from "@/context/ThemeContext";
 import { ApiError } from "@/lib/api";
 import { formatWindowLeft } from "@/lib/booking-ledger";
 import { formatNPR, prettyDate } from "@/lib/futsal";
+import { moneyOf } from "@/lib/money";
 import type { Booking, Ledger } from "@/lib/types";
 import { fontSize, space } from "@/theme";
 
@@ -189,11 +190,11 @@ export default function BookingDetail() {
   const { totals, window: settleWin } = ledger;
   const balance = totals.balance;
 
-  // The card and this page now derive the same word from the same ledger
-  // numbers, instead of this page echoing the cached column next to a
-  // ledger balance that can disagree with it.
-  const received = Math.max(0, Number(booking.paymentSummary?.received ?? 0));
-  const payStatus = balance === 0 ? "paid" : received > 0 ? (booking.depositRequired ? "deposit_paid" : "pending") : "pending";
+  // The card and this page derive the same word from the same helper, so the
+  // pill here can never contradict the card. For a team booking the helper
+  // looks at the players' shares (captain or venue — both settle the player),
+  // not the venue's desk ledger alone.
+  const money = moneyOf(booking);
   const teamShare = booking.teamPayments?.find((share) => share.userId === user?.id) ?? null;
   const advanceDue = booking.status !== "cancelled" && booking.status !== "rejected" && booking.advancePaymentRequired && booking.advancePaymentStatus !== "paid" ? booking.advancePaymentAmount ?? 0 : 0;
   const competitionWaiting = booking.competition?.competitionStatus === "pending";
@@ -262,13 +263,13 @@ export default function BookingDetail() {
         <View style={styles.pillRow}>
           <Pill label={booking.status} tone={booking.status === "confirmed" ? "success" : "warning"} />
           <Pill
-            label={paymentStatusLabel(payStatus)}
-            tone={balance > 0 ? "danger" : "success"}
+            label={money.label}
+            tone={money.status === "paid" ? "success" : money.status === "deposit_paid" ? "warning" : "danger"}
           />
         </View>
         <View style={styles.paymentLabels}>
           <Text style={[styles.paymentLabel, { color: colors.textMuted }]}>Payment method: {paymentMethodLabel(booking.paymentMethod)}</Text>
-          <Text style={[styles.paymentLabel, { color: colors.textMuted }]}>Payment status: {paymentStatusLabel(payStatus)}</Text>
+          <Text style={[styles.paymentLabel, { color: colors.textMuted }]}>Payment status: {money.label}</Text>
         </View>
 
         {error ? <Notice message={error} /> : null}
@@ -580,7 +581,9 @@ export default function BookingDetail() {
                   ? "This booking was cancelled."
                   : booking.status === "rejected"
                     ? "This competition request was declined and was not sent to the venue owner."
-                    : "This booking is fully paid. Enjoy the game! ⚽"
+                    : teamShare
+                      ? "Your share is settled. Enjoy the game! ⚽"
+                      : "This booking is fully paid. Enjoy the game! ⚽"
             }
             tone={competitionWaiting || booking.status === "cancelled" || booking.status === "rejected" ? "error" : "success"}
           />

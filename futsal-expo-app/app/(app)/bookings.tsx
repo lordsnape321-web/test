@@ -55,6 +55,7 @@ import { useAuth } from "@/context/AuthContext";
 import { useTheme } from "@/context/ThemeContext";
 import { hoursUntilGame, type PlayerStats } from "@/lib/loyalty";
 import { formatNPR, formatTime12, gamePlayed, prettyDate } from "@/lib/futsal";
+import { moneyOf } from "@/lib/money";
 import { validateMessage } from "@/lib/validation";
 import type { Booking } from "@/lib/types";
 import { colors, fontSize, radius, space } from "@/theme";
@@ -86,53 +87,6 @@ const played = (b: {
 }) => b.status !== "cancelled" && b.status !== "rejected" && gamePlayed(b);
 
 const gone = (status: string) => status === "cancelled" || status === "rejected";
-
-/**
- * What the booking actually owes, read from the ledger.
- *
- * The card used to read `b.paidAmount` and `b.paymentStatus` — cached columns
- * on the booking row — while the full detail read `ledger.totals.balance`.
- * Two sources, so the card could say "Deposit paid" or "Paid" while the page
- * underneath it said a balance was due, with no way for the two to agree. The
- * cached columns are only refreshed when a booking is *settled*, so every
- * payment the owner records in between left the card showing a stale figure.
- *
- * `paymentSummary` is built by the presenter from the same ledger the detail
- * page opens, so both now read one number. The status word is derived from
- * that same ledger rather than from the stored column.
- */
-type MoneyView = {
-  received: number;
-  balance: number;
-  status: "paid" | "overpaid" | "deposit_paid" | "pending";
-  label: string;
-};
-
-function moneyOf(b: DiaryBooking): MoneyView {
-  const summary = b.paymentSummary;
-  const received = Math.max(0, Number(summary?.received ?? b.paidAmount ?? 0));
-  const balance = Math.max(0, Number(summary?.receivable ?? b.totalPrice - received));
-
-  if (balance === 0 && received > 0) {
-    return { received, balance, status: "paid", label: "Paid" };
-  }
-
-  if (balance === 0) {
-    return { received, balance, status: "paid", label: "Free — nothing to pay" };
-  }
-
-  // Something came in but the ledger still has a balance: the deposit case.
-  if (received > 0) {
-    return {
-      received,
-      balance,
-      status: "deposit_paid",
-      label: `Deposit paid · ${formatNPR(balance)} left`,
-    };
-  }
-
-  return { received, balance, status: "pending", label: "Nothing paid yet" };
-}
 
 function paymentStatusLabel(status: string) {
   return String(status || "unknown")
@@ -947,11 +901,9 @@ function BookingCard({
   const payTone =
     money.status === "paid"
       ? "success"
-      : money.status === "overpaid"
-        ? "info"
-        : money.status === "deposit_paid"
-          ? "warning"
-          : "danger";
+      : money.status === "deposit_paid"
+        ? "warning"
+        : "danger";
 
   return (
     <View
