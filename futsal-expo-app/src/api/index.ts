@@ -353,8 +353,8 @@ export async function fetchBookings(params?: {
  * booking inbox and picks the matching one. Passing userId keeps the response
  * small; without it the whole table is fetched, which still works but is wasteful.
  */
-export async function fetchBooking(id: number, userId?: number): Promise<Booking> {
-  const list = await fetchBookings(userId !== undefined ? { userId } : undefined);
+export async function fetchBooking(id: number, userId?: number, refresh = false): Promise<Booking> {
+  const list = await fetchBookings(userId !== undefined ? { userId, refresh } : { refresh });
   const found = list.find((b) => b.id === id);
   if (!found) throw new ApiError(404, "Booking not found");
   return found;
@@ -393,8 +393,9 @@ export function createBooking(input: {
 }
 
 /** GET /api/bookings/:id/ledger → the append-only payment ledger */
-export function fetchLedger(bookingId: number): Promise<Ledger> {
-  return apiJson(`/api/bookings/${bookingId}/ledger`);
+export function fetchLedger(bookingId: number, refresh = false): Promise<Ledger> {
+  const qs = refresh ? `?_=${Date.now()}` : '';
+  return apiJson(`/api/bookings/${bookingId}/ledger${qs}`);
 }
 
 /* ── payments ────────────────────────────────────────────────────────────── */

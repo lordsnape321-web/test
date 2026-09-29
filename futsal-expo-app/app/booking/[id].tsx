@@ -70,15 +70,15 @@ export default function BookingDetail() {
   const [requestBusy, setRequestBusy] = useState(false);
   const [teamDetailsOpen, setTeamDetailsOpen] = useState(false);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (refresh = false) => {
     if (!Number.isFinite(bookingId)) return;
     try {
       setError(null);
       // fetchBooking reads the player's booking list and picks this id; passing
       // the userId keeps that list small. The route has no GET /:id.
       const [b, l] = await Promise.all([
-        fetchBooking(bookingId, user?.id),
-        fetchLedger(bookingId),
+        fetchBooking(bookingId, user?.id, refresh),
+        fetchLedger(bookingId, refresh),
       ]);
       setBooking(b);
       setLedger(l);
@@ -96,7 +96,7 @@ export default function BookingDetail() {
   // Refresh ledger/booking when returning from payment screen
   useFocusEffect(
     useCallback(() => {
-      void load();
+      void load(true);
     }, [bookingId, user?.id])
   );
 
