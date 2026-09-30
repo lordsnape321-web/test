@@ -311,3 +311,30 @@ queued, so a just-completed action can never be overwritten by a poll that
 started before it; background poll failures are silent and keep the last good
 data on screen. The server response remains the only source of truth — nothing
 is patched into local state.
+
+### Adding a team after booking ("Just us" mistake)
+
+Booking without picking a squad used to be final: the booking stayed solo, so the
+equal split, the player ledger and every teammate request stayed unavailable. The
+booker can now attach one of their teams afterwards, from either:
+
+- **My Bookings → Coming up → Select team 👥** (a picker sheet lists the squads
+  they belong to), or
+- **Full Booking Detail → Booked without a team? → Select team**.
+
+`PATCH /api/bookings/{id}` with `{ actor: "player", actorId, teamId }` validates
+that the caller is the booking's player and a member of that team, refuses closed
+bookings, then splits `total_price` across the roster with the same rounded
+equal-share rule as checkout (`booking_team_payments`), sets `team_id`/
+`team_name`, and notifies each teammate with their share. Money a player has
+already sent the venue is attributed to their new share instead of showing as
+unpaid; rows for players no longer on the roster are only removed while nothing
+has been paid on them. Attaching the same team twice is a no-op.
+
+Once the squad is attached, the existing features light up unchanged: share
+payment methods, **Ask to pay** / **Ask teammates to pay their contribution**,
+the player ledger (team shares, open spots, guest collections) and reimbursement
+tracking. Swapping the team after any share has money recorded is refused (409),
+because re-splitting would silently rewrite who owes what.
+
+Regression coverage: `vendor/bin/phpunit tests/Feature/BookingTeamAttachTest.php`.

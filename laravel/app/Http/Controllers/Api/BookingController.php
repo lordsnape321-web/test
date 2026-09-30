@@ -912,6 +912,10 @@ class BookingController extends ApiController
 
         $cancellationReceived = $closing ? $this->receivedForBooking((int) $id, (int) $prev['total_price']) : 0;
 
+        if ($team = $this->handleTeamSelection($booking, $prev, $request)) {
+            return $team;
+        }
+
         $changes = [];
 
         if ($request->filled('status')) {
@@ -1486,6 +1490,136 @@ class BookingController extends ApiController
      * recorded as an audit trail. It does not call a gateway refund: "mark
      * refunded" means the owner has actually sent the money back.
      */
+    /**
+     * Add or change the squad on an existing booking.
+     *
+     * Forgetting to pick a team at checkout used to be final: the booking stayed
+     * "just us" for good, so the squad split, the ledger and every teammate
+     * request were unavailable. The player can now attach one of their teams
+     * from the Upcoming list (or the booking's own detail screen), and the cost
+     * is split across the roster exactly as it would have been at checkout.
+     *
+     * Refused once money is on the shares: re-splitting after collections would
+     * silently rewrite who owes what.
+     */
+    private function handleTeamSelection(Booking $booking, array $prev, Request $request): ?JsonResponse
+    {
+        if (! $request->has('teamId')) {
+            return null;
+        }
+
+        $actorId = (int) $request->input('actorId', 0);
+
+        if ($request->input('actor') !== 'player' || $actorId !== (int) $prev['user_id']) {
+            return $this->fail('Only the player who made this booking can choose its team 🔒', 403);
+        }
+
+        if (in_array((string) $prev['status'], ['cancelled', 'rejected', 'completed'], true)) {
+            return $this->fail('This booking is closed, so its team cannot change 🔒', 409);
+        }
+
+        $wanted = (int) $request->input('teamId', 0);
+
+        if ($wanted <= 0) {
+            return $this->fail('Pick one of your teams 👥', 400);
+        }
+
+        $team = TeamStore::findTeamForUser($wanted, $actorId);
+
+        if (! $team) {
+            return $this->fail('That isn’t one of your teams — pick another 🛡️', 400);
+        }
+
+        if ((int) $prev['team_id'] === (int) $team['id']) {
+            return null;
+        }
+
+        $collected = (int) BookingTeamPayment::where('booking_id', $booking->id)->sum('paid_amount');
+
+        if ((int) $prev['team_id'] > 0 && $collected > 0) {
+            return $this->fail('Squad payments have already been recorded here, so the team can’t be swapped 💰', 409);
+        }
+
+        $rows = $this->splitTeamCost($booking, (int) $team['id'], $actorId, (string) ($prev['payment_method'] ?? ''));
+        $booking->forceFill(['team_id' => (int) $team['id'], 'team_name' => (string) $team['name']])->save();
+
+        $when = Futsal::prettyDate($booking->date).' at '.Futsal::formatTime12($booking->start_time);
+        $actor = User::find($actorId);
+
+        foreach ($rows as $row) {
+            if ((int) $row->user_id === $actorId) {
+                continue;
+            }
+
+            Notifier::notify(
+                (int) $row->user_id,
+                'payment',
+                '👥 Added to a booking — '.$team['name'],
+                ($actor->name ?? 'Your captain').' added you to '.$team['name'].' for '.$when
+                    .'. Your share is '.Futsal::formatNPR((int) $row->amount_due)
+                    .' — choose eSewa, Khalti, or cash from My Bookings. Their own contribution is added to this booking’s ledger.',
+                '/bookings?focus=' . $booking->id
+            );
+        }
+
+        return null;
+    }
+
+    /**
+     * Split a booking's price across a squad, preserving already-paid receipts.
+     *
+     * The money a player has already sent the venue is attributed to their new
+     * share rather than being shown as unpaid, and anyone dropped from the
+     * roster keeps their history: only rows without payments are removed.
+     *
+     * @return list<BookingTeamPayment>
+     */
+    private function splitTeamCost(Booking $booking, int $teamId, int $payerId, string $payMethod): array
+    {
+        $memberIds = array_values(array_unique(array_merge(
+            array_map('intval', TeamMember::where('team_id', $teamId)->pluck('user_id')->all()),
+            [$payerId]
+        )));
+
+        $existing = BookingTeamPayment::where('booking_id', $booking->id)->get()->keyBy('user_id');
+
+        BookingTeamPayment::where('booking_id', $booking->id)
+            ->whereNotIn('user_id', $memberIds)
+            ->where('paid_amount', 0)
+            ->delete();
+
+        $total = max(0, (int) $booking->total_price);
+        $count = count($memberIds);
+        $base = $count > 0 ? intdiv($total, $count) : $total;
+        $remainder = max(0, $total - $base * $count);
+        $rows = [];
+
+        foreach ($memberIds as $memberId) {
+            $due = $base + ($remainder-- > 0 ? 1 : 0);
+            $receipts = (int) BookingPayment::where('booking_id', $booking->id)
+                ->where('recorded_by', $memberId)->whereNull('voided_at')->sum('amount');
+            $paid = min($due, $receipts);
+            $row = $existing->get($memberId);
+
+            $rows[] = BookingTeamPayment::updateOrCreate(
+                ['booking_id' => $booking->id, 'user_id' => $memberId],
+                [
+                    'team_id' => $teamId,
+                    'amount_due' => $due,
+                    'payment_method' => $memberId === $payerId
+                        ? ($payMethod !== '' ? $payMethod : ($row->payment_method ?? ''))
+                        : ($row->payment_method ?? ''),
+                    'paid_amount' => $paid,
+                    'payment_status' => $due === 0 || $paid >= $due ? 'paid' : ($paid > 0 ? 'partial' : 'pending'),
+                ]
+            );
+        }
+
+        BookingLedger::syncCachedState($booking);
+
+        return $rows;
+    }
+
     private function handleCancellationMoney(Booking $booking, array $prev, Request $request, string $actor): ?JsonResponse
     {
         if (! $request->has('cancellationMoney')) {

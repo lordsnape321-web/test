@@ -3,7 +3,7 @@ const assert = {
     if (actual !== expected) throw new Error(`Expected ${String(expected)}, got ${String(actual)}`);
   },
 };
-import { advanceOf } from "../src/lib/booking-advance";
+import { advanceOf, askPlan } from "../src/lib/booking-advance";
 import type { Booking } from "../src/lib/types";
 
 const booking = {
@@ -31,4 +31,15 @@ assert.equal(advanceOf(booking, 1200).received, 900);
 assert.equal(advanceOf({ ...booking, status: "cancelled" }, 300).active, false);
 assert.equal(advanceOf({ ...booking, advancePaymentStatus: "expired" }, 300).active, false);
 assert.equal(advanceOf({ ...booking, advancePaymentRequired: false }, 0).requested, 0);
-console.log("PASS: advance progress, pending reservations, ledger source, paid/expired/cancelled states");
+// Asking a teammate follows where the money is owed.
+assert.equal(askPlan(600, 900, 500, 0).purpose, "advance");
+assert.equal(askPlan(600, 900, 500, 0).amount, 500);
+// Never asks for more than the advance that is actually left.
+assert.equal(askPlan(200, 900, 500, 0).amount, 200);
+assert.equal(askPlan(0, 900, 500, 100).purpose, "booking");
+assert.equal(askPlan(0, 900, 500, 100).amount, 400);
+// Once the venue is square, the money goes back to whoever paid it.
+assert.equal(askPlan(0, 0, 500, 100).purpose, "reimbursement");
+assert.equal(askPlan(0, 0, 500, 100).amount, 400);
+assert.equal(askPlan(0, 0, 500, 500).amount, 0);
+console.log("PASS: advance progress, ask purpose/amount routing, pending reservations, ledger source, paid/expired/cancelled states");

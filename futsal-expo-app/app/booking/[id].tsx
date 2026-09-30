@@ -7,12 +7,14 @@ import TeamLedgerPanel from "@/components/TeamLedgerPanel";
 import { Button, Card, Field, Notice, Pill, Spinner } from "@/components/ui";
 import {
   cancelBookingPaymentRequest,
+  attachBookingTeam,
   chooseBookingPayment,
   chooseBookingTeamPayment,
   chooseBookingPaymentRequest,
   createBookingPaymentRequest,
   fetchBooking,
   fetchLedger,
+  fetchUserTeams,
   settleTeamShare,
 } from "@/api";
 import { useAuth } from "@/context/AuthContext";
@@ -20,9 +22,9 @@ import { useTheme } from "@/context/ThemeContext";
 import { ApiError } from "@/lib/api";
 import { formatWindowLeft } from "@/lib/booking-ledger";
 import { formatNPR, prettyDate } from "@/lib/futsal";
-import { advanceOf } from "@/lib/booking-advance";
+import { advanceOf, askPlan } from "@/lib/booking-advance";
 import { moneyOf } from "@/lib/money";
-import type { Booking, Ledger } from "@/lib/types";
+import type { Booking, Ledger, UserTeamLite } from "@/lib/types";
 import { fontSize, space } from "@/theme";
 
 function paymentStatusLabel(status: string) {
@@ -74,6 +76,10 @@ export default function BookingDetail() {
   // The owner's advance, the squad list and its actions are part of the
   // booking itself: nothing here hides behind a Show/Hide tap.
   const [teamDetailsOpen, setTeamDetailsOpen] = useState(true);
+  // "Booked without a team" recovery: pick a squad and split the cost.
+  const [teamChoices, setTeamChoices] = useState<UserTeamLite[] | null>(null);
+  const [teamPickBusy, setTeamPickBusy] = useState<number | null>(null);
+  const [teamPickError, setTeamPickError] = useState<string | null>(null);
 
   // One refresh at a time: the focus poll and a just-finished action must not
   // race each other into a stale response.
@@ -237,9 +243,8 @@ export default function BookingDetail() {
     const name = player?.name ?? "Your teammate";
     const share = Math.max(0, Math.round(dueAmount - alreadyPaid));
     const currentAdvance = advanceOf(booking, ledger?.totals.paid ?? 0);
-    const purpose: "advance" | "booking" | "reimbursement" =
-      currentAdvance.active ? "advance" : Math.max(0, ledger?.totals.balance ?? 0) > 0 ? "booking" : "reimbursement";
-    const amount = purpose === "advance" ? Math.max(10, Math.min(share || currentAdvance.available, currentAdvance.available)) : share;
+    const plan = askPlan(currentAdvance.remaining, Math.max(0, ledger?.totals.balance ?? 0), share, 0);
+    const { purpose, amount } = plan;
     if (!Number.isInteger(amount) || amount < 10) {
       throw new Error(`Nothing left to ask ${name} for — their part is already covered.`);
     }
@@ -259,6 +264,33 @@ export default function BookingDetail() {
         : `${name} was asked to pay ${formatNPR(amount)}${purpose === "advance" ? " toward the venue advance" : " toward the booking"}.`;
     } finally {
       setRequestBusy(false);
+    }
+  }
+
+  async function openTeamChoices() {
+    if (!user) return;
+    setTeamPickError(null);
+    setTeamChoices([]);
+    try {
+      setTeamChoices(await fetchUserTeams(user.id));
+    } catch (e) {
+      setTeamPickError(e instanceof Error ? e.message : "Could not load your teams.");
+    }
+  }
+
+  async function chooseTeam(teamId: number) {
+    if (!user) return;
+    setTeamPickBusy(teamId);
+    setTeamPickError(null);
+    try {
+      await attachBookingTeam(bookingId, user.id, teamId);
+      setTeamChoices(null);
+      setSuccess("Team added — the cost is split across the squad, so you can ask teammates to pay their part.");
+      await load(true);
+    } catch (e) {
+      setTeamPickError(e instanceof Error ? e.message : "Could not add that team.");
+    } finally {
+      setTeamPickBusy(null);
     }
   }
 
@@ -477,6 +509,37 @@ export default function BookingDetail() {
         ) : null}
         {(booking.status === "cancelled" || booking.status === "rejected") && (booking.cancellationReceivedAmount ?? 0) > 0 ? (
           <Notice message={`Received ${formatNPR(booking.cancellationReceivedAmount ?? 0)} before cancellation. Refund status: ${paymentStatusLabel(booking.cancellationMoneyStatus ?? "review")}.`} tone="info" />
+        ) : null}
+        {isBooker && !booking.teamId && !["cancelled", "rejected", "completed"].includes(booking.status) ? (
+          <Card style={{ marginTop: space["3"] }}>
+            <View style={{ gap: space["3"] }}>
+              <Text style={[styles.cardTitle, { color: colors.text }]}>Booked without a team?</Text>
+              <Text style={[styles.meta, { color: colors.textMuted }]}>
+                Attaching your squad splits this booking's cost exactly as it would have at
+                checkout. You can then ask teammates to pay their part and open the player ledger.
+              </Text>
+              {teamPickError ? <Notice message={teamPickError} /> : null}
+              <Button
+                label={teamChoices ? "Hide team list" : "Select team"}
+                variant="secondary"
+                onPress={() => (teamChoices ? setTeamChoices(null) : void openTeamChoices())}
+              />
+              {(teamChoices ?? []).map((team) => (
+                <Button
+                  key={team.id}
+                  label={`${team.name} · ${team.memberCount} member${team.memberCount === 1 ? "" : "s"}`}
+                  onPress={() => void chooseTeam(team.id)}
+                  loading={teamPickBusy === team.id}
+                  disabled={teamPickBusy !== null}
+                />
+              ))}
+              {teamChoices && teamChoices.length === 0 ? (
+                <Text style={[styles.hint, { color: colors.textMuted }]}>
+                  You aren't in a team yet — create one from the Teams tab, then come back here.
+                </Text>
+              ) : null}
+            </View>
+          </Card>
         ) : null}
         {teamShare ? (
           <Notice

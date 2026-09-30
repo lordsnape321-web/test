@@ -27,6 +27,7 @@ import {
   ActivityIndicator,
   Alert,
   Image,
+  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -36,12 +37,15 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import {
+  attachBookingTeam,
   chooseBookingTeamPayment,
+  createBookingPaymentRequest,
   decideCompetitionBooking,
   fetchBookings,
   fetchHealth,
   fetchReviews,
   fetchUserStats,
+  fetchUserTeams,
   patchBooking,
   postReview,
 } from "@/api";
@@ -52,9 +56,11 @@ import { ReceiptUploader, ReceiptViewer, isOnlineMethod } from "@/components/Rec
 import { StarInput } from "@/components/Reviews";
 import { Button, Notice, Pill, Spinner } from "@/components/ui";
 import TeamLedgerPanel from "@/components/TeamLedgerPanel";
+import { askPlan } from "@/lib/booking-advance";
 import { useAuth } from "@/context/AuthContext";
 import { useTheme } from "@/context/ThemeContext";
 import { hoursUntilGame, type PlayerStats } from "@/lib/loyalty";
+import type { TeamLedgerMember, UserTeamLite } from "@/lib/types";
 import { formatNPR, formatTime12, gamePlayed, prettyDate } from "@/lib/futsal";
 import { moneyOf } from "@/lib/money";
 import { APP_BUILD } from "@/lib/build";
@@ -159,6 +165,11 @@ export default function BookingsScreen() {
   const [teamSaving, setTeamSaving] = useState<number | null>(null);
   // Which booking's squad ledger the captain has open, if any.
   const [ledgerFor, setLedgerFor] = useState<number | null>(null);
+  // A "Just us" booking can still be turned into a squad booking from here.
+  const [teamPickerFor, setTeamPickerFor] = useState<DiaryBooking | null>(null);
+  const [teamChoices, setTeamChoices] = useState<UserTeamLite[]>([]);
+  const [teamPickBusy, setTeamPickBusy] = useState<number | null>(null);
+  const [teamPickError, setTeamPickError] = useState("");
 
   const load = useCallback(async (refresh = false) => {
     if (!user) return;
@@ -226,6 +237,63 @@ export default function BookingsScreen() {
       };
     }, [user, load]),
   );
+
+  async function openTeamPicker(b: DiaryBooking) {
+    if (!user) return;
+    setTeamPickerFor(b);
+    setTeamChoices([]);
+    setTeamPickError("");
+    try {
+      setTeamChoices(await fetchUserTeams(user.id));
+    } catch (e) {
+      setTeamPickError(e instanceof Error ? e.message : "Could not load your teams.");
+    }
+  }
+
+  async function chooseTeam(teamId: number) {
+    if (!user || !teamPickerFor) return;
+    setTeamPickBusy(teamId);
+    setTeamPickError("");
+    try {
+      await attachBookingTeam(teamPickerFor.id, user.id, teamId);
+      const name = teamChoices.find((team) => team.id === teamId)?.name ?? "Your team";
+      setTeamPickerFor(null);
+      await load(true);
+      Alert.alert("Team added 👥", `${name} is now on this booking. Its cost is split across the squad, and you can ask each player to pay their part from the booking's details.`);
+    } catch (e) {
+      setTeamPickError(e instanceof Error ? e.message : "Could not add that team.");
+    } finally {
+      setTeamPickBusy(null);
+    }
+  }
+
+  /**
+   * Ask one listed player for their part, straight from the ledger panel.
+   *
+   * The purpose follows the money: the venue advance while it is unpaid, the
+   * venue balance while the desk is short, otherwise a reimbursement to whoever
+   * paid the bill. Reimbursements never open a gateway.
+   */
+  async function askFromPanel(b: DiaryBooking, member: TeamLedgerMember): Promise<string> {
+    if (!user) throw new Error("Sign in to ask a teammate.");
+    const advanceDue = Math.max(0, b.paymentSummary?.advanceReceivable ?? 0);
+    const venueBalance = Math.max(0, b.paymentSummary?.receivable ?? 0);
+    const plan = askPlan(advanceDue, venueBalance, member.amountDue, member.collected);
+    if (!Number.isInteger(plan.amount) || plan.amount < 10) {
+      throw new Error(`Nothing left to ask ${member.userName} for.`);
+    }
+    await createBookingPaymentRequest(b.id, {
+      requesterId: user.id,
+      payerIds: [member.userId],
+      amount: plan.amount,
+      purpose: plan.purpose,
+      note: "",
+    });
+    await load(true);
+    return plan.purpose === "reimbursement"
+      ? `${member.userName} was asked to reimburse ${formatNPR(plan.amount)} to you. Record it in the ledger once you have it.`
+      : `${member.userName} was asked to pay ${formatNPR(plan.amount)}${plan.purpose === "advance" ? " toward the venue advance" : " toward the booking"}.`;
+  }
 
   const today = new Date().toISOString().slice(0, 10);
   const gone = (s: string) => s === "cancelled" || s === "rejected";
@@ -754,6 +822,8 @@ export default function BookingsScreen() {
                 }}
                 isTeamCaptain={!!user && b.userId === user.id && !!b.teamName}
                 onOpenTeamLedger={() => setLedgerFor(b.id)}
+                canSelectTeam={!!user && b.userId === user.id && !b.teamName && !gone(b.status) && !played(b)}
+                onSelectTeam={() => void openTeamPicker(b)}
                 payLabel={payLabel(b)}
                 onOpenReceipt={() => setViewReceipt(b.receiptUrl ?? "")}
                 onToggleUpload={() =>
@@ -804,13 +874,52 @@ export default function BookingsScreen() {
         </Text>
       </ScrollView>
       {viewReceipt ? <ReceiptViewer url={viewReceipt} onClose={() => setViewReceipt(null)} /> : null}
+      {teamPickerFor ? (
+        <Modal transparent animationType="fade" onRequestClose={() => setTeamPickerFor(null)}>
+          <View style={styles.teamPickerBackdrop}>
+            <View style={[styles.teamPickerCard, { backgroundColor: c.surface, borderColor: c.border }]}>
+              <Text style={[styles.teamPickerTitle, { color: c.text }]}>Select a team</Text>
+              <Text style={[styles.teamPickerHint, { color: c.textMuted }]}>
+                This booking&apos;s cost is split equally across the squad, and every teammate can
+                then pay their own part (or reimburse you once you have paid the venue).
+              </Text>
+              {teamPickError ? <Text style={{ color: c.dangerText, fontSize: fontSize.sm }}>{teamPickError}</Text> : null}
+              {teamChoices.map((team) => (
+                <Pressable
+                  key={team.id}
+                  onPress={() => void chooseTeam(team.id)}
+                  disabled={teamPickBusy !== null}
+                  style={[styles.chip, { backgroundColor: c.bg, borderWidth: 1, borderColor: c.border, justifyContent: "center", opacity: teamPickBusy === null || teamPickBusy === team.id ? 1 : 0.5 }]}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Use the team ${team.name}`}
+                >
+                  <Text style={[styles.chipText, { color: c.text }]}>
+                    {teamPickBusy === team.id ? "Adding…" : `${team.name} · ${team.memberCount} members`}
+                  </Text>
+                </Pressable>
+              ))}
+              {teamChoices.length === 0 && !teamPickError ? (
+                <Text style={[styles.teamPickerHint, { color: c.textMuted }]}>Loading your teams…</Text>
+              ) : null}
+              <Pressable onPress={() => setTeamPickerFor(null)} style={styles.closeGhost} accessibilityRole="button">
+                <Text style={[styles.closeGhostText, { color: c.textMuted }]}>Close</Text>
+              </Pressable>
+            </View>
+          </View>
+        </Modal>
+      ) : null}
       {ledgerFor != null && user ? (
         <TeamLedgerPanel
           bookingId={ledgerFor}
           actorId={user.id}
           bookingLabel={filtered.find((x) => x.id === ledgerFor)?.teamName ?? ""}
           onClose={() => setLedgerFor(null)}
-          onChanged={() => void load()}
+          onChanged={() => void load(true)}
+          onAsk={(member) => {
+            const booking = bookings.find((x) => x.id === ledgerFor);
+            if (!booking) throw new Error("Booking not found.");
+            return askFromPanel(booking, member);
+          }}
         />
       ) : null}
     </SafeAreaView>
@@ -847,6 +956,8 @@ function BookingCard({
   /** True when this booking's player is the captain of the squad. */
   isTeamCaptain,
   onOpenTeamLedger,
+  canSelectTeam,
+  onSelectTeam,
   payLabel,
   onOpenReceipt,
   onToggleUpload,
@@ -892,6 +1003,9 @@ function BookingCard({
   onSaveTeamMethod: () => void;
   onPayTeamShare: () => void;
   isTeamCaptain: boolean;
+  /** True when this is the player's own booking with no squad attached yet. */
+  canSelectTeam?: boolean;
+  onSelectTeam?: () => void;
   onOpenTeamLedger: () => void;
   payLabel: string;
   onOpenReceipt: () => void;
@@ -1137,6 +1251,17 @@ function BookingCard({
                 </>
               )}
             </View>
+          ) : null}
+          {canSelectTeam ? (
+            <Pressable
+              onPress={onSelectTeam}
+              style={[styles.chip, { backgroundColor: surface, borderWidth: 1, borderColor: border }]}
+              accessibilityRole="button"
+              accessibilityLabel="Select a team for this booking"
+            >
+              <Shield size={12} color={text} />
+              <Text style={[styles.chipText, { color: text }]}>Select team 👥</Text>
+            </Pressable>
           ) : null}
           {b.teamName && isTeamCaptain ? (
             <View style={[styles.teamPaymentCard, { backgroundColor: isDark ? "rgba(16,185,129,0.12)" : "#F0FDF4", borderColor: isDark ? "rgba(52,211,153,0.25)" : "#BBF7D0" }]}>
@@ -1605,6 +1730,12 @@ function textFaint(muted: string) {
 }
 
 const styles = StyleSheet.create({
+  teamPickerBackdrop: { flex: 1, backgroundColor: "rgba(2,6,23,0.55)", alignItems: "center", justifyContent: "center", padding: space[4] },
+  teamPickerCard: { width: "100%", maxWidth: 440, borderRadius: radius.lg, borderWidth: 1, padding: space[4], gap: space[2] },
+  teamPickerTitle: { fontSize: fontSize.lg, fontWeight: "700" },
+  teamPickerHint: { fontSize: fontSize.sm, lineHeight: 18 },
+  closeGhost: { paddingVertical: space[2], alignItems: "center" },
+  closeGhostText: { fontSize: fontSize.sm, fontWeight: "600" },
   flex: { flex: 1 },
   center: { alignItems: "center", justifyContent: "center", padding: space[4] },
   scroll: { padding: space[4], paddingBottom: space[16], gap: space[2] },

@@ -666,6 +666,20 @@ export function leagueMediaAction(
   return apiJson(`/api/tournaments/${id}/media`, { method: "POST", json: body });
 }
 
+/**
+ * PATCH /api/bookings/:id — attach a team to a booking made without one.
+ *
+ * "Just us" used to be final, which left the squad split, the ledger and every
+ * teammate request unavailable. The booking is re-split across the roster once
+ * the player picks a team.
+ */
+export function attachBookingTeam(bookingId: number, userId: number, teamId: number): Promise<{ booking?: Booking }> {
+  return apiJson(`/api/bookings/${bookingId}`, {
+    method: "PATCH",
+    json: { actor: "player", actorId: userId, teamId },
+  });
+}
+
 /** GET /api/teams?userId= → { teams } — the viewer's squads (role included). */
 export async function fetchUserTeams(userId: number): Promise<UserTeamLite[]> {
   const data = await apiJson<{ teams: UserTeamLite[] }>(`/api/teams?userId=${userId}`);
