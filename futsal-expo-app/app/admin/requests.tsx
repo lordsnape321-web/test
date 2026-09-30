@@ -392,11 +392,23 @@ export default function OwnerRequests() {
                 {b.paymentSummary ? (
                   <View style={[styles.paymentSnapshot, { backgroundColor: isDark ? "rgba(16,185,129,0.12)" : "#ECFDF5", borderColor: isDark ? "rgba(52,211,153,0.25)" : "#A7F3D0" }]}>
                     <Text style={[styles.snapshotKicker, { color: isDark ? "#6EE7B7" : "#047857" }]}>PAYMENT SNAPSHOT</Text>
-                    <View style={styles.snapshotRows}>
-                      <Text style={[styles.snapshotText, { color: c.text }]}>Advance received {formatNPR(b.paymentSummary.advanceReceived)}</Text>
-                      <Text style={[styles.snapshotText, { color: c.text }]}>Advance receivable {formatNPR(advanceReceivableFor(b))}</Text>
-                      <Text style={[styles.snapshotText, { color: c.text }]}>Total received {formatNPR(b.paymentSummary.received)}</Text>
-                      <Text style={[styles.snapshotText, { color: c.text }]}>Receivable {formatNPR(b.paymentSummary.receivable)}</Text>
+                    {/*
+                      A 2x2 grid of labelled figures: the four values were one
+                      run-on line, so "Advance receivable" read as part of the
+                      next number and the block crowded whatever followed it.
+                    */}
+                    <View style={styles.snapshotGrid}>
+                      {[
+                        { label: "Advance received", value: b.paymentSummary.advanceReceived, tone: c.text },
+                        { label: "Advance receivable", value: advanceReceivableFor(b), tone: advanceReceivableFor(b) > 0 ? (isDark ? "#FDBA74" : "#C2410C") : c.text },
+                        { label: "Total received", value: b.paymentSummary.received, tone: c.text },
+                        { label: "Receivable", value: b.paymentSummary.receivable, tone: b.paymentSummary.receivable > 0 ? (isDark ? "#FCD34D" : "#B45309") : c.text },
+                      ].map((cell) => (
+                        <View key={cell.label} style={[styles.snapshotCell, { backgroundColor: isDark ? "rgba(15,23,42,0.35)" : "rgba(255,255,255,0.7)", borderColor: isDark ? "rgba(52,211,153,0.2)" : "#A7F3D0" }]}>
+                          <Text style={[styles.snapshotLabel, { color: c.textMuted }]} numberOfLines={1}>{cell.label}</Text>
+                          <Text style={[styles.snapshotValue, { color: cell.tone }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>{formatNPR(cell.value)}</Text>
+                        </View>
+                      ))}
                     </View>
                     <View style={styles.snapshotActions}>
                       <Text style={[styles.snapshotBadge, { color: b.paymentSummary.receivable > 0 ? "#B45309" : "#047857", backgroundColor: b.paymentSummary.receivable > 0 ? "rgba(245,158,11,0.15)" : "rgba(16,185,129,0.15)" }]}>
@@ -681,22 +693,27 @@ const styles = StyleSheet.create({
     gap: space[4],
   },
   requestMainNarrow: { flexDirection: "column" },
-  requestInfo: { flexGrow: 1, flexBasis: 220, minWidth: 0 },
+  // The card's own stack: without a gap the payment snapshot sat flush against
+  // the team-name chip row and the two blocks read as one crowded paragraph.
+  requestInfo: { flexGrow: 1, flexBasis: 220, minWidth: 0, gap: space[2] },
   requestInfoNarrow: { width: "100%", flexBasis: "auto" },
   cardImg: { width: 144, height: 96, flexShrink: 0, borderRadius: radius.xl },
   cardImgNarrow: { width: "100%", height: 112 },
 
-  chipRow: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: space[2] },
+  chipRow: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: space[2], rowGap: space[1.5], maxWidth: "100%" },
   mono: { fontFamily: "monospace", fontSize: fontSize.xs, fontWeight: "700" },
   chip: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 3,
+    gap: 4,
     borderRadius: radius.full,
     paddingHorizontal: space[2.5],
     paddingVertical: space[1],
+    // A long squad name must wrap inside the card, not push the row wider.
+    maxWidth: "100%",
+    flexShrink: 1,
   },
-  chipText: { fontSize: 10, fontWeight: "900" },
+  chipText: { fontSize: 10, fontWeight: "900", flexShrink: 1 },
   nameRow: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: space[2] },
   name: { fontSize: fontSize.base, fontWeight: "800", flex: 1, minWidth: 120 },
   meta: { fontSize: 13, fontWeight: "600", marginTop: space[1] },
@@ -712,11 +729,13 @@ const styles = StyleSheet.create({
   notes: { fontSize: fontSize.xs, fontStyle: "italic" },
   trustCard: { borderWidth: 1, borderRadius: radius.xl, padding: space[3], marginTop: space[2], gap: 4 },
   trustKicker: { fontSize: 10, fontWeight: "900", letterSpacing: 1 },
-  paymentSnapshot: { borderWidth: 1, borderRadius: radius.xl, padding: space[3], marginTop: space[2], gap: space[2] },
+  paymentSnapshot: { borderWidth: 1, borderRadius: radius.xl, padding: space[3], marginTop: space[1], gap: space[2] },
   snapshotKicker: { fontSize: 10, fontWeight: "900", letterSpacing: 1 },
-  snapshotRows: { flexDirection: "row", flexWrap: "wrap", gap: space[2] },
-  snapshotText: { fontSize: 11, fontWeight: "800" },
-  snapshotActions: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: space[2] },
+  snapshotGrid: { flexDirection: "row", flexWrap: "wrap", gap: space[2] },
+  snapshotCell: { flexGrow: 1, flexBasis: 132, minWidth: 118, borderWidth: 1, borderRadius: radius.lg, paddingHorizontal: space[2.5], paddingVertical: space[2], gap: 2 },
+  snapshotLabel: { fontSize: 9, fontWeight: "900", letterSpacing: 0.5, textTransform: "uppercase" },
+  snapshotValue: { fontSize: fontSize.base, fontWeight: "900" },
+  snapshotActions: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: space[2], marginTop: space[1] },
   snapshotBadge: { borderRadius: radius.full, paddingHorizontal: space[2], paddingVertical: space[1], fontSize: 10, fontWeight: "900", overflow: "hidden" },
   snapshotButton: { borderWidth: 1, borderRadius: radius.full, paddingHorizontal: space[3], paddingVertical: space[1.5] },
   snapshotButtonText: { fontSize: 10, fontWeight: "900" },
