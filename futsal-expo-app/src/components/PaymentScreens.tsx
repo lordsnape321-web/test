@@ -39,6 +39,9 @@ export function KhaltiMockScreen() {
 
 function GatewayMock({ kind, params, onDone, onCancel }: { kind: "esewa" | "khalti"; params: Params; onDone: (bookingId: string) => void; onCancel: (bookingId: string) => void }) {
   const [busy, setBusy] = useState(false);
+  // One id per checkout, retained if verification is retried. A subsequent
+  // checkout (e.g. the balance after a deposit) must get a different id.
+  const [checkoutId] = useState(() => `mock-${Date.now()}-${Math.random().toString(36).slice(2)}`);
   const [error, setError] = useState("");
   const bookingId = one(params.bookingId);
   const teamPaymentId = one(params.teamPaymentId);
@@ -66,9 +69,9 @@ function GatewayMock({ kind, params, onDone, onCancel }: { kind: "esewa" | "khal
           method: label,
         });
       } else if (kind === "esewa") {
-        await verifyEsewa(Number(bookingId), true, teamPaymentId ? Number(teamPaymentId) : undefined, paymentRequestId ? Number(paymentRequestId) : undefined, numberParam(params.userId) || undefined);
+        await verifyEsewa(Number(bookingId), true, teamPaymentId ? Number(teamPaymentId) : undefined, paymentRequestId ? Number(paymentRequestId) : undefined, numberParam(params.userId) || undefined, one(params.uuid) || checkoutId);
       } else {
-        await verifyKhalti(Number(bookingId), one(params.pidx) || "mock-pidx", true, teamPaymentId ? Number(teamPaymentId) : undefined, paymentRequestId ? Number(paymentRequestId) : undefined, numberParam(params.userId) || undefined);
+        await verifyKhalti(Number(bookingId), one(params.pidx) && one(params.pidx) !== "mock-pidx" ? one(params.pidx) : checkoutId, true, teamPaymentId ? Number(teamPaymentId) : undefined, paymentRequestId ? Number(paymentRequestId) : undefined, numberParam(params.userId) || undefined);
       }
       if (isLeague) {
         // League checkout returns to its detail page, just like the web mock.

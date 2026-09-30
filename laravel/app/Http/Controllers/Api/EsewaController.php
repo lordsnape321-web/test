@@ -3,17 +3,20 @@
 namespace App\Http\Controllers\Api;
 
 use App\Models\Booking;
+use App\Models\BookingPayment;
 use App\Models\BookingPaymentRequest;
 use App\Models\BookingTeamPayment;
 use App\Models\Court;
 use App\Models\Venue;
 use App\Services\Notifier;
 use App\Support\AdvancePayment;
+use App\Support\BookingLedger;
 use App\Support\Futsal;
 use App\Support\LedgerRecord;
 use App\Support\Payments;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 /**
  * eSewa test gateway — `POST /api/payments/esewa/{initiate,verify}`.
@@ -187,6 +190,13 @@ class EsewaController extends ApiController
     {
         AdvancePayment::expireOverdueAdvanceRequests();
 
+        // Serialize verification for a booking. A ledger insert, share update
+        // and cached status must either all commit or all roll back.
+        return DB::transaction(fn () => $this->verifyPayment($request));
+    }
+
+    private function verifyPayment(Request $request): JsonResponse
+    {
         $dataB64 = trim((string) $request->input('data', ''));
         $hintBookingId = (int) $request->input('bookingId', 0) ?: null;
         $mockApprove = $request->boolean('mockApprove');
@@ -220,10 +230,15 @@ class EsewaController extends ApiController
             return $this->fail('Can’t link payment to booking', 400);
         }
 
-        $booking = Booking::find($bookingId);
+        $booking = Booking::lockForUpdate()->find($bookingId);
 
         if (! $booking) {
             return $this->fail('Booking not found', 404);
+        }
+
+        $txnCode = ((string) ($payload['transaction_code'] ?? '')) ?: $uuid;
+        if ($replay = LedgerRecord::replay($booking, 'eSewa', $txnCode)) {
+            return $this->ok($replay);
         }
 
         $gate = $this->gate($booking, $teamPaymentId, $paymentRequestId, (int) $request->input('userId', 0));
@@ -304,7 +319,7 @@ class EsewaController extends ApiController
             return $this->fail('Missing booking', 400);
         }
 
-        $booking = Booking::find($hintBookingId);
+        $booking = Booking::lockForUpdate()->find($hintBookingId);
 
         if (! $booking) {
             return $this->fail('Booking not found', 404);
@@ -333,6 +348,25 @@ class EsewaController extends ApiController
             return $this->fail('Payment request not found', 404);
         }
 
+        // A checkout token survives retries; it must not depend on the
+        // booking's changing paid amount. Old callers without a token get
+        // one stable legacy checkout, never an accidental second charge.
+        $token = trim((string) $request->input('uuid', ''));
+        if ($token === '' && ! $teamPayment && ! $paymentRequest) {
+            $legacy = BookingPayment::where('booking_id', $booking->id)
+                ->where('method', 'eSewa')->where('source', 'gateway')
+                ->where('reference', 'like', 'MOCK-ESEWA-'.$booking->id.'-%')->first();
+            if ($legacy && ($replay = LedgerRecord::replay($booking, 'eSewa', $legacy->reference))) {
+                return $this->ok($replay + ['mock' => true]);
+            }
+        }
+        $mockTxn = 'MOCK-ESEWA-'.$booking->id.'-'.substr(hash('sha256',
+            $token !== '' ? $token : "legacy:{$teamPaymentId}:{$paymentRequestId}"
+        ), 0, 40);
+        if ($replay = LedgerRecord::replay($booking, 'eSewa', $mockTxn)) {
+            return $this->ok($replay + ['mock' => true]);
+        }
+
         $payerId = (int) $request->input('userId', 0) ?: null;
 
         if ($paymentRequest && (! $payerId || (int) $paymentRequest->payer_id !== $payerId)) {
@@ -355,19 +389,7 @@ class EsewaController extends ApiController
             return $this->fail('Payment opens after the opposition captain accepts this competition request 🆚', 409);
         }
 
-        $payingAdvance = ! $teamPayment && ! $paymentRequest
-            && (bool) $booking->advance_payment_required && $booking->advance_payment_status !== 'paid';
-        $payingDeposit = ! $teamPayment && ! $paymentRequest && ! $payingAdvance
-            && (bool) $booking->deposit_required && $booking->deposit_status !== 'paid';
-
         $amount = $this->expectedAmount($booking, $teamPayment, $paymentRequest);
-
-        $mockTxn = mb_substr(
-            'MOCK-ESEWA-'.$booking->id
-            .($teamPayment ? "-TP-{$teamPayment->id}" : ($paymentRequest ? "-PR-{$paymentRequest->id}" : ($payingAdvance ? '-ADV' : ($payingDeposit ? '-DEP' : "-BAL-{$booking->paid_amount}")))),
-            0,
-            100
-        );
 
         if ($paymentRequest) {
             $paidRequest = $this->recordRequestedPayment($booking, $paymentRequest, $amount, $mockTxn);
@@ -602,6 +624,22 @@ class EsewaController extends ApiController
     /** The booking's own money: advance first, then deposit, then the balance. */
     private function settleBookingPayment(Booking $booking, int $amount, string $reference, string $note, bool $mock): JsonResponse
     {
+        if ($amount <= 0) {
+            return $this->ok(['ok' => true, 'alreadyPaid' => true, 'booking' => $booking->toArray()]);
+        }
+
+        $record = LedgerRecord::recordGatewayPayment([
+            'bookingId' => $booking->id,
+            'amount' => $amount,
+            'method' => 'eSewa',
+            'reference' => $reference,
+            'userId' => $booking->user_id,
+            'note' => $note,
+        ]);
+        if (! $record['recorded']) {
+            return $this->ok(['ok' => true, 'duplicate' => $record['duplicate'], 'booking' => $booking->toArray()]);
+        }
+
         $payingAdvance = (bool) $booking->advance_payment_required && $booking->advance_payment_status !== 'paid';
         $payingDeposit = ! $payingAdvance && (bool) $booking->deposit_required && $booking->deposit_status !== 'paid';
 
@@ -625,14 +663,11 @@ class EsewaController extends ApiController
 
         $booking->forceFill($patch)->save();
 
-        LedgerRecord::recordGatewayPayment([
-            'bookingId' => $booking->id,
-            'amount' => $amount,
-            'method' => 'eSewa',
-            'reference' => $reference,
-            'userId' => $booking->user_id,
-            'note' => $note,
-        ]);
+        // A captain's solo advance is not an equal-share settlement. Preserve
+        // that path until the team allocation is explicitly reconciled.
+        if (! $booking->teamPayments()->exists()) {
+            BookingLedger::syncCachedState($booking);
+        }
 
         $venue = $this->venueOf($booking);
 

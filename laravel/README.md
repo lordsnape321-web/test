@@ -132,3 +132,61 @@ php artisan test
 ```
 
 MIT License.
+
+## Repair payment caches after the database restructure
+
+The booking ledger reads `booking_payments` and `booking_extras` using Eloquent
+attributes; database column names remain snake_case and the Expo JSON contract
+remains camelCase. No schema reset or new migration is required for this fix.
+
+### Normal local startup — no extra commands
+
+With the existing dependencies, `.env` and restructured MySQL database already
+set up, pull these changes and use your normal startup commands:
+
+```bash
+# In laravel/
+php artisan serve
+
+# In futsal-expo-app/, another terminal
+npx expo start
+```
+
+Before Laravel starts listening, `serve` automatically checks and corrects the
+cached payment statuses from saved receipts. It prints the corrections and logs
+before/after values through Laravel's configured logger. It runs on each server
+start, in batches with a transaction and booking lock per row; unchanged rows are
+not written, and booking timestamps are preserved. There is no repair scan on
+ordinary HTTP requests. A database/repair error stops startup visibly rather than
+silently serving inconsistent payment state. MySQL must already be running.
+
+No `migrate`, `optimize:clear`, `composer install`, or npm install is required for
+this update. No dependencies or schema were changed. Keep a normal database backup.
+
+For deployments not using `artisan serve`, the manual command is still available
+(dry run by default); stop other payment writers before applying corrections:
+
+```bash
+php artisan bookings:reconcile-payments                 # dry run, no writes
+php artisan bookings:reconcile-payments --booking=123   # inspect one booking
+php artisan bookings:reconcile-payments --apply         # optional manual repair
+```
+
+This rebuilds payment/deposit/advance caches from existing ledger rows (team
+collection totals remain based on team shares). It does not insert or delete
+receipts, change booking approval/cancellation, or refund money. Expired advance
+requests remain expired. If actual gateway receipts are missing from the database,
+reconcile those against the provider's transaction history manually; a cached
+`paid` flag is not proof of payment. Never use `migrate:fresh` to fix live payments.
+
+Deploy the Expo changes too: each simulator checkout now has its own retry-stable
+reference. Older clients using the shared `mock-pidx` can replay an old payment but
+cannot reliably distinguish a new instalment. The checkout is still a **sandbox
+simulator**, not a production-money integration.
+
+Regression tests (use the dedicated `futsal_test` MySQL database configured in
+`phpunit.xml`, never the live database):
+
+```bash
+vendor/bin/phpunit tests/Unit/BookingLedgerTest.php tests/Feature/BookingPaymentFlowTest.php tests/Feature/DevelopmentServerPreparationTest.php
+```

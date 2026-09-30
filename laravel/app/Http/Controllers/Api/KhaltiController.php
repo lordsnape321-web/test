@@ -10,11 +10,13 @@ use App\Models\User;
 use App\Models\Venue;
 use App\Services\Notifier;
 use App\Support\AdvancePayment;
+use App\Support\BookingLedger;
 use App\Support\Futsal;
 use App\Support\LedgerRecord;
 use App\Support\Payments;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Khalti test gateway — `POST /api/payments/khalti/{initiate,verify}`.
@@ -176,6 +178,13 @@ class KhaltiController extends ApiController
     {
         AdvancePayment::expireOverdueAdvanceRequests();
 
+        // Serialize verification for a booking. A ledger insert, share update
+        // and cached status must either all commit or all roll back.
+        return DB::transaction(fn () => $this->verifyPayment($request));
+    }
+
+    private function verifyPayment(Request $request): JsonResponse
+    {
         $pidx = trim((string) $request->input('pidx', ''));
         $bookingId = (int) $request->input('bookingId', 0) ?: null;
         $mockApprove = $request->boolean('mockApprove');
@@ -189,10 +198,10 @@ class KhaltiController extends ApiController
         $paymentRequestId = (int) $request->input('paymentRequestId', 0) ?: $this->idFromOrder($orderId, '-PR-');
 
         if ($bookingId) {
-            $booking = Booking::find($bookingId);
+            $booking = Booking::lockForUpdate()->find($bookingId);
         } else {
             // Without a hint, the session id is the only way to find the booking.
-            $booking = Booking::where('khalti_pidx', $pidx)->first();
+            $booking = Booking::where('khalti_pidx', $pidx)->lockForUpdate()->first();
 
             if (! $booking) {
                 return $this->fail('Booking not found for pidx', 404);
@@ -221,6 +230,19 @@ class KhaltiController extends ApiController
 
         if ($paymentRequestId && ! $paymentRequest) {
             return $this->fail('Payment request not found', 404);
+        }
+
+        $cfg = Payments::khaltiConfig();
+        $isMock = str_starts_with($pidx, 'mock-') || $cfg['secretKey'] === '';
+        // Preserve the whole session identity (truncation caused collisions).
+        $mockReference = 'MOCK-'.substr(hash('sha256', $pidx), 0, 40);
+        // Older app versions used a truncated session reference. A retry of
+        // one of those receipts must not create a new hashed receipt.
+        if ($isMock && $mockApprove && ($replay = LedgerRecord::replay($booking, 'Khalti', 'MOCK-'.mb_substr($pidx, 0, 24)))) {
+            return $this->ok($replay + ['mock' => true]);
+        }
+        if ($isMock && $mockApprove && ($replay = LedgerRecord::replay($booking, 'Khalti', $mockReference))) {
+            return $this->ok($replay + ['mock' => true]);
         }
 
         $payerId = (int) $request->input('userId', 0) ?: null;
@@ -282,7 +304,7 @@ class KhaltiController extends ApiController
 
             $flags = $this->moneyFlags($booking, $teamPayment, $paymentRequest);
             $amount = $this->expectedAmount($booking, $teamPayment, $paymentRequest, $flags);
-            $reference = mb_substr('MOCK-'.mb_substr($pidx, 0, 24), 0, 100);
+            $reference = $mockReference;
 
             return $this->pay($booking, $teamPayment, $paymentRequest, $amount, $reference, 'Khalti simulator', true, $flags);
         }
@@ -306,6 +328,10 @@ class KhaltiController extends ApiController
         $paidPaisa = (float) ($lookup['total_amount'] ?? 0);
         $paidNpr = $paidPaisa > 0 ? (int) round($paidPaisa / 100) : null;
         $reference = mb_substr((string) ($lookup['transaction_id'] ?? $pidx), 0, 100);
+
+        if ($replay = LedgerRecord::replay($booking, 'Khalti', $reference)) {
+            return $this->ok($replay);
+        }
 
         $flags = $this->moneyFlags($booking, $teamPayment, $paymentRequest);
         $expectedAmount = $this->expectedAmount($booking, $teamPayment, $paymentRequest, $flags);
@@ -361,6 +387,22 @@ class KhaltiController extends ApiController
             return $this->ok($lookup === null ? $payload : $payload + ['lookup' => $lookup]);
         }
 
+        if ($amount <= 0) {
+            return $this->ok(['ok' => true, 'alreadyPaid' => true, 'booking' => $booking->toArray()]);
+        }
+
+        $record = LedgerRecord::recordGatewayPayment([
+            'bookingId' => $booking->id,
+            'amount' => $amount,
+            'method' => 'Khalti',
+            'reference' => $reference,
+            'userId' => $booking->user_id,
+            'note' => $note,
+        ]);
+        if (! $record['recorded']) {
+            return $this->ok(['ok' => true, 'duplicate' => $record['duplicate'], 'booking' => $booking->toArray()]);
+        }
+
         $payingDeposit = (bool) ($flags['payingDeposit'] ?? false);
         $payingAdvance = (bool) ($flags['payingAdvance'] ?? false);
 
@@ -385,14 +427,11 @@ class KhaltiController extends ApiController
 
         $booking->forceFill($patch)->save();
 
-        LedgerRecord::recordGatewayPayment([
-            'bookingId' => $booking->id,
-            'amount' => $amount,
-            'method' => 'Khalti',
-            'reference' => $reference,
-            'userId' => $booking->user_id,
-            'note' => $note,
-        ]);
+        // A captain's solo advance is not an equal-share settlement. Preserve
+        // that path until the team allocation is explicitly reconciled.
+        if (! $booking->teamPayments()->exists()) {
+            BookingLedger::syncCachedState($booking);
+        }
 
         if (! $mock) {
             $venue = $this->venueOf($booking);

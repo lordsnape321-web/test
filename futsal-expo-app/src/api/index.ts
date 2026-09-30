@@ -419,10 +419,11 @@ export function verifyEsewa(
   teamPaymentId?: number,
   paymentRequestId?: number,
   userId?: number,
+  uuid?: string,
 ): Promise<Record<string, unknown>> {
   return apiJson("/api/payments/esewa/verify", {
     method: "POST",
-    json: { bookingId, mockApprove, teamPaymentId, paymentRequestId, userId },
+    json: { bookingId, mockApprove, teamPaymentId, paymentRequestId, userId, uuid },
   });
 }
 

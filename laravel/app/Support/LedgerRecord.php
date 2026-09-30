@@ -2,6 +2,7 @@
 
 namespace App\Support;
 
+use App\Models\Booking;
 use App\Models\BookingPayment;
 
 /**
@@ -19,6 +20,25 @@ use App\Models\BookingPayment;
  */
 class LedgerRecord
 {
+    /** Called under the booking lock, before recomputing an outstanding amount. */
+    public static function replay(Booking $booking, string $method, string $reference): ?array
+    {
+        $payment = BookingPayment::where('booking_id', $booking->id)
+            ->where('method', $method)->where('reference', mb_substr($reference, 0, 100))->lockForUpdate()->first();
+
+        if (! $payment) {
+            return null;
+        }
+
+        return [
+            'ok' => true,
+            'duplicate' => true,
+            'booking' => $booking->toArray(),
+            'transactionCode' => $payment->reference,
+            'transactionId' => $payment->reference,
+        ];
+    }
+
     /**
      * @return array{recorded: bool, duplicate: bool}
      */

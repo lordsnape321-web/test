@@ -297,6 +297,7 @@ class Payments
     public static function khaltiLookup(array $opts): array
     {
         $response = Http::withHeaders(['Authorization' => 'Key '.$opts['secretKey']])
+            ->connectTimeout(3)->timeout(10)
             ->asJson()
             ->post($opts['lookupUrl'], ['pidx' => $opts['pidx']]);
 
@@ -318,7 +319,7 @@ class Payments
      */
     public static function esewaStatusCheck(array $opts): array
     {
-        $response = Http::get($opts['statusUrl'], [
+        $response = Http::connectTimeout(3)->timeout(10)->get($opts['statusUrl'], [
             'product_code' => $opts['productCode'],
             'transaction_uuid' => $opts['transactionUuid'],
             'total_amount' => (string) $opts['totalAmount'],
