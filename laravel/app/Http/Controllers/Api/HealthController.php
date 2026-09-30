@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Models\EmailOutbox;
 use App\Services\MailPump;
+use App\Support\PerfLog;
 use App\Services\Mailer;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
@@ -49,6 +50,10 @@ class HealthController extends ApiController
                     // covering for it — which is worth seeing here.
                     'drain' => MailPump::mode(),
                 ],
+                // How fast this server is actually answering: median and p95
+                // over the last few hundred requests, plus the slowest ones
+                // with their query counts. See config/perf.php.
+                'perf' => PerfLog::summary(),
             ]);
         } catch (\Throwable $e) {
             report($e);

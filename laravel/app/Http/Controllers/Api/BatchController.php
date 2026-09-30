@@ -2,8 +2,10 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Support\PerfLog;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Several reads in one round trip.
@@ -51,6 +53,16 @@ class BatchController extends ApiController
         $outer = app('request');
         $responses = [];
 
+        // Counted so each batched read can report its own query cost in the
+        // perf log — otherwise nine reads in one request is one opaque number.
+        $queries = 0;
+        $dbMs = 0.0;
+
+        DB::listen(function ($query) use (&$queries, &$dbMs): void {
+            $queries++;
+            $dbMs += (float) $query->time;
+        });
+
         foreach ($items as $item) {
             $path = is_array($item) ? trim((string) ($item['path'] ?? '')) : '';
 
@@ -63,7 +75,21 @@ class BatchController extends ApiController
                 continue;
             }
 
-            $responses[] = $this->dispatch($request, $path);
+            $before = $queries;
+            $beforeMs = $dbMs;
+            $started = microtime(true);
+
+            [$status, $body, $label] = $this->dispatch($request, $path);
+
+            PerfLog::record([
+                'route' => 'batch → '.$label,
+                'status' => $status,
+                'ms' => (microtime(true) - $started) * 1000,
+                'queries' => $queries - $before,
+                'db_ms' => $dbMs - $beforeMs,
+            ]);
+
+            $responses[] = ['status' => $status, 'body' => $body];
         }
 
         app()->instance('request', $outer);
@@ -74,7 +100,8 @@ class BatchController extends ApiController
     /**
      * Handle one path as if it had arrived on its own.
      *
-     * @return array{status: int, body: mixed}
+     * @return array{0: int, 1: mixed, 2: string} status, body, and the route it
+     *                                           resolved to (for the perf log)
      */
     private function dispatch(Request $outer, string $path): array
     {
@@ -89,10 +116,7 @@ class BatchController extends ApiController
         } catch (\Throwable $e) {
             report($e);
 
-            return [
-                'status' => 500,
-                'body' => ['error' => $e->getMessage() ?: 'Something went wrong'],
-            ];
+            return [500, ['error' => $e->getMessage() ?: 'Something went wrong'], 'GET '.$path];
         } finally {
             // Every sub-request binds itself as the current request; the one the
             // response is being built for still has to be the real one.
@@ -110,9 +134,12 @@ class BatchController extends ApiController
             $decoded = $trimmed === '' ? null : ['error' => $content];
         }
 
+        $template = $sub->route()?->uri();
+
         return [
-            'status' => $response->getStatusCode(),
-            'body' => $decoded,
+            $response->getStatusCode(),
+            $decoded,
+            'GET '.(is_string($template) && $template !== '' ? $template : $path),
         ];
     }
 

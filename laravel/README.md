@@ -99,6 +99,23 @@ curl -s -X POST localhost:8000/api/batch -H 'Content-Type: application/json' \
   -d '{"requests":[{"path":"/api/venues"},{"path":"/api/stats"}]}'
 ```
 
+### Making the dev app load faster
+
+Metro (the Expo bundler) transforms the app on first load and caches the result
+in `node_modules/.cache`. `expo start --clear` throws that cache away and
+rebuilds every module the first time you open a screen — which is why a cold
+`npm start` feels far slower than the next one. The scripts here therefore start
+*without* `--clear` (`npm run clear` when you have actually changed
+dependencies, `app.json` or `metro.config.js`).
+
+Two other things that look like app slowness but are not:
+
+* In development the bundle is unminified — around 10 MB served by Metro. A
+  release build (`npx expo export`, or an EAS build) is a fraction of that, so
+  never judge load time from a dev session.
+* Native runs load that bundle over the network from the Metro server. On web
+  it comes from `localhost:8081` through the same proxy that forwards `/api`.
+
 ## Email (Gmail)
 
 Booking confirmations, game reminders and password-reset codes are sent from
@@ -203,6 +220,93 @@ it. Codes are stored only as a salted SHA-256 digest.
 
 The older phone-verified path (`POST /api/auth/reset` with email + phone) still
 works and is still what the recovery screen offers as a fallback.
+
+## Finding what is slow
+
+Guessing at performance is how you spend a week moving a number nobody
+measured. So the API measures itself, and `GET /api/health` answers the
+question directly:
+
+```json
+"perf": {
+  "samples": 214,
+  "median_ms": 38,
+  "p95_ms": 512,
+  "slowest": [
+    { "route": "GET api/bookings", "ms": 940, "queries": 61, "db_ms": 480 },
+    { "route": "batch → GET api/venues/{id}", "ms": 210, "queries": 9, "db_ms": 40 }
+  ]
+}
+```
+
+`queries` and `db_ms` are the two numbers that matter: a route that takes
+900 ms with 3 queries is doing something other than the database (an HTTP call,
+a big loop, a file), and a route that takes 900 ms across 60 queries is an N+1
+that wants eager loading. Batched reads are listed individually (`batch → …`),
+so combining nine reads into one request does not hide which of the nine is
+slow.
+
+Raw samples are appended to `storage/framework/perf.jsonl` (capped at 512 KB,
+slow requests always, one in `PERF_SAMPLE` of the rest). Knobs, all optional:
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `PERF_TRACK` | `APP_DEBUG` | Collect samples at all |
+| `PERF_SLOW_MS` | `250` | Always record anything at or above this |
+| `PERF_SAMPLE` | `10` | Also record one in this many fast requests |
+
+Nothing here runs in production: `APP_DEBUG=false` turns it off, and a
+production host has real APM anyway.
+
+## Serving more than one person
+
+This is worth being blunt about, because it is the difference between "the app
+is slow" and "the server is a development server".
+
+`php artisan serve` is Laravel's **local development** server. It is a single
+PHP process handling **one request at a time**, with no opcache warming, no
+worker pool and no concurrency — it exists so a developer can run an app
+without configuring nginx. It is not a deployment target, and no amount of
+application code makes it handle thousands of users: a second person tapping
+the app is a request waiting behind the first.
+
+Nothing in this application is limited to one user — it is an ordinary
+stateless Laravel API over MySQL — but *this* runtime is. What production looks
+like:
+
+```
+nginx → PHP-FPM (pool of workers)  or  FrankenPHP / Octane (concurrent workers)
+        ↓
+      MySQL (indexed; see 2025_09_01_000027/28 migrations)
+        ↓
+   redis (cache + sessions) · cron (schedule + mail:drain) · real SMTP or an API
+```
+
+Concretely, when this moves to a server:
+
+1. **Serve it with PHP-FPM** (nginx in front) or Octane. That is the actual fix
+   for "thousands at once" — many requests in flight instead of one.
+2. **Warm the framework once**, not per request:
+   `php artisan config:cache && php artisan route:cache && php artisan view:cache`,
+   and keep **OPcache** on. The dev workflow deliberately avoids these because
+   they freeze `.env` and cached routes; production should have them.
+3. **Run the mail drain on a cron** instead of on web traffic:
+   `* * * * * cd /path/to/laravel && php artisan mail:drain --limit=200 --budget=50`.
+   That is the same command the dev server starts on demand — no rewrite, and
+   it also sends the game reminders. `php artisan schedule:run` every minute if
+   you add other periodic work.
+4. **Put one load balancer in front of two or more app servers.** The API is
+   stateless (no server-side sessions, no local file state), so this works as
+   soon as the shared pieces — MySQL, redis, SMTP — are shared rather than
+   local.
+5. **Move uploads and images off the app server** (S3 + CDN). `receipt_url` and
+   avatars are already URLs, so this is configuration, not code.
+
+Two things in this codebase were added *for* the dev server and stay harmless in
+production: the request-driven mail pump (cron takes over, and `mail.drain`
+simply reports `background`) and `POST /api/batch` (fewer round trips is a win
+everywhere — over mobile networks most of all). The one thing that must not
+follow you to production is `php artisan serve` itself.
 
 ## Expo connection
 

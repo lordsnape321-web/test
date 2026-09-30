@@ -2,6 +2,7 @@
 
 use App\Http\Middleware\ForceJsonResponse;
 use App\Http\Middleware\PumpOutbox;
+use App\Http\Middleware\RequestTiming;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -32,6 +33,9 @@ return Application::configure(basePath: dirname(__DIR__))
         // a 302 redirect to a page that doesn't exist instead of a 422 the app
         // can read. Everything on /api is JSON, always.
         $middleware->api(prepend: [
+            // Times the request for /api/health, so "the app is slow" has an
+            // address before anyone changes a query. Off in production.
+            RequestTiming::class,
             ForceJsonResponse::class,
         ]);
 
