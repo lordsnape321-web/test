@@ -34,6 +34,17 @@ export type Court = {
   /** "HH:MM" 24-hour. Null/absent means the court follows the venue's hours. */
   opensAt?: string | null;
   closesAt?: string | null;
+  /** Weekday overrides; a weekday with no row uses the court's usual hours. */
+  dayHours?: CourtDayHours[] | null;
+};
+
+/** One weekday's hours for one court (0 = Sunday … 6 = Saturday). */
+export type CourtDayHours = {
+  id?: number;
+  courtId?: number;
+  dayOfWeek: number;
+  opensAt: string;
+  closesAt: string;
 };
 
 export type Venue = {
@@ -46,6 +57,8 @@ export type Venue = {
   imageUrl?: string | null;
   openingHour: number;
   closingHour: number;
+  /** Google Maps link the owner pasted; empty falls back to a search on the address. */
+  locationUrl?: string | null;
   rating: number;
   totalReviews: number;
   isFeatured?: boolean;
@@ -205,7 +218,7 @@ export type Booking = {
   competition?: BookingCompetition | null;
   playerStats?: import("./loyalty").PlayerStats;
   /** Nested by the API so a booking list can render without extra requests. */
-  venue?: Pick<Venue, "id" | "name" | "address" | "city" | "imageUrl" | "phone"> | null;
+  venue?: Pick<Venue, "id" | "name" | "address" | "city" | "imageUrl" | "phone" | "locationUrl"> | null;
   court?: Pick<Court, "id" | "name" | "pricePerHour" | "surface" | "format"> | null;
   user?: Pick<User, "id" | "name" | "email" | "phone"> | null;
 };

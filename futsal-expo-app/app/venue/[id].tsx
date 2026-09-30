@@ -5,6 +5,7 @@ import {
   Check,
   ChevronLeft,
   Clock,
+  ExternalLink,
   Globe,
   Lock,
   MapPin,
@@ -68,6 +69,10 @@ import {
 } from "@/lib/loyalty";
 import {
   addHours,
+  courtDaySummary,
+  courtHours,
+  courtTimeSlots,
+  DAY_NAMES,
   formatNPR,
   formatTime12,
   gamePlayed,
@@ -75,10 +80,9 @@ import {
   prettyDate,
   prettyDayShort,
   rangeSlots,
-  courtHours,
-  courtTimeSlots,
   todayISO,
 } from "@/lib/futsal";
+import { openLocation } from "@/lib/open-location";
 import { normalizePromoCode } from "@/lib/promos";
 import { validateCustomPrice, validateNotes, validatePhone, validateTitle } from "@/lib/validation";
 import type { Court, LeagueSummary, UserTeamLite, Venue } from "@/lib/types";
@@ -278,8 +282,9 @@ export default function VenueDetail() {
   const days = useMemo(() => next14Days(), []);
   // Slots come from the court the player picked: a pitch can keep its own
   // window, and without one it follows the venue exactly as before.
-  const slots = useMemo(() => courtTimeSlots(court, venue), [court, venue]);
-  const hoursShown = useMemo(() => courtHours(court, venue), [court, venue]);
+  const slots = useMemo(() => courtTimeSlots(court, venue, date), [court, venue, date]);
+  const hoursShown = useMemo(() => courtHours(court, venue, date), [court, venue, date]);
+  const dayWindows = useMemo(() => courtDaySummary(court), [court]);
   const availableMethods = useMemo(() => parsePayments(venue?.acceptedPayments), [venue?.acceptedPayments]);
 
   useEffect(() => {
@@ -582,10 +587,22 @@ export default function VenueDetail() {
               <View style={styles.badges}>
                 <View style={styles.ratingBadge}><Star size={12} color="#451A03" fill="#451A03" /><Text style={styles.ratingText}>{venue.rating.toFixed(1)}</Text></View>
                 <Text style={styles.coverBadge}>💬 {venue.totalReviews} reviews</Text>
-                <Text style={styles.coverBadge}><Clock size={12} color="#FFFFFF" /> {venue.openingHour}:00 – {venue.closingHour}:00</Text>
+                <Text style={styles.coverBadge}><Clock size={12} color="#FFFFFF" /> {formatTime12(`${String(venue.openingHour).padStart(2, "0")}:00`)} – {formatTime12(`${String(venue.closingHour).padStart(2, "0")}:00`)}</Text>
               </View>
               <Text style={styles.coverTitle}>{venue.name}</Text>
-              <Text style={styles.coverMeta}><MapPin size={13} color="#FFFFFF" /> {venue.address} • {venue.city}</Text>
+              {/* Tapping the location opens the owner's Maps link, or a Maps search on the address. */}
+              <Pressable
+                onPress={() => void openLocation(venue.locationUrl, venue.address, venue.city)}
+                style={styles.coverLocation}
+                accessibilityRole="link"
+                accessibilityLabel={`Open ${venue.name} in Maps`}
+              >
+                <MapPin size={13} color="#FFFFFF" />
+                <Text style={styles.coverLocationText} numberOfLines={1}>
+                  {venue.address} • {venue.city}
+                </Text>
+                <ExternalLink size={12} color="#FFFFFF" />
+              </Pressable>
               {venue.phone ? <Text style={styles.coverMeta}><Phone size={13} color="#FFFFFF" /> {venue.phone}</Text> : null}
             </View>
           </View>
@@ -635,7 +652,12 @@ export default function VenueDetail() {
                     <View style={styles.rowBetween}><View style={[styles.formatPill, { backgroundColor: c.surface }]}><Users size={12} color={c.textMuted} /><Text style={[styles.tinyStrong, { color: c.textMuted }]}>{item.format ?? "Futsal"}</Text></View>{active ? <View style={styles.checkCircle}><Check size={13} color="#FFFFFF" strokeWidth={3} /></View> : null}</View>
                     <Text style={[styles.courtName, { color: c.text }]}>{item.name}</Text>
                     <Text style={[styles.small, { color: c.textMuted }]}>{item.surface ?? "Indoor turf"}</Text>
-                    <Text style={[styles.tiny, { color: c.textFaint }]}>🕐 {courtHours(item, venue).opensAt} – {courtHours(item, venue).closesAt}</Text>
+                    <Text style={[styles.tiny, { color: c.textFaint }]}>
+                      🕐 {formatTime12(courtHours(item, venue).opensAt)} – {formatTime12(courtHours(item, venue).closesAt)}
+                    </Text>
+                    {courtDaySummary(item) ? (
+                      <Text style={[styles.tiny, { color: c.textFaint }]}>🔁 {courtDaySummary(item)}</Text>
+                    ) : null}
                     <View style={styles.rowBetween}><Text style={[styles.price, { color: isDark ? colors.emerald300 : colors.emerald700 }]}>{formatNPR(item.pricePerHour)}<Text style={styles.priceSmall}>/hr</Text></Text><Text style={[styles.tiny, { color: c.textFaint }]}>☀️ {formatNPR(item.priceMorning ?? item.pricePerHour)}</Text></View>
                   </Pressable>
                 );
@@ -657,9 +679,15 @@ export default function VenueDetail() {
             <Text style={[styles.small, { color: c.textMuted }]}>Pick 1, 2 or 3 hours first, then choose a start time. The whole block must be free.</Text>
             {court ? (
               <Text style={[styles.tinyStrong, { color: c.textFaint }]}>
-                🕐 {court.name} is open {hoursShown.opensAt} – {hoursShown.closesAt}
+                🕐 {court.name} is open {formatTime12(hoursShown.opensAt)} – {formatTime12(hoursShown.closesAt)}
+                {hoursShown.day !== null
+                  ? ` on ${DAY_NAMES[hoursShown.day]}${(court.dayHours ?? []).some((row) => Number(row.dayOfWeek) === hoursShown.day) ? " (its own hours)" : ""}`
+                  : ""}
                 {hoursShown.inherited ? " (venue hours)" : ""}
               </Text>
+            ) : null}
+            {dayWindows ? (
+              <Text style={[styles.tiny, { color: c.textFaint }]}>🔁 Other days: {dayWindows}</Text>
             ) : null}
             <View style={styles.wrapRow}>
               {[1, 2, 3].map((value) => <Choice key={String(value)} label={`${value} hr${value > 1 ? "s" : ""} • ${value} slot${value > 1 ? "s" : ""}`} active={hours === value} onPress={() => { setHours(value); setStart(null); }} />)}
@@ -860,6 +888,8 @@ const styles = StyleSheet.create({
   ratingText: { color: "#451A03", fontSize: fontSize.xs, fontWeight: "900" },
   coverBadge: { color: "#FFFFFF", backgroundColor: "rgba(15,23,42,0.72)", borderRadius: radius.full, paddingHorizontal: 9, paddingVertical: 4, fontSize: fontSize.xs, fontWeight: "800" },
   coverTitle: { color: "#FFFFFF", fontSize: fontSize["3xl"], fontWeight: "900" },
+  coverLocation: { flexDirection: "row", alignItems: "center", gap: 5, marginTop: 4, alignSelf: "flex-start" },
+  coverLocationText: { color: "#FFFFFF", fontSize: fontSize.sm, fontWeight: "700", flexShrink: 1, textDecorationLine: "underline" },
   coverMeta: { color: "rgba(255,255,255,0.9)", fontSize: fontSize.sm, fontWeight: "700" },
   sectionCard: { borderRadius: radius["3xl"], borderWidth: 1, padding: space[5], gap: space[3] },
   sectionTitle: { fontSize: fontSize.sm, fontWeight: "900", textTransform: "uppercase", letterSpacing: 1.3 },

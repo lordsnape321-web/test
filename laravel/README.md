@@ -363,5 +363,36 @@ clear a court back to the venue's hours. The column pair arrives with the
 `court_opening_hours` startup migration (`StartupSchema`), so a plain
 `php artisan serve` applies it like the other additive schema steps.
 
-Regression coverage: `vendor/bin/phpunit tests/Feature/CourtHoursTest.php` plus
-`node` probe `futsal-expo-app/scripts/court-hours.test.ts`.
+### Hours for one weekday only
+
+The usual window covers every day. When a single day differs — the turf that runs
+late on Fridays only — the owner opens **Different hours on some days?** in the
+court modal and changes that day; every row left alone keeps the usual window.
+
+Day overrides live in `court_day_hours` (`court_id`, `day_of_week`, `opens_at`,
+`closes_at`, unique per court/day; 0 = Sunday, matching JavaScript's `Date.getDay`).
+A request may send `dayHours: [{ dayOfWeek: 5, opensAt: "18:00", closesAt: "23:00" }]`
+on `POST`/`PATCH /api/courts`; the list replaces whatever was stored, so an empty
+list clears every override. Each entry must be a complete window (`clockRange`),
+which is why half a window is rejected rather than read as "opens at 18:00".
+
+The weekday wins over the court's usual hours everywhere: booking validation, and
+the player app's slot picker, which now regenerates from the hours of the day being
+booked (`courtTimeSlots(court, venue, date)`). The booking refusal names the day:
+`This court is open 18:00–23:00 on Fridays — pick a slot inside those hours ⏰`.
+
+### Opening a venue in Maps
+
+Owners paste a Google Maps share link in **Venue → Edit all → Location link**. It
+is stored as `venues.location_url` and travels with the venue (and with every court
+inside it, since a court has no address of its own).
+
+Players — and the owner — tap a venue's location and it opens:
+the pasted link when there is one, otherwise a Maps search on `address, city`
+(`mapsUrl()` in `futsal-expo-app/src/lib/location.ts`). Tappable locations exist on
+the player venue page, the full booking detail, the My Bookings card, the owner's
+venue profile card and each court row.
+
+Regression coverage: `vendor/bin/phpunit tests/Feature/CourtHoursTest.php` (hours,
+day overrides and the map link) plus the `node` probes
+`futsal-expo-app/scripts/court-hours.test.ts` and `scripts/location.test.ts`.

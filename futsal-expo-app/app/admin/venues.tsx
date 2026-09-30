@@ -16,8 +16,10 @@ import Slider from "@react-native-community/slider";
 import { Picker } from "@/components/ThemedPicker";
 import {
   Building2,
+  ExternalLink,
   MapPin,
   Pencil,
+  Repeat,
  Power,
   Plus,
   ShieldCheck,
@@ -42,7 +44,16 @@ import {
 import { ReviewRow } from "@/api";
 import { useAuth } from "@/context/AuthContext";
 import { useTheme } from "@/context/ThemeContext";
-import { CLOCK_OPTIONS, courtHours, formatNPR, timeToMin as toMinutes } from "@/lib/futsal";
+import {
+  CLOCK_OPTIONS,
+  courtDaySummary,
+  courtHours,
+  DAY_NAMES,
+  formatNPR,
+  formatTime12,
+  timeToMin as toMinutes,
+} from "@/lib/futsal";
+import { openLocation } from "@/lib/open-location";
 import { useBreakpoints } from "@/lib/responsive";
 import { PAYMENT_OPTIONS } from "@/lib/loyalty";
 import type { Court, Venue } from "@/lib/types";
@@ -262,6 +273,10 @@ export default function OwnerVenues() {
   // "" means "follow the venue's hours", which is what every court did before.
   const [cOpens, setCOpens] = useState("");
   const [cCloses, setCCloses] = useState("");
+  // Weekdays the owner singled out: { 5: { opensAt: "18:00", closesAt: "23:00" } }.
+  const [cDayHours, setCDayHours] = useState<Record<number, { opensAt: string; closesAt: string }>>({});
+  const [showDayHours, setShowDayHours] = useState(false);
+  const [eLocation, setELocation] = useState("");
   const [cImage, setCImage] = useState("");
   const [cFeat, setCFeat] = useState<string[]>(["Floodlights", "Nets Provided", "Match Balls"]);
   const [savingCourt, setSavingCourt] = useState(false);
@@ -427,6 +442,7 @@ export default function OwnerVenues() {
     setEImage(v.imageUrl ?? "");
     setEOpen(v.openingHour);
     setEClose(v.closingHour);
+    setELocation(String(v.locationUrl ?? ""));
     setEAmen(
       String(v.amenities ?? "")
         .split(",")
@@ -478,6 +494,7 @@ export default function OwnerVenues() {
         depositPercent: eDeposit,
         defaultExtraFee: eExtraFee,
         defaultExtraFeeNote: eExtraNote,
+        locationUrl: eLocation.trim(),
       });
       setShowEditVenue(false);
       setEditError("");
@@ -491,9 +508,52 @@ export default function OwnerVenues() {
 
   // What "follow the venue" resolves to for this venue, shown in the picker so
   // the owner never has to guess what the blank option means.
-  const venueHoursLabel = active
-    ? `${String(active.openingHour ?? 6).padStart(2, "0")}:00–${String(active.closingHour ?? 22).padStart(2, "0")}:00`
-    : "venue hours";
+  const venueOpenAt = `${String(active?.openingHour ?? 6).padStart(2, "0")}:00`;
+  const venueCloseAt = `${String(active?.closingHour ?? 22).padStart(2, "0")}:00`;
+  const venueHoursLabel = active ? `${venueOpenAt}–${venueCloseAt}` : "venue hours";
+  const usualOpenAt = cOpens || venueOpenAt;
+  const usualCloseAt = cCloses || venueCloseAt;
+
+  function setDayHour(day: number, key: "opensAt" | "closesAt", value: string) {
+    setCDayHours((current) => ({ ...current, [day]: { ...current[day], [key]: value } }));
+  }
+
+  function toggleDayHour(day: number) {
+    setCDayHours((current) => {
+      if (current[day]) {
+        const next = { ...current };
+        delete next[day];
+
+        return next;
+      }
+
+      return { ...current, [day]: { opensAt: usualOpenAt, closesAt: usualCloseAt } };
+    });
+  }
+
+  /**
+   * The same two dropdowns for every day row and for the court's usual hours.
+   *
+   * `allowBlank` is off inside a day row: a weekday is either custom with both
+   * times or reset to the usual hours, so there is no blank state to pick.
+   */
+  function hourPicker(value: string, onChange: (v: string) => void, inheritedLabel: string, allowBlank = true) {
+    return (
+      <View style={[styles.pickerWrap, { borderColor: c.border, backgroundColor: isDark ? "#0F172A" : "#FFFFFF" }]}>
+        <Picker
+          selectedValue={value}
+          onValueChange={(v) => onChange(String(v))}
+          style={{ color: c.text, height: 42 }}
+          dropdownIconColor={c.textMuted}
+        >
+          {allowBlank ? <Picker.Item label={inheritedLabel} value="" /> : null}
+          {CLOCK_OPTIONS.map((t) => (
+            <Picker.Item key={t} label={t} value={t} />
+          ))}
+        </Picker>
+      </View>
+    );
+  }
 
   function openAddCourt() {
     setEditingCourt(null);
@@ -506,6 +566,8 @@ export default function OwnerVenues() {
     setCFeat(["Floodlights", "Nets Provided", "Match Balls"]);
     setCOpens("");
     setCCloses("");
+    setCDayHours({});
+    setShowDayHours(false);
     setShowCourt(true);
   }
 
@@ -519,6 +581,11 @@ export default function OwnerVenues() {
     setCImage(c.imageUrl ?? "");
     setCOpens(c.opensAt ?? "");
     setCCloses(c.closesAt ?? "");
+    const overrides = (c.dayHours ?? []).map(
+      (row) => [Number(row.dayOfWeek), { opensAt: row.opensAt, closesAt: row.closesAt }] as const,
+    );
+    setCDayHours(Object.fromEntries(overrides));
+    setShowDayHours(overrides.length > 0);
     setCFeat(
       String(c.features ?? "")
         .split(",")
@@ -541,6 +608,13 @@ export default function OwnerVenues() {
       cOpens !== "" && cCloses !== "" && toMinutes(cCloses) <= toMinutes(cOpens)
         ? "Closing time must be after opening time 🕐"
         : null,
+      // Every weekday override is a full window of its own.
+      (Object.values(cDayHours).some((w) => !w.opensAt || !w.closesAt)
+        ? "Set both times for every custom day, or reset that day to the usual hours 🕐"
+        : null),
+      (Object.entries(cDayHours).some(([, w]) => w.opensAt && w.closesAt && toMinutes(w.closesAt) <= toMinutes(w.opensAt))
+        ? "A custom day must close after it opens 🕐"
+        : null),
     );
     if (err) {
       setCourtError(err);
@@ -559,6 +633,11 @@ export default function OwnerVenues() {
         features: cFeat.join(","),
         opensAt: cOpens,
         closesAt: cCloses,
+        dayHours: Object.entries(cDayHours).map(([day, window]) => ({
+          dayOfWeek: Number(day),
+          opensAt: window.opensAt,
+          closesAt: window.closesAt,
+        })),
       };
       if (editingCourt) {
         await updateCourt(editingCourt.id, payload);
@@ -891,12 +970,31 @@ export default function OwnerVenues() {
                             {formatNPR(ct.priceMorning ?? Math.round(ct.pricePerHour * 0.75))}
                           </Text>
                           <Text style={[styles.courtMeta, { color: c.textMuted }]}>
-                            🕐 {courtHours(ct, active).opensAt} – {courtHours(ct, active).closesAt}
+                            🕐 {formatTime12(courtHours(ct, active).opensAt)} –{" "}
+                            {formatTime12(courtHours(ct, active).closesAt)}
                             {courtHours(ct, active).inherited ? " (venue hours)" : ""}
                           </Text>
+                          {courtDaySummary(ct) ? (
+                            <Text style={[styles.courtMeta, { color: c.textFaint }]}>
+                              🔁 {courtDaySummary(ct)}
+                            </Text>
+                          ) : null}
                           <Text style={[styles.courtFeat, { color: c.textFaint }]}>
                             ✨ {features || "No facilities listed"}
                           </Text>
+                          {/* A court sits inside its venue, so its location is the venue's. */}
+                          <Pressable
+                            onPress={() => void openLocation(active.locationUrl, active.address, active.city)}
+                            style={styles.courtLocation}
+                            accessibilityRole="link"
+                            accessibilityLabel={`Open ${ct.name}'s location in Maps`}
+                          >
+                            <MapPin size={11} color={colors.emerald600} />
+                            <Text style={[styles.courtLocationText, { color: colors.emerald600 }]} numberOfLines={1}>
+                              {active.address || active.city || "Open in Maps"}
+                            </Text>
+                            <ExternalLink size={10} color={colors.emerald600} />
+                          </Pressable>
                         </View>
                       </View>
 
@@ -1041,9 +1139,25 @@ export default function OwnerVenues() {
               {active.description || "No description yet."}
             </Text>
             <Text style={[styles.factsMeta, { color: c.textMuted }]}>
-              📞 {active.phone || "—"} • 🕐 {active.openingHour}:00 – {active.closingHour}:00 • 📍{" "}
-              {active.city}
+              📞 {active.phone || "—"} • 🕐 {formatTime12(venueOpenAt)} – {formatTime12(venueCloseAt)}
             </Text>
+            <Pressable
+              onPress={() => void openLocation(active.locationUrl, active.address, active.city)}
+              style={[styles.locationBox, { borderColor: c.border, backgroundColor: c.inset }]}
+              accessibilityRole="link"
+              accessibilityLabel="Open this venue in Maps"
+            >
+              <MapPin size={14} color={colors.emerald600} />
+              <View style={styles.grow}>
+                <Text style={[styles.locationText, { color: c.text }]} numberOfLines={1}>
+                  {active.address || active.city || "No address yet"}
+                </Text>
+                <Text style={[styles.locationHint, { color: c.textFaint }]}>
+                  {active.locationUrl ? "Pasted Google Maps link" : "Opens a Maps search on the address"}
+                </Text>
+              </View>
+              <ExternalLink size={14} color={colors.emerald600} />
+            </Pressable>
             <View style={styles.payRow}>
               <View style={styles.payLabel}>
                 <Wallet size={14} color={c.textFaint} />
@@ -1180,6 +1294,22 @@ export default function OwnerVenues() {
 
               <FieldLabel>Phone</FieldLabel>
               <TextInput value={ePhone} onChangeText={setEPhone} maxLength={20} style={inputStyle} />
+
+              <FieldLabel>Location link 🔗 (Google Maps)</FieldLabel>
+              <TextInput
+                value={eLocation}
+                onChangeText={setELocation}
+                placeholder="Paste the share link from Google Maps"
+                placeholderTextColor={c.textFaint}
+                autoCapitalize="none"
+                autoCorrect={false}
+                maxLength={500}
+                style={inputStyle}
+              />
+              <Text style={[styles.hint, { color: c.textFaint }]}>
+                Players tap the venue location and it opens here. Leave it blank and the tap
+                searches Maps for the address instead.
+              </Text>
 
               <FieldLabel>About</FieldLabel>
               <TextInput
@@ -1371,41 +1501,66 @@ export default function OwnerVenues() {
               <View style={styles.twoCol}>
                 <View style={styles.grow}>
                   <FieldLabel>Opens at 🕐</FieldLabel>
-                  <View style={[styles.pickerWrap, { borderColor: c.border, backgroundColor: isDark ? "#0F172A" : "#FFFFFF" }]}>
-                    <Picker
-                      selectedValue={cOpens}
-                      onValueChange={(v) => setCOpens(String(v))}
-                      style={{ color: c.text, height: 44 }}
-                      dropdownIconColor={c.textMuted}
-                    >
-                      <Picker.Item label={`Venue hours (${venueHoursLabel})`} value="" />
-                      {CLOCK_OPTIONS.map((t) => (
-                        <Picker.Item key={t} label={t} value={t} />
-                      ))}
-                    </Picker>
-                  </View>
+                  {hourPicker(cOpens, setCOpens, `Venue hours (${venueHoursLabel})`)}
                 </View>
                 <View style={styles.grow}>
                   <FieldLabel>Closes at 🕐</FieldLabel>
-                  <View style={[styles.pickerWrap, { borderColor: c.border, backgroundColor: isDark ? "#0F172A" : "#FFFFFF" }]}>
-                    <Picker
-                      selectedValue={cCloses}
-                      onValueChange={(v) => setCCloses(String(v))}
-                      style={{ color: c.text, height: 44 }}
-                      dropdownIconColor={c.textMuted}
-                    >
-                      <Picker.Item label={`Venue hours (${venueHoursLabel})`} value="" />
-                      {CLOCK_OPTIONS.map((t) => (
-                        <Picker.Item key={t} label={t} value={t} />
-                      ))}
-                    </Picker>
-                  </View>
+                  {hourPicker(cCloses, setCCloses, `Venue hours (${venueHoursLabel})`)}
                 </View>
               </View>
               <Text style={[styles.hint, { color: c.textFaint }]}>
                 Players only see start times inside these hours. Leave both blank and this court
                 follows the venue&apos;s opening hours.
               </Text>
+
+              {/*
+                Usual hours cover every day; a weekday the owner singles out keeps its
+                own window. Collapsed and empty by default, so a normal court is still
+                a single pair of times.
+              */}
+              <Pressable
+                onPress={() => setShowDayHours((v) => !v)}
+                style={[styles.dayHead, { borderColor: c.border, backgroundColor: c.inset }]}
+                accessibilityRole="button"
+              >
+                <Repeat size={13} color={Object.keys(cDayHours).length > 0 ? colors.emerald600 : c.textMuted} />
+                <View style={styles.grow}>
+                  <Text style={[styles.dayHeadTitle, { color: c.text }]}>Different hours on some days?</Text>
+                  <Text style={[styles.dayHeadHint, { color: c.textFaint }]}>
+                    {Object.keys(cDayHours).length > 0
+                      ? courtDaySummary({ dayHours: Object.entries(cDayHours).map(([day, w]) => ({ dayOfWeek: Number(day), opensAt: w.opensAt, closesAt: w.closesAt })) })
+                      : `Optional — otherwise every day uses ${formatTime12(usualOpenAt)}–${formatTime12(usualCloseAt)}`}
+                  </Text>
+                </View>
+                <Text style={[styles.dayHeadAction, { color: colors.emerald600 }]}>
+                  {showDayHours ? "Hide" : "Set days"}
+                </Text>
+              </Pressable>
+
+              {showDayHours
+                ? DAY_NAMES.map((name, day) => {
+                    const custom = cDayHours[day];
+                    return (
+                      <View key={name} style={styles.dayRow}>
+                        <Text style={[styles.dayName, { color: custom ? c.text : c.textMuted }]}>{name}</Text>
+                        {custom ? (
+                          <View style={styles.dayPickers}>
+                            {hourPicker(custom.opensAt, (v) => setDayHour(day, "opensAt", v), "Opens", false)}
+                            <Text style={[styles.dayDash, { color: c.textMuted }]}>–</Text>
+                            {hourPicker(custom.closesAt, (v) => setDayHour(day, "closesAt", v), "Closes", false)}
+                          </View>
+                        ) : (
+                          <Text style={[styles.dayUsual, { color: c.textFaint }]}>Usual hours</Text>
+                        )}
+                        <Pressable onPress={() => toggleDayHour(day)} hitSlop={6} accessibilityRole="button">
+                          <Text style={[styles.dayAction, { color: custom ? colors.orange500 : colors.emerald600 }]}>
+                            {custom ? "Reset" : "Change"}
+                          </Text>
+                        </Pressable>
+                      </View>
+                    );
+                  })
+                : null}
 
               <View style={styles.twoCol}>
                 <View style={styles.grow}>
@@ -2142,6 +2297,41 @@ const styles = StyleSheet.create({
   },
   textArea: { minHeight: 72, textAlignVertical: "top" },
   twoCol: { flexDirection: "row", gap: space[3] },
+  /* Location box: the whole row is the tap target, so the hint text is not a link. */
+  locationBox: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: space[2],
+    borderWidth: 1,
+    borderRadius: radius.xl,
+    paddingHorizontal: space[3],
+    paddingVertical: space[2],
+    marginTop: space[2],
+  },
+  locationText: { fontSize: fontSize.sm, fontWeight: "800" },
+  locationHint: { fontSize: 10, fontWeight: "700", marginTop: 1 },
+  /* Weekday overrides: collapsed by default, one row per day when opened. */
+  dayHead: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: space[2],
+    borderWidth: 1,
+    borderRadius: radius.xl,
+    paddingHorizontal: space[3],
+    paddingVertical: space[2],
+    marginTop: space[2],
+  },
+  dayHeadTitle: { fontSize: fontSize.sm, fontWeight: "900" },
+  dayHeadHint: { fontSize: 10, fontWeight: "700", marginTop: 1 },
+  dayHeadAction: { fontSize: fontSize.xs, fontWeight: "900" },
+  dayRow: { flexDirection: "row", alignItems: "center", gap: space[2], marginTop: space[2] },
+  dayName: { fontSize: fontSize.xs, fontWeight: "900", width: 74 },
+  dayUsual: { flex: 1, fontSize: fontSize.xs, fontWeight: "700" },
+  dayPickers: { flex: 1, flexDirection: "row", alignItems: "center", gap: space[1] },
+  dayDash: { fontSize: fontSize.xs, fontWeight: "900" },
+  dayAction: { fontSize: fontSize.xs, fontWeight: "900" },
+  courtLocation: { flexDirection: "row", alignItems: "center", gap: 4, marginTop: 3, alignSelf: "flex-start", maxWidth: "100%" },
+  courtLocationText: { fontSize: 10, fontWeight: "800", flexShrink: 1, textDecorationLine: "underline" },
   pickerWrap: { borderWidth: 1, borderRadius: radius.xl, overflow: "hidden", marginTop: 2 },
   chipPicker: { flexDirection: "row", flexWrap: "wrap", gap: space[1.5] },
   customChipRow: { width: "100%", flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: space[2], marginTop: space[1] },

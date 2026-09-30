@@ -66,7 +66,9 @@ class VenueController extends ApiController
             $courtQuery->whereNull('deleted_at');
         }
 
-        $courts = $courtQuery->orderBy('id')->get();
+        // Weekday overrides ride along, so a list of venues can show a court's
+        // real hours without a second request per venue.
+        $courts = $courtQuery->with('dayHours')->orderBy('id')->get();
 
         $enriched = $venues->map(function (Venue $venue) use ($courts) {
             $venueCourts = $courts->where('venue_id', $venue->id)->values();
@@ -151,6 +153,7 @@ class VenueController extends ApiController
                 'deposit_percent' => $depositPercent,
                 'default_extra_fee' => $defaultExtraFee,
                 'default_extra_fee_note' => mb_substr((string) $request->input('defaultExtraFeeNote', ''), 0, 120),
+                'location_url' => mb_substr(trim((string) $request->input('locationUrl', '')), 0, 500),
                 'is_featured' => false,
                 'owner_id' => $request->filled('ownerId') ? (int) $request->input('ownerId') : null,
             ]);
@@ -187,7 +190,9 @@ class VenueController extends ApiController
             return $this->fail('Not found', 404);
         }
 
-        $courts = Court::where('venue_id', $id)->get();
+        // Weekday overrides travel with the courts: the player app generates
+        // slots from the window that applies to the day being booked.
+        $courts = Court::where('venue_id', $id)->with('dayHours')->get();
         $courtIds = $courts->pluck('id')->all();
         $totalBookings = $courtIds === [] ? 0 : Booking::whereIn('court_id', $courtIds)->count();
 
@@ -287,6 +292,11 @@ class VenueController extends ApiController
 
         if ($request->has('defaultExtraFeeNote')) {
             $patch['default_extra_fee_note'] = mb_substr((string) $request->input('defaultExtraFeeNote'), 0, 120);
+        }
+
+        // Blank clears it: the app then opens Maps on the address instead.
+        if ($request->has('locationUrl')) {
+            $patch['location_url'] = mb_substr(trim((string) $request->input('locationUrl')), 0, 500);
         }
 
         if ($request->has('imageUrl')) {

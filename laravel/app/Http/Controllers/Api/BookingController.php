@@ -38,6 +38,9 @@ class BookingController extends ApiController
 {
     private const PAY_METHODS = ['eSewa', 'Khalti', 'Cash at Venue', 'Free Play 🎁'];
 
+    /** For hour messages: court_day_hours is 0 = Sunday, like JavaScript. */
+    private const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
     private const LEVELS = ['All Levels', 'Beginner', 'Intermediate', 'Advanced'];
 
     /**
@@ -305,7 +308,7 @@ class BookingController extends ApiController
         // A pitch can keep its own window (defaults to the venue's). Booking a
         // slot the court is shut for used to be accepted and then cancelled by
         // the owner; refusing it here is kinder than a rejected request.
-        if ($hoursError = $this->courtHoursError($court, $startTime, $endTime)) {
+        if ($hoursError = $this->courtHoursError($court, $date, $startTime, $endTime)) {
             return $this->fail($hoursError, 400);
         }
 
@@ -1512,16 +1515,19 @@ class BookingController extends ApiController
     /**
      * Is this block inside the court's opening hours?
      *
-     * A court may set its own window; without one it follows the venue's
-     * `opening_hour`/`closing_hour`, so a venue that never set court hours keeps
+     * The window is the one that applies to the day being booked: a weekday
+     * override if the owner set one for that court, otherwise the court's own
+     * hours, otherwise the venue's. A venue that never set any court hours keeps
      * exactly the behaviour it had before.
      */
-    private function courtHoursError(Court $court, string $startTime, string $endTime): ?string
+    private function courtHoursError(Court $court, string $date, string $startTime, string $endTime): ?string
     {
         $venue = Venue::find($court->venue_id);
+        $day = self::weekdayOf($date);
+        $override = $court->dayHours()->where('day_of_week', $day)->first();
 
-        $opensAt = $court->opens_at ?: sprintf('%02d:00', (int) ($venue->opening_hour ?? 6));
-        $closesAt = $court->closes_at ?: sprintf('%02d:00', (int) ($venue->closing_hour ?? 22));
+        $opensAt = $override?->opens_at ?: ($court->opens_at ?: sprintf('%02d:00', (int) ($venue->opening_hour ?? 6)));
+        $closesAt = $override?->closes_at ?: ($court->closes_at ?: sprintf('%02d:00', (int) ($venue->closing_hour ?? 22)));
 
         $open = Validation::toMinutes($opensAt);
         $close = Validation::toMinutes($closesAt);
@@ -1531,10 +1537,20 @@ class BookingController extends ApiController
         // A block ending at or before it starts crosses midnight: futsal slots
         // do not run past closing, so treat it as outside.
         if ($end <= $start || $start < $open || $end > $close) {
-            return 'This court is open '.$opensAt.'–'.$closesAt.' — pick a slot inside those hours ⏰';
+            $when = $override ? ' on '.self::DAY_NAMES[$day].'s' : '';
+
+            return 'This court is open '.$opensAt.'–'.$closesAt.$when.' — pick a slot inside those hours ⏰';
         }
 
         return null;
+    }
+
+    /** 0 = Sunday … 6 = Saturday, the convention the app and court_day_hours use. */
+    private static function weekdayOf(string $date): int
+    {
+        $ts = strtotime($date);
+
+        return $ts === false ? (int) date('w') : (int) date('w', $ts);
     }
 
     private function handleTeamSelection(Booking $booking, array $prev, Request $request): ?JsonResponse

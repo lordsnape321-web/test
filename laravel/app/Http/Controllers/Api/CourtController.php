@@ -24,6 +24,8 @@ class CourtController extends ApiController
             return $this->fail('Pick a valid venue 📍', 400);
         }
 
+        [$dayRows, $dayError] = $this->dayHourRows($request->input('dayHours'));
+
         $error = Validation::firstError(
             Validation::courtName($name),
             $request->filled('format') && ! in_array((string) $request->input('format'), self::FORMATS, true)
@@ -33,6 +35,7 @@ class CourtController extends ApiController
                 ? Validation::money($request->input('priceMorning'), ['min' => 100, 'max' => 20000, 'label' => 'Morning price'])
                 : null,
             Validation::clockRange($request->input('opensAt'), $request->input('closesAt')),
+            $dayError,
         );
 
         if ($error) {
@@ -64,7 +67,11 @@ class CourtController extends ApiController
             'features' => mb_substr((string) $request->input('features', 'Floodlights,Nets Provided,Match Balls'), 0, 500),
         ]);
 
-        return $this->ok(['court' => $court->toArray()], 201);
+        if ($dayRows !== []) {
+            $court->dayHours()->createMany($dayRows);
+        }
+
+        return $this->ok(['court' => $court->load('dayHours')->toArray()], 201);
     }
 
     /** PATCH /api/courts/{id} */
@@ -82,6 +89,12 @@ class CourtController extends ApiController
 
         if ($error) {
             return $this->fail($error, 400);
+        }
+
+        [$dayRows, $dayError] = $this->dayHourRows($request->input('dayHours'));
+
+        if ($dayError) {
+            return $this->fail($dayError, 400);
         }
 
         $court = Court::find($id);
@@ -148,7 +161,64 @@ class CourtController extends ApiController
             $court->forceFill($patch)->save();
         }
 
-        return $this->ok(['court' => $court->fresh()->toArray()]);
+        if ($request->has('dayHours')) {
+            // Replace-all: a weekday left out of the payload goes back to the
+            // court's usual hours, which is what "reset that day" means.
+            $court->dayHours()->delete();
+
+            if ($dayRows !== []) {
+                $court->dayHours()->createMany($dayRows);
+            }
+        }
+
+        return $this->ok(['court' => $court->fresh()->load('dayHours')->toArray()]);
+    }
+
+    /**
+     * Weekday overrides from the request.
+     *
+     * Accepts `[{ dayOfWeek: 5, opensAt: "18:00", closesAt: "23:00" }, …]` and
+     * returns `[rows, error]` — rows ready to insert, keyed so that a day listed
+     * twice keeps the last window rather than failing the whole save.
+     *
+     * @return array{0: list<array<string, mixed>>, 1: ?string}
+     */
+    private function dayHourRows(mixed $input): array
+    {
+        if ($input === null || $input === '') {
+            return [[], null];
+        }
+
+        if (! is_array($input)) {
+            return [[], 'Court hours per day must be a list of weekdays 🕐'];
+        }
+
+        $rows = [];
+
+        foreach ($input as $entry) {
+            if (! is_array($entry)) {
+                return [[], 'Court hours per day must be a list of weekdays 🕐'];
+            }
+
+            $day = (int) ($entry['dayOfWeek'] ?? $entry['day'] ?? -1);
+
+            $error = Validation::firstError(
+                $day < 0 || $day > 6 ? 'Pick a weekday between Sunday and Saturday 🕐' : null,
+                Validation::clockRange($entry['opensAt'] ?? null, $entry['closesAt'] ?? null),
+            );
+
+            if ($error) {
+                return [[], $error];
+            }
+
+            $rows[$day] = [
+                'day_of_week' => $day,
+                'opens_at' => Validation::normaliseClock($entry['opensAt']),
+                'closes_at' => Validation::normaliseClock($entry['closesAt']),
+            ];
+        }
+
+        return [array_values($rows), null];
     }
 
     /** "06:30" → "06:30"; blank/absent → '' (meaning “follow the venue”). */

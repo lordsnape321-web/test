@@ -6,6 +6,7 @@ use App\Models\Concerns\CamelCasedAttributes;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Court extends Model
 {
@@ -55,5 +56,11 @@ class Court extends Model
     public function venue(): BelongsTo
     {
         return $this->belongsTo(Venue::class, 'venue_id');
+    }
+
+    /** Weekday overrides; a weekday with no row follows the court's own hours. */
+    public function dayHours(): HasMany
+    {
+        return $this->hasMany(CourtDayHour::class, 'court_id');
     }
 }

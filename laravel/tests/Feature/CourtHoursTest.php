@@ -53,13 +53,24 @@ class CourtHoursTest extends TestCase
 
     private function book(int $courtId, string $startTime, int $hours = 1)
     {
+        return $this->bookOn($courtId, now()->addDays(2)->toDateString(), $startTime, $hours);
+    }
+
+    private function bookOn(int $courtId, string $date, string $startTime, int $hours = 1)
+    {
         return $this->postJson('/api/bookings', [
             'courtId' => $courtId,
             'userId' => $this->player->id,
-            'date' => now()->addDays(2)->toDateString(),
+            'date' => $date,
             'startTime' => $startTime,
             'durationHours' => $hours,
         ]);
+    }
+
+    /** The next Friday, inside the app's booking horizon and in the future. */
+    private function nextFriday(): string
+    {
+        return now()->addDay()->next('Friday')->toDateString();
     }
 
     public function test_a_court_keeps_the_hours_the_owner_gave_it(): void
@@ -144,5 +155,116 @@ class CourtHoursTest extends TestCase
         $this->book($id, '20:00', 2)->assertCreated();
         // 21:00 + 2h would end at 23:00, an hour after this court shuts.
         $this->book($id, '21:00', 2)->assertStatus(400);
+    }
+
+    public function test_a_weekday_can_keep_its_own_hours(): void
+    {
+        $id = $this->postJson('/api/courts', [
+            'venueId' => $this->venue->id,
+            'ownerId' => $this->owner->id,
+            'name' => 'Friday nighter',
+            'pricePerHour' => 1700,
+            'opensAt' => '06:00',
+            'closesAt' => '22:00',
+            'dayHours' => [
+                ['dayOfWeek' => 5, 'opensAt' => '18:00', 'closesAt' => '23:00'],
+            ],
+        ])->assertCreated()->json('court');
+
+        self::assertSame(5, $court['dayHours'][0]['dayOfWeek']);
+        self::assertSame('18:00', $court['dayHours'][0]['opensAt']);
+    }
+
+    public function test_a_weekday_override_must_be_a_complete_window(): void
+    {
+        // Half a window is a mistake, not "open from 18:00".
+        $this->postJson('/api/courts', [
+            'venueId' => $this->venue->id, 'ownerId' => $this->owner->id,
+            'name' => 'Half day', 'opensAt' => '06:00', 'closesAt' => '22:00',
+            'dayHours' => [['dayOfWeek' => 5, 'opensAt' => '18:00']],
+        ])->assertStatus(400);
+
+        // And a weekday that does not exist is not a day.
+        $this->postJson('/api/courts', [
+            'venueId' => $this->venue->id, 'ownerId' => $this->owner->id,
+            'name' => 'Day nine', 'opensAt' => '06:00', 'closesAt' => '22:00',
+            'dayHours' => [['dayOfWeek' => 9, 'opensAt' => '18:00', 'closesAt' => '23:00']],
+        ])->assertStatus(400);
+    }
+
+    public function test_the_booking_window_follows_the_weekday_override(): void
+    {
+        $id = $this->postJson('/api/courts', [
+            'venueId' => $this->venue->id,
+            'ownerId' => $this->owner->id,
+            'name' => 'Friday nighter',
+            'pricePerHour' => 1700,
+            'opensAt' => '06:00',
+            'closesAt' => '22:00',
+            'dayHours' => [
+                ['dayOfWeek' => 5, 'opensAt' => '18:00', 'closesAt' => '23:00'],
+            ],
+        ])->assertCreated()->json('court.id');
+
+        $friday = $this->nextFriday();
+
+        // 09:00 is inside the court's usual hours, outside its Friday window.
+        $morning = $this->bookOn($id, $friday, '09:00')->assertStatus(400);
+        self::assertStringContainsString('18:00', (string) $morning->json('error'));
+        self::assertStringContainsString('Fridays', (string) $morning->json('error'));
+
+        // 19:00 only works on the Friday override, and 23:00 is its close.
+        $this->bookOn($id, $friday, '19:00')->assertCreated();
+        $this->bookOn($id, $friday, '22:00')->assertCreated();
+        $this->bookOn($id, $friday, '23:00')->assertStatus(400);
+
+        // The other six days still open at 06:00.
+        $saturday = now()->addDay()->next('Saturday')->toDateString();
+        $this->bookOn($id, $saturday, '09:00')->assertCreated();
+    }
+
+    public function test_an_edit_replaces_the_weekday_overrides(): void
+    {
+        $id = $this->postJson('/api/courts', [
+            'venueId' => $this->venue->id, 'ownerId' => $this->owner->id,
+            'name' => 'Swap days', 'opensAt' => '06:00', 'closesAt' => '22:00',
+            'dayHours' => [['dayOfWeek' => 5, 'opensAt' => '18:00', 'closesAt' => '23:00']],
+        ])->assertCreated()->json('court.id');
+
+        // Monday now has its own window; Friday's old one is gone.
+        $court = $this->patchJson("/api/courts/{$id}", [
+            'ownerId' => $this->owner->id,
+            'dayHours' => [['dayOfWeek' => 1, 'opensAt' => '17:00', 'closesAt' => '22:30']],
+        ])->assertOk()->json('court');
+
+        self::assertCount(1, $court['dayHours']);
+        self::assertSame(1, $court['dayHours'][0]['dayOfWeek']);
+        self::assertSame('17:00', $court['dayHours'][0]['opensAt']);
+
+        // An empty list clears every override.
+        $court = $this->patchJson("/api/courts/{$id}", [
+            'ownerId' => $this->owner->id,
+            'dayHours' => [],
+        ])->assertOk()->json('court');
+
+        self::assertSame([], $court['dayHours']);
+    }
+
+    public function test_the_owner_can_save_and_clear_a_venue_map_link(): void
+    {
+        $saved = $this->patchJson("/api/venues/{$this->venue->id}", [
+            'ownerId' => $this->owner->id,
+            'locationUrl' => 'https://maps.app.goo.gl/abc123',
+        ])->assertOk()->json('venue');
+
+        self::assertSame('https://maps.app.goo.gl/abc123', $saved['locationUrl']);
+
+        // Blank clears it: the app then opens Maps on the address instead.
+        $cleared = $this->patchJson("/api/venues/{$this->venue->id}", [
+            'ownerId' => $this->owner->id,
+            'locationUrl' => '',
+        ])->assertOk()->json('venue');
+
+        self::assertSame('', $cleared['locationUrl']);
     }
 }

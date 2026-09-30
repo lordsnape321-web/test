@@ -1,3 +1,5 @@
+import type { CourtDayHours } from "@/lib/types";
+
 export function formatNPR(n: number) {
   return "Rs. " + n.toLocaleString("en-IN");
 }
@@ -93,6 +95,7 @@ export function rangeSlots(slots: string[], start: string | null, hours: number)
   return slots.slice(idx, idx + hours);
 }
 
+/** "18:00" → "6:00 PM"; already-12-hour text is left alone. */
 export function formatTime12(t: string) {
   const [hStr, mStr] = t.split(":");
   let h = parseInt(hStr, 10);
@@ -167,6 +170,18 @@ export const VENUE_IMAGES = [
   "https://images.unsplash.com/photo-1459865264687-595d652de67e?q=80&w=1200&auto=format&fit=crop",
 ];
 
+export const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+export const DAY_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+/** Weekday of a "YYYY-MM-DD" date, in the app's 0 = Sunday convention. */
+export function weekdayOf(dateISO?: string | null): number | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec((dateISO ?? "").trim());
+  if (!match) return null;
+  // Built from parts on purpose: `new Date("2026-09-30")` is parsed as UTC and
+  // can land on the previous day west of Greenwich.
+  return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3])).getDay();
+}
+
 /** The venue shape the court-hours helpers need; hours may arrive as strings. */
 export type CourtHoursVenue = {
   openingHour?: number | string | null;
@@ -186,12 +201,23 @@ export const CLOCK_OPTIONS: string[] = Array.from({ length: 49 }, (_, i) => {
  * is what every court did before per-court hours existed.
  */
 export function courtHours(
-  court?: { opensAt?: string | null; closesAt?: string | null } | null,
+  court?: { opensAt?: string | null; closesAt?: string | null; dayHours?: CourtDayHours[] | null } | null,
   venue?: CourtHoursVenue | null,
-): { opensAt: string; closesAt: string; inherited: boolean } {
+  dateISO?: string | null,
+): { opensAt: string; closesAt: string; inherited: boolean; day: number | null } {
+  // A weekday the owner singled out wins over the court's every-day window.
+  const day = weekdayOf(dateISO);
+  const override = day === null
+    ? null
+    : (court?.dayHours ?? []).find((row) => Number(row.dayOfWeek) === day && row.opensAt && row.closesAt) ?? null;
+
+  if (override) {
+    return { opensAt: override.opensAt, closesAt: override.closesAt, inherited: false, day };
+  }
+
   const opens = court?.opensAt ?? "";
   const closes = court?.closesAt ?? "";
-  if (opens && closes) return { opensAt: opens, closesAt: closes, inherited: false };
+  if (opens && closes) return { opensAt: opens, closesAt: closes, inherited: false, day };
   // A venue that somehow carries no hours falls back to the historic 6–22,
   // never to 0–0 (which would leave a court with no slots at all).
   const open = venueHour(venue?.openingHour, 6);
@@ -200,6 +226,7 @@ export function courtHours(
     opensAt: `${String(open).padStart(2, "0")}:00`,
     closesAt: `${String(close).padStart(2, "0")}:00`,
     inherited: true,
+    day,
   };
 }
 
@@ -210,12 +237,30 @@ function venueHour(value: unknown, fallback: number): number {
   return Number.isFinite(n) ? n : fallback;
 }
 
+/**
+ * The weekday overrides of a court, ready to print: "Fri 6:00 PM–11:00 PM".
+ *
+ * Times are formatted 12-hour wherever a time sits next to a clock, so a court
+ * row never mixes "18:00" with the "6:00 PM" used by the slots below it.
+ */
+export function courtDaySummary(
+  court?: { dayHours?: CourtDayHours[] | null } | null,
+): string {
+  return (court?.dayHours ?? [])
+    .filter((row) => row.opensAt && row.closesAt)
+    .slice()
+    .sort((a, b) => Number(a.dayOfWeek) - Number(b.dayOfWeek))
+    .map((row) => `${DAY_SHORT[Number(row.dayOfWeek)] ?? "?"} ${formatTime12(row.opensAt)}–${formatTime12(row.closesAt)}`)
+    .join(" · ");
+}
+
 /** Slot list for a court: only the hours it is actually open. */
 export function courtTimeSlots(
-  court?: { opensAt?: string | null; closesAt?: string | null } | null,
+  court?: { opensAt?: string | null; closesAt?: string | null; dayHours?: CourtDayHours[] | null } | null,
   venue?: CourtHoursVenue | null,
+  dateISO?: string | null,
 ): string[] {
-  const { opensAt, closesAt } = courtHours(court, venue);
+  const { opensAt, closesAt } = courtHours(court, venue, dateISO);
   const from = timeToMin(opensAt);
   const to = timeToMin(closesAt);
   const slots: string[] = [];
