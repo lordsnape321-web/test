@@ -67,12 +67,13 @@ export default function BookingDetail() {
   const [settleError, setSettleError] = useState<string | null>(null);
   // The captain's own money ledger for this team booking.
   const [squadLedgerOpen, setSquadLedgerOpen] = useState(false);
-  const [showAdvanceRequests, setShowAdvanceRequests] = useState(false);
   const [requestPayerIds, setRequestPayerIds] = useState<string[]>([]);
   const [requestAmount, setRequestAmount] = useState("");
   const [requestNote, setRequestNote] = useState("");
   const [requestBusy, setRequestBusy] = useState(false);
-  const [teamDetailsOpen, setTeamDetailsOpen] = useState(false);
+  // The owner's advance, the squad list and its actions are part of the
+  // booking itself: nothing here hides behind a Show/Hide tap.
+  const [teamDetailsOpen, setTeamDetailsOpen] = useState(true);
 
   const load = useCallback(async (refresh = false) => {
     if (!Number.isFinite(bookingId)) return;
@@ -168,6 +169,46 @@ export default function BookingDetail() {
       setSuccess("Request cancelled. Its history is kept on this booking.");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not cancel this request.");
+    } finally {
+      setRequestBusy(false);
+    }
+  }
+
+  /**
+   * Ask one listed player for their part of this booking.
+   *
+   * The purpose follows where the money is actually owed: the venue advance
+   * while it is unpaid, the venue balance while the venue is still short, and
+   * otherwise a reimbursement to the player who paid the bill — which is what
+   * "I paid it all, collect later" needs, and why it cannot go through a
+   * gateway.
+   */
+  async function askTeammate(payerId: number, dueAmount: number, alreadyPaid: number): Promise<string> {
+    if (!booking || !user) throw new Error("Sign in to ask a teammate.");
+    const player = (booking.teamPlayers ?? []).find((item) => item.id === payerId);
+    const name = player?.name ?? "Your teammate";
+    const share = Math.max(0, Math.round(dueAmount - alreadyPaid));
+    const currentAdvance = advanceOf(booking, ledger?.totals.paid ?? 0);
+    const purpose: "advance" | "booking" | "reimbursement" =
+      currentAdvance.active ? "advance" : Math.max(0, ledger?.totals.balance ?? 0) > 0 ? "booking" : "reimbursement";
+    const amount = purpose === "advance" ? Math.max(10, Math.min(share || currentAdvance.available, currentAdvance.available)) : share;
+    if (!Number.isInteger(amount) || amount < 10) {
+      throw new Error(`Nothing left to ask ${name} for — their part is already covered.`);
+    }
+    setRequestBusy(true);
+    setError(null);
+    try {
+      await createBookingPaymentRequest(bookingId, {
+        requesterId: user.id,
+        payerIds: [payerId],
+        amount,
+        purpose,
+        note: "",
+      });
+      await load(true);
+      return purpose === "reimbursement"
+        ? `${name} was asked to reimburse ${formatNPR(amount)} to you. Record it here once you have it.`
+        : `${name} was asked to pay ${formatNPR(amount)}${purpose === "advance" ? " toward the venue advance" : " toward the booking"}.`;
     } finally {
       setRequestBusy(false);
     }
@@ -297,6 +338,8 @@ export default function BookingDetail() {
     }
   }
 
+  const pendingFor = (playerId: number) =>
+    (booking.paymentRequests ?? []).filter((request) => request.payerId === playerId && request.status === "pending");
   const captainCanRequest = Boolean(
     user && booking.teamId && isBooker && !competitionWaiting && !["cancelled", "rejected", "completed"].includes(booking.status),
   );
@@ -367,7 +410,7 @@ export default function BookingDetail() {
                       <Button label={`Pay advance ${formatNPR(advance.remaining)} · eSewa`} onPress={() => void pay("esewa", "advance")} disabled={busy !== null} loading={busy === "esewa"} />
                       <Button label={`Pay advance ${formatNPR(advance.remaining)} · Khalti`} variant="secondary" onPress={() => void pay("khalti", "advance")} disabled={busy !== null} loading={busy === "khalti"} />
                       {captainCanRequest ? (
-                        <Button label={showAdvanceRequests ? "Hide teammate request form" : "Ask teammates to pay their contribution"} variant="ghost" onPress={() => setShowAdvanceRequests((value) => !value)} />
+                        <Text style={[styles.hint, { color: colors.textMuted }]}>Ask each teammate for their contribution in the form below — every request is saved against this booking.</Text>
                       ) : <Text style={[styles.hint, { color: colors.textMuted }]}>Teammate requests are available for bookings linked to a team.</Text>}
                       {advance.pending > 0 ? <Text style={[styles.hint, { color: colors.textMuted }]}>Awaiting {formatNPR(advance.pending)} from teammates. You can cover the remaining advance yourself; unpaid requests that are no longer needed will be cancelled.</Text> : null}
                     </>
@@ -461,34 +504,44 @@ export default function BookingDetail() {
           <Card key={request.id} style={{ marginTop: space["3"] }}>
             <Text style={[styles.cardTitle, { color: colors.text }]}>Payment request from {request.requesterName}</Text>
             <Text style={[styles.meta, { color: colors.textMuted }]}>
-              Pay {formatNPR(request.amountDue)} directly to {booking.venue?.name ?? "the venue owner"} for {request.purpose === "advance" ? "the venue advance" : "the team booking"}.
+              {request.purpose === "reimbursement"
+                ? `${request.requesterName} paid the venue for this booking. Settle ${formatNPR(request.amountDue)} with them directly — cash or a transfer — and they will record it in the player ledger.`
+                : `Pay ${formatNPR(request.amountDue)} directly to ${booking.venue?.name ?? "the venue owner"} for ${request.purpose === "advance" ? "the venue advance" : "the team booking"}.`}
             </Text>
             {request.note ? <Text style={[styles.meta, { color: colors.textMuted }]}>Note: {request.note}</Text> : null}
-            <Text style={[styles.hint, { color: colors.textFaint }]}>Only eSewa or Khalti is supported for a directed teammate payment.</Text>
-            <Button
-              label={`Pay ${formatNPR(request.amountDue)} with eSewa`}
-              onPress={() => void pay("esewa", "auto", request.id)}
-              loading={busy === "esewa"}
-              disabled={busy !== null}
-            />
-            <Button
-              label={`Pay ${formatNPR(request.amountDue)} with Khalti`}
-              variant="secondary"
-              onPress={() => void pay("khalti", "auto", request.id)}
-              loading={busy === "khalti"}
-              disabled={busy !== null}
-              style={{ marginTop: space["2"] }}
-            />
+            {request.purpose === "reimbursement" ? (
+              <Text style={[styles.hint, { color: colors.textFaint }]}>No gateway is needed: the venue has already been paid, so this money goes back to {request.requesterName}.</Text>
+            ) : (
+              <>
+                <Text style={[styles.hint, { color: colors.textFaint }]}>Only eSewa or Khalti is supported for a directed teammate payment.</Text>
+                <Button
+                  label={`Pay ${formatNPR(request.amountDue)} with eSewa`}
+                  onPress={() => void pay("esewa", "auto", request.id)}
+                  loading={busy === "esewa"}
+                  disabled={busy !== null}
+                />
+                <Button
+                  label={`Pay ${formatNPR(request.amountDue)} with Khalti`}
+                  variant="secondary"
+                  onPress={() => void pay("khalti", "auto", request.id)}
+                  loading={busy === "khalti"}
+                  disabled={busy !== null}
+                  style={{ marginTop: space["2"] }}
+                />
+              </>
+            )}
           </Card>
         ))}
-        {captainCanRequest && (!advance.active || showAdvanceRequests) ? (
+        {captainCanRequest ? (
           <Card style={{ marginTop: space["3"] }}>
             {/* Card lays its children out flush and Field has no bottom margin,
                 so without a gap here the "Send payment request" button sat
                 against the note box and read as part of it. */}
             <View style={{ gap: space["3"] }}>
-              <Text style={[styles.cardTitle, { color: colors.text }]}>{advance.active ? "Ask teammates to cover the advance" : "Ask a teammate to pay"}</Text>
-              <Text style={[styles.meta, { color: colors.textMuted }]}>Select teammates and enter each contribution. They pay the venue directly; the request and verified payment are saved against this booking.</Text>
+              <Text style={[styles.cardTitle, { color: colors.text }]}>{advance.active ? "Ask teammates to cover the advance" : balance > 0 ? "Ask a teammate to pay their part" : "Ask a teammate to reimburse you"}</Text>
+              <Text style={[styles.meta, { color: colors.textMuted }]}>{advance.active || balance > 0
+                ? "Select teammates and enter each contribution. They pay the venue directly; the request and verified payment are saved against this booking."
+                : "You covered this booking yourself. Select teammates to ask for their part back — they settle it with you and you record it in the player ledger."}</Text>
               {advance.active ? <Text style={[styles.meta, { color: colors.textMuted }]}>Available to request: {formatNPR(advance.available)} · {formatNPR(advance.pending)} already requested</Text> : null}
               {(booking.teamPlayers ?? []).filter((p) => p.id !== user?.id).length === 0 ? <Text style={[styles.hint, { color: colors.textMuted }]}>No teammates are on this booking's team yet.</Text> : null}
               <View style={styles.playerChoices}>
@@ -562,9 +615,29 @@ export default function BookingDetail() {
                         <Text style={[styles.teamPlayerName, { color: colors.text }]}>{player.name}{player.role === "captain" ? " · captain" : ""}{user && player.id === user.id ? " (you)" : ""}</Text>
                         <Text style={[styles.meta, { color: colors.textMuted }]}>Due {formatNPR(due)} · Paid {formatNPR(paid)} · Method: {paymentMethodLabel(share?.paymentMethod)}</Text>
                         {remaining > 0 ? <Text style={[styles.teamRemaining, { color: "#B45309" }]}>Remaining {formatNPR(remaining)}</Text> : null}
+                        {pendingFor(player.id).length > 0 ? (
+                          <Text style={[styles.hint, { color: colors.textMuted }]}>
+                            Asked for {formatNPR(pendingFor(player.id).reduce((sum, request) => sum + request.amountDue, 0))} · {paymentStatusLabel(pendingFor(player.id)[0].status)}
+                          </Text>
+                        ) : null}
                         {share?.gatewayTxnId ? <Text style={[styles.hint, { color: colors.textFaint }]}>Gateway reference: {share.gatewayTxnId.slice(0, 18)}</Text> : null}
                       </View>
-                      <Pill label={paymentStatusLabel(share?.paymentStatus ?? "not selected")} tone={share?.paymentStatus === "paid" ? "success" : "warning"} />
+                      <View style={{ gap: space["2"], alignItems: "flex-end" }}>
+                        <Pill label={paymentStatusLabel(share?.paymentStatus ?? "not selected")} tone={share?.paymentStatus === "paid" ? "success" : "warning"} />
+                        {isBooker && user && player.id !== user.id && pendingFor(player.id).length === 0 ? (
+                          <Button
+                            label="Ask to pay"
+                            variant="secondary"
+                            onPress={() => {
+                              void askTeammate(player.id, due, paid).then(setSuccess).catch((e) => setError(e instanceof Error ? e.message : "Could not send the request."));
+                            }}
+                            disabled={requestBusy || (advance.active && advance.available < 10)}
+                          />
+                        ) : null}
+                        {isBooker && pendingFor(player.id).length > 0 ? (
+                          <Button label="Cancel request" variant="ghost" onPress={() => void cancelRequest(pendingFor(player.id)[0].id)} disabled={requestBusy} />
+                        ) : null}
+                      </View>
                     </View>
                   );
                 })}
@@ -574,7 +647,7 @@ export default function BookingDetail() {
                     {(booking.paymentRequests ?? []).map((request) => (
                       <View key={request.id} style={[styles.requestDetail, { backgroundColor: colors.bg, borderColor: colors.border }]}>
                         <Text style={[styles.teamPlayerName, { color: colors.text }]}>{request.requesterName} → {request.payerName}: {formatNPR(request.amountDue)}</Text>
-                        <Text style={[styles.meta, { color: colors.textMuted }]}>{request.purpose === "advance" ? "Venue advance" : "Team booking"} · {paymentMethodLabel(request.paymentMethod)} · {paymentStatusLabel(request.status)} · Paid {formatNPR(request.paidAmount)}</Text>
+                        <Text style={[styles.meta, { color: colors.textMuted }]}>{request.purpose === "advance" ? "Venue advance" : request.purpose === "reimbursement" ? "Reimburse the organizer" : "Team booking"} · {paymentMethodLabel(request.paymentMethod)} · {paymentStatusLabel(request.status)} · Paid {formatNPR(request.paidAmount)}</Text>
                         {request.note ? <Text style={[styles.hint, { color: colors.textFaint }]}>Note: {request.note}</Text> : null}
                         {request.gatewayTxnId ? <Text style={[styles.hint, { color: colors.textFaint }]}>Gateway reference: {request.gatewayTxnId.slice(0, 18)}</Text> : null}
                       </View>
@@ -753,6 +826,7 @@ export default function BookingDetail() {
           bookingLabel={booking?.teamName ?? ""}
           onClose={() => setSquadLedgerOpen(false)}
           onChanged={() => void load()}
+          onAsk={(member) => askTeammate(member.userId, member.amountDue, member.collected)}
         />
       ) : null}
     </SafeAreaView>

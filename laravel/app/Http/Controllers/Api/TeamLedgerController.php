@@ -34,7 +34,7 @@ use Illuminate\Http\Request;
  */
 class TeamLedgerController extends ApiController
 {
-    private const ACTIONS = ['collect', 'void', 'guest', 'voidGuest'];
+    private const ACTIONS = ['collect', 'update', 'void', 'guest', 'voidGuest'];
 
     /** GET — every squad member, their share, and what they have handed over. */
     public function show(Request $request, int $id): JsonResponse
@@ -79,6 +79,7 @@ class TeamLedgerController extends ApiController
         }
 
         return match ($action) {
+            'update' => $this->updateEntry($booking, $request, $actorId),
             'guest' => $this->guest($booking, $request, $actorId),
             'voidGuest' => $this->voidGuest($booking, $request, $actorId),
             'collect' => $this->collect($booking, $request, $actorId),
@@ -111,10 +112,17 @@ class TeamLedgerController extends ApiController
             return $this->fail('That player has no share on this booking 👥', 404);
         }
 
-        $outstanding = max(0, (int) $share->amount_due - (int) $share->paid_amount);
+        $due = max(0, (int) $share->amount_due);
+        $venuePaid = ParticipantLedger::venuePaidBy($booking, $userId);
+        // Deliberately measured against receipts, not the share projection: an
+        // organizer who paid the whole bill keeps the right to collect each
+        // teammate's reimbursement afterwards.
+        $outstanding = max(0, $due - $venuePaid - ParticipantLedger::reimbursedToOrganizer($booking, $userId));
 
         if ($outstanding <= 0) {
-            return $this->fail('That share is already settled — nothing left to record ✅', 409);
+            return $this->fail($venuePaid > 0
+                ? 'That player already paid the venue directly — nothing left to reimburse 💰'
+                : 'That share is already settled — nothing left to record ✅', 409);
         }
 
         // Default to settling the whole outstanding share; an explicit amount
@@ -149,7 +157,10 @@ class TeamLedgerController extends ApiController
             'recorded_by' => $actorId,
         ]);
 
-        $paid = (int) $share->paid_amount + $amount;
+        // Never exceed the share, and never go backwards because a projection
+        // already carried part of this money.
+        $sources = $venuePaid + ParticipantLedger::reimbursedToOrganizer($booking, $userId);
+        $paid = min($due, max((int) $share->paid_amount, $sources));
         $share->forceFill([
             'paid_amount' => $paid,
             'payment_method' => $method,
@@ -163,7 +174,7 @@ class TeamLedgerController extends ApiController
                 (int) $person->id,
                 'team_payment',
                 '💰 '.Futsal::formatNPR($amount).' received',
-                'Your captain recorded '.Futsal::formatNPR($amount).' by '.$method
+                'Your organizer recorded '.Futsal::formatNPR($amount).' by '.$method
                     .' for '.($booking->team_name ?: 'the team booking').' on '.$booking->date.'. '
                     .($paid >= (int) $share->amount_due
                         ? 'That settles your share ✅'
@@ -221,7 +232,9 @@ class TeamLedgerController extends ApiController
         if ($share) {
             // Remove only this manual contribution, preserving direct venue
             // and gateway payments already reflected in the same share.
-            $paid = max(0, (int) $share->paid_amount - (int) $entry->amount);
+            $sources = ParticipantLedger::venuePaidBy($booking, (int) $entry->user_id)
+                + ParticipantLedger::reimbursedToOrganizer($booking, (int) $entry->user_id);
+            $paid = min((int) $share->amount_due, max(max(0, (int) $share->paid_amount - (int) $entry->amount), $sources));
 
             $share->forceFill([
                 'paid_amount' => $paid,
@@ -246,6 +259,73 @@ class TeamLedgerController extends ApiController
     private function payload(Booking $booking, int $actorId, bool $isCaptain): array
     {
         return ParticipantLedger::payload($booking, $actorId, $isCaptain);
+    }
+
+    /** Correct a mistyped manual amount without losing the paper trail. */
+    private function updateEntry(Booking $booking, Request $request, int $actorId): JsonResponse
+    {
+        $entry = TeamLedgerEntry::where('booking_id', $booking->id)->find((int) $request->input('entryId', 0));
+
+        if (! $entry) {
+            return $this->fail('That entry is not on this booking 💰', 404);
+        }
+
+        if ($entry->voided_at) {
+            return $this->fail('That entry was undone — record a new one instead', 409);
+        }
+
+        $method = trim((string) $request->input('method', $entry->method));
+
+        if (! in_array($method, BookingLedger::LEDGER_METHODS, true)) {
+            return $this->fail('Record it as eSewa, Khalti, or Cash at Venue 💳', 400);
+        }
+
+        if ($request->filled('amount') && filter_var($request->input('amount'), FILTER_VALIDATE_INT) === false) {
+            return $this->fail('Enter a whole-rupee amount', 400);
+        }
+
+        $share = BookingTeamPayment::where('booking_id', $booking->id)->where('user_id', (int) $entry->user_id)->first();
+
+        if (! $share) {
+            return $this->fail('That player has no share on this booking 👥', 404);
+        }
+
+        $amount = $request->filled('amount') ? (int) $request->input('amount') : (int) $entry->amount;
+
+        if ($amount <= 0) {
+            return $this->fail('How much did they hand over? 💰', 400);
+        }
+
+        $cap = ParticipantLedger::reimbursementOutstanding($booking, (int) $entry->user_id, (int) $share->amount_due, (int) $entry->id);
+
+        if ($amount > $cap) {
+            return $this->fail('That is more than the '.Futsal::formatNPR($cap).' they still owe you 💰', 400);
+        }
+
+        $delta = $amount - (int) $entry->amount;
+        $entry->forceFill([
+            'amount' => $amount,
+            'method' => $method,
+            'note' => $request->has('note') ? mb_substr((string) $request->input('note'), 0, 200) : $entry->note,
+        ])->save();
+
+        $sources = ParticipantLedger::venuePaidBy($booking, (int) $entry->user_id)
+            + ParticipantLedger::reimbursedToOrganizer($booking, (int) $entry->user_id);
+        $paid = min((int) $share->amount_due, max((int) $share->paid_amount + $delta, $sources));
+
+        $share->forceFill([
+            'paid_amount' => $paid,
+            'payment_status' => $paid <= 0 ? 'pending' : ($paid >= (int) $share->amount_due ? 'paid' : 'partial'),
+        ])->save();
+
+        BookingLedger::syncCachedState($booking);
+
+        return $this->ok([
+            'ok' => true,
+            'entryId' => (int) $entry->id,
+            'ledger' => $this->payload($booking->fresh() ?? $booking, $actorId, true),
+            'message' => 'Entry updated — the ledger now says '.Futsal::formatNPR($amount).' ↩️',
+        ]);
     }
 
     private function guest(Booking $booking, Request $request, int $actorId): JsonResponse

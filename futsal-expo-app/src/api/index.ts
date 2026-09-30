@@ -532,7 +532,7 @@ export function chooseBookingPayment(
 /** POST /api/bookings/:id/payment-requests → captain asks one teammate for one amount. */
 export function createBookingPaymentRequest(
   bookingId: number,
-  input: { requesterId: number; payerIds?: number[]; payerId?: number; amount: number; purpose: "advance" | "booking"; note?: string },
+  input: { requesterId: number; payerIds?: number[]; payerId?: number; amount: number; purpose: "advance" | "booking" | "reimbursement"; note?: string },
 ): Promise<Record<string, unknown>> {
   return apiJson(`/api/bookings/${bookingId}/payment-requests`, { method: "POST", json: input });
 }

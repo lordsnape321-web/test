@@ -12,6 +12,7 @@ use App\Models\Team;
 use App\Models\TeamLedgerEntry;
 use App\Models\TeamMember;
 use App\Models\User;
+use App\Support\BookingLedger;
 
 /** Read existing payment sources, never copy receipts between ledgers. */
 class ParticipantLedger
@@ -64,6 +65,11 @@ class ParticipantLedger
             }
             $amountDue = (int) ($share?->amount_due ?? 0);
             $memberOutstanding = max(0, $amountDue - $collected);
+            $venuePaidByMember = self::venuePaidBy($booking, $userId);
+            $reimbursedByMember = self::reimbursedToOrganizer($booking, $userId);
+            // What this teammate still owes the organizer personally, regardless
+            // of how the venue bill was settled.
+            $reimbursementOutstanding = max(0, $amountDue - $venuePaidByMember - $reimbursedByMember);
             $openSpots = [];
             foreach ($joins->where('user_id', $userId) as $join) {
                 $match = $matches->get($join->match_id);
@@ -99,6 +105,8 @@ class ParticipantLedger
                 'status' => $memberOutstanding > 0 ? ($collected > 0 ? 'partial' : 'pending') : ($collected > 0 || $amountDue > 0 ? 'paid' : 'none'),
                 'declaredMethod' => $share?->payment_method ?? '', 'entries' => $entries, 'openSpots' => $openSpots,
                 'shareOutstanding' => $share ? max(0, (int) $share->amount_due - (int) $share->paid_amount) : 0,
+                'venuePaid' => $venuePaidByMember, 'reimbursed' => $reimbursedByMember,
+                'reimbursementOutstanding' => $reimbursementOutstanding,
             ];
         }
         $guestTotal = (int) $guests->whereNull('voided_at')->sum('amount');
@@ -111,9 +119,56 @@ class ParticipantLedger
                 'method' => $g->method, 'note' => $g->note, 'voidedAt' => $g->voided_at,
                 'recordedByName' => $people->get($g->recorded_by)?->name ?? 'Booking organizer', 'createdAt' => $g->created_at,
             ])->all(),
+            'organizer' => $canManage ? [
+                'outOfPocket' => self::organizerOutOfPocket($booking),
+                'reimbursed' => self::reimbursedToOrganizer($booking),
+                'reimbursable' => max(0, self::organizerOutOfPocket($booking) - self::reimbursedToOrganizer($booking)),
+            ] : null,
             // Guest collections do not silently settle another player's debt.
             'totals' => ['due' => $due, 'collected' => $paid, 'outstanding' => $outstanding, 'guestCollected' => $guestTotal],
         ];
+    }
+
+    /**
+     * Money this player sent to the venue through a gateway.
+     *
+     * Distinct from `booking_team_payments.paid_amount`, which is a projection
+     * that also carries amounts the organizer covered on the player's behalf.
+     * Reimbursement must be measured against real receipts, never projections.
+     */
+    public static function venuePaidBy(Booking $booking, int $userId): int
+    {
+        return BookingLedger::sumLive(
+            BookingPayment::where('booking_id', $booking->id)->where('recorded_by', $userId)->get()
+        );
+    }
+
+    /** Non-voided manual entries: money handed to the organizer. */
+    public static function reimbursedToOrganizer(Booking $booking, ?int $userId = null, ?int $exceptEntryId = null): int
+    {
+        $query = TeamLedgerEntry::forBooking($booking->id)->whereNull('voided_at');
+
+        if ($userId !== null) {
+            $query->where('user_id', $userId);
+        }
+
+        if ($exceptEntryId) {
+            $query->where('id', '!=', $exceptEntryId);
+        }
+
+        return (int) $query->sum('amount');
+    }
+
+    /** What this player still owes the organizer for their share. */
+    public static function reimbursementOutstanding(Booking $booking, int $userId, int $amountDue, ?int $exceptEntryId = null): int
+    {
+        return max(0, $amountDue - self::venuePaidBy($booking, $userId) - self::reimbursedToOrganizer($booking, $userId, $exceptEntryId));
+    }
+
+    /** What the organizer has actually paid to the venue out of their own pocket. */
+    public static function organizerOutOfPocket(Booking $booking): int
+    {
+        return self::venuePaidBy($booking, (int) $booking->user_id);
     }
 
     private static function line($entry, string $source, int $userId, string $name, $people, bool $canVoid): array

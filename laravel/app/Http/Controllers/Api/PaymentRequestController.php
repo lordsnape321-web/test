@@ -4,12 +4,14 @@ namespace App\Http\Controllers\Api;
 
 use App\Models\Booking;
 use App\Models\BookingPaymentRequest;
+use App\Models\BookingTeamPayment;
 use App\Models\Court;
 use App\Models\Team;
 use App\Models\TeamMember;
 use App\Models\User;
 use App\Models\Venue;
 use App\Services\Notifier;
+use App\Services\ParticipantLedger;
 use App\Support\AdvancePayment;
 use App\Support\Futsal;
 use Illuminate\Http\JsonResponse;
@@ -27,7 +29,7 @@ class PaymentRequestController extends ApiController
 {
     private const METHODS = ['eSewa', 'Khalti'];
 
-    private const PURPOSES = ['advance', 'booking'];
+    private const PURPOSES = ['advance', 'booking', 'reimbursement'];
 
     /** GET — the requests on one booking. Private to the squad. */
     public function index(Request $request, int $id): JsonResponse
@@ -140,12 +142,45 @@ class PaymentRequestController extends ApiController
             return $this->fail('Every selected player must be on this booking’s team 🔒', 403);
         }
 
+        if ($purpose === 'reimbursement') {
+            // The organizer already paid the venue and is collecting each
+            // player's part back. Backed by real receipts, not projections.
+            $outOfPocket = ParticipantLedger::organizerOutOfPocket($booking);
+            $reimbursable = max(0, $outOfPocket - ParticipantLedger::reimbursedToOrganizer($booking));
+            $pendingReimbursement = (int) BookingPaymentRequest::where('booking_id', $booking->id)
+                ->where('purpose', 'reimbursement')->where('status', 'pending')->sum('amount_due');
+
+            if ($outOfPocket <= 0) {
+                return $this->fail('You have not paid the venue for this booking, so there is nothing to reimburse 💰', 409);
+            }
+
+            if ($amount * count($payerIds) > max(0, $reimbursable - $pendingReimbursement)) {
+                return $this->fail('Only '.Futsal::formatNPR(max(0, $reimbursable - $pendingReimbursement)).' of your own money is still to be collected back.', 400);
+            }
+
+            $shares = BookingTeamPayment::where('booking_id', $booking->id)->whereIn('user_id', $payerIds)->get()->keyBy('user_id');
+
+            foreach ($payerIds as $payerId) {
+                $row = $shares->get($payerId);
+                $cap = ParticipantLedger::reimbursementOutstanding($booking, (int) $payerId, (int) ($row?->amount_due ?? 0));
+
+                if ($amount > $cap) {
+                    $name = User::find($payerId)->name ?? 'That player';
+                    return $this->fail('Only '.Futsal::formatNPR($cap).' of '.$name.'’s share is still to be reimbursed to you 💰', 400);
+                }
+            }
+        }
+
         $target = $purpose === 'advance'
             ? (int) ($booking->advance_payment_amount ?? 0)
             : (int) ($booking->total_price ?? 0);
 
         if ($purpose === 'advance' && (! (bool) $booking->advance_payment_required || $booking->advance_payment_status === 'paid')) {
             return $this->fail('This booking has no unpaid venue advance', 409);
+        }
+
+        if ($purpose === 'reimbursement' && in_array($booking->status, ['cancelled', 'rejected', 'completed'], true)) {
+            return $this->fail('This booking is closed, so there is nothing to reimburse 🔒', 409);
         }
 
         if ($purpose === 'booking' && (bool) $booking->advance_payment_required && $booking->advance_payment_status !== 'paid') {
@@ -159,10 +194,12 @@ class PaymentRequestController extends ApiController
             ->sum('amount_due');
 
         $paid = AdvancePayment::received($booking);
-        $remaining = max(0, $target - $paid - $pendingForPurpose);
+        $remaining = $purpose === 'reimbursement'
+            ? max(0, (int) ($reimbursable ?? 0) - $pendingForPurpose)
+            : max(0, $target - $paid - $pendingForPurpose);
         $totalRequested = $amount * count($payerIds);
 
-        if ($totalRequested > $remaining) {
+        if ($purpose !== 'reimbursement' && $totalRequested > $remaining) {
             return $this->fail(
                 'Only '.Futsal::formatNPR($remaining).' remains available. '.Futsal::formatNPR($amount)
                 .' per selected player would request '.Futsal::formatNPR($totalRequested).'.',
@@ -194,20 +231,24 @@ class PaymentRequestController extends ApiController
         $when = Futsal::prettyDate($booking->date).' at '.Futsal::formatTime12($booking->start_time);
         $deadline = $purpose === 'advance' ? AdvancePayment::deadline($booking->advance_payment_requested_at) : null;
 
+        $body = $purpose === 'reimbursement'
+            ? "{$requester} paid the venue for booking #FN-{$booking->id} on {$when} and asked you to reimburse ".Futsal::formatNPR($amount).'. Settle it with them directly — cash or a transfer; they will record it in the player ledger.'
+            : "{$requester} asked you to pay ".Futsal::formatNPR($amount).' directly to '.($venue->name ?? 'the venue')
+                .' for '.($court->name ?? 'the court')." on {$when}. Choose eSewa or Khalti; the verified payment goes into booking #FN-{$booking->id}."
+                .($purpose === 'advance' && $deadline ? ' Pay before '.$deadline->format('g:i A').' — the booking cancels 30 minutes after the venue’s advance request.' : '')
+                .($note !== '' ? " Note: {$note}" : '');
+
         foreach ($inserted as $row) {
             Notifier::notify(
                 (int) $row->payer_id,
                 'payment',
-                ($purpose === 'advance' ? '💳 Advance payment request' : '💳 Team payment request')." — {$requester}",
-                "{$requester} asked you to pay ".Futsal::formatNPR($amount).' directly to '.($venue->name ?? 'the venue')
-                .' for '.($court->name ?? 'the court')." on {$when}. Choose eSewa or Khalti; the verified payment goes into booking #FN-{$booking->id}."
-                .($purpose === 'advance' && $deadline ? ' Pay before '.$deadline->format('g:i A').' — the booking cancels 30 minutes after the venue’s advance request.' : '')
-                .($note !== '' ? " Note: {$note}" : ''),
+                ($purpose === 'advance' ? '💳 Advance payment request' : ($purpose === 'reimbursement' ? '💸 Share reimbursement request' : '💳 Team payment request'))." — {$requester}",
+                $body,
                 '/bookings?focus=' . $booking->id
             );
         }
 
-        if ($venue?->owner_id) {
+        if ($purpose !== 'reimbursement' && $venue?->owner_id) {
             Notifier::notify(
                 (int) $venue->owner_id,
                 'payment',
@@ -257,6 +298,10 @@ class PaymentRequestController extends ApiController
 
         if ($row->status !== 'pending') {
             return $this->fail('This payment request is no longer pending', 409, ['paymentRequest' => $this->view($row)]);
+        }
+
+        if ($row->purpose === 'reimbursement' && $request->input('action') !== 'cancel') {
+            return $this->fail('This is a reimbursement to the organizer — settle it with them directly 💸', 409);
         }
 
         if ($request->input('action') === 'cancel') {

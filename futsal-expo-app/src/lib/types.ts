@@ -397,6 +397,12 @@ export type TeamLedgerMember = {
    */
   status: "none" | "pending" | "partial" | "paid" | string;
   declaredMethod: string;
+  /** Money this player sent to the venue themselves. */
+  venuePaid?: number;
+  /** Money this player handed to the organizer. */
+  reimbursed?: number;
+  /** Still to reimburse the organizer, however the venue bill was settled. */
+  reimbursementOutstanding?: number;
   entries: TeamLedgerEntry[];
 };
 
@@ -408,6 +414,7 @@ export type TeamLedger = {
   isCaptain: boolean;
   actorId: number;
   members: TeamLedgerMember[];
+  organizer?: { outOfPocket: number; reimbursed: number; reimbursable: number } | null;
   guests?: { id: number; playerName: string; amount: number; method: string; note: string; voidedAt: string | null; recordedByName: string; createdAt: string | null }[];
   totals: { due: number; collected: number; outstanding: number; guestCollected?: number };
 };

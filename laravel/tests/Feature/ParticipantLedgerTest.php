@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\Booking;
 use App\Models\BookingGuestPayment;
 use App\Models\BookingPayment;
+use App\Models\BookingPaymentRequest;
 use App\Models\BookingTeamPayment;
 use App\Models\Court;
 use App\Models\MatchJoin;
@@ -63,6 +64,86 @@ class ParticipantLedgerTest extends TestCase
     private function member(array $payload, int $userId): array
     {
         return collect($payload['members'])->firstWhere('userId', $userId);
+    }
+
+    private function organizerPaysEverything(int $amount = 1800): void
+    {
+        BookingPayment::create([
+            'booking_id' => $this->booking->id, 'amount' => $amount, 'method' => 'eSewa',
+            'source' => 'gateway', 'reference' => 'organizer-solo', 'recorded_by' => $this->host->id,
+        ]);
+    }
+
+    public function test_organizer_who_paid_the_whole_bill_can_still_collect_and_correct_each_share(): void
+    {
+        $this->share();
+        $this->organizerPaysEverything();
+        $data = $this->getJson($this->url().'?actorId='.$this->host->id)->assertOk()->json();
+        self::assertSame(600, $this->member($data, $this->mate->id)['reimbursementOutstanding']);
+        self::assertSame(1800, $data['organizer']['outOfPocket']);
+        self::assertSame(0, $data['organizer']['reimbursed']);
+
+        $body = ['action' => 'collect', 'actorId' => $this->host->id, 'userId' => $this->mate->id, 'method' => 'Cash at Venue', 'amount' => 600];
+        $ledger = $this->postJson($this->url(), $body)->assertOk()->json('ledger');
+        self::assertSame(600, $ledger['organizer']['reimbursed']);
+        self::assertSame(1200, $ledger['organizer']['reimbursable']);
+        self::assertSame(0, $this->member($ledger, $this->mate->id)['reimbursementOutstanding']);
+        // A settled share cannot be collected twice.
+        $this->postJson($this->url(), $body)->assertStatus(409);
+
+        // The organizer can correct a mistyped amount instead of voiding it.
+        $entryId = TeamLedgerEntry::where('booking_id', $this->booking->id)->where('user_id', $this->mate->id)->value('id');
+        $fixed = $this->postJson($this->url(), ['action' => 'update', 'actorId' => $this->host->id, 'entryId' => $entryId, 'amount' => 300, 'method' => 'eSewa'])->assertOk()->json('ledger');
+        self::assertSame(300, $fixed['organizer']['reimbursed']);
+        self::assertSame(300, $this->member($fixed, $this->mate->id)['reimbursementOutstanding']);
+        self::assertSame(1500, $fixed['organizer']['reimbursable']);
+        // And cannot invent more than the share.
+        $this->postJson($this->url(), ['action' => 'update', 'actorId' => $this->host->id, 'entryId' => $entryId, 'amount' => 700])->assertStatus(400);
+        self::assertSame(300, (int) TeamLedgerEntry::find($entryId)->amount);
+        $this->assertDatabaseHas('booking_payments', ['booking_id' => $this->booking->id, 'amount' => 1800]);
+    }
+
+    public function test_teammate_who_paid_the_venue_directly_is_not_collected_again(): void
+    {
+        $this->share();
+        BookingPayment::create([
+            'booking_id' => $this->booking->id, 'amount' => 600, 'method' => 'Khalti',
+            'source' => 'gateway', 'reference' => 'mate-paid', 'recorded_by' => $this->mate->id,
+        ]);
+        $this->postJson($this->url(), ['action' => 'collect', 'actorId' => $this->host->id, 'userId' => $this->mate->id, 'method' => 'Cash at Venue', 'amount' => 100])
+            ->assertStatus(409);
+        self::assertSame(0, TeamLedgerEntry::count());
+    }
+
+    public function test_reimbursement_requests_persist_and_never_open_a_gateway(): void
+    {
+        $this->share();
+        $this->organizerPaysEverything();
+        $url = '/api/bookings/'.$this->booking->id.'/payment-requests';
+        $payload = ['requesterId' => $this->host->id, 'payerIds' => [$this->mate->id], 'amount' => 600, 'purpose' => 'reimbursement'];
+        $id = $this->postJson($url, $payload)->assertCreated()->json('paymentRequest.id');
+        $this->assertDatabaseHas('booking_payment_requests', ['id' => $id, 'purpose' => 'reimbursement', 'status' => 'pending', 'amount_due' => 600]);
+        // Asking for more than the share, or twice, is refused.
+        $this->postJson($url, array_replace($payload, ['payerIds' => [$this->host->id]]))->assertStatus(400);
+        $this->postJson($url, array_replace($payload, ['amount' => 700, 'payerIds' => [$this->host->id]]))->assertStatus(400);
+        // Reimbursements go to the organizer, never through eSewa/Khalti.
+        $this->patchJson($url.'/'.$id, ['userId' => $this->mate->id, 'paymentMethod' => 'eSewa'])->assertStatus(409);
+        $this->postJson('/api/payments/esewa/verify', ['bookingId' => $this->booking->id, 'userId' => $this->mate->id,
+            'paymentRequestId' => $id, 'mockApprove' => true, 'uuid' => 'reimb', 'pidx' => 'mock-reimb'])->assertStatus(409);
+        $this->assertDatabaseHas('booking_payment_requests', ['id' => $id, 'status' => 'pending', 'paid_amount' => 0]);
+        self::assertSame(1, BookingPayment::count());
+        $this->patchJson($url.'/'.$id, ['userId' => $this->host->id, 'action' => 'cancel'])->assertOk();
+        $this->assertDatabaseHas('booking_payment_requests', ['id' => $id, 'status' => 'cancelled']);
+    }
+
+    public function test_organizer_paid_nothing_so_there_is_nothing_to_reimburse(): void
+    {
+        $share = $this->share();
+        $url = '/api/bookings/'.$this->booking->id.'/payment-requests';
+        $this->postJson($url, ['requesterId' => $this->host->id, 'payerIds' => [$this->mate->id], 'amount' => 100, 'purpose' => 'reimbursement'])
+            ->assertStatus(409);
+        self::assertSame('pending', $share->payment_status);
+        self::assertSame(0, BookingPaymentRequest::count());
     }
 
     public function test_gateway_shares_appear_automatically_without_duplicate_counting(): void

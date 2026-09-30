@@ -251,3 +251,42 @@ must have permission to create the guest table. If creation fails startup stops
 visibly. Normal HTTP requests do not run migrations.
 
 Regression coverage: `vendor/bin/phpunit tests/Feature/ParticipantLedgerTest.php`.
+
+### Reimbursing the organizer after they pay the bill
+
+The player ledger separates the two facts that used to be conflated:
+
+- **Money that reached the venue** — `booking_payments` rows, shown as “Paid to
+  venue” (e.g. the organizer's own eSewa advance or balance payment).
+- **Money reimbursed to the organizer** — `team_ledger_entries` rows, shown as
+  “Reimbursed to you”.
+
+Because the per-player share projection (`booking_team_payments.paid_amount`) is
+not proof that a teammate paid anything, “record reimbursement” is measured
+against receipts instead: a teammate can still be collected from when the
+organizer covered the whole bill, and is *not* collected again when they paid
+the venue directly. The cap is `share − paid to venue by that player − already
+reimbursed`. A mistyped entry can be corrected with the **Edit** action (the
+amount changes, the row survives) instead of being voided and re-entered, and
+no action can push a share above what it is worth.
+
+**Ask to pay** appears beside every listed player in Full Booking Detail's
+“Player payment details” (and inside the ledger panel). It persists one
+`booking_payment_requests` row and picks the purpose from where the money is
+owed:
+
+| Situation | Purpose | How the teammate settles |
+| --- | --- | --- |
+| Venue advance still unpaid | `advance` | eSewa or Khalti to the venue |
+| Venue balance still open | `booking` | eSewa or Khalti to the venue |
+| Organizer already paid the venue | `reimbursement` | Directly with the organizer; recorded in the ledger |
+
+Reimbursement requests are saved, notified and cancellable like any other
+request, but they can never open a gateway: the venue is already paid, so the
+verify and method endpoints answer 409 and the teammate's screen explains that
+the money goes back to the organizer.
+
+The owner's advance card, the squad list and these actions live inside Full
+Booking Detail and are visible without a Show/Hide tap; the booking organizer
+sees them for public/open bookings too (a team link is only required to ask
+teammates, not to read the ledger).

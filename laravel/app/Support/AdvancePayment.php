@@ -40,6 +40,9 @@ class AdvancePayment
     /** Reject stale requests rather than silently charging a different amount. */
     public static function requestAmount(Booking $booking, BookingPaymentRequest $request): int
     {
+        if ($request->purpose === 'reimbursement') {
+            throw new HttpException(409, 'This is a reimbursement to the organizer — settle it directly, not through the gateway.');
+        }
         $remaining = $request->purpose === 'advance'
             ? self::remaining($booking)
             : max(0, (int) $booking->total_price - self::received($booking));
