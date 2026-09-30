@@ -7,9 +7,10 @@ import {
   Users,
   Wallet,
 } from "lucide-react-native";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  AppState,
   Modal,
   Pressable,
   ScrollView,
@@ -91,17 +92,34 @@ export default function TeamLedgerPanel({
   const [selfTo, setSelfTo] = useState<"captain" | "venue" | null>(null);
   const [selfMethod, setSelfMethod] = useState("Cash at Venue");
 
+  // Read once when the panel opens, then keep it live: a teammate paying from
+  // another phone, or the organizer's other screen, shows up without closing
+  // and reopening the ledger.
+  const busyRef = useRef(busy);
+  useEffect(() => {
+    busyRef.current = busy;
+  }, [busy]);
+
   useEffect(() => {
     let dead = false;
-    fetchTeamLedger(bookingId, actorId)
-      .then((data) => {
-        if (!dead) setLedger(data);
-      })
-      .catch((e) => {
-        if (!dead) setError(e instanceof Error ? e.message : "Couldn't load the squad ledger 🙏");
-      });
+    const read = (report: boolean) =>
+      fetchTeamLedger(bookingId, actorId)
+        .then((data) => {
+          if (!dead) {
+            setLedger(data);
+            setError("");
+          }
+        })
+        .catch((e) => {
+          if (!dead && report) setError(e instanceof Error ? e.message : "Couldn't load the squad ledger 🙏");
+        });
+    void read(true);
+    const timer = setInterval(() => {
+      if (!dead && busyRef.current === "" && AppState.currentState === "active") void read(false);
+    }, 4000);
     return () => {
       dead = true;
+      clearInterval(timer);
     };
   }, [bookingId, actorId]);
 
@@ -687,8 +705,9 @@ export default function TeamLedgerPanel({
           <View style={styles.footNote}>
             <ReceiptText size={13} color={c.textFaint} />
             <Text style={[styles.footText, { color: c.textFaint }]}>
-              Every line here is saved to the database. Undo keeps the old entry on record
-              rather than deleting it, so the trail stays trustworthy.
+              Every line here is saved to the database and this panel refreshes every few
+              seconds, so a teammate paying elsewhere shows up on its own. Undo keeps the old
+              entry on record rather than deleting it, so the trail stays trustworthy.
             </Text>
           </View>
         </ScrollView>

@@ -15,6 +15,7 @@ import {
 } from "lucide-react-native";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  AppState,
   ActivityIndicator,
   Alert,
   DeviceEventEmitter,
@@ -99,6 +100,37 @@ export default function OwnerRequests() {
         }
       })();
     }, [load]),
+  );
+
+  /**
+   * Live owner feed.
+   *
+   * A teammate's payment or a player's advance lands in the booking rows this
+   * screen reads; without a poll the owner had to leave and re-enter the page
+   * to see money arrive. This re-reads only, and deliberately does not emit the
+   * owner-shell event: that belongs to real loads, not to every tick.
+   */
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+      const timer = setInterval(() => {
+        if (!active || AppState.currentState !== "active") return;
+        void (async () => {
+          try {
+            const [b, v] = await Promise.all([fetchBookings({ refresh: true }), fetchVenues()]);
+            if (!active) return;
+            setBookings(b);
+            setVenues(v.map((x) => ({ id: x.id, ownerId: x.ownerId ?? null })));
+          } catch {
+            // Keep the last good rows; the next tick can recover.
+          }
+        })();
+      }, 5000);
+      return () => {
+        active = false;
+        clearInterval(timer);
+      };
+    }, []),
   );
 
   const myVenueIds = useMemo(

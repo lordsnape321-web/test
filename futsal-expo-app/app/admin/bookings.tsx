@@ -13,6 +13,7 @@ import {
 } from "lucide-react-native";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  AppState,
   ActivityIndicator,
   Alert,
   Modal,
@@ -115,6 +116,22 @@ export default function OwnerBookings() {
           setLoading(false);
         }
       })();
+    }, [load]),
+  );
+
+  // Keep the owner's numbers live: payments and requests change while this
+  // screen sits open on the desk.
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+      const timer = setInterval(() => {
+        if (!active || AppState.currentState !== "active") return;
+        void Promise.resolve(load(true)).catch(() => undefined);
+      }, 5000);
+      return () => {
+        active = false;
+        clearInterval(timer);
+      };
     }, [load]),
   );
 

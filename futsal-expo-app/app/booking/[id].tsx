@@ -1,6 +1,6 @@
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
-import React, { useCallback, useEffect, useState } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import { AppState, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { BookingVenueName } from "@/components/BookingVenueName";
 import TeamLedgerPanel from "@/components/TeamLedgerPanel";
@@ -75,10 +75,28 @@ export default function BookingDetail() {
   // booking itself: nothing here hides behind a Show/Hide tap.
   const [teamDetailsOpen, setTeamDetailsOpen] = useState(true);
 
-  const load = useCallback(async (refresh = false) => {
+  // One refresh at a time: the focus poll and a just-finished action must not
+  // race each other into a stale response.
+  const inFlight = useRef(false);
+  // Set when a refresh is requested while one is already running (a poll and a
+  // just-completed action can overlap): the newest request wins, so the screen
+  // can never settle on the pre-action numbers.
+  const queued = useRef(false);
+  // Polling pauses while a checkout or a ledger write is in flight, and while
+  // the ledger panel (which polls on its own) is open.
+  const mutating = useRef(false);
+
+  const load = useCallback(async (refresh = false, silent = false) => {
     if (!Number.isFinite(bookingId)) return;
+    if (inFlight.current) {
+      queued.current = true;
+      return;
+    }
+    inFlight.current = true;
+    // An action's own reload clears the banner it may have just shown; a
+    // background poll leaves the last real error alone.
+    if (!silent) setError(null);
     try {
-      setError(null);
       // fetchBooking reads the player's booking list and picks this id; passing
       // the userId keeps that list small. The route has no GET /:id.
       const [b, l] = await Promise.all([
@@ -89,20 +107,50 @@ export default function BookingDetail() {
       setLedger(l);
       setBusy(null);
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Could not load this booking.");
+      // A background poll never replaces the screen with an error banner; the
+      // next tick can still recover. Actions do report their failures.
+      if (!silent) setError(e instanceof ApiError ? e.message : "Could not load this booking.");
     } finally {
+      inFlight.current = false;
       setLoading(false);
+      if (queued.current) {
+        queued.current = false;
+        void load(true);
+      }
     }
   }, [bookingId, user?.id]);
+
+  // Mirrored into a ref so the interval below reads the current value without
+  // being torn down and re-created on every keystroke in the request form.
+  useEffect(() => {
+    mutating.current = busy !== null || requestBusy || settleBusy || squadLedgerOpen;
+  });
 
   useEffect(() => {
     void load();
   }, [load]);
 
-  // Refresh ledger/booking when returning from payment screen
+  /**
+   * Refresh on focus, then keep the screen live while it is on top.
+   *
+   * Without the interval a teammate's verified payment — or the owner's answer,
+   * or another device's ledger write — only appeared after navigating away and
+   * back. Four seconds matches the My Bookings feed, so both screens settle on
+   * the same numbers. The server response stays the only source of truth: this
+   * loop re-reads, it never patches a status locally.
+   */
   useFocusEffect(
     useCallback(() => {
+      let active = true;
       void load(true);
+      const timer = setInterval(() => {
+        if (!active || mutating.current || AppState.currentState !== "active") return;
+        void load(true, true);
+      }, 4000);
+      return () => {
+        active = false;
+        clearInterval(timer);
+      };
     }, [load])
   );
 
@@ -825,7 +873,7 @@ export default function BookingDetail() {
           actorId={user.id}
           bookingLabel={booking?.teamName ?? ""}
           onClose={() => setSquadLedgerOpen(false)}
-          onChanged={() => void load()}
+          onChanged={() => void load(true, true)}
           onAsk={(member) => askTeammate(member.userId, member.amountDue, member.collected)}
         />
       ) : null}

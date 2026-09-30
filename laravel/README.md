@@ -290,3 +290,24 @@ The owner's advance card, the squad list and these actions live inside Full
 Booking Detail and are visible without a Show/Hide tap; the booking organizer
 sees them for public/open bookings too (a team link is only required to ask
 teammates, not to read the ledger).
+
+### Live updates (no manual reload)
+
+Every screen that shows money now re-reads itself on a timer while it is
+focused, so a teammate paying from another phone (or the owner answering a
+request) appears without navigating away and back:
+
+| Screen | Interval |
+| --- | --- |
+| Full Booking Detail (`app/booking/[id].tsx`) | 4 s |
+| My Bookings (`app/(app)/bookings.tsx`) | 4 s |
+| Player ledger panel (team, open spots, guests) | 4 s |
+| Owner Studio dashboard, bookings and requests | 5 s |
+
+Polling pauses when the app is backgrounded, when the screen is not focused,
+while a checkout or ledger write is in flight, and while the ledger panel (which
+polls on its own) is open. A refresh requested during an in-flight load is
+queued, so a just-completed action can never be overwritten by a poll that
+started before it; background poll failures are silent and keep the last good
+data on screen. The server response remains the only source of truth — nothing
+is patched into local state.
