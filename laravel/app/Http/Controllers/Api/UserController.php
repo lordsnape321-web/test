@@ -156,6 +156,26 @@ class UserController extends ApiController
             $patch['default_city'] = trim($defaultCity);
         }
 
+        // Email switches, set from Settings → Alerts → Email. `notify` keeps the
+        // wording of the API: booleans only, no truthy strings.
+        if ($request->has('emailNotifications')) {
+            $patch['email_notifications'] = filter_var($request->input('emailNotifications'), FILTER_VALIDATE_BOOLEAN);
+        }
+
+        if ($request->has('emailReminders')) {
+            $patch['email_reminders'] = filter_var($request->input('emailReminders'), FILTER_VALIDATE_BOOLEAN);
+        }
+
+        if ($request->has('reminderMinutes')) {
+            $minutes = (int) $request->input('reminderMinutes');
+
+            if ($minutes < 15 || $minutes > 1440) {
+                return $this->fail('Remind me between 15 minutes and 24 hours before kick-off ⏰', 400);
+            }
+
+            $patch['reminder_minutes'] = $minutes;
+        }
+
         if ($patch !== []) {
             $user->forceFill($patch)->save();
         }

@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Middleware\ForceJsonResponse;
+use App\Http\Middleware\PumpOutbox;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -32,6 +33,13 @@ return Application::configure(basePath: dirname(__DIR__))
         // can read. Everything on /api is JSON, always.
         $middleware->api(prepend: [
             ForceJsonResponse::class,
+        ]);
+
+        // Emails and game reminders are pumped by API traffic: this deployment
+        // has no queue worker and no scheduler, and adding one would break the
+        // "git pull, artisan serve, expo start" workflow. See the middleware.
+        $middleware->api(append: [
+            PumpOutbox::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

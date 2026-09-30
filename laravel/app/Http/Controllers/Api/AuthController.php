@@ -3,6 +3,8 @@
 namespace App\Http\Controllers\Api;
 
 use App\Models\User;
+use App\Services\Mailer;
+use App\Services\PasswordResets;
 use App\Support\LegacyPassword;
 use App\Support\Validation;
 use Illuminate\Http\JsonResponse;
@@ -78,6 +80,8 @@ class AuthController extends ApiController
             'position' => $role === 'owner' ? 'Owner' : (string) $request->input('position', 'All-rounder'),
         ]);
 
+        self::sendWelcome($user);
+
         return $this->ok(['user' => $user->toArray()], 201);
     }
 
@@ -147,6 +151,86 @@ class AuthController extends ApiController
         }
 
         $account->forceFill(['password_hash' => LegacyPassword::hash($newPassword)])->save();
+        self::sendPasswordChanged($account, 'reset');
+
+        return $this->ok(['ok' => true]);
+    }
+
+    /**
+     * POST /api/auth/forgot-password — email a six-digit reset code.
+     *
+     * Always answers with the same shape, whether or not the address has an
+     * account: this endpoint must not be a way to find out who is registered.
+     */
+    public function forgotPassword(Request $request): JsonResponse
+    {
+        $email = strtolower(trim((string) $request->input('email', '')));
+        $error = Validation::email($email);
+
+        if ($error) {
+            return $this->fail($error, 400);
+        }
+
+        $result = PasswordResets::issue($email);
+
+        if ($result['status'] === 'cooldown') {
+            return $this->fail(
+                'A code is already on its way — give it '.$result['retryAfter'].' seconds, then try again. ⏳',
+                429
+            );
+        }
+
+        if ($result['status'] === 'rate_limited') {
+            return $this->fail('Too many codes for this address. Try again in about 15 minutes. 🛑', 429);
+        }
+
+        return $this->ok([
+            'ok' => true,
+            // The screen shows this so people check the right inbox.
+            'email' => $email,
+        ]);
+    }
+
+    /**
+     * POST /api/auth/reset-with-code — the emailed code plus a new password.
+     */
+    public function resetWithCode(Request $request): JsonResponse
+    {
+        $email = strtolower(trim((string) $request->input('email', '')));
+        $code = trim((string) $request->input('code', ''));
+        $newPassword = (string) $request->input('newPassword', '');
+
+        $error = Validation::firstError(
+            Validation::email($email),
+            $code === '' ? 'Enter the 6-digit code from your email 🔑' : null,
+            Validation::password($newPassword, ['label' => 'New password']),
+        );
+
+        if ($error) {
+            return $this->fail($error, 400);
+        }
+
+        // Verify before revealing whether the address exists, so a wrong code and
+        // an unknown address look the same from the outside.
+        if (! PasswordResets::verify($email, $code)) {
+            $left = PasswordResets::attemptsLeft($email);
+
+            return $this->fail(
+                $left > 0
+                    ? "That code doesn't match. {$left} ".( $left === 1 ? 'try' : 'tries').' left.'
+                    : 'That code has expired or run out of tries. Request a fresh one. 🔁',
+                401
+            );
+        }
+
+        $account = User::where('email', $email)->first();
+
+        if (! $account) {
+            return $this->fail('No account found with this email. 🌱', 404);
+        }
+
+        $account->forceFill(['password_hash' => LegacyPassword::hash($newPassword)])->save();
+        self::sendPasswordChanged($account, 'code');
 
         return $this->ok(['ok' => true]);
     }
@@ -186,7 +270,64 @@ class AuthController extends ApiController
         }
 
         $account->forceFill(['password_hash' => LegacyPassword::hash($new)])->save();
+        self::sendPasswordChanged($account, 'changed');
 
         return $this->ok(['ok' => true]);
+    }
+
+    /** The "welcome to the club" note, sent once the account exists. */
+    private static function sendWelcome(User $user): void
+    {
+        $isOwner = $user->role === 'owner';
+
+        Mailer::queueForUser($user, $isOwner ? 'Welcome aboard 🏟️' : 'Welcome to the family ⚽', [
+            'type' => 'welcome',
+            'eyebrow' => $isOwner ? 'Owner account' : 'Player account',
+            'heading' => $isOwner ? 'Your venue, your rules 🏟️' : 'You are in! ⚽',
+            'preheader' => 'Here is what you can do next.',
+            'intro' => $isOwner
+                ? [
+                    'Your owner account is ready. Add your venue from Owner Studio, set each court and its opening hours, and booking requests will land in your inbox.',
+                ]
+                : [
+                    'Your account is ready. Find a court near you, book a slot, and split the cost with your squad from the booking screen.',
+                    'We will email you when a booking is confirmed and a couple of hours before kick-off.',
+                ],
+            'rows' => [
+                'Account' => (string) $user->email,
+                'Home city' => (string) ($user->default_city ?: 'All Cities'),
+            ],
+            'footnote' => 'Prefer fewer emails? Turn them off any time in Settings → Alerts → Email.',
+        ], 'always');
+    }
+
+    /**
+     * Tell the account owner their password changed.
+     *
+     * `$source` is what triggered it, so the wording stays accurate: an emailed
+     * code, the phone-verified reset, or a change from inside the app.
+     */
+    private static function sendPasswordChanged(User $user, string $source): void
+    {
+        $how = match ($source) {
+            'code' => 'using a code from your email',
+            'changed' => 'from your account settings',
+            default => 'using your email and phone number',
+        };
+
+        Mailer::queueForUser($user, 'Your password was changed 🔐', [
+            'type' => 'password',
+            'eyebrow' => 'Account security',
+            'heading' => 'Password changed',
+            'preheader' => 'This is the receipt for your password change.',
+            'intro' => [
+                "The password on your account was just changed {$how}.",
+                'If that was you, nothing else to do. If it was not, reset your password now — this email is the only receipt you will get.',
+            ],
+            'rows' => [
+                'Account' => (string) $user->email,
+                'When' => now()->format('D, j M Y g:i A'),
+            ],
+        ], 'always');
     }
 }

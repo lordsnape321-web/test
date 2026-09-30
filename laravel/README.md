@@ -56,6 +56,96 @@ php artisan optimize:clear
 php artisan route:list --path=api
 ```
 
+## Email (Gmail)
+
+Booking confirmations, game reminders and password-reset codes are sent from
+this service over SMTP. Gmail needs an **App Password** — a normal Google
+account password is refused by SMTP, and Google only issues app passwords for
+accounts with 2-step verification:
+
+1. Turn on 2-step verification: <https://myaccount.google.com/security>
+2. Create an app password: <https://myaccount.google.com/apppasswords>
+3. Put the address and the 16-character password in `laravel/.env`:
+
+```ini
+MAIL_MAILER=smtp
+MAIL_HOST=smtp.gmail.com
+MAIL_PORT=587
+MAIL_USERNAME=youraddress@gmail.com
+MAIL_PASSWORD=abcdefghijklmnop
+MAIL_ENCRYPTION=tls
+MAIL_FROM_ADDRESS="${MAIL_USERNAME}"
+MAIL_FROM_NAME="Futsal Nepal"
+```
+
+Filling in `MAIL_USERNAME` is enough on its own: `config/mail.php` switches the
+default mailer from `log` to `smtp` as soon as credentials exist. With no
+credentials every email is written to `storage/logs/laravel.log` instead, so a
+fresh clone works with nothing to configure. `php artisan optimize:clear` after
+editing `.env` if the old values seem to stick.
+
+Check what the API thinks:
+
+```bash
+curl -s http://127.0.0.1:8000/api/health
+```
+
+```json
+{"ok":true,"build":"…","mail":{"configured":true,"driver":"smtp","from":"youraddress@gmail.com","pending":0}}
+```
+
+### How mail is delivered without a queue worker
+
+The whole workflow is `git pull`, `php artisan serve`, `npx expo start` — no
+queue worker, no scheduler. So:
+
+* every message is written to the **`email_outbox`** table inside the request
+  that caused it (a booking confirmation never waits on Gmail);
+* `App\Http\Middleware\PumpOutbox` drains up to two messages *after* the
+  response is sent, on ordinary API traffic — the app polls, so the gap is
+  milliseconds;
+* the same middleware scans for games starting soon, throttled to once every
+  five minutes, so `bookings.reminder_sent_at` is what guarantees exactly one
+  reminder per game;
+* failures retry twice (5 and 10 minutes later) and are then parked as
+  `failed` with the SMTP error in `email_outbox.error`.
+
+Each request drains at most two messages and five seconds' worth, because
+`php artisan serve` handles one request at a time — a long SMTP conversation
+would stall the next call. A backlog therefore clears over the following
+requests, which arrive constantly while the app is open (it polls). `GET
+/api/health` reports `mail.pending` if you want to watch the queue empty, and
+`email_outbox.error` says why anything did not go out.
+
+What goes out:
+
+| Email | Trigger | Preference |
+|---|---|---|
+| Booking request / confirmed / declined / cancelled | the booking status changes | Booking emails |
+| Payment news (deposit, advance, team share) | ledger writes | Booking emails |
+| Squad invitation, match join | team/match actions | Booking emails |
+| Game reminder (venue, court, kick-off, reference) | `reminder_minutes` before kick-off, default 2 hours | Game reminders |
+| Password reset code | `POST /api/auth/forgot-password` | always sent |
+| Password changed receipt | any password change | always sent |
+| Welcome | account creation | always sent |
+
+Players control the first two in the app (Settings → Alerts → Email →
+`PATCH /api/users/{id}` with `emailNotifications`, `emailReminders` and
+`reminderMinutes`). Password and security mail ignores the switches on purpose:
+someone locked out of their account must still get their code.
+
+### Password reset by email
+
+`POST /api/auth/forgot-password {"email":"…"}` emails a six-digit code and
+always answers the same way, whether or not the address has an account (so the
+endpoint cannot be used to enumerate users). The code lives 15 minutes, dies
+after five wrong guesses, and is limited to one a minute and five an hour per
+address. `POST /api/auth/reset-with-code {"email","code","newPassword"}` spends
+it. Codes are stored only as a salted SHA-256 digest.
+
+The older phone-verified path (`POST /api/auth/reset` with email + phone) still
+works and is still what the recovery screen offers as a fallback.
+
 ## Expo connection
 
 The Expo client is already configured for this API. From
@@ -124,6 +214,8 @@ request validation and authorization separate from the persistence models.
 | `CORS_ALLOWED_ORIGINS` | Comma-separated production web origins, or `*` locally |
 | `SETTLE_EDIT_WINDOW_MINUTES` | Settlement correction window, five minutes by default |
 | `ESEWA_*`, `KHALTI_*` | Gateway credentials; blank values enable local simulators |
+| `MAIL_*` | Gmail/SMTP transport for confirmations, reminders and reset codes |
+| `MAIL_TIMEOUT` | Seconds before an SMTP attempt gives up, 8 by default |
 
 ## Tests
 

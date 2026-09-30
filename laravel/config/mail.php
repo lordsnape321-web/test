@@ -14,7 +14,14 @@ return [
     |
     */
 
-    'default' => env('MAIL_MAILER', 'log'),
+    /*
+     * Gmail (or any SMTP host) switches itself on: filling in MAIL_USERNAME in
+     * `.env` is the whole setup, so nobody has to remember to also change
+     * MAIL_MAILER from `log` to `smtp`. With no credentials it stays on `log`,
+     * which writes every message to storage/logs/laravel.log — the app behaves
+     * identically, nothing leaves the machine, and a fresh clone works.
+     */
+    'default' => env('MAIL_MAILER', env('MAIL_USERNAME') ? 'smtp' : 'log'),
 
     /*
     |--------------------------------------------------------------------------
@@ -45,7 +52,9 @@ return [
             'port' => env('MAIL_PORT', 2525),
             'username' => env('MAIL_USERNAME'),
             'password' => env('MAIL_PASSWORD'),
-            'timeout' => null,
+            // Bounded on purpose: mail is queued and drained during requests, so
+            // an unreachable host must fail fast instead of hanging a player.
+            'timeout' => (float) env('MAIL_TIMEOUT', 8),
             'local_domain' => env('MAIL_EHLO_DOMAIN', parse_url((string) env('APP_URL', 'http://localhost'), PHP_URL_HOST)),
         ],
 

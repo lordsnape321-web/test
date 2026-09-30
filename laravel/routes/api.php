@@ -51,6 +51,8 @@ Route::get('/availability', [AvailabilityController::class, 'index']);
 Route::post('/auth/signup', [AuthController::class, 'signup']);
 Route::post('/auth/login', [AuthController::class, 'login']);
 Route::post('/auth/reset', [AuthController::class, 'reset']);
+Route::post('/auth/forgot-password', [AuthController::class, 'forgotPassword']);
+Route::post('/auth/reset-with-code', [AuthController::class, 'resetWithCode']);
 Route::post('/auth/change-password', [AuthController::class, 'changePassword']);
 
 /* ── users ──────────────────────────────────────────────────────────────── */

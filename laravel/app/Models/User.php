@@ -40,6 +40,9 @@ class User extends Authenticatable
         'position',
         'matches_played',
         'trust_score',
+        'email_notifications',
+        'email_reminders',
+        'reminder_minutes',
     ];
 
     /**
@@ -57,7 +60,29 @@ class User extends Authenticatable
         return [
             'matches_played' => 'integer',
             'trust_score' => 'integer',
+            // Opt-in-by-default email switches — see App\Services\Mailer.
+            'email_notifications' => 'boolean',
+            'email_reminders' => 'boolean',
+            'reminder_minutes' => 'integer',
         ];
+    }
+
+    /**
+     * Does this account want emails about its bookings and payments?
+     *
+     * Accounts created before the preference existed have no value stored, and a
+     * null must read as "yes" — silence because of a missing column would look
+     * exactly like a broken mail server.
+     */
+    public function wantsBookingEmails(): bool
+    {
+        return $this->email_notifications === null ? true : (bool) $this->email_notifications;
+    }
+
+    /** …and the kick-off reminder? */
+    public function wantsReminders(): bool
+    {
+        return $this->email_reminders === null ? true : (bool) $this->email_reminders;
     }
 
     /**
