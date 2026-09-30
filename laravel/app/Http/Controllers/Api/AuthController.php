@@ -3,8 +3,8 @@
 namespace App\Http\Controllers\Api;
 
 use App\Models\User;
+use App\Services\EmailCodes;
 use App\Services\Mailer;
-use App\Services\PasswordResets;
 use App\Support\LegacyPassword;
 use App\Support\Validation;
 use Illuminate\Http\JsonResponse;
@@ -16,6 +16,12 @@ use Illuminate\Http\Request;
  * There is no session and no token. The Expo app holds the signed-in `user`
  * object in AsyncStorage and passes `userId` back on requests that need to know
  * who is acting.
+ *
+ * Signup is two steps and the account does not exist until both are done:
+ * `POST /api/auth/signup/code` emails a six-digit code, and `POST
+ * /api/auth/signup` carries it back with the rest of the form. An address that
+ * nobody can read is not a usable account — it is how you end up with a
+ * "customer" you can never reach and a password reset that goes nowhere.
  */
 class AuthController extends ApiController
 {
@@ -24,6 +30,55 @@ class AuthController extends ApiController
     private const LEVELS = ['Beginner', 'Intermediate', 'Advanced'];
 
     private const POSITIONS = ['Striker', 'Midfielder', 'Winger', 'Defender', 'Goalkeeper', 'Pivot', 'All-rounder'];
+
+    /**
+     * POST /api/auth/signup/code — email a code to finish creating an account.
+     *
+     * Unlike a password reset, this endpoint *tells* you when the address is
+     * already registered: that is what the person needs to hear at this point
+     * ("you already have an account, log in instead"), and it is not a secret —
+     * signing up with an address that has an account fails a second later
+     * anyway.
+     */
+    public function signupCode(Request $request): JsonResponse
+    {
+        $email = strtolower(trim((string) $request->input('email', '')));
+        $name = trim((string) $request->input('name', ''));
+
+        $error = Validation::email($email);
+
+        if ($error) {
+            return $this->fail($error, 400);
+        }
+
+        if (User::where('email', $email)->exists()) {
+            return $this->fail('This email is already registered. Please log in instead. 💌', 409);
+        }
+
+        $issued = EmailCodes::issue($email, EmailCodes::PURPOSE_SIGNUP);
+
+        if ($issued['status'] === 'cooldown') {
+            return $this->fail(
+                'A code is already on its way — give it '.$issued['retryAfter'].' seconds, then try again. ⏳',
+                429,
+                ['retryAfter' => $issued['retryAfter']]
+            );
+        }
+
+        if ($issued['status'] === 'rate_limited') {
+            return $this->fail('Too many codes for this address. Try again in about 15 minutes. 🛑', 429, ['retryAfter' => 900]);
+        }
+
+        if ($issued['code'] !== null) {
+            self::sendSignupCode($email, $name, $issued['code']);
+        }
+
+        return $this->ok([
+            'ok' => true,
+            'email' => $email,
+            'expiresIn' => EmailCodes::CODE_TTL_MINUTES * 60,
+        ]);
+    }
 
     /** POST /api/auth/signup */
     public function signup(Request $request): JsonResponse
@@ -65,6 +120,27 @@ class AuthController extends ApiController
 
         if (User::where('phone', $phone)->exists()) {
             return $this->fail('This phone number is already registered. Please log in instead. 📱', 409);
+        }
+
+        // The address has to be proven before the account exists. Checked after
+        // the cheap uniqueness rules so "that email is taken" is still the first
+        // thing someone hears, and before the insert so a wrong code leaves no
+        // half-made account behind.
+        $code = trim((string) $request->input('code', ''));
+
+        if ($code === '') {
+            return $this->fail('Enter the 6-digit code we emailed you to finish signing up ✉️', 400, ['needsCode' => true]);
+        }
+
+        if (! EmailCodes::verify($email, EmailCodes::PURPOSE_SIGNUP, $code)) {
+            $left = EmailCodes::attemptsLeft($email, EmailCodes::PURPOSE_SIGNUP);
+
+            return $this->fail(
+                $left > 0
+                    ? "That code doesn't match. {$left} ".( $left === 1 ? 'try' : 'tries').' left.'
+                    : 'That code has expired or run out of tries. Send a fresh one. 🔁',
+                401
+            );
         }
 
         $user = User::create([
@@ -171,7 +247,7 @@ class AuthController extends ApiController
             return $this->fail($error, 400);
         }
 
-        $result = PasswordResets::issue($email);
+        $result = EmailCodes::issue($email, EmailCodes::PURPOSE_PASSWORD_RESET, User::where('email', $email)->value('id'));
 
         if ($result['status'] === 'cooldown') {
             return $this->fail(
@@ -182,6 +258,17 @@ class AuthController extends ApiController
 
         if ($result['status'] === 'rate_limited') {
             return $this->fail('Too many codes for this address. Try again in about 15 minutes. 🛑', 429);
+        }
+
+        // Written for a known and an unknown address alike (the row exists
+        // either way); only a real account gets an email. That is what keeps
+        // this endpoint from answering "does this person have an account?".
+        if ($result['code'] !== null) {
+            $account = User::where('email', $email)->first();
+
+            if ($account) {
+                self::sendResetCode($account, $result['code']);
+            }
         }
 
         return $this->ok([
@@ -212,8 +299,8 @@ class AuthController extends ApiController
 
         // Verify before revealing whether the address exists, so a wrong code and
         // an unknown address look the same from the outside.
-        if (! PasswordResets::verify($email, $code)) {
-            $left = PasswordResets::attemptsLeft($email);
+        if (! EmailCodes::verify($email, EmailCodes::PURPOSE_PASSWORD_RESET, $code)) {
+            $left = EmailCodes::attemptsLeft($email, EmailCodes::PURPOSE_PASSWORD_RESET);
 
             return $this->fail(
                 $left > 0
@@ -298,6 +385,54 @@ class AuthController extends ApiController
                 'Home city' => (string) ($user->default_city ?: 'All Cities'),
             ],
             'footnote' => 'Prefer fewer emails? Turn them off any time in Settings → Alerts → Email.',
+        ], 'always');
+    }
+
+    /**
+     * The six digits that finish a signup.
+     *
+     * Sent to an address that has no account yet, so there is no `User` to hand
+     * to `Mailer::queueForUser` — this is the one email in the app addressed to
+     * a stranger, and it says what they are being asked to confirm.
+     */
+    private static function sendSignupCode(string $email, string $name, string $code): void
+    {
+        Mailer::queue([
+            'to' => $email,
+            'name' => $name,
+            'subject' => 'Your Futsal Nepal code: '.$code,
+            'type' => 'signup',
+            'payload' => [
+                'type' => 'signup',
+                'eyebrow' => 'Finish signing up',
+                'heading' => 'Confirm your email',
+                'preheader' => 'Type this code in the app to create your account.',
+                'intro' => [
+                    $name !== ''
+                        ? "Welcome, {$name}! One step left: type the code below into the app and your account is ready."
+                        : 'Welcome! One step left: type the code below into the app and your account is ready.',
+                ],
+                'code' => $code,
+                'rows' => ['Valid for' => EmailCodes::CODE_TTL_MINUTES.' minutes'],
+                'footnote' => 'Didn’t sign up? Ignore this email — no account is created without the code, and nothing else will be sent to this address.',
+            ],
+        ]);
+    }
+
+    /** The six digits that reset a password. */
+    private static function sendResetCode(User $account, string $code): void
+    {
+        Mailer::queueForUser($account, 'Your password reset code 🔑', [
+            'type' => 'password',
+            'eyebrow' => 'Password reset',
+            'heading' => 'Your reset code',
+            'preheader' => 'Use this code to set a new password. It expires in 15 minutes.',
+            'intro' => [
+                'Someone asked to reset the password for this account. Type the code below into the app, then choose a new password.',
+            ],
+            'code' => $code,
+            'rows' => ['Valid for' => EmailCodes::CODE_TTL_MINUTES.' minutes'],
+            'footnote' => 'Didn’t ask for this? You can ignore this email — your password stays exactly as it is until the code is used.',
         ], 'always');
     }
 

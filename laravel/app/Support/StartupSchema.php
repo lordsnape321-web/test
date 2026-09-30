@@ -30,9 +30,10 @@ class StartupSchema
         'court_day_hours' => ['2026_09_30_000031_create_court_day_hours_table.php', 'courts'],
         'venue_location_url' => ['2026_09_30_000032_add_location_url_to_venues.php', 'venues'],
         'email_outbox' => ['2026_09_30_000033_create_email_outbox_table.php', null],
-        'password_reset_codes' => ['2026_09_30_000034_create_password_reset_codes_table.php', null],
+        'email_codes' => ['2026_09_30_000037_rename_password_reset_codes_to_email_codes.php', null],
         'users_email_preferences' => ['2026_09_30_000035_add_email_preferences_to_users.php', 'users'],
         'bookings_reminder_sent_at' => ['2026_09_30_000036_add_reminder_sent_at_to_bookings.php', 'bookings'],
+        'users_soft_deletes' => ['2026_09_30_000038_soft_delete_users.php', 'users'],
     ];
 
     public function ensure(OutputInterface $output): void
@@ -73,6 +74,7 @@ class StartupSchema
                 && Schema::hasColumn('users', 'email_reminders')
                 && Schema::hasColumn('users', 'reminder_minutes'),
             'bookings_reminder_sent_at' => Schema::hasColumn('bookings', 'reminder_sent_at'),
+            'users_soft_deletes' => Schema::hasColumn('users', 'deleted_at'),
             default => Schema::hasTable($storage),
         };
     }

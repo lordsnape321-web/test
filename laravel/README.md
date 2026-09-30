@@ -200,7 +200,9 @@ What goes out:
 | Payment news (deposit, advance, team share) | ledger writes | Booking emails |
 | Squad invitation, match join | team/match actions | Booking emails |
 | Game reminder (venue, court, kick-off, reference) | `reminder_minutes` before kick-off, default 2 hours | Game reminders |
+| Signup verification code | `POST /api/auth/signup/code` | always sent |
 | Password reset code | `POST /api/auth/forgot-password` | always sent |
+| Account deletion code | `POST /api/users/{id}/delete-code` | always sent |
 | Password changed receipt | any password change | always sent |
 | Welcome | account creation | always sent |
 
@@ -218,8 +220,52 @@ after five wrong guesses, and is limited to one a minute and five an hour per
 address. `POST /api/auth/reset-with-code {"email","code","newPassword"}` spends
 it. Codes are stored only as a salted SHA-256 digest.
 
-The older phone-verified path (`POST /api/auth/reset` with email + phone) still
-works and is still what the recovery screen offers as a fallback.
+Email is the only way the app offers now. The recovery screen used to put a
+"prove it with my registered phone" option next to this one; it is gone, because
+two routes to one outcome meant two sets of failure messages, two ways to be
+wrong, and a form where half the fields never applied to the person reading it.
+The endpoint itself (`POST /api/auth/reset`, email + phone) is still served for
+the reference web app under `react-expo-laravel-futsal-app/` — nothing in
+`futsal-expo-app/` calls it any more, and `src/api/index.ts` no longer exports a
+client for it.
+
+The code table behind all of this is one table with a `purpose` column
+(`email_codes`), so a signup code cannot be spent on a password reset or on
+closing an account, and each purpose counts its own attempts and its own
+one-a-minute / five-an-hour limits.
+
+### Signing up proves the email first
+
+Registration is two steps, and the account does not exist until the second one:
+
+1. `POST /api/auth/signup/code {"email","name"}` — emails six digits. A 409 means
+   the address already has an account; a 429 means a code was just sent (the
+   response carries `retryAfter`).
+2. `POST /api/auth/signup {…,"code":"123456"}` — everything from before plus the
+   code. Missing code → 400 with `needsCode`, wrong code → 401 with the tries
+   left, and only a code that verifies creates the row.
+
+There is no `email_verified_at` column to go with this, on purpose: the account
+is created *after* the address is proven, so the column could only ever hold one
+value. In the app this is one screen with two states — the form, then the code —
+with a 60-second resend countdown.
+
+### Closing an account
+
+Settings → Account → Delete my account, behind an emailed code:
+
+1. `POST /api/users/{id}/delete-code` mails six digits to the address on the
+   account (never to an address typed on the screen) and answers with that
+   address masked — `f•••@gmail.com` — so the screen can say which inbox to open.
+2. `DELETE /api/users/{id} {"code":"123456"}` spends it and closes the account.
+
+Closing is a soft delete with a scrub: the row stays, because bookings, payments
+and team history point at it and the foreign keys ask for that, but the identity
+does not. Pending bookings and open requests are cancelled, the person's pending
+payment requests and match joins go with them, and the name, phone, avatar,
+password and preferences are wiped. The address becomes
+`closed-{id}@deleted.futsal.invalid`, which frees the real address for a future
+signup. A second attempt answers 409 — the account is already closed.
 
 ## Finding what is slow
 

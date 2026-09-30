@@ -19,6 +19,7 @@ import {
   fetchCourts,
   fetchLedger,
   fetchVenues,
+  requestSignupCode,
   signup,
   verifyEsewa,
 } from "@/api";
@@ -45,12 +46,26 @@ async function main() {
 
   console.log("\n=== Expo booking/payment smoke test ===\n");
 
-  // 1. Sign up a fresh player.
+  // 1. Sign up a fresh player. Signup is two steps now: ask for the code, then
+  //    create the account with it. The code is emailed, so this only works
+  //    against a backend that can send mail — with the `log` driver the code is
+  //    written to storage/logs/laravel.log and has to be read from there.
+  const asked = await requestSignupCode({ email, name: "Smoke Tester" });
+  check("signup code requested", asked?.ok === true, `expiresIn=${asked?.expiresIn}`);
+
+  const code = process.env.SIGNUP_CODE ?? "";
+  check(
+    "SIGNUP_CODE is set (the emailed code)",
+    /^\d{6}$/.test(code),
+    code ? "ok" : "set SIGNUP_CODE=123456 when running npm run smoke",
+  );
+
   const { user } = await signup({
     name: "Smoke Tester",
     email,
     phone,
     password: "password123",
+    code,
     level: "Intermediate",
     position: "All-rounder",
   });

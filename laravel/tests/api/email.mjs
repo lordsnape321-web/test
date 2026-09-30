@@ -8,6 +8,7 @@
  * What it proves, against a real server and a real database:
  *
  *   • `/api/health` reports whether mail is configured and how much is queued;
+ *   • signing up takes a code, and the code is what creates the account;
  *   • signing up queues a welcome email;
  *   • a "confirm this booking" style notification lands in the outbox;
  *   • `forgot-password` queues a six-digit code (read back from the outbox, the
@@ -15,7 +16,9 @@
  *     refuses to send a second one within the minute;
  *   • a wrong code is refused and says how many tries are left;
  *   • the right code sets the password, kills the code, and queues the
- *     "password changed" receipt.
+ *     "password changed" receipt;
+ *   • closing an account takes a second code, and leaves the row intact but
+ *     unreachable (no login, no lookup, history still reads).
  *
  * It needs the database (for `email_outbox`) — like `ledger.mjs`, it speaks
  * MySQL through `mysql.mjs`, reading the credentials from `laravel/.env`.
@@ -52,17 +55,51 @@ ok('it describes the mailer', typeof health.body?.mail?.driver === 'string', JSO
 ok('and says whether mail is configured', typeof health.body?.mail?.configured === 'boolean', JSON.stringify(health.body?.mail));
 ok('and how mail is drained', typeof health.body?.mail?.drain === 'string', JSON.stringify(health.body?.mail));
 
+console.log('\n— an account cannot be created without the emailed code —');
+const phone = '98' + String(Date.now()).slice(-8);
+const details = { name: 'Sprint Tester', email, phone, password, role: 'player', defaultCity: 'Kathmandu' };
+
+const noCode = await call('/api/auth/signup', details);
+ok('signup without a code is refused', noCode.status === 400 && noCode.body?.needsCode === true,
+  noCode.status + ' ' + JSON.stringify(noCode.body).slice(0, 140));
+
+const bogusCode = await call('/api/auth/signup', { ...details, code: '000000' });
+ok('signup with a made-up code is refused', bogusCode.status === 401, bogusCode.status + ' ' + JSON.stringify(bogusCode.body).slice(0, 140));
+
+let nobody = await db.query('select id from users where email=?', [email]);
+ok('and no account was created either time', (nobody.rows?.length ?? 0) === 0, JSON.stringify(nobody.rows));
+
+const askCode = await call('/api/auth/signup/code', { email, name: details.name });
+ok('the code is sent', askCode.status === 200, askCode.status + ' ' + JSON.stringify(askCode.body).slice(0, 140));
+
+const again = await call('/api/auth/signup/code', { email });
+ok('asking twice in a row is rate limited', again.status === 429, again.status + ' ' + JSON.stringify(again.body).slice(0, 120));
+
+const taken = await call('/api/auth/signup/code', { email: 'futsalmate67@gmail.com' });
+ok('an existing address is told to log in instead', taken.status === 409 || taken.status === 429,
+  taken.status + ' ' + JSON.stringify(taken.body).slice(0, 140));
+
+// The code is only ever in the clear inside the email we are about to send.
+const signupMail = await db.query(
+  "select payload from email_outbox where to_email=? and type='signup' order by id desc limit 1",
+  [email],
+);
+const signupPayload = typeof signupMail.rows?.[0]?.payload === 'string'
+  ? JSON.parse(signupMail.rows[0].payload)
+  : signupMail.rows?.[0]?.payload;
+const signupCode = String(signupPayload?.code ?? '');
+ok('the signup email carries a six-digit code', /^\d{6}$/.test(signupCode), signupCode);
+ok('and the stored row is only a digest', (await db.query(
+  "select code_hash from email_codes where email=? and purpose='signup' order by id desc limit 1",
+  [email],
+)).rows?.[0]?.code_hash !== signupCode, 'hash equals code');
+
 console.log('\n— signing up queues the welcome email —');
-const signup = await call('/api/auth/signup', {
-  name: 'Sprint Tester',
-  email,
-  phone: '98' + String(Date.now()).slice(-8),
-  password,
-  role: 'player',
-  defaultCity: 'Kathmandu',
-});
+const signup = await call('/api/auth/signup', { ...details, code: signupCode });
 const userId = signup.body?.user?.id;
-ok('account created', signup.status === 201 && !!userId, signup.status + ' ' + JSON.stringify(signup.body).slice(0, 160));
+ok('account created with the code', signup.status === 201 && !!userId, signup.status + ' ' + JSON.stringify(signup.body).slice(0, 160));
+ok('the code cannot be spent twice', (await call('/api/auth/signup', { ...details, phone: '98' + String(Date.now()).slice(-8) + '1', code: signupCode })).status !== 201,
+  'a second signup with the same code');
 
 const welcome = await db.query(
   "select subject, status, template from email_outbox where to_email=? order by id desc limit 1",
@@ -183,9 +220,56 @@ ok('the reminder lead time is stored', reminder.body?.user?.reminderMinutes === 
 const bad = await call(`/api/users/${userId}`, { reminderMinutes: 5 }, 'PATCH');
 ok('an absurd lead time is refused', bad.status === 400, bad.status + ' ' + JSON.stringify(bad.body).slice(0, 120));
 
+console.log('\n— closing an account takes a code, and the row survives —');
+const noProof = await call(`/api/users/${userId}`, {}, 'DELETE');
+ok('deleting without a code is refused', noProof.status === 400 && noProof.body?.needsCode === true,
+  noProof.status + ' ' + JSON.stringify(noProof.body).slice(0, 140));
+
+// Put the account's email preference back on: a closed account must still be
+// able to receive the code that closes it.
+await call(`/api/users/${userId}`, { emailNotifications: true }, 'PATCH');
+
+const askDelete = await call(`/api/users/${userId}/delete-code`, {});
+ok('a deletion code is sent', askDelete.status === 200 && String(askDelete.body?.email ?? '').includes('•••'),
+  askDelete.status + ' ' + JSON.stringify(askDelete.body).slice(0, 140));
+
+const deleteMail = await db.query(
+  "select payload from email_outbox where to_email=? and type='account' order by id desc limit 1",
+  [email],
+);
+const deletePayload = typeof deleteMail.rows?.[0]?.payload === 'string'
+  ? JSON.parse(deleteMail.rows[0].payload)
+  : deleteMail.rows?.[0]?.payload;
+const deleteCode = String(deletePayload?.code ?? '');
+ok('the deletion email carries a six-digit code', /^\d{6}$/.test(deleteCode), deleteCode);
+
+const badDelete = await call(`/api/users/${userId}`, { code: '000000' }, 'DELETE');
+ok('a wrong deletion code is refused', badDelete.status === 401, badDelete.status + ' ' + JSON.stringify(badDelete.body).slice(0, 120));
+ok('and the account is still usable', (await call('/api/auth/login', { email, password: newPassword })).status === 200, 'login after a failed delete');
+
+const deleted = await call(`/api/users/${userId}`, { code: deleteCode }, 'DELETE');
+ok('the right code closes the account', deleted.status === 200 && deleted.body?.closed === true,
+  deleted.status + ' ' + JSON.stringify(deleted.body).slice(0, 140));
+
+const row = await db.query('select name, email, phone, deleted_at, password_hash from users where id=?', [userId]);
+const closed = row.rows?.[0];
+ok('the row survives, so bookings and payments keep reading', !!closed, JSON.stringify(row.rows));
+ok('the identity is scrubbed', closed?.email?.includes('@deleted.futsal.invalid') && closed?.phone === '' && closed?.password_hash === '',
+  JSON.stringify(closed));
+ok('and it is marked deleted', !!closed?.deleted_at, String(closed?.deleted_at));
+
+const loginAfter = await call('/api/auth/login', { email, password: newPassword });
+ok('a closed account cannot log in', loginAfter.status === 404, loginAfter.status + ' ' + JSON.stringify(loginAfter.body).slice(0, 120));
+
+const lookupAfter = await call(`/api/users/${userId}`);
+ok('and is not findable by id', lookupAfter.status === 404 || !lookupAfter.body?.user, lookupAfter.status);
+
+const reuseEmail = await call('/api/auth/signup/code', { email });
+ok('the address is free again', reuseEmail.status === 200, reuseEmail.status + ' ' + JSON.stringify(reuseEmail.body).slice(0, 140));
+await db.query('delete from email_codes where email=?', [email]);
+
 console.log('\n— tidy up —');
 await db.query('delete from email_outbox where to_email=?', [email]);
-await db.query('delete from password_reset_codes where email=?', [email]);
 await db.query('delete from notifications where user_id=?', [userId]);
 await db.query('delete from users where id=?', [userId]);
 console.log('  cleaned up the test account, its codes and its queued mail');

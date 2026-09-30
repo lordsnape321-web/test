@@ -1,6 +1,6 @@
 import { LinearGradient } from "expo-linear-gradient";
 import { Link, useRouter } from "expo-router";
-import { Check, ChevronLeft, Crown, Eye, EyeOff, Lock, Trophy, Zap } from "lucide-react-native";
+import { Check, ChevronLeft, Crown, Eye, EyeOff, Lock, Mail, Trophy, Zap } from "lucide-react-native";
 import React, { useEffect, useMemo, useState } from "react";
 import {
   KeyboardAvoidingView,
@@ -19,6 +19,7 @@ import { useAuth } from "@/context/AuthContext";
 import { useTheme } from "@/context/ThemeContext";
 import { useBreakpoints } from "@/lib/responsive";
 import { ApiError } from "@/lib/api";
+import { requestSignupCode } from "@/api";
 import { CITY_OPTIONS } from "@/lib/futsal";
 import {
   firstError,
@@ -66,6 +67,15 @@ export default function Signup() {
   const [error, setError] = useState<string | null>(null);
   const [touched, setTouched] = useState(false);
 
+  // Signup is two steps: the form, then the code we emailed. The account does
+  // not exist until the second one — which is the point, since an address
+  // nobody can read is not an account you can ever reach.
+  const [step, setStep] = useState<"details" | "code">("details");
+  const [code, setCode] = useState("");
+  const [notice, setNotice] = useState("");
+  const [resendIn, setResendIn] = useState(0);
+  const [resending, setResending] = useState(false);
+
   const nameError = validateName(name);
   const emailError = validateEmail(email);
   const phoneError = validatePhone(phone, { required: true });
@@ -85,12 +95,79 @@ export default function Signup() {
     if (ready && user) router.replace(user.role === "owner" ? "/admin" : "/");
   }, [ready, user, router]);
 
-  async function submit() {
+  /** Ticks the resend countdown down while the code step is open. */
+  useEffect(() => {
+    if (resendIn <= 0) return;
+    const timer = setInterval(() => setResendIn((s) => Math.max(0, s - 1)), 1000);
+    return () => clearInterval(timer);
+  }, [resendIn]);
+
+  /**
+   * Step one: check the form, then ask the server to email a code.
+   *
+   * A 409 means the address already has an account and a 429 means a code was
+   * just sent; both are the server's own wording, so they are shown as-is.
+   */
+  async function sendCode() {
     setTouched(true);
     setError(null);
+    setNotice("");
+
     const invalid = firstError(nameError, emailError, phoneError, passwordError, cityError);
     if (invalid) {
       setError(invalid);
+      return;
+    }
+
+    setBusy(true);
+    try {
+      await requestSignupCode({ email: email.trim(), name: name.trim() });
+      setStep("code");
+      setCode("");
+      setResendIn(60);
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 429) {
+        // Already sent, or sent too often: a code is (or was) in flight, so move
+        // to the code step rather than bounce the person back with an error.
+        setStep("code");
+        setResendIn(60);
+        setNotice(e.message);
+      } else {
+        setError(e instanceof ApiError ? e.message : "Could not send the code. Try again shortly.");
+      }
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /** The resend button on the code step. */
+  async function resendCode() {
+    if (resendIn > 0 || resending) return;
+    setResending(true);
+    setError(null);
+    setNotice("");
+    try {
+      await requestSignupCode({ email: email.trim(), name: name.trim() });
+      setResendIn(60);
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 429) {
+        setResendIn(60);
+        setNotice(e.message);
+      } else {
+        setError(e instanceof ApiError ? e.message : "Could not resend the code. Try again shortly.");
+      }
+    } finally {
+      setResending(false);
+    }
+  }
+
+  /** Step two: the code plus everything from step one creates the account. */
+  async function submit() {
+    setError(null);
+    setNotice("");
+
+    if (!/^\d{6}$/.test(code.trim())) {
+      setError("Enter the 6-digit code from your email ✉️");
       return;
     }
 
@@ -101,6 +178,7 @@ export default function Signup() {
         email: email.trim(),
         phone: phone.trim(),
         password,
+        code: code.trim(),
         role,
         level,
         position,
@@ -142,119 +220,179 @@ export default function Signup() {
             </LinearGradient>
 
             <View style={styles.form}>
-              <View style={styles.roleBlock}>
-                <View style={[styles.roleBar, { backgroundColor: c.inset, borderColor: c.border }]}>
-                  <RoleOption
-                    active={role === "player"}
-                    label="I want to play"
-                    icon={<Zap size={16} color={role === "player" ? c.primary : c.textFaint} />}
-                    activeColor={c.primary}
-                    onPress={() => setRole("player")}
-                  />
-                  <RoleOption
-                    active={role === "owner"}
-                    label="I own a court"
-                    icon={<Crown size={16} color={role === "owner" ? tokens.orange500 : c.textFaint} />}
-                    activeColor={tokens.orange500}
-                    onPress={() => setRole("owner")}
-                  />
-                </View>
-                <Text style={[styles.roleHint, { color: c.textMuted }]}>
-                  {role === "player"
-                    ? "Book courts, join open games and split the bill with your squad."
-                    : "List your venue, set court hours and take booking requests in Owner Studio."}
-                </Text>
-              </View>
-
-              <Field label="Your name" value={name} onChangeText={setName} placeholder="What should we call you?" error={touched ? nameError : null} />
-              {sm ? (
-                <View style={styles.twoCol}>
-                  <View style={styles.twoColItem}>
-                    <Field label="Email" value={email} onChangeText={setEmail} placeholder="you@mail.com" keyboardType="email-address" autoCapitalize="none" error={touched ? emailError : null} />
-                  </View>
-                  <View style={styles.twoColItem}>
-                    <Field label="Phone number" value={phone} onChangeText={setPhone} placeholder="98XXXXXXXX" keyboardType="phone-pad" autoCapitalize="none" error={touched ? phoneError : null} />
-                  </View>
-                </View>
-              ) : (
+              {step === "code" ? (
                 <>
-                  <Field label="Email" value={email} onChangeText={setEmail} placeholder="you@mail.com" keyboardType="email-address" autoCapitalize="none" error={touched ? emailError : null} />
-                  <Field label="Phone number" value={phone} onChangeText={setPhone} placeholder="98XXXXXXXX" keyboardType="phone-pad" autoCapitalize="none" error={touched ? phoneError : null} />
-                </>
-              )}
-              <Text style={[styles.fieldHint, { color: c.textFaint }]}>
-                One account per phone number — it is how a booking finds you. We email your booking
-                confirmations and a reminder before kick-off.
-              </Text>
-
-              <View style={styles.fieldBlock}>
-                <Label style={styles.labelFlush}>Pick a password (min 6 chars)</Label>
-                <TextControl
-                  value={password}
-                  onChangeText={setPassword}
-                  placeholder="Something you&apos;ll remember"
-                  icon={<Lock size={16} color={c.textFaint} />}
-                  secureTextEntry={!showPw}
-                  autoCapitalize="none"
-                  autoComplete="password"
-                  textContentType="newPassword"
-                  maxLength={100}
-                  error={Boolean(touched && passwordError)}
-                  accessibilityLabel="Password"
-                  right={
-                    <Pressable onPress={() => setShowPw((v) => !v)} accessibilityLabel={showPw ? "Hide password" : "Show password"}>
-                      {showPw ? <EyeOff size={17} color={c.textFaint} /> : <Eye size={17} color={c.textFaint} />}
-                    </Pressable>
-                  }
-                />
-                {password ? (
-                  <View style={styles.strengthWrap}>
-                    <View style={styles.strengthBars}>
-                      {[1, 2, 3, 4].map((i) => (
-                        <View key={i} style={[styles.strengthBar, { backgroundColor: i <= strength.score ? (strength.score <= 1 ? tokens.red400 : strength.score === 2 ? tokens.amber400 : tokens.emerald500) : c.border }]} />
-                      ))}
-                    </View>
-                    <Text style={[styles.strengthLabel, { color: c.textMuted }]}>
-                      {strength.emoji} {strength.label}
-                      {strength.tips.length > 0 && password.length >= 6 ? ` • try: ${strength.tips.slice(0, 2).join(", ")}` : ""}
+                  <View style={styles.roleBlock}>
+                    <Text style={[styles.stepTitle, { color: c.text }]}>Check your inbox ✉️</Text>
+                    <Text style={[styles.roleHint, { color: c.textMuted }]}>
+                      We emailed a 6-digit code to {email.trim()}. Type it below to finish creating your
+                      account — it expires in 15 minutes.
                     </Text>
                   </View>
-                ) : null}
-                {touched && passwordError ? <Text style={[styles.error, { color: c.dangerText }]}>{passwordError}</Text> : null}
-              </View>
 
-              <View style={styles.fieldBlock}>
-                <Label style={styles.labelFlush}>Home city 🏠 — your search starts here</Label>
-                <View style={[styles.pickerWrap, { backgroundColor: inputFill, borderColor: touched && cityError ? c.dangerText : c.border }]}>
-                  <Picker selectedValue={defaultCity} onValueChange={(v) => setDefaultCity(String(v))} style={{ color: c.text }} dropdownIconColor={c.textMuted}>
-                    {CITY_OPTIONS.filter((city) => city !== "All Cities").map((city) => <Picker.Item key={city} label={city} value={city} />)}
-                  </Picker>
-                </View>
-                {touched && cityError ? <Text style={[styles.error, { color: c.dangerText }]}>{cityError}</Text> : null}
-              </View>
+                  <View style={styles.fieldBlock}>
+                    <Label style={styles.labelFlush}>Your code</Label>
+                    <TextControl
+                      value={code}
+                      onChangeText={(t) => setCode(t.replace(/\D/g, "").slice(0, 6))}
+                      placeholder="000000"
+                      icon={<Mail size={16} color={c.textFaint} />}
+                      keyboardType="number-pad"
+                      autoComplete="one-time-code"
+                      textContentType="oneTimeCode"
+                      maxLength={6}
+                      error={Boolean(touched && code.length > 0 && code.length !== 6)}
+                      accessibilityLabel="Verification code"
+                      returnKeyType="go"
+                      onSubmitEditing={() => void submit()}
+                    />
+                  </View>
 
-              {role === "player" ? (
-                <View style={[styles.preferenceGrid, sm ? styles.preferenceGridWide : null]}>
-                  <View style={sm ? styles.preferenceCell : null}>
-                    <ChoiceRow label="Your level" options={LEVELS} value={level} onChange={setLevel} />
+                  <Pressable onPress={() => { setStep("details"); setError(null); }} accessibilityRole="button">
+                    <Text style={[styles.changeLink, { color: c.primary }]}>Wrong details? Go back and edit them</Text>
+                  </Pressable>
+
+                  {notice ? <Notice message={notice} tone="info" /> : null}
+                  {error ? <Notice message={error} /> : null}
+                  <Button
+                    label={busy ? "Creating your account…" : "Create my account 🎉"}
+                    onPress={() => void submit()}
+                    loading={busy}
+                  />
+
+                  <View style={styles.resendRow}>
+                    <Text style={[styles.hint, { color: c.textMuted }]}>Didn&apos;t get it?</Text>
+                    <Pressable
+                      onPress={() => void resendCode()}
+                      disabled={resendIn > 0 || resending}
+                      accessibilityRole="button"
+                    >
+                      <Text style={[styles.resendLink, { color: resendIn > 0 ? c.textFaint : c.primary }]}>
+                        {resendIn > 0 ? `Resend in ${resendIn}s` : resending ? "Sending…" : "Send it again"}
+                      </Text>
+                    </Pressable>
                   </View>
-                  <View style={sm ? styles.preferenceCell : null}>
-                    <ChoiceRow label="Favourite spot" options={POSITIONS} value={position} onChange={setPosition} />
-                  </View>
-                </View>
+                </>
               ) : (
-                <View style={[styles.ownerNote, { backgroundColor: c.warningBg, borderColor: c.warningBorder }]}>
-                  <Crown size={16} color={c.accent} />
-                  <Text style={[styles.ownerNoteText, { color: c.warningText }]}>Owner accounts can list venues, add courts, manage requests, and run leagues from Owner Studio.</Text>
-                </View>
-              )}
+                <>
+                  <View style={styles.roleBlock}>
+                    <View style={[styles.roleBar, { backgroundColor: c.inset, borderColor: c.border }]}>
+                      <RoleOption
+                        active={role === "player"}
+                        label="I want to play"
+                        icon={<Zap size={16} color={role === "player" ? c.primary : c.textFaint} />}
+                        activeColor={c.primary}
+                        onPress={() => setRole("player")}
+                      />
+                      <RoleOption
+                        active={role === "owner"}
+                        label="I own a court"
+                        icon={<Crown size={16} color={role === "owner" ? tokens.orange500 : c.textFaint} />}
+                        activeColor={tokens.orange500}
+                        onPress={() => setRole("owner")}
+                      />
+                    </View>
+                    <Text style={[styles.roleHint, { color: c.textMuted }]}>
+                      {role === "player"
+                        ? "Book courts, join open games and split the bill with your squad."
+                        : "List your venue, set court hours and take booking requests in Owner Studio."}
+                    </Text>
+                  </View>
 
-              {error ? <Notice message={error} /> : null}
-              <Button
-                label={busy ? "Setting things up…" : role === "owner" ? "List my court 🎉" : "Join & start playing 🎉"}
-                onPress={() => void submit()}
-                loading={busy}
-              />
+                  <Field label="Your name" value={name} onChangeText={setName} placeholder="What should we call you?" error={touched ? nameError : null} />
+                  {sm ? (
+                    <View style={styles.twoCol}>
+                      <View style={styles.twoColItem}>
+                        <Field label="Email" value={email} onChangeText={setEmail} placeholder="you@mail.com" keyboardType="email-address" autoCapitalize="none" error={touched ? emailError : null} />
+                      </View>
+                      <View style={styles.twoColItem}>
+                        <Field label="Phone number" value={phone} onChangeText={setPhone} placeholder="98XXXXXXXX" keyboardType="phone-pad" autoCapitalize="none" error={touched ? phoneError : null} />
+                      </View>
+                    </View>
+                  ) : (
+                    <>
+                      <Field label="Email" value={email} onChangeText={setEmail} placeholder="you@mail.com" keyboardType="email-address" autoCapitalize="none" error={touched ? emailError : null} />
+                      <Field label="Phone number" value={phone} onChangeText={setPhone} placeholder="98XXXXXXXX" keyboardType="phone-pad" autoCapitalize="none" error={touched ? phoneError : null} />
+                    </>
+                  )}
+                  <Text style={[styles.fieldHint, { color: c.textFaint }]}>
+                    One account per phone number — it is how a booking finds you. We email your booking
+                    confirmations and a reminder before kick-off.
+                  </Text>
+
+                  <View style={styles.fieldBlock}>
+                    <Label style={styles.labelFlush}>Pick a password (min 6 chars)</Label>
+                    <TextControl
+                      value={password}
+                      onChangeText={setPassword}
+                      placeholder="Something you&apos;ll remember"
+                      icon={<Lock size={16} color={c.textFaint} />}
+                      secureTextEntry={!showPw}
+                      autoCapitalize="none"
+                      autoComplete="password"
+                      textContentType="newPassword"
+                      maxLength={100}
+                      error={Boolean(touched && passwordError)}
+                      accessibilityLabel="Password"
+                      right={
+                        <Pressable onPress={() => setShowPw((v) => !v)} accessibilityLabel={showPw ? "Hide password" : "Show password"}>
+                          {showPw ? <EyeOff size={17} color={c.textFaint} /> : <Eye size={17} color={c.textFaint} />}
+                        </Pressable>
+                      }
+                    />
+                    {password ? (
+                      <View style={styles.strengthWrap}>
+                        <View style={styles.strengthBars}>
+                          {[1, 2, 3, 4].map((i) => (
+                            <View key={i} style={[styles.strengthBar, { backgroundColor: i <= strength.score ? (strength.score <= 1 ? tokens.red400 : strength.score === 2 ? tokens.amber400 : tokens.emerald500) : c.border }]} />
+                          ))}
+                        </View>
+                        <Text style={[styles.strengthLabel, { color: c.textMuted }]}>
+                          {strength.emoji} {strength.label}
+                          {strength.tips.length > 0 && password.length >= 6 ? ` • try: ${strength.tips.slice(0, 2).join(", ")}` : ""}
+                        </Text>
+                      </View>
+                    ) : null}
+                    {touched && passwordError ? <Text style={[styles.error, { color: c.dangerText }]}>{passwordError}</Text> : null}
+                  </View>
+
+                  <View style={styles.fieldBlock}>
+                    <Label style={styles.labelFlush}>Home city 🏠 — your search starts here</Label>
+                    <View style={[styles.pickerWrap, { backgroundColor: inputFill, borderColor: touched && cityError ? c.dangerText : c.border }]}>
+                      <Picker selectedValue={defaultCity} onValueChange={(v) => setDefaultCity(String(v))} style={{ color: c.text }} dropdownIconColor={c.textMuted}>
+                        {CITY_OPTIONS.filter((city) => city !== "All Cities").map((city) => <Picker.Item key={city} label={city} value={city} />)}
+                      </Picker>
+                    </View>
+                    {touched && cityError ? <Text style={[styles.error, { color: c.dangerText }]}>{cityError}</Text> : null}
+                  </View>
+
+                  {role === "player" ? (
+                    <View style={[styles.preferenceGrid, sm ? styles.preferenceGridWide : null]}>
+                      <View style={sm ? styles.preferenceCell : null}>
+                        <ChoiceRow label="Your level" options={LEVELS} value={level} onChange={setLevel} />
+                      </View>
+                      <View style={sm ? styles.preferenceCell : null}>
+                        <ChoiceRow label="Favourite spot" options={POSITIONS} value={position} onChange={setPosition} />
+                      </View>
+                    </View>
+                  ) : (
+                    <View style={[styles.ownerNote, { backgroundColor: c.warningBg, borderColor: c.warningBorder }]}>
+                      <Crown size={16} color={c.accent} />
+                      <Text style={[styles.ownerNoteText, { color: c.warningText }]}>Owner accounts can list venues, add courts, manage requests, and run leagues from Owner Studio.</Text>
+                    </View>
+                  )}
+
+                  {error ? <Notice message={error} /> : null}
+                  <Button
+                    label={busy ? "Sending your code…" : "Send my code ✉️"}
+                    onPress={() => void sendCode()}
+                    loading={busy}
+                  />
+                  <Text style={[styles.hint, { color: c.textMuted, textAlign: "center" }]}>
+                    We verify your email before the account is created.
+                  </Text>
+                </>
+              )}
 
               <View style={styles.footerRow}>
                 <Text style={{ color: c.textMuted, fontSize: fontSize.base }}>Already have an account? </Text>
@@ -343,6 +481,10 @@ const styles = StyleSheet.create({
   },
   roleOptionText: { flexShrink: 1, fontSize: fontSize.sm, fontWeight: "900" },
   roleHint: { fontSize: fontSize.xs, lineHeight: 17, textAlign: "center" },
+  stepTitle: { fontSize: fontSize.lg, fontWeight: "900", textAlign: "center" },
+  changeLink: { fontSize: fontSize.sm, fontWeight: "700", textAlign: "center" },
+  resendRow: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: space[1] },
+  resendLink: { fontSize: fontSize.xs, fontWeight: "900" },
   fieldBlock: { gap: space[1] },
   // `Label` carries its own bottom margin; inside a gap'd block that doubles up.
   labelFlush: { marginBottom: 0 },

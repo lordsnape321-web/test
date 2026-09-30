@@ -56,6 +56,8 @@ Route::get('/stats', StatsController::class);
 Route::get('/availability', [AvailabilityController::class, 'index']);
 
 /* ── auth ───────────────────────────────────────────────────────────────── */
+// Signup is two steps: the code first, then the form with the code in it.
+Route::post('/auth/signup/code', [AuthController::class, 'signupCode']);
 Route::post('/auth/signup', [AuthController::class, 'signup']);
 Route::post('/auth/login', [AuthController::class, 'login']);
 Route::post('/auth/reset', [AuthController::class, 'reset']);
@@ -66,6 +68,9 @@ Route::post('/auth/change-password', [AuthController::class, 'changePassword']);
 /* ── users ──────────────────────────────────────────────────────────────── */
 Route::get('/users', [UserController::class, 'index']);
 Route::get('/users/{id}', [UserController::class, 'show'])->whereNumber('id');
+// Closing an account: ask for the emailed code, then spend it.
+Route::post('/users/{id}/delete-code', [UserController::class, 'sendDeleteCode'])->whereNumber('id');
+Route::delete('/users/{id}', [UserController::class, 'destroy'])->whereNumber('id');
 Route::patch('/users/{id}', [UserController::class, 'update'])->whereNumber('id');
 
 /* ── venues & courts ────────────────────────────────────────────────────── */

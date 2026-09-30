@@ -2,6 +2,7 @@ import { Picker } from "@/components/ThemedPicker";
 import { useRouter } from "expo-router";
 import {
   Activity,
+  AlertTriangle,
   Bell,
   CalendarCheck,
   CheckCheck,
@@ -20,16 +21,23 @@ import {
   Trophy,
   User as UserIcon,
   Users,
+  X,
   Zap,
 } from "lucide-react-native";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Avatar } from "@/components/Avatar";
-import { Notice, Toggle } from "@/components/ui";
+import { Button, Label, Notice, TextControl, Toggle } from "@/components/ui";
 import { useAuth } from "@/context/AuthContext";
 import { useTheme } from "@/context/ThemeContext";
-import { fetchNotifications, markAllNotificationsRead } from "@/api";
+import {
+  deleteAccount,
+  fetchNotifications,
+  markAllNotificationsRead,
+  requestAccountDeleteCode,
+} from "@/api";
+import { ApiError } from "@/lib/api";
 import { CITY_OPTIONS } from "@/lib/futsal";
 import { timeAgo } from "@/lib/time";
 import type { AppNotification } from "@/lib/types";
@@ -81,6 +89,16 @@ export default function SettingsScreen() {
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [emailSaving, setEmailSaving] = useState(false);
   const [emailMsg, setEmailMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  // Closing an account. Two deliberate taps stand between the button and the
+  // irreversible thing: opening the panel, then asking for the code. Nothing
+  // here runs on a stray tap, and the code is what proves the person holding
+  // the phone also reads the inbox on the account.
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [deleteKey, setDeleteKey] = useState<string | null>(null); // masked inbox the code went to
+  const [deleteCode, setDeleteCode] = useState("");
+  const [deleteErr, setDeleteErr] = useState<string | null>(null);
 
   const loadNotes = useCallback(async () => {
     if (!user) return;
@@ -150,6 +168,43 @@ export default function SettingsScreen() {
       setMsg({ ok: false, text: "Could not save your home city — try again 🙏" });
     } finally {
       setCitySaving(false);
+    }
+  }
+
+  /** Email the delete code to the address on the account (never one typed here). */
+  async function askDeleteCode() {
+    if (!user) return;
+    setDeleteBusy(true);
+    setDeleteErr(null);
+    try {
+      const { email } = await requestAccountDeleteCode(user.id);
+      setDeleteKey(email);
+    } catch (e) {
+      setDeleteErr(e instanceof ApiError ? e.message : "Could not send the code. Try again shortly.");
+    } finally {
+      setDeleteBusy(false);
+    }
+  }
+
+  /** Verify the code, close the account, then sign this device out for good. */
+  async function confirmDelete() {
+    if (!user) return;
+    if (!/^\d{6}$/.test(deleteCode.trim())) {
+      setDeleteErr("Enter the 6-digit code from your email ✉️");
+      return;
+    }
+
+    setDeleteBusy(true);
+    setDeleteErr(null);
+    try {
+      await deleteAccount(user.id, deleteCode.trim());
+      // The account is closed server-side; clearing the session here is what
+      // stops the app from flashing restored screens it should not show again.
+      await signOut();
+      router.replace("/login");
+    } catch (e) {
+      setDeleteErr(e instanceof ApiError ? e.message : "Could not close the account. Try again shortly.");
+      setDeleteBusy(false);
     }
   }
 
@@ -644,6 +699,126 @@ export default function SettingsScreen() {
                 Log out of FutsalNepal
               </Text>
             </Pressable>
+
+            {/* ---------- CLOSE THE ACCOUNT ---------- */}
+            {!deleteOpen ? (
+              <Pressable
+                onPress={() => {
+                  setDeleteOpen(true);
+                  setDeleteErr(null);
+                  setDeleteCode("");
+                  setDeleteKey(null);
+                }}
+                accessibilityRole="button"
+                style={[styles.deleteRow, { borderColor: c.border }]}
+              >
+                <AlertTriangle size={16} color={c.dangerText} />
+                <View style={styles.grow}>
+                  <Text style={[styles.rowTitle, { color: c.dangerText }]}>Delete my account</Text>
+                  <Text style={[styles.rowSub, { color: c.textMuted }]} numberOfLines={2}>
+                    Closes the account for good, after a code we email you.
+                  </Text>
+                </View>
+                <ChevronRight size={16} color={c.textFaint} />
+              </Pressable>
+            ) : (
+              <View
+                style={[
+                  styles.deleteCard,
+                  { borderColor: c.dangerBorder, backgroundColor: c.dangerBg },
+                ]}
+              >
+                <View style={styles.deleteHead}>
+                  <AlertTriangle size={18} color={c.dangerText} />
+                  <Text style={[styles.deleteTitle, { color: c.dangerText }]}>
+                    Close this account?
+                  </Text>
+                  <Pressable
+                    onPress={() => setDeleteOpen(false)}
+                    accessibilityRole="button"
+                    accessibilityLabel="Cancel deleting my account"
+                    hitSlop={8}
+                  >
+                    <X size={18} color={c.dangerText} />
+                  </Pressable>
+                </View>
+
+                <Text style={[styles.deleteBody, { color: c.text }]}>
+                  This can&apos;t be undone. Pending bookings and open requests are cancelled, your
+                  name and photo come off everything you played in, and the account can never be
+                  signed into again. Past bookings and payments stay on record with no name attached.
+                </Text>
+
+                {deleteKey ? (
+                  <>
+                    <Text style={[styles.deleteBody, { color: c.text }]}>
+                      We emailed a 6-digit code to {deleteKey}. It expires in 15 minutes.
+                    </Text>
+                    <View style={styles.deleteField}>
+                      <Label style={styles.labelFlush}>Code from your email</Label>
+                      <TextControl
+                        value={deleteCode}
+                        onChangeText={(t) => {
+                          setDeleteCode(t.replace(/\D/g, "").slice(0, 6));
+                          setDeleteErr(null);
+                        }}
+                        placeholder="000000"
+                        icon={<Mail size={16} color={c.textFaint} />}
+                        keyboardType="number-pad"
+                        autoComplete="one-time-code"
+                        textContentType="oneTimeCode"
+                        maxLength={6}
+                        error={Boolean(deleteErr)}
+                        accessibilityLabel="Account deletion code"
+                      />
+                    </View>
+                    {deleteErr ? <Notice message={deleteErr} /> : null}
+                    <Button
+                      label={deleteBusy ? "Closing your account…" : "Delete my account permanently"}
+                      onPress={() => void confirmDelete()}
+                      loading={deleteBusy}
+                    />
+                    <Pressable
+                      onPress={() => void askDeleteCode()}
+                      disabled={deleteBusy}
+                      accessibilityRole="button"
+                      style={styles.deleteResend}
+                    >
+                      <Text style={[styles.deleteResendText, { color: c.dangerText }]}>
+                        Send a new code
+                      </Text>
+                    </Pressable>
+                  </>
+                ) : (
+                  <>
+                    {deleteErr ? <Notice message={deleteErr} /> : null}
+                    <Button
+                      label={deleteBusy ? "Sending the code…" : "Email me the code ✉️"}
+                      onPress={() => void askDeleteCode()}
+                      loading={deleteBusy}
+                    />
+                    <Text style={[styles.deleteFine, { color: c.textMuted }]}>
+                      The code goes to the address on this account — the one shown above.
+                    </Text>
+                  </>
+                )}
+
+                <Pressable
+                  onPress={() => {
+                    setDeleteOpen(false);
+                    setDeleteCode("");
+                    setDeleteErr(null);
+                    setDeleteKey(null);
+                  }}
+                  accessibilityRole="button"
+                  style={styles.deleteResend}
+                >
+                  <Text style={[styles.deleteResendText, { color: c.textMuted }]}>
+                    Keep my account
+                  </Text>
+                </Pressable>
+              </View>
+            )}
           </>
         ) : null}
 
@@ -1151,6 +1326,36 @@ const styles = StyleSheet.create({
     marginTop: space[3],
   },
   logoutText: { fontSize: fontSize.base, fontWeight: "900" },
+
+  // Deliberately quieter than the logout button above it: sign-out is a normal
+  // thing to do, deleting the account is not.
+  deleteRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: space[3],
+    borderRadius: radius["2xl"],
+    borderWidth: 1,
+    borderStyle: "dashed",
+    paddingHorizontal: space[4],
+    paddingVertical: 14,
+    marginTop: space[2],
+  },
+  deleteCard: {
+    gap: space[3],
+    borderRadius: radius["2xl"],
+    borderWidth: 1,
+    padding: space[4],
+    marginTop: space[3],
+  },
+  deleteHead: { flexDirection: "row", alignItems: "center", gap: space[2] },
+  deleteTitle: { flex: 1, fontSize: fontSize.base, fontWeight: "900" },
+  deleteBody: { fontSize: fontSize.sm, lineHeight: 19 },
+  deleteField: { gap: space[1] },
+  // `Label` carries its own bottom margin; inside a gap'd block that doubles up.
+  labelFlush: { marginBottom: 0 },
+  deleteResend: { alignSelf: "center", paddingVertical: space[1] },
+  deleteResendText: { fontSize: fontSize.sm, fontWeight: "800" },
+  deleteFine: { fontSize: fontSize.xs, lineHeight: 16, textAlign: "center" },
 
   helpPara: { fontSize: fontSize.base, lineHeight: 21, marginBottom: space[3] },
 });

@@ -42,11 +42,34 @@ import type {
 /* ── auth ────────────────────────────────────────────────────────────────── */
 
 /** POST /api/auth/signup → 201 { user } */
+/**
+ * POST /api/auth/signup/code → emails the six digits that create the account.
+ *
+ * A 409 means the address already has an account (the server says so on
+ * purpose here — "log in instead" is what the person needs to hear), and a 429
+ * means a code was sent less than a minute ago, with `retryAfter` on the body.
+ */
+export function requestSignupCode(input: {
+  email: string;
+  name?: string;
+}): Promise<{ ok: boolean; email: string; expiresIn: number }> {
+  return apiJson("/api/auth/signup/code", { method: "POST", json: input });
+}
+
+/**
+ * POST /api/auth/signup → 201 { user }
+ *
+ * The `code` is not optional: no account is created without the address being
+ * proven first. A 401 means the code was wrong or expired, 400 with `needsCode`
+ * means it was left blank.
+ */
 export function signup(input: {
   name: string;
   email: string;
   phone: string;
   password: string;
+  /** The six digits from `requestSignupCode`. */
+  code: string;
   /** Player or venue-owner account; Laravel defaults to player. */
   role?: "player" | "owner";
   level?: string;
@@ -180,6 +203,32 @@ export function changePassword(input: {
 }
 
 /* ── notifications ───────────────────────────────────────────────────────── */
+
+/**
+ * POST /api/users/:id/delete-code → email the code that closes the account.
+ *
+ * The code goes to the address on the account, and the response says which
+ * inbox that is with the local part masked ("f•••@gmail.com") so the screen can
+ * point at the right place without reading the address out loud.
+ */
+export function requestAccountDeleteCode(userId: number): Promise<{
+  ok: boolean;
+  email: string;
+  expiresIn: number;
+}> {
+  return apiJson(`/api/users/${userId}/delete-code`, { method: "POST", json: {} });
+}
+
+/**
+ * DELETE /api/users/:id — close the account, with the emailed code as proof.
+ *
+ * The account row stays (bookings, payments and team history point at it) but
+ * the identity is erased and the account can never be signed into again, so the
+ * caller must sign the user out and forget the session afterwards.
+ */
+export function deleteAccount(userId: number, code: string): Promise<{ ok: boolean; closed: boolean }> {
+  return apiJson(`/api/users/${userId}`, { method: "DELETE", json: { code } });
+}
 
 /** GET /api/notifications?userId= → { notifications } */
 export async function fetchNotifications(userId: number): Promise<AppNotification[]> {
@@ -943,13 +992,12 @@ export function seedDemo(): Promise<Record<string, unknown>> {
  * POST /api/auth/reset — prove you own the account with email + phone, then
  * set a fresh password. Throws ApiError with the server's wording.
  */
-export function resetPassword(input: {
-  email: string;
-  phone: string;
-  newPassword: string;
-}): Promise<Record<string, unknown>> {
-  return apiJson("/api/auth/reset", { method: "POST", json: input });
-}
+/*
+ * The phone-verified reset that used to live here (`POST /api/auth/reset`) is no
+ * longer part of the app: the emailed code is the way back into an account, and
+ * offering two ways to do the same thing mostly meant two sets of failure
+ * messages. The route still exists on the API for anything else that calls it.
+ */
 
 /**
  * POST /api/auth/forgot-password — email a six-digit reset code.

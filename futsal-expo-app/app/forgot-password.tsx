@@ -7,7 +7,6 @@ import {
   Lock,
   Mail,
   PartyPopper,
-  Phone,
   ShieldCheck,
 } from "lucide-react-native";
 import React, { useEffect, useRef, useState } from "react";
@@ -21,7 +20,7 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { requestPasswordResetCode, resetPassword, resetPasswordWithCode } from "@/api";
+import { requestPasswordResetCode, resetPasswordWithCode } from "@/api";
 import { Button, Label, Notice, TextControl } from "@/components/ui";
 import { useAuth } from "@/context/AuthContext";
 import { useTheme } from "@/context/ThemeContext";
@@ -31,35 +30,28 @@ import {
   passwordStrength,
   validateEmail,
   validatePassword,
-  validatePhone,
 } from "@/lib/validation";
 import { colors as tokens, fontSize, radius, space } from "@/theme";
-
-type Method = "code" | "phone";
 
 /**
  * Forgot your password? 🔑
  *
- * Two ways back in, and the email one is the default because it is the one
- * people can actually complete on their own:
+ * One way back in, on purpose: we email a six-digit code, you type it with a new
+ * password. It works whatever device has the inbox and needs no deep link, which
+ * the phone-check path could not say — and offering two ways to do one thing
+ * mostly meant two sets of failure messages, two things to get wrong, and a
+ * screen where half the fields were irrelevant to whoever was looking at it.
  *
- *   • **Email code** — we mail a six-digit code, you type it with a new
- *     password. Works whatever device has the inbox, and needs no deep link.
- *   • **Phone check** — the original path, kept for anyone whose account phone
- *     number is easier to reach than the email on file.
- *
- * Both end in the same success state, and both set a real password: nothing here
- * creates a "temporary" credential someone has to change later.
+ * The reset sets a real password: nothing here creates a "temporary" credential
+ * someone has to change later.
  */
 export default function ForgotPasswordScreen() {
   const router = useRouter();
   const { colors: c } = useTheme();
   const { user, ready } = useAuth();
 
-  const [method, setMethod] = useState<Method>("code");
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
-  const [phone, setPhone] = useState("");
   const [newPw, setNewPw] = useState("");
   const [showPw, setShowPw] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -89,13 +81,6 @@ export default function ForgotPasswordScreen() {
       if (tick.current) clearInterval(tick.current);
     };
   }, [cooldown]);
-
-  function switchMethod(next: Method) {
-    setMethod(next);
-    setError("");
-    setNotice("");
-    setFieldErrors({});
-  }
 
   async function sendCode() {
     const emailError = validateEmail(email);
@@ -153,37 +138,6 @@ export default function ForgotPasswordScreen() {
       setDone(true);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not reset your password.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function submitPhone() {
-    const errs: Record<string, string> = {};
-    const em = validateEmail(email);
-    if (em) errs.email = em;
-    const ph = validatePhone(phone, { required: true });
-    if (ph) errs.phone = ph;
-    const pw = validatePassword(newPw, { label: "New password" });
-    if (pw) errs.newPw = pw;
-    if (Object.keys(errs).length > 0) {
-      setFieldErrors(errs);
-      setError(firstError(...Object.values(errs)) ?? "Check your details 🙏");
-      return;
-    }
-
-    setFieldErrors({});
-    setError("");
-    setBusy(true);
-    try {
-      await resetPassword({
-        email: email.trim().toLowerCase(),
-        phone: phone.trim(),
-        newPassword: newPw,
-      });
-      setDone(true);
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Reset failed");
     } finally {
       setBusy(false);
     }
@@ -261,9 +215,7 @@ export default function ForgotPasswordScreen() {
                 </View>
                 <Text style={styles.heroTitle}>Forgot your password? 🔑</Text>
                 <Text style={styles.heroSub}>
-                  {method === "code"
-                    ? "We email you a 6-digit code — no link to hunt for"
-                    : "Prove it's you with your registered phone number"}
+                  We email you a 6-digit code — no link to hunt for
                 </Text>
               </View>
 
@@ -280,42 +232,6 @@ export default function ForgotPasswordScreen() {
                 </View>
               ) : (
                 <View style={styles.form}>
-                  {/* Which way in — the same segmented bar as Signup. */}
-                  <View style={[styles.methodBar, { backgroundColor: c.inset, borderColor: c.border }]}>
-                    <Pressable
-                      onPress={() => switchMethod("code")}
-                      accessibilityRole="button"
-                      accessibilityState={{ selected: method === "code" }}
-                      style={[
-                        styles.methodOption,
-                        method === "code"
-                          ? { backgroundColor: c.surface, borderColor: c.primary }
-                          : { borderColor: "transparent" },
-                      ]}
-                    >
-                      <Mail size={15} color={method === "code" ? c.primary : c.textFaint} />
-                      <Text style={[styles.methodText, { color: method === "code" ? c.text : c.textMuted }]}>
-                        Email me a code
-                      </Text>
-                    </Pressable>
-                    <Pressable
-                      onPress={() => switchMethod("phone")}
-                      accessibilityRole="button"
-                      accessibilityState={{ selected: method === "phone" }}
-                      style={[
-                        styles.methodOption,
-                        method === "phone"
-                          ? { backgroundColor: c.surface, borderColor: c.primary }
-                          : { borderColor: "transparent" },
-                      ]}
-                    >
-                      <Phone size={15} color={method === "phone" ? c.primary : c.textFaint} />
-                      <Text style={[styles.methodText, { color: method === "phone" ? c.text : c.textMuted }]}>
-                        Use my phone
-                      </Text>
-                    </Pressable>
-                  </View>
-
                   <View style={styles.fieldBlock}>
                     <Label style={styles.labelFlush}>Your account email</Label>
                     <TextControl
@@ -333,17 +249,15 @@ export default function ForgotPasswordScreen() {
                       maxLength={100}
                       error={Boolean(fieldErrors.email)}
                       accessibilityLabel="Account email"
-                      returnKeyType={method === "phone" ? "next" : "go"}
-                      onSubmitEditing={() => (method === "code" && !codeSent ? void sendCode() : undefined)}
+                      returnKeyType={codeSent ? "next" : "go"}
+                      onSubmitEditing={() => (!codeSent ? void sendCode() : undefined)}
                     />
                     {fieldErrors.email ? (
                       <Text style={[styles.fieldError, { color: c.dangerText }]}>{fieldErrors.email}</Text>
                     ) : null}
                   </View>
 
-                  {method === "code" ? (
-                    <>
-                      {!codeSent ? (
+                  {!codeSent ? (
                         <Button
                           label={sendingCode ? "Sending the code…" : "Email me a reset code ✉️"}
                           onPress={() => void sendCode()}
@@ -392,40 +306,6 @@ export default function ForgotPasswordScreen() {
                             loading={busy}
                           />
                         </>
-                      )}
-                    </>
-                  ) : (
-                    <>
-                      <View style={styles.fieldBlock}>
-                        <Label style={styles.labelFlush}>Registered phone number</Label>
-                        <TextControl
-                          value={phone}
-                          onChangeText={(t) => {
-                            setPhone(t);
-                            setFieldErrors((p) => ({ ...p, phone: "" }));
-                          }}
-                          placeholder="98XXXXXXXX"
-                          icon={<Phone size={16} color={c.textFaint} />}
-                          keyboardType="phone-pad"
-                          autoComplete="tel"
-                          textContentType="telephoneNumber"
-                          maxLength={16}
-                          error={Boolean(fieldErrors.phone)}
-                          accessibilityLabel="Registered phone number"
-                        />
-                        {fieldErrors.phone ? (
-                          <Text style={[styles.fieldError, { color: c.dangerText }]}>{fieldErrors.phone}</Text>
-                        ) : null}
-                      </View>
-
-                      {passwordBlock}
-
-                      <Button
-                        label={busy ? "Resetting…" : "Reset my password 🔑"}
-                        onPress={() => void submitPhone()}
-                        loading={busy}
-                      />
-                    </>
                   )}
 
                   {notice ? <Notice message={notice} tone="info" /> : null}
@@ -488,19 +368,6 @@ const styles = StyleSheet.create({
   heroSub: { marginTop: space[1], color: tokens.orange100, fontSize: fontSize.base, lineHeight: 20, textAlign: "center" },
 
   form: { padding: space[6], paddingTop: space[5], gap: space[3] },
-  methodBar: { flexDirection: "row", gap: space[1], borderWidth: 1, borderRadius: radius["2xl"], padding: space[1] },
-  methodOption: {
-    flex: 1,
-    minHeight: 44,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-    borderWidth: 1,
-    borderRadius: radius.xl,
-    paddingHorizontal: space[2],
-  },
-  methodText: { flexShrink: 1, fontSize: fontSize.sm, fontWeight: "900" },
 
   fieldBlock: { gap: space[1] },
   // `Label` carries its own bottom margin; inside a gap'd block that doubles up.

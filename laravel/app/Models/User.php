@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Models\Concerns\CamelCasedAttributes;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
@@ -15,12 +16,18 @@ use Illuminate\Notifications\Notifiable;
  * format rather than bcrypt. `App\Support\LegacyPassword` keeps existing
  * migrated accounts usable while the service remains compatible with the
  * mobile client.
+ *
+ * Soft-deleted accounts are closed accounts: `App\Services\AccountDeletion`
+ * scrubs the identity and sets `deleted_at`, and every ordinary query in the app
+ * then stops seeing the row — nobody can log in as it, find it by email, or
+ * invite it — while the bookings and payments that reference it stay intact.
  */
 class User extends Authenticatable
 {
     use CamelCasedAttributes;
     use HasFactory;
     use Notifiable;
+    use SoftDeletes;
 
     protected $table = 'users';
 

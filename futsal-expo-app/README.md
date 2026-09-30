@@ -76,6 +76,16 @@ npm run smoke       # live Laravel API booking/payment smoke test
 venues → courts → availability → booking → ledger → eSewa payment → settled.
 The Laravel acceptance suites live in `../laravel/tests/api`.
 
+Signup is two steps, so the smoke test needs the emailed code to finish it:
+
+```bash
+SIGNUP_CODE=123456 npm run smoke
+```
+
+Against a backend with no SMTP credentials configured, the code is written to
+`../laravel/storage/logs/laravel.log` (the `log` mailer) — read it from there.
+Everything after signup runs on the account it created.
+
 Bundling for a device can be checked with:
 
 ```bash
