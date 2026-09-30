@@ -1,3 +1,5 @@
+import { Dimensions, Platform } from "react-native";
+
 /**
  * Design tokens for the native app.
  *
@@ -310,22 +312,49 @@ export const radius = {
 } as const;
 
 /**
+ * How much bigger type is on the web, chosen from the window width.
+ *
+ * The screens are laid out for a phone, where 10–14px text is right. The same
+ * numbers on a desktop browser read as tiny, because the window is three times
+ * wider while the type scale stayed at pocket size. Web therefore renders one
+ * step up on laptops and two on large desktops; native keeps the original
+ * scale, which is already tuned for a phone held at arm's length.
+ *
+ * The step is read once at startup (styles are plain objects, created at import
+ * time, so they cannot re-scale per resize). Layout still reflows live through
+ * `useBreakpoints`, so resizing a window keeps its columns and its gutters —
+ * only the type step stays put until the next load.
+ */
+export const typeScale = (() => {
+  if (Platform.OS !== "web") return 1;
+  const width = Dimensions.get("window").width;
+  if (width >= 1440) return 1.16;
+  if (width >= 1024) return 1.08;
+  return 1;
+})();
+
+/** Half-pixel steps keep scaled text crisp instead of blurry. */
+function step(base: number): number {
+  return Math.round(base * typeScale * 2) / 2;
+}
+
+/**
  * Type scale. The web app leans on arbitrary values (text-[15px], text-[11px])
  * for density, so the common ones are named rather than rounded away.
  */
 export const fontSize = {
-  "2xs": 10, // text-[10px] — uppercase micro-labels
-  xs: 11, // text-[11px]
-  sm: 12, // text-xs
-  base: 14, // text-sm — the workhorse size
-  md: 15, // text-[15px] — card titles
-  lg: 16,
-  xl: 18, // text-lg
-  "2xl": 20,
-  "3xl": 24,
-  "4xl": 30,
-  "5xl": 36,
-} as const;
+  "2xs": step(10), // text-[10px] — uppercase micro-labels
+  xs: step(11), // text-[11px]
+  sm: step(12), // text-xs
+  base: step(14), // text-sm — the workhorse size
+  md: step(15), // text-[15px] — card titles
+  lg: step(16),
+  xl: step(18), // text-lg
+  "2xl": step(20),
+  "3xl": step(24),
+  "4xl": step(30),
+  "5xl": step(36),
+};
 
 /** Tailwind font-weight names, since the design uses them semantically. */
 export const fontWeight = {

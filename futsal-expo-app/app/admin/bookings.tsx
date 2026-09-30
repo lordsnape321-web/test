@@ -629,7 +629,7 @@ export default function OwnerBookings() {
 
       {/* Score desk — competition games only, venue owner only. */}
       <Modal visible={!!scoreFor?.competition} transparent animationType="fade" onRequestClose={() => setScoreFor(null)}>
-        <View style={styles.modalBackdrop}>
+        <View style={[styles.modalBackdrop, { backgroundColor: c.scrim }]}>
           <View style={[styles.scoreCard, { backgroundColor: c.surface, borderColor: c.border }]}>
             <View style={styles.titleRow}>
               <Swords size={18} color="#6366F1" />
@@ -644,9 +644,18 @@ export default function OwnerBookings() {
                     ? ` • 🏆 ${scoreFor.competition.leagueName}`
                     : ""}
                 </Text>
-                <View style={[styles.scoreLockNotice, { backgroundColor: scoreLocked ? c.inset : "rgba(245,158,11,0.12)" }]}>
-                  <Lock size={14} color={scoreLocked ? c.textMuted : "#B45309"} />
-                  <Text style={[styles.scoreLockText, { color: scoreLocked ? c.textMuted : "#B45309" }]}>                    {scoreWindow?.settled
+                <View
+                  style={[
+                    styles.scoreLockNotice,
+                    {
+                      backgroundColor: scoreLocked ? c.inset : c.warningBg,
+                      borderColor: scoreLocked ? c.border : c.warningBorder,
+                    },
+                  ]}
+                >
+                  <Lock size={14} color={scoreLocked ? c.textMuted : c.warningText} />
+                  <Text style={[styles.scoreLockText, { color: scoreLocked ? c.textMuted : c.warningText }]}>
+                    {scoreWindow?.settled
                       ? scoreLocked
                         ? "Score locked — the 5-minute correction window has closed."
                         : `Score correction window open for ${formatWindowLeft(scoreWindow.msLeft)}.`
@@ -655,7 +664,11 @@ export default function OwnerBookings() {
                 </View>
                 <View style={styles.scoreRow}>
                   <View style={styles.scoreField}>
-                    <Text style={[styles.scoreLabel, { color: c.textFaint }]}>
+                    <Text
+                      style={[styles.scoreLabel, { color: c.textFaint }]}
+                      numberOfLines={1}
+                      ellipsizeMode="tail"
+                    >
                       🏠 {scoreFor.teamName || "Home"}
                     </Text>
                     <TextInput
@@ -665,11 +678,16 @@ export default function OwnerBookings() {
                       keyboardType="numeric"
                       placeholder="—"
                       placeholderTextColor={c.textFaint}
-                      style={[styles.scoreInput, { backgroundColor: isDark ? "#0F172A" : "#F8FAFC", color: c.text, borderColor: c.border }]}
+                      style={[styles.scoreInput, { backgroundColor: c.inset, color: c.text, borderColor: c.border }]}
                     />
                   </View>
+                  <Text style={[styles.scoreVersus, { color: c.textFaint }]}>–</Text>
                   <View style={styles.scoreField}>
-                    <Text style={[styles.scoreLabel, { color: c.textFaint }]}>
+                    <Text
+                      style={[styles.scoreLabel, { color: c.textFaint }]}
+                      numberOfLines={1}
+                      ellipsizeMode="tail"
+                    >
                       🚩 {scoreFor.competition.opponentName || "Away"}
                     </Text>
                     <TextInput
@@ -679,12 +697,12 @@ export default function OwnerBookings() {
                       keyboardType="numeric"
                       placeholder="—"
                       placeholderTextColor={c.textFaint}
-                      style={[styles.scoreInput, { backgroundColor: isDark ? "#0F172A" : "#F8FAFC", color: c.text, borderColor: c.border }]}
+                      style={[styles.scoreInput, { backgroundColor: c.inset, color: c.text, borderColor: c.border }]}
                     />
                   </View>
                 </View>
-                <View style={[styles.scoreHint, { backgroundColor: "rgba(99,102,241,0.10)" }]}>
-                  <Text style={styles.scoreHintText}>
+                <View style={[styles.scoreHint, { backgroundColor: c.infoBg, borderColor: c.infoBorder }]}>
+                  <Text style={[styles.scoreHintText, { color: c.infoText }]}>
                     Both squads&apos; profiles update the moment you save
                     {scoreFor.competition.leagueName ? ", and the league table follows" : ""}.
                     Wrong score? Reopen this and fix it — clearing both boxes puts it back to
@@ -692,8 +710,13 @@ export default function OwnerBookings() {
                   </Text>
                 </View>
                 {scoreError ? (
-                  <View style={[styles.scoreHint, { backgroundColor: "rgba(239,68,68,0.10)" }]}>
-                    <Text style={[styles.scoreHintText, { color: "#DC2626" }]}>{scoreError}</Text>
+                  <View
+                    style={[
+                      styles.scoreHint,
+                      { backgroundColor: c.dangerBg, borderColor: c.dangerBorder },
+                    ]}
+                  >
+                    <Text style={[styles.scoreHintText, { color: c.dangerText }]}>{scoreError}</Text>
                   </View>
                 ) : null}
                 <View style={styles.modalActions}>
@@ -708,7 +731,8 @@ export default function OwnerBookings() {
                     disabled={savingScore || scoreLocked}
                     style={[styles.modalBtn, styles.modalBtnPrimary, { opacity: savingScore || scoreLocked ? 0.5 : 1 }]}
                   >
-                    <Text style={[styles.modalBtnText, { color: "#FFFFFF" }]}>                      {savingScore ? "Saving…" : scoreLocked ? "Score locked" : "Save result"}
+                    <Text style={[styles.modalBtnText, { color: "#FFFFFF" }]}>
+                      {savingScore ? "Saving…" : scoreLocked ? "Score locked" : "Save result"}
                     </Text>
                   </Pressable>
                 </View>
@@ -846,17 +870,26 @@ const styles = StyleSheet.create({
   },
   scoreCard: {
     width: "100%",
-    maxWidth: 380,
+    maxWidth: 420,
     borderRadius: radius["2xl"],
     borderWidth: 1,
-    padding: space[6],
+    padding: space[5],
     gap: space[3],
   },
   modalTitle: { fontSize: fontSize.lg, fontWeight: "900", flex: 1 },
   modalSub: { fontSize: fontSize.xs, fontWeight: "600", lineHeight: 17 },
-  scoreRow: { flexDirection: "row", gap: space[3], marginTop: space[1] },
-  scoreField: { flex: 1 },
-  scoreLabel: { fontSize: 10, fontWeight: "900", textTransform: "uppercase", letterSpacing: 0.8, marginBottom: space[1.5] },
+  /* Both halves are the same width whatever the squad names are, with the dash
+     centred between them — the columns used to drift apart on longer names. */
+  scoreRow: { flexDirection: "row", alignItems: "flex-end", gap: space[2], marginTop: space[1] },
+  scoreField: { flex: 1, flexBasis: 0, minWidth: 0 },
+  scoreLabel: {
+    fontSize: 10,
+    fontWeight: "900",
+    textTransform: "uppercase",
+    letterSpacing: 0.8,
+    marginBottom: space[1.5],
+  },
+  scoreVersus: { fontSize: fontSize.lg, fontWeight: "900", paddingBottom: space[4] },
   scoreInput: {
     borderWidth: 1,
     borderRadius: radius.xl,
@@ -872,12 +905,13 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: space[2],
     borderRadius: radius.xl,
+    borderWidth: 1,
     paddingHorizontal: space[3],
     paddingVertical: space[2.5],
   },
   scoreLockText: { flex: 1, fontSize: 11, fontWeight: "800", lineHeight: 16 },
-  scoreHint: { borderRadius: radius.xl, padding: space[3] },
-  scoreHintText: { fontSize: 11, fontWeight: "600", lineHeight: 16, color: "#4338CA" },
+  scoreHint: { borderRadius: radius.xl, borderWidth: 1, padding: space[3] },
+  scoreHintText: { fontSize: 11, fontWeight: "600", lineHeight: 16 },
   modalActions: { flexDirection: "row", gap: space[2], marginTop: space[1] },
   modalBtn: {
     flex: 1,

@@ -878,7 +878,7 @@ export default function BookingsScreen() {
       {viewReceipt ? <ReceiptViewer url={viewReceipt} onClose={() => setViewReceipt(null)} /> : null}
       {teamPickerFor ? (
         <Modal transparent animationType="fade" onRequestClose={() => setTeamPickerFor(null)}>
-          <View style={styles.teamPickerBackdrop}>
+          <View style={[styles.teamPickerBackdrop, { backgroundColor: c.scrim }]}>
             <View style={[styles.teamPickerCard, { backgroundColor: c.surface, borderColor: c.border }]}>
               <Text style={[styles.teamPickerTitle, { color: c.text }]}>Select a team</Text>
               <Text style={[styles.teamPickerHint, { color: c.textMuted }]}>
@@ -1757,7 +1757,7 @@ function textFaint(muted: string) {
 }
 
 const styles = StyleSheet.create({
-  teamPickerBackdrop: { flex: 1, backgroundColor: "rgba(2,6,23,0.55)", alignItems: "center", justifyContent: "center", padding: space[4] },
+  teamPickerBackdrop: { flex: 1, alignItems: "center", justifyContent: "center", padding: space[4] },
   teamPickerCard: { width: "100%", maxWidth: 440, borderRadius: radius.lg, borderWidth: 1, padding: space[4], gap: space[2] },
   teamPickerTitle: { fontSize: fontSize.lg, fontWeight: "700" },
   teamPickerHint: { fontSize: fontSize.sm, lineHeight: 18 },

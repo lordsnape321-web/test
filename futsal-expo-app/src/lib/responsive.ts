@@ -24,8 +24,9 @@ export type Breakpoints = {
   /** ≥1280 — Tailwind `xl` */
   xl: boolean;
   /**
-   * Content column width matching the web's `max-w-7xl` (80rem = 1280px),
-   * centred. Below that it is just the viewport minus page gutters.
+   * Content column width matching the web's `max-w-7xl` (80rem = 1280px), and
+   * 1400px on screens wider than 2xl. Below that it is just the viewport minus
+   * page gutters.
    */
   contentMax: number;
   /** Horizontal page gutter: `px-4 sm:px-6` */
@@ -52,8 +53,10 @@ export function useBreakpoints(): Breakpoints {
     md,
     lg,
     xl,
-    contentMax: 1280,
-    gutter: sm ? 24 : 16,
+    // 80rem on a laptop, a little wider on a large desktop so the extra pixels
+    // become content instead of an ever-growing margin.
+    contentMax: width >= breakpoints["2xl"] ? 1400 : 1280,
+    gutter: xl ? 32 : sm ? 24 : 16,
     cardColumns: lg ? 3 : sm ? 2 : 1,
     statColumns: sm ? 4 : 2,
   };

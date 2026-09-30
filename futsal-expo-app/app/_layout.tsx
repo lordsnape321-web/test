@@ -145,7 +145,24 @@ function Shell() {
       {/* `.turf-pattern` — warm peach / night blobs behind every player route. */}
       <TurfBackdrop style={{ backgroundColor: shellBackground }} />
       {showPlayerChrome ? <Navbar /> : null}
-      <View style={{ flex: 1 }}>
+      {/*
+        A centred, capped column for the player routes. Without it every page
+        stretches to the browser width, so a 27" monitor gets 2000px-wide lines
+        of text while the same design reads properly on a phone. Owner Studio
+        caps its own workspace (header + rail), so it stays full-bleed.
+      */}
+      <View
+        style={
+          isOwnerStudio
+            ? { flex: 1 }
+            : {
+                flex: 1,
+                width: "100%",
+                maxWidth: bp.contentMax,
+                alignSelf: "center",
+              }
+        }
+      >
         <Stack
           screenOptions={{
             headerShown: false,

@@ -1262,7 +1262,7 @@ export default function OwnerVenues() {
         animationType="fade"
         onRequestClose={() => setShowEditVenue(false)}
       >
-        <View style={styles.modalBackdrop}>
+        <View style={[styles.modalBackdrop, { backgroundColor: c.scrim }]}>
           <View style={[styles.modalCard, { backgroundColor: c.surface }]}>
             <ScrollView showsVerticalScrollIndicator={false}>
               <Text style={[styles.modalTitle, { color: c.text }]}>
@@ -1447,7 +1447,7 @@ export default function OwnerVenues() {
         animationType="fade"
         onRequestClose={() => setShowCourt(false)}
       >
-        <View style={styles.modalBackdrop}>
+        <View style={[styles.modalBackdrop, { backgroundColor: c.scrim }]}>
           <View style={[styles.modalCard, { backgroundColor: c.surface }]}>
             <ScrollView showsVerticalScrollIndicator={false}>
               <Text style={[styles.modalTitle, { color: c.text }]}>
@@ -1628,7 +1628,7 @@ export default function OwnerVenues() {
 
       {/* Retire venue */}
       <Modal visible={!!deleteTarget} transparent animationType="fade" onRequestClose={() => setDeleteTarget(null)}>
-        <View style={styles.modalBackdrop}>
+        <View style={[styles.modalBackdrop, { backgroundColor: c.scrim }]}>
           <View style={[styles.modalCard, { backgroundColor: c.surface, maxWidth: 400 }]}>
             <View style={styles.titleRow}>
               <Trash2 size={18} color="#DC2626" />
@@ -1699,7 +1699,7 @@ export default function OwnerVenues() {
         animationType="fade"
         onRequestClose={() => setCourtDeleteTarget(null)}
       >
-        <View style={styles.modalBackdrop}>
+        <View style={[styles.modalBackdrop, { backgroundColor: c.scrim }]}>
           <View style={[styles.modalCard, { backgroundColor: c.surface, maxWidth: 400 }]}>
             <View style={styles.titleRow}>
               <Trash2 size={18} color="#DC2626" />
@@ -1853,7 +1853,7 @@ function AddVenueModal(props: {
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <View style={styles.modalBackdrop}>
+      <View style={[styles.modalBackdrop, { backgroundColor: c.scrim }]}>
         <View style={[styles.modalCard, { backgroundColor: c.surface }]}>
           <ScrollView showsVerticalScrollIndicator={false}>
             <Text style={[styles.modalTitle, { color: c.text }]}>List your futsal 🏟️</Text>
@@ -2263,8 +2263,8 @@ const styles = StyleSheet.create({
   amenityText: { fontSize: 11, fontWeight: "700" },
   modalBackdrop: {
     flex: 1,
-    backgroundColor: "rgba(15,23,42,0.55)",
     alignItems: "center",
+    justifyContent: "center",
     padding: space[4],
   },
   modalCard: {

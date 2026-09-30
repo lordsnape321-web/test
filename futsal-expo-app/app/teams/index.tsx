@@ -769,7 +769,7 @@ export default function TeamsScreen() {
 
       {/* create modal */}
       <Modal visible={showCreate} transparent animationType="slide" onRequestClose={() => setShowCreate(false)}>
-        <View style={styles.backdrop}>
+        <View style={[styles.backdrop, { backgroundColor: c.scrim }]}>
           <Pressable style={StyleSheet.absoluteFill} onPress={() => setShowCreate(false)} />
           <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={styles.kav}>
             <View style={[styles.sheet, { backgroundColor: c.surface }]}>
@@ -1384,7 +1384,7 @@ const styles = StyleSheet.create({
   joinText: { fontSize: fontSize.base, fontWeight: "900" },
 
   /* create modal */
-  backdrop: { flex: 1, backgroundColor: "rgba(28,25,23,0.5)", justifyContent: "flex-end" },
+  backdrop: { flex: 1, justifyContent: "flex-end" },
   kav: { maxHeight: "92%" },
   sheet: {
     borderTopLeftRadius: radius["3xl"],

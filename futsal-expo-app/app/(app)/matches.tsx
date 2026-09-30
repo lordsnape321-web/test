@@ -1785,7 +1785,7 @@ const styles = StyleSheet.create({
   tick: { width: 24, height: 24, borderRadius: 12, borderWidth: 2, alignItems: "center", justifyContent: "center" },
 
   /* modal */
-  modalBackdrop: { flex: 1, backgroundColor: "rgba(28,25,23,0.5)", justifyContent: "flex-end" },
+  modalBackdrop: { flex: 1, justifyContent: "flex-end" },
   modalSheet: {
     borderTopLeftRadius: 32,
     borderTopRightRadius: 32,

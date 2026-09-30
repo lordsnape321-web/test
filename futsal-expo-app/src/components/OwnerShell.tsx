@@ -151,11 +151,18 @@ export function OwnerHeader() {
           {
             backgroundColor: c.header,
             borderColor: c.border,
-            paddingHorizontal: sm ? space[6] : space[4],
             paddingTop: insets.top + space[2.5],
           },
         ]}
       >
+        {/* Capped like the workspace below it, so the brand lines up with the
+            cards on a wide screen instead of hugging the window edge. */}
+        <View
+          style={[
+            styles.headerInner,
+            { paddingHorizontal: sm ? space[6] : space[4] },
+          ]}
+        >
         {!lg ? (
           <Pressable
             onPress={() => setDrawerOpen(true)}
@@ -235,6 +242,7 @@ export function OwnerHeader() {
               <LogOut size={16} color={c.textMuted} />
             </Pressable>
           ) : null}
+          </View>
         </View>
       </View>
 
@@ -560,13 +568,16 @@ export function OwnerTabBar({
 
 const styles = StyleSheet.create({
   header: {
+    borderBottomWidth: 1,
+  },
+  headerInner: {
     flexDirection: "row",
     alignItems: "center",
     gap: space[3],
-    paddingHorizontal: space[4],
     paddingVertical: space[2.5],
-    borderBottomWidth: 1,
-    paddingTop: space[6],
+    width: "100%",
+    maxWidth: 1440,
+    alignSelf: "center",
   },
   brand: { flexDirection: "row", alignItems: "center", gap: space[2.5], minWidth: 0, flexShrink: 1 },
   brandCopy: { minWidth: 0, flexShrink: 1 },
