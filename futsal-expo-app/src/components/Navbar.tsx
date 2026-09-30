@@ -83,7 +83,7 @@ export function Navbar() {
       <View
         style={[
           styles.inner,
-          { paddingHorizontal: bp.gutter, maxWidth: bp.contentMax },
+          { paddingHorizontal: bp.gutter },
         ]}
       >
         {/* Brand */}

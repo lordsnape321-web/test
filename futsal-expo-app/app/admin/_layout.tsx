@@ -7,9 +7,6 @@ import { useTheme } from "@/context/ThemeContext";
 import { useBreakpoints } from "@/lib/responsive";
 import { space } from "@/theme";
 
-/** The workspace column: Owner Studio's own cap, not the player page's. */
-const contentMax = 1440;
-
 /**
  * Owner Studio layout — brand bar + the six-item owner rail, with every child
  * gated by OwnerGuard (loading → sign-in → owners-only → content).
@@ -39,7 +36,7 @@ export default function AdminLayout() {
           style={[
             styles.body,
             lg
-              ? [styles.bodyWide, { maxWidth: contentMax, paddingHorizontal: gutter, gap: gutter }]
+              ? [styles.bodyWide, { paddingHorizontal: gutter, gap: gutter }]
               : null,
           ]}
         >

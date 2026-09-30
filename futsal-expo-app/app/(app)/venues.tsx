@@ -202,12 +202,7 @@ export default function VenuesScreen() {
         }
         contentContainerStyle={[
           styles.listContent,
-          {
-            maxWidth: bp.contentMax,
-            width: "100%",
-            alignSelf: "center",
-            paddingHorizontal: bp.gutter,
-          },
+          { width: "100%", paddingHorizontal: bp.gutter },
         ]}
         ListHeaderComponent={
           <>

@@ -140,7 +140,7 @@ export default function SettingsScreen() {
         <ScrollView
           contentContainerStyle={[
             styles.content,
-            { paddingHorizontal: space[4], maxWidth: 1280, width: "100%", alignSelf: "center" },
+            { paddingHorizontal: space[4], width: "100%" },
           ]}
         >
           <View style={styles.heading}>
@@ -247,12 +247,7 @@ export default function SettingsScreen() {
       <ScrollView
         contentContainerStyle={[
           styles.content,
-          {
-            paddingHorizontal: space[4],
-            maxWidth: 1280,
-            width: "100%",
-            alignSelf: "center",
-          },
+          { paddingHorizontal: space[4], width: "100%" },
         ]}
       >
         {/* Heading */}

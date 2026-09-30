@@ -17,6 +17,7 @@ import { MobileNav } from "@/components/MobileNav";
 import { Navbar } from "@/components/Navbar";
 import { TurfBackdrop } from "@/components/TurfBackdrop";
 import { useBreakpoints } from "@/lib/responsive";
+import { installWebDocument } from "@/lib/web-document";
 import {
   APP_FONT_FAMILY,
   darkPalette,
@@ -24,6 +25,11 @@ import {
   ownerDarkPalette,
   ownerPalette,
 } from "@/theme";
+
+// Runs when this module is first evaluated — i.e. before the first render on
+// web — so the browser canvas, scrollbars and desktop type scale are in place
+// on the very first paint. No-op on native.
+installWebDocument();
 
 /**
  * Root layout: fonts + providers + the native stack.
@@ -145,24 +151,10 @@ function Shell() {
       {/* `.turf-pattern` — warm peach / night blobs behind every player route. */}
       <TurfBackdrop style={{ backgroundColor: shellBackground }} />
       {showPlayerChrome ? <Navbar /> : null}
-      {/*
-        A centred, capped column for the player routes. Without it every page
-        stretches to the browser width, so a 27" monitor gets 2000px-wide lines
-        of text while the same design reads properly on a phone. Owner Studio
-        caps its own workspace (header + rail), so it stays full-bleed.
-      */}
-      <View
-        style={
-          isOwnerStudio
-            ? { flex: 1 }
-            : {
-                flex: 1,
-                width: "100%",
-                maxWidth: bp.contentMax,
-                alignSelf: "center",
-              }
-        }
-      >
+      {/* Full-bleed: the app fills the browser window at every size. The
+          wide-screen breathing room comes from the responsive gutters and the
+          extra grid columns, not from a fixed-width column with empty margins. */}
+      <View style={{ flex: 1 }}>
         <Stack
           screenOptions={{
             headerShown: false,

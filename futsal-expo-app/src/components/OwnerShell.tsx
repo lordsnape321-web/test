@@ -576,8 +576,6 @@ const styles = StyleSheet.create({
     gap: space[3],
     paddingVertical: space[2.5],
     width: "100%",
-    maxWidth: 1440,
-    alignSelf: "center",
   },
   brand: { flexDirection: "row", alignItems: "center", gap: space[2.5], minWidth: 0, flexShrink: 1 },
   brandCopy: { minWidth: 0, flexShrink: 1 },

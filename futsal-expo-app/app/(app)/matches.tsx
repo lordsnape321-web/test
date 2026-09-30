@@ -257,12 +257,7 @@ export default function MatchesScreen() {
         ref={scrollRef}
         contentContainerStyle={[
           styles.content,
-          {
-            paddingHorizontal: bp.gutter,
-            maxWidth: bp.contentMax,
-            width: "100%",
-            alignSelf: "center",
-          },
+          { paddingHorizontal: bp.gutter, width: "100%" },
         ]}
       >
         {/* Header */}

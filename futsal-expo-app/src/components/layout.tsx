@@ -4,10 +4,10 @@ import { useBreakpoints } from "@/lib/responsive";
 import { space } from "@/theme";
 
 /**
- * Page column — the native equivalent of the web's
- * `mx-auto max-w-7xl px-4 sm:px-6` wrapper used on every marketing/player
- * section. Keeps content centred and capped at 1280px on tablets/desktops
- * while using the same gutters as Tailwind on phones.
+ * Page column — applies the responsive page gutters (`px-4 sm:px-6 xl:px-8`)
+ * and lets the content use the full window. There is deliberately no max-width:
+ * on a desktop browser the app fills the window, and the grids inside add
+ * columns as it gets wider instead of leaving empty margins.
  */
 export function PageContainer({
   children,
@@ -25,7 +25,6 @@ export function PageContainer({
       style={[
         styles.base,
         {
-          maxWidth: bp.contentMax,
           paddingHorizontal: padded ? bp.gutter : 0,
           width: "100%",
         },

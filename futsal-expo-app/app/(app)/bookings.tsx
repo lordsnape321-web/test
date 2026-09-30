@@ -615,12 +615,7 @@ export default function BookingsScreen() {
         ref={scrollRef}
         contentContainerStyle={[
           styles.scroll,
-          {
-            paddingHorizontal: space[4],
-            maxWidth: 1280,
-            width: "100%",
-            alignSelf: "center",
-          },
+          { paddingHorizontal: space[4], width: "100%" },
         ]}
       >
         <View style={styles.eyebrowRow}>
