@@ -130,8 +130,9 @@ export default function BookingsScreen() {
   // A notification link arrives as /bookings?focus=<bookingId>. Without this the
   // bell dropped you on the Bookings tab with the right booking somewhere in a
   // long list and no sign of which one it was talking about.
-  const { focus } = useLocalSearchParams<{ focus?: string }>();
+  const { focus, refresh } = useLocalSearchParams<{ focus?: string; refresh?: string }>();
   const focusId = focus ? Number(focus) : null;
+  const shouldRefresh = refresh !== undefined;
   const scrollRef = useRef<ScrollView>(null);
   const [focusY, setFocusY] = useState<number | null>(null);
   const [cancelling, setCancelling] = useState<number | null>(null);
@@ -207,7 +208,8 @@ export default function BookingsScreen() {
         // Do not block the diary on demo-data seeding. The booking API is the
         // source of truth and a slow seed endpoint used to make this screen look
         // frozen while the user was trying to review a game.
-        if (user) await load();
+        // CRITICAL: Use refresh=true on focus to bust cache after payment/other mutations.
+        if (user) await load(true);
         else setLoading(false);
       })();
       // Keep both captains' feeds synchronized while this screen is focused.
@@ -259,6 +261,13 @@ export default function BookingsScreen() {
     if (focusY == null) return;
     scrollRef.current?.scrollTo({ y: Math.max(0, focusY - space[4]), animated: true });
   }, [focusY, tab]);
+
+  // Trigger refresh when ?refresh= query param is present (e.g., after payment return)
+  useEffect(() => {
+    if (shouldRefresh && user) {
+      void load(true);
+    }
+  }, [shouldRefresh, user, load]);
 
   const focusedBooking = focusId == null ? null : bookings.find((b) => b.id === focusId) ?? null;
 

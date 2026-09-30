@@ -55,10 +55,7 @@ export function BookingPaymentSummary({ bookingId }: { bookingId: number }) {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  async function toggle() {
-    const next = !open;
-    setOpen(next);
-    if (!next || data) return;
+  async function loadData() {
     setLoading(true);
     setError("");
     try {
@@ -69,6 +66,14 @@ export function BookingPaymentSummary({ bookingId }: { bookingId: number }) {
     } finally {
       setLoading(false);
     }
+  }
+
+  async function toggle() {
+    const next = !open;
+    setOpen(next);
+    if (!next) return;
+    // Always refetch when opening - payment may have been made since last view
+    await loadData();
   }
 
   const muted = { color: c.textMuted, fontSize: fontSize.xs, fontWeight: "700" as const };
