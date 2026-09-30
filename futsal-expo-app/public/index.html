@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="%LANG_ISO_CODE%">
+  <head>
+    <meta charset="utf-8" />
+    <meta httpEquiv="X-UA-Compatible" content="IE=edge" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, shrink-to-fit=no, viewport-fit=cover"
+    />
+    <title>%WEB_TITLE%</title>
+    <meta
+      name="description"
+      content="Book futsal courts across Nepal — live availability, team splits and venue payments."
+    />
+    <meta name="theme-color" content="#FFF9F0" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#020617" media="(prefers-color-scheme: dark)" />
+    <!--
+      The browser document for `web.output: "single"`: the CLI reads this file
+      from public/ and injects the bundle + favicon before serving or exporting
+      it, which is also why app/+html.tsx has no effect in this project.
+
+      Everything here is web-only chrome that React Native has no API for: the
+      canvas behind the app, the scrollbars, the focus ring, and the desktop
+      scale-up. It is in the HTML rather than in JS so the first paint is
+      already correct (no white flash before the bundle boots).
+    -->
+    <style id="app-document">
+      :root {
+        color-scheme: light;
+        /* The player app's warm clubhouse canvas, and Owner Studio's slate. */
+        --app-canvas: #fff9f0;
+        --app-scrollbar: rgba(120, 113, 108, 0.35);
+        --app-selection: #059669;
+      }
+
+      /* Before the saved mode is restored there is no data-theme on <html>, so
+         the OS preference is the best guess — and it makes the first paint
+         right. ThemeProvider writes data-theme (+ the `dark` class) as soon as
+         it knows, which takes over from here. */
+      @media (prefers-color-scheme: dark) {
+        :root:not([data-theme]) {
+          color-scheme: dark;
+          --app-canvas: #020617;
+          --app-scrollbar: rgba(148, 163, 184, 0.35);
+        }
+      }
+
+      :root.dark,
+      :root[data-theme="dark"] {
+        color-scheme: dark;
+        --app-canvas: #020617;
+        --app-scrollbar: rgba(148, 163, 184, 0.35);
+      }
+
+      html,
+      body,
+      #root {
+        width: 100%;
+        height: 100%;
+      }
+
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        background-color: var(--app-canvas);
+      }
+
+      /* The app is a full-window canvas that scrolls internally: the react-native
+         root stretches to the viewport (so nothing can lay out at content height
+         and leave a dead strip under the app) and the document itself does not
+         rubber-band. */
+      #root {
+        display: flex;
+        flex-direction: column;
+      }
+
+      #root > div {
+        flex: 1 1 auto;
+        min-width: 0;
+        min-height: 0;
+      }
+
+      body {
+        overflow: hidden;
+        overscroll-behavior-y: none;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+        text-rendering: optimizeLegibility;
+        -webkit-text-size-adjust: 100%;
+        text-size-adjust: 100%;
+      }
+
+      ::selection {
+        background-color: var(--app-selection);
+        color: #fff;
+      }
+
+      /* React Native draws its own focus states for inputs; a keyboard user still
+         needs to see where they are when tabbing through links and buttons. */
+      :focus-visible {
+        outline: 2px solid var(--app-selection);
+        outline-offset: 2px;
+      }
+
+      /* Slim, theme-aware scrollbars — the default grey bar next to a peach
+         canvas is the one piece of chrome the app cannot style itself. */
+      * {
+        scrollbar-width: thin;
+        scrollbar-color: var(--app-scrollbar) transparent;
+      }
+
+      *::-webkit-scrollbar {
+        width: 10px;
+        height: 10px;
+      }
+
+      *::-webkit-scrollbar-track {
+        background: transparent;
+      }
+
+      *::-webkit-scrollbar-thumb {
+        background-color: var(--app-scrollbar);
+        border-radius: 999px;
+        border: 3px solid transparent;
+        background-clip: content-box;
+      }
+
+      /* Desktop windows get a scaled-up interface, the same effect as browser
+         zoom, and it re-applies the moment the window crosses a breakpoint
+         instead of being frozen at load time. The type scale in src/theme.ts is
+         tuned for a phone held at arm's length, which is why 10–14px text reads
+         as tiny on a monitor; scaling the whole window keeps type, padding,
+         icons and radii in proportion. Phones and the native app are untouched. */
+      @media (min-width: 1024px) {
+        body {
+          zoom: 1.08;
+        }
+      }
+
+      @media (min-width: 1440px) {
+        body {
+          zoom: 1.15;
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        * {
+          animation-duration: 0.01ms !important;
+          animation-iteration-count: 1 !important;
+          transition-duration: 0.01ms !important;
+        }
+      }
+    </style>
+  </head>
+
+  <body>
+    <noscript>You need to enable JavaScript to run this app.</noscript>
+    <div id="root"></div>
+  </body>
+</html>

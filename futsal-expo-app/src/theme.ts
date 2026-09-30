@@ -315,8 +315,8 @@ export const radius = {
  *
  * These are the phone-tuned numbers and stay as they are: on a desktop browser
  * the whole interface — type, spacing, icons and radii together, like browser
- * zoom — is scaled up by media queries in `app/+html.tsx`, which re-applies the
- * moment the window is resized instead of being frozen at startup.
+ * zoom — is scaled up by the media queries in `public/index.html`, which
+ * re-apply the moment the window is resized instead of being frozen at startup.
  */
 export const fontSize = {
   "2xs": 10, // text-[10px] — uppercase micro-labels

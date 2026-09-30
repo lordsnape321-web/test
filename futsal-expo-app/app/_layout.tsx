@@ -17,7 +17,6 @@ import { MobileNav } from "@/components/MobileNav";
 import { Navbar } from "@/components/Navbar";
 import { TurfBackdrop } from "@/components/TurfBackdrop";
 import { useBreakpoints } from "@/lib/responsive";
-import { installWebDocument } from "@/lib/web-document";
 import {
   APP_FONT_FAMILY,
   darkPalette,
@@ -25,11 +24,6 @@ import {
   ownerDarkPalette,
   ownerPalette,
 } from "@/theme";
-
-// Runs when this module is first evaluated — i.e. before the first render on
-// web — so the browser canvas, scrollbars and desktop type scale are in place
-// on the very first paint. No-op on native.
-installWebDocument();
 
 /**
  * Root layout: fonts + providers + the native stack.
