@@ -10,6 +10,7 @@ import {
   Hourglass,
   Lock,
   LogIn,
+  ExternalLink,
   MapPin,
   PartyPopper,
   QrCode,
@@ -61,6 +62,7 @@ import { useAuth } from "@/context/AuthContext";
 import { useTheme } from "@/context/ThemeContext";
 import { hoursUntilGame, type PlayerStats } from "@/lib/loyalty";
 import type { TeamLedgerMember, UserTeamLite } from "@/lib/types";
+import { openLocation } from "@/lib/open-location";
 import { formatNPR, formatTime12, gamePlayed, prettyDate } from "@/lib/futsal";
 import { moneyOf } from "@/lib/money";
 import { APP_BUILD } from "@/lib/build";
@@ -1202,10 +1204,16 @@ function BookingCard({
               <Clock size={14} color={isDark ? colors.emerald300 : colors.emerald700} />
               <Text style={[styles.compactFactText, { color: muted }]}>{formatTime12(b.startTime)} – {formatTime12(b.endTime || b.startTime)}</Text>
             </View>
-            <View style={[styles.compactFact, styles.compactFactWide]}>
+            <Pressable
+              onPress={() => void openLocation(b.venue?.locationUrl, b.venue?.address, b.venue?.city)}
+              style={[styles.compactFact, styles.compactFactWide]}
+              accessibilityRole="link"
+              accessibilityLabel="Open the venue in Maps"
+            >
               <MapPin size={14} color={isDark ? colors.emerald300 : colors.emerald700} />
               <Text style={[styles.compactFactText, styles.compactFactWrap, { color: muted }]}>{b.venue?.address ?? "Venue address unavailable"}</Text>
-            </View>
+              <ExternalLink size={11} color={muted} />
+            </Pressable>
           </View>
 
           <Pressable
@@ -1369,17 +1377,36 @@ function BookingCard({
             </Text>
           ) : null}
 
+          {/*
+            Three facts used to be six loose children of one wrapping row: the
+            row gap stacked on top of each text's own margin, so the clock sat
+            twice as far from the time as the calendar sat from the date. Pairing
+            each icon with its text keeps the spacing even, and the whole row
+            wraps between facts instead of inside one.
+          */}
           <View style={styles.detailRow}>
-            <CalendarCheck size={16} color={colors.emerald600} />
-            <Text style={[styles.detailText, { color: muted }]}>{prettyDate(b.date)}</Text>
-            <Clock size={16} color={colors.emerald600} />
-            <Text style={[styles.detailText, { color: muted }]}>
-              {formatTime12(b.startTime)} – {formatTime12(b.endTime || b.startTime)}
-            </Text>
-            <MapPin size={16} color={colors.emerald600} />
-            <Text style={[styles.detailText, { color: muted }]}>
-              {b.venue?.address ?? ""}
-            </Text>
+            <View style={styles.detailPair}>
+              <CalendarCheck size={14} color={colors.emerald600} />
+              <Text style={[styles.detailText, { color: muted }]}>{prettyDate(b.date)}</Text>
+            </View>
+            <View style={styles.detailPair}>
+              <Clock size={14} color={colors.emerald600} />
+              <Text style={[styles.detailText, { color: muted }]}>
+                {formatTime12(b.startTime)} – {formatTime12(b.endTime || b.startTime)}
+              </Text>
+            </View>
+            <Pressable
+              onPress={() => void openLocation(b.venue?.locationUrl, b.venue?.address, b.venue?.city)}
+              style={styles.detailPair}
+              accessibilityRole="link"
+              accessibilityLabel="Open the venue in Maps"
+            >
+              <MapPin size={14} color={colors.emerald600} />
+              <Text style={[styles.detailText, styles.detailLink, { color: colors.emerald600 }]}>
+                {b.venue?.address ?? "Venue address unavailable"}
+              </Text>
+              <ExternalLink size={11} color={colors.emerald600} />
+            </Pressable>
           </View>
 
           {b.competition ? (
@@ -1865,7 +1892,7 @@ const styles = StyleSheet.create({
   },
   openBookingText: { fontSize: fontSize.xs, fontWeight: "900" },
   compactFacts: { flexDirection: "row", flexWrap: "wrap", gap: space[2], borderBottomWidth: 1, paddingBottom: space[2], marginTop: space[2] },
-  compactFact: { flexDirection: "row", alignItems: "flex-start", gap: 5, maxWidth: "100%" },
+  compactFact: { flexDirection: "row", alignItems: "center", gap: 5, maxWidth: "100%" },
   compactFactWide: { flexBasis: "100%" },
   compactFactText: { fontSize: fontSize.xs, fontWeight: "700", lineHeight: 16 },
   compactFactWrap: { flexShrink: 1 },
@@ -1912,7 +1939,9 @@ const styles = StyleSheet.create({
     gap: space[2],
     marginTop: space[3],
   },
-  detailText: { fontSize: 13, lineHeight: 18, fontWeight: "600", flexShrink: 1, marginRight: space[2] },
+  detailPair: { flexDirection: "row", alignItems: "center", gap: 5, maxWidth: "100%" },
+  detailText: { fontSize: 13, lineHeight: 18, fontWeight: "600", flexShrink: 1 },
+  detailLink: { textDecorationLine: "underline" },
   compCard: {
     marginTop: space[3],
     borderRadius: radius["2xl"],

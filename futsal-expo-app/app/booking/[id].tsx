@@ -21,7 +21,9 @@ import { useAuth } from "@/context/AuthContext";
 import { useTheme } from "@/context/ThemeContext";
 import { ApiError } from "@/lib/api";
 import { formatWindowLeft } from "@/lib/booking-ledger";
-import { formatNPR, prettyDate } from "@/lib/futsal";
+import { formatNPR, formatTime12, prettyDate } from "@/lib/futsal";
+import { locationLabel } from "@/lib/location";
+import { openLocation } from "@/lib/open-location";
 import { advanceOf, askPlan } from "@/lib/booking-advance";
 import { moneyOf } from "@/lib/money";
 import type { Booking, Ledger, UserTeamLite } from "@/lib/types";
@@ -438,15 +440,39 @@ export default function BookingDetail() {
           style={styles.titleRail}
         >
           <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72} style={[styles.meta, { color: colors.textMuted }]}>
-            {booking.court?.name ?? "Court"} · {prettyDate(booking.date)} · {booking.startTime}–
-            {booking.endTime}
+            {booking.court?.name ?? "Court"} · {prettyDate(booking.date)} ·{" "}
+            {formatTime12(booking.startTime)}–{formatTime12(booking.endTime || booking.startTime)}
           </Text>
         </ScrollView>
 
+        {locationLabel(booking.venue?.locationUrl, booking.venue?.address, booking.venue?.city) ? (
+          <Pressable
+            onPress={() =>
+              void openLocation(booking.venue?.locationUrl, booking.venue?.address, booking.venue?.city)
+            }
+            style={[styles.locationBox, { borderColor: colors.border, backgroundColor: colors.inset }]}
+            accessibilityRole="link"
+            accessibilityLabel="Open the venue in Maps"
+          >
+            <Text style={[styles.locationText, { color: colors.text }]} numberOfLines={1}>
+              📍 {locationLabel(booking.venue?.locationUrl, booking.venue?.address, booking.venue?.city)}
+            </Text>
+            <Text style={[styles.locationAction, { color: colors.successText }]}>Open in Maps ↗</Text>
+          </Pressable>
+        ) : null}
+
+        {/*
+          Both pills used to read "Pending" on a fresh request — the booking's own
+          status and the payment's, side by side. Naming what each one is costs
+          nothing and stops the card looking like it says pending twice.
+        */}
         <View style={styles.pillRow}>
-          <Pill label={booking.status} tone={booking.status === "confirmed" ? "success" : "warning"} />
           <Pill
-            label={statusView.label}
+            label={`Booking ${booking.status}`}
+            tone={booking.status === "confirmed" ? "success" : "warning"}
+          />
+          <Pill
+            label={`Payment · ${statusView.label}`}
             tone={statusView.status === "paid" ? "success" : statusView.status === "deposit_paid" ? "warning" : "danger"}
           />
         </View>
@@ -464,7 +490,6 @@ export default function BookingDetail() {
                   : "Per player — see team details")
               : paymentMethodLabel(booking.paymentMethod)}
           </Text>
-          <Text style={[styles.paymentLabel, { color: colors.textMuted }]}>Payment status: {statusView.label}</Text>
         </View>
 
         {error ? <Notice message={error} /> : null}
@@ -477,7 +502,10 @@ export default function BookingDetail() {
               <MoneyRow label="Advance requested" value={formatNPR(advance.requested)} colors={colors} />
               <MoneyRow label="Received by venue" value={formatNPR(advance.received)} colors={colors} />
               <MoneyRow label="Advance remaining" value={formatNPR(advance.remaining)} colors={colors} />
-              <Pill label={paymentStatusLabel(booking.advancePaymentStatus ?? "pending")} tone={advance.remaining === 0 ? "success" : "warning"} />
+              <Pill
+                label={`Advance · ${paymentStatusLabel(booking.advancePaymentStatus ?? "pending")}`}
+                tone={advance.remaining === 0 ? "success" : "warning"}
+              />
               {advance.active ? (
                 <>
                   <Text style={[styles.hint, { color: colors.textMuted }]}>
@@ -983,6 +1011,19 @@ const styles = StyleSheet.create({
   meta: { fontSize: fontSize.base, marginTop: 2, marginBottom: space["3"] },
   pillRow: { flexDirection: "row", gap: space["2"], marginBottom: space["2"] },
   paymentLabels: { flexDirection: "row", flexWrap: "wrap", gap: space["2"], marginBottom: space["2"] },
+  locationBox: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: space["2"],
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: space["3"],
+    paddingVertical: space["2"],
+    marginBottom: space["2"],
+  },
+  locationText: { flexShrink: 1, fontSize: fontSize.sm, fontWeight: "800" },
+  locationAction: { fontSize: fontSize.xs, fontWeight: "900" },
   paymentLabel: { fontSize: fontSize.sm, fontWeight: "600" },
   cardTitle: { fontSize: fontSize.lg, fontWeight: "700", marginBottom: space["2"] },
   subTitle: { fontSize: fontSize.base, fontWeight: "600", marginBottom: space["1"] },

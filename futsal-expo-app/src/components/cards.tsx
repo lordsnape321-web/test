@@ -103,8 +103,10 @@ export function VenueCard({ v }: { v: VenueWithCourts }) {
           </View>
           <View style={styles.venueStat}>
             <Clock size={14} color={c.textMuted} />
+            {/* Same 12-hour clock as the slot buttons: "6:00 AM – 10:00 PM". */}
             <Text style={[styles.venueStatText, { color: c.textMuted }]}>
-              {v.openingHour}:00 – {v.closingHour}:00
+              {formatTime12(`${String(v.openingHour).padStart(2, "0")}:00`)} –{" "}
+              {formatTime12(`${String(v.closingHour).padStart(2, "0")}:00`)}
             </Text>
           </View>
           <View style={styles.venueStat}>
