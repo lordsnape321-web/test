@@ -46,6 +46,11 @@ function badgeFor(type: string, isDark: boolean): Badge {
       return isDark
         ? { bg: "rgba(14,165,233,0.15)", text: colors.sky300 }
         : { bg: colors.sky100, text: colors.sky700 };
+    case "game_reminder":
+      // Written by the reminder pump shortly before kick-off.
+      return isDark
+        ? { bg: "rgba(16,185,129,0.15)", text: colors.emerald300 }
+        : { bg: colors.emerald100, text: colors.emerald700 };
     case "free_play":
       return isDark
         ? { bg: "rgba(139,92,246,0.15)", text: colors.violet300 }

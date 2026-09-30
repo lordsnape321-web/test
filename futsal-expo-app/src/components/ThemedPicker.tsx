@@ -1,7 +1,6 @@
 import React, { useMemo, useState } from "react";
 import {
   Modal,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -28,14 +27,18 @@ type PickerOption<T extends PickerValue> = Omit<PickerItemProps<T>, "value"> & {
 };
 
 /**
- * A theme-safe Picker used by every native screen.
+ * A theme-safe Picker used by every screen.
  *
- * The platform Picker is still used on web, where it maps to the browser's
- * select element. On iOS and Android the platform popup is deliberately not
- * used: its dialog is owned by the operating system and can stay white when a
- * user switches the app to dark mode while the device itself is light. The
- * small modal below owns both surfaces instead, so the control and its opened
- * option list use the same palette as the screen that opened them.
+ * The platform popup is deliberately not used on any platform. On iOS and
+ * Android its dialog is owned by the operating system and can stay white when a
+ * user switches the app to dark mode while the device itself is light; on the
+ * web the control maps to the browser's own `<select>`, which is grey, has its
+ * own font size and ignores the app's radius and colours — next to a themed text
+ * input it looked like a different app (and pushed the signup form out of line).
+ *
+ * So the control and its opened list are ours: a bordered row that matches
+ * App\Components\ui's `TextControl` metrics exactly, and a centred sheet of
+ * options drawn from the active palette.
  */
 function ThemedPicker<T extends PickerValue = PickerValue>(props: ThemedPickerProps<T>) {
   const { colors: c } = useTheme();
@@ -59,10 +62,6 @@ function ThemedPicker<T extends PickerValue = PickerValue>(props: ThemedPickerPr
       ];
     });
   }, [props.children]);
-
-  if (Platform.OS === "web") {
-    return <NativePicker {...props}>{props.children}</NativePicker>;
-  }
 
   const selected = options.find((option) => Object.is(option.value, props.selectedValue)) ?? options[0];
   const pickerStyle = StyleSheet.flatten(props.style) as (TextStyle & ViewStyle) | undefined;
@@ -183,19 +182,21 @@ export const Picker = Object.assign(ThemedPicker, {
 });
 
 const styles = StyleSheet.create({
+  // Same box as `TextControl` in components/ui.tsx: a picker row sits right
+  // next to text inputs on the auth and venue forms, so it has to line up.
   control: {
-    minHeight: 44,
+    minHeight: 48,
     width: "100%",
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: space[3],
+    paddingHorizontal: space[3.5],
   },
   controlText: {
     flex: 1,
     minWidth: 0,
     marginRight: space[2],
-    fontSize: fontSize.base,
+    fontSize: fontSize.lg,
     fontWeight: "600",
   },
   disabled: { opacity: 0.5 },
@@ -204,7 +205,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     padding: space[5],
-    backgroundColor: "rgba(2,6,23,0.68)",
   },
   sheet: {
     width: "100%",

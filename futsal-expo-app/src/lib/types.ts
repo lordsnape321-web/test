@@ -96,6 +96,11 @@ export type User = {
   matchesPlayed?: number;
   rating?: number;
   trustScore?: number;
+  /** Email switches (Settings → Alerts → Email). */
+  emailNotifications?: boolean;
+  emailReminders?: boolean;
+  /** Minutes before kick-off the reminder lands. */
+  reminderMinutes?: number;
 };
 
 export type BookingStatus = "pending" | "confirmed" | "cancelled" | "completed" | "rejected";

@@ -12,6 +12,7 @@ import {
   Lock,
   LogIn,
   LogOut,
+  Mail,
   MapPin,
   Moon,
   ShieldCheck,
@@ -25,6 +26,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Avatar } from "@/components/Avatar";
+import { Notice, Toggle } from "@/components/ui";
 import { useAuth } from "@/context/AuthContext";
 import { useTheme } from "@/context/ThemeContext";
 import { fetchNotifications, markAllNotificationsRead } from "@/api";
@@ -77,6 +79,8 @@ export default function SettingsScreen() {
   const [notesLoading, setNotesLoading] = useState(true);
   const [citySaving, setCitySaving] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [emailSaving, setEmailSaving] = useState(false);
+  const [emailMsg, setEmailMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
   const loadNotes = useCallback(async () => {
     if (!user) return;
@@ -109,6 +113,30 @@ export default function SettingsScreen() {
     if (!user) return;
     await markAllNotificationsRead(user.id);
     await loadNotes();
+  }
+
+  /**
+   * Save one email preference.
+   *
+   * Optimistic by design: a switch that waits for a round trip feels broken, so
+   * the UI moves first and snaps back with a message if the server disagrees.
+   */
+  async function saveEmailPref(patch: {
+    emailNotifications?: boolean;
+    emailReminders?: boolean;
+    reminderMinutes?: number;
+  }, message: string) {
+    if (!user) return;
+    setEmailSaving(true);
+    setEmailMsg(null);
+    try {
+      await updateProfile(patch);
+      setEmailMsg({ ok: true, text: message });
+    } catch {
+      setEmailMsg({ ok: false, text: "Could not save that — try again 🙏" });
+    } finally {
+      setEmailSaving(false);
+    }
   }
 
   async function saveCity(defaultCity: string) {
@@ -420,6 +448,64 @@ export default function SettingsScreen() {
               </View>
             </View>
 
+            {/* ---------- EMAIL ---------- */}
+            <View style={[styles.card, { backgroundColor: c.surface, borderColor: c.border }]}>
+              <View style={styles.emailHead}>
+                <Mail size={16} color={c.activeText} />
+                <Text style={[styles.emailTitle, { color: c.text }]}>Email</Text>
+                {emailSaving ? <Text style={[styles.emailHint, { color: c.textFaint }]}>Saving…</Text> : null}
+              </View>
+              <Toggle
+                label="Booking emails"
+                sub="Confirmations, declines, payments and squad invitations"
+                value={user?.emailNotifications ?? true}
+                onChange={(next) =>
+                  void saveEmailPref(
+                    { emailNotifications: next },
+                    next ? "Booking emails are on 📬" : "Booking emails are off — the in-app bell still works 🔔",
+                  )
+                }
+              />
+              <Toggle
+                label="Game reminders"
+                sub={`A nudge ${formatLead(user?.reminderMinutes ?? 120)} before kick-off`}
+                value={user?.emailReminders ?? true}
+                onChange={(next) =>
+                  void saveEmailPref(
+                    { emailReminders: next },
+                    next ? "Reminders are on ⏰" : "Reminders are off — no more kick-off emails 🔕",
+                  )
+                }
+              />
+              <View style={styles.leadBlock}>
+                <Text style={[styles.leadLabel, { color: c.textMuted }]}>Remind me before kick-off</Text>
+                <View style={styles.leadRow}>
+                  {[60, 120, 240, 720].map((minutes) => {
+                    const active = (user?.reminderMinutes ?? 120) === minutes;
+                    return (
+                      <Pressable
+                        key={minutes}
+                        onPress={() => void saveEmailPref({ reminderMinutes: minutes }, `We will remind you ${formatLead(minutes)} before kick-off ⏰`)}
+                        accessibilityRole="button"
+                        accessibilityState={{ selected: active }}
+                        style={[
+                          styles.leadChip,
+                          active
+                            ? { backgroundColor: c.primary, borderColor: c.primary }
+                            : { backgroundColor: c.inset, borderColor: c.border },
+                        ]}
+                      >
+                        <Text style={[styles.leadChipText, { color: active ? c.primaryText : c.textMuted }]}>
+                          {formatLead(minutes)}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              </View>
+              {emailMsg ? <Notice message={emailMsg.text} tone={emailMsg.ok ? "success" : "error"} /> : null}
+            </View>
+
             {notesLoading ? null : notes.length === 0 ? (
               <View style={[styles.empty, { backgroundColor: c.surface, borderColor: c.border }]}>
                 <Text style={[styles.emptyText, { color: c.textFaint }]}>
@@ -680,6 +766,14 @@ function DeviceSections({
 
 /* ── pieces ──────────────────────────────────────────────────────────────── */
 
+/** "2 hours" / "1 hour" — the reminder lead, in words. */
+function formatLead(minutes: number): string {
+  if (minutes < 60) return `${minutes} minutes`;
+  const hours = minutes / 60;
+  if (Number.isInteger(hours)) return hours === 1 ? "1 hour" : `${hours} hours`;
+  return `${minutes} minutes`;
+}
+
 function PanelHead({
   icon: Icon,
   title,
@@ -880,6 +974,20 @@ const styles = StyleSheet.create({
     marginTop: space[4],
   },
 
+  emailHead: { flexDirection: "row", alignItems: "center", gap: space[2], marginBottom: space[1] },
+  emailTitle: { flex: 1, fontSize: fontSize.base, fontWeight: "900" },
+  emailHint: { fontSize: fontSize.xs, fontWeight: "700" },
+  leadBlock: { marginTop: space[2], gap: space[2] },
+  leadLabel: { fontSize: fontSize.xs, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.8 },
+  leadRow: { flexDirection: "row", flexWrap: "wrap", gap: space[2] },
+  leadChip: {
+    minHeight: 36,
+    justifyContent: "center",
+    borderWidth: 1,
+    borderRadius: radius.full,
+    paddingHorizontal: space[3],
+  },
+  leadChipText: { fontSize: fontSize.xs, fontWeight: "900" },
   panelHead: { flexDirection: "row", alignItems: "flex-start", gap: space[3], marginTop: space[4] },
   panelHeadIcon: {
     width: 40,

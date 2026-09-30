@@ -951,6 +951,31 @@ export function resetPassword(input: {
   return apiJson("/api/auth/reset", { method: "POST", json: input });
 }
 
+/**
+ * POST /api/auth/forgot-password — email a six-digit reset code.
+ *
+ * The server answers the same way whether or not the address has an account, so
+ * the screen can always say "if that email is registered, a code is on its way"
+ * without becoming a way to test which addresses exist. A 429 means the resend
+ * button was pressed too soon (or too often) and the message says how long.
+ */
+export function requestPasswordResetCode(email: string): Promise<Record<string, unknown>> {
+  return apiJson("/api/auth/forgot-password", { method: "POST", json: { email } });
+}
+
+/**
+ * POST /api/auth/reset-with-code — spend the emailed code and set a new
+ * password. Throws ApiError with the server's wording on a wrong or expired
+ * code, including how many tries are left.
+ */
+export function resetPasswordWithCode(input: {
+  email: string;
+  code: string;
+  newPassword: string;
+}): Promise<Record<string, unknown>> {
+  return apiJson("/api/auth/reset-with-code", { method: "POST", json: input });
+}
+
 /* ── reviews ─────────────────────────────────────────────────────────────── */
 
 /** One row of GET /api/reviews, enriched with the author's profile bits. */

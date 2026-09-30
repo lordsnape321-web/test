@@ -9,12 +9,11 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { seedDemo } from "@/api";
-import { Button, Notice } from "@/components/ui";
+import { Button, Label, Notice, TextControl } from "@/components/ui";
 import { useAuth } from "@/context/AuthContext";
 import { useTheme } from "@/context/ThemeContext";
 import { ApiError } from "@/lib/api";
@@ -66,7 +65,6 @@ export default function Login() {
     }
   }
 
-  const inputFill = c.inset;
 
   return (
     <SafeAreaView style={[styles.flex, { backgroundColor: c.bg }]} edges={["top", "bottom"]}>
@@ -80,20 +78,49 @@ export default function Login() {
             </LinearGradient>
 
             <View style={styles.form}>
-              <Text style={[styles.label, { color: c.textFaint }]}>Email</Text>
-              <View style={[styles.inputWrap, { backgroundColor: inputFill, borderColor: touched && validateEmail(email) ? c.dangerText : c.border }]}>
-                <Mail size={16} color={c.textFaint} />
-                <TextInput value={email} onChangeText={setEmail} placeholder="you@example.com" placeholderTextColor={c.textFaint} keyboardType="email-address" autoCapitalize="none" maxLength={100} style={[styles.input, { color: c.text }]} />
+              <View style={styles.fieldBlock}>
+                <Label style={styles.labelFlush}>Email</Label>
+                <TextControl
+                  value={email}
+                  onChangeText={setEmail}
+                  placeholder="you@example.com"
+                  icon={<Mail size={16} color={c.textFaint} />}
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  autoComplete="email"
+                  textContentType="emailAddress"
+                  maxLength={100}
+                  error={Boolean(touched && validateEmail(email))}
+                  accessibilityLabel="Email"
+                  returnKeyType="next"
+                />
+                {touched && validateEmail(email) ? <Text style={[styles.error, { color: c.dangerText }]}>{validateEmail(email)}</Text> : null}
               </View>
-              {touched && validateEmail(email) ? <Text style={[styles.error, { color: c.dangerText }]}>{validateEmail(email)}</Text> : null}
 
-              <Text style={[styles.label, { color: c.textFaint }]}>Password</Text>
-              <View style={[styles.inputWrap, { backgroundColor: inputFill, borderColor: touched && !password ? c.dangerText : c.border }]}>
-                <Lock size={16} color={c.textFaint} />
-                <TextInput value={password} onChangeText={setPassword} placeholder="••••••••" placeholderTextColor={c.textFaint} secureTextEntry={!showPw} autoCapitalize="none" maxLength={100} style={[styles.input, { color: c.text }]} />
-                <Pressable onPress={() => setShowPw((v) => !v)} accessibilityLabel={showPw ? "Hide password" : "Show password"}>{showPw ? <EyeOff size={17} color={c.textFaint} /> : <Eye size={17} color={c.textFaint} />}</Pressable>
+              <View style={styles.fieldBlock}>
+                <Label style={styles.labelFlush}>Password</Label>
+                <TextControl
+                  value={password}
+                  onChangeText={setPassword}
+                  placeholder="••••••••"
+                  icon={<Lock size={16} color={c.textFaint} />}
+                  secureTextEntry={!showPw}
+                  autoCapitalize="none"
+                  autoComplete="password"
+                  textContentType="password"
+                  maxLength={100}
+                  error={Boolean(touched && !password)}
+                  accessibilityLabel="Password"
+                  returnKeyType="go"
+                  onSubmitEditing={() => void submit()}
+                  right={
+                    <Pressable onPress={() => setShowPw((v) => !v)} accessibilityLabel={showPw ? "Hide password" : "Show password"}>
+                      {showPw ? <EyeOff size={17} color={c.textFaint} /> : <Eye size={17} color={c.textFaint} />}
+                    </Pressable>
+                  }
+                />
+                {touched && !password ? <Text style={[styles.error, { color: c.dangerText }]}>Password is required 🔒</Text> : null}
               </View>
-              {touched && !password ? <Text style={[styles.error, { color: c.dangerText }]}>Password is required 🔒</Text> : null}
 
               {error ? <Notice message={error} /> : null}
               <Button
@@ -127,10 +154,10 @@ const styles = StyleSheet.create({
   heroIcon: { width: 56, height: 56, borderRadius: radius["2xl"], backgroundColor: "#FFFFFF", alignItems: "center", justifyContent: "center" },
   heroTitle: { marginTop: space[3], color: "#FFFFFF", fontSize: fontSize["2xl"], fontWeight: "900", textAlign: "center" },
   heroSub: { marginTop: space[1], color: "rgba(209,250,229,0.85)", fontSize: fontSize.base, textAlign: "center", lineHeight: 20 },
-  form: { padding: space[6], gap: space[2.5] },
-  label: { fontSize: fontSize.sm, fontWeight: "900", textTransform: "uppercase", letterSpacing: 0.8 },
-  inputWrap: { minHeight: 48, borderWidth: 1, borderRadius: radius["2xl"], paddingHorizontal: space[4], flexDirection: "row", alignItems: "center", gap: space[2] },
-  input: { flex: 1, fontSize: 16, fontWeight: "600", paddingVertical: 11 },
+  form: { padding: space[6], gap: space[3] },
+  // The label/control pair every auth screen now shares (components/ui.tsx).
+  fieldBlock: { gap: space[1] },
+  labelFlush: { marginBottom: 0 },
   error: { fontSize: fontSize.xs, fontWeight: "700" },
   dividerRow: { flexDirection: "row", alignItems: "center", gap: space[3], paddingVertical: space[1] },
   divider: { height: 1, flex: 1 },

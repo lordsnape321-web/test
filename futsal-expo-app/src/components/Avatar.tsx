@@ -1,6 +1,7 @@
 import React from "react";
 import { Image, StyleSheet, Text, View } from "react-native";
 import { initials } from "@/lib/futsal";
+import { colors } from "@/theme";
 
 /**
  * Avatar — a 1:1 port of the web app's components/Avatar.tsx.
@@ -17,7 +18,9 @@ import { initials } from "@/lib/futsal";
 
 export type AvatarUser = {
   name: string;
-  avatarColor: string;
+  /** Optional: rows coming from the API can carry a null colour for a user who
+   *  never picked one, so the tile falls back to a neutral fill. */
+  avatarColor?: string | null;
   avatarUrl?: string | null;
 };
 
@@ -42,7 +45,7 @@ export function Avatar({
     width: size,
     height: size,
     borderRadius: radius,
-    backgroundColor: user.avatarColor,
+    backgroundColor: user.avatarColor?.trim() || colors.stone200,
     ...(ring ? { borderWidth: ring.width, borderColor: ring.color } : null),
   } as const;
 

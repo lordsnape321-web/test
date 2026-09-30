@@ -115,7 +115,7 @@ export function Field({
   const { colors } = useTheme();
   return (
     <View style={styles.field}>
-      <Text style={[styles.label, { color: colors.textMuted }]}>{label}</Text>
+      <Label>{label}</Label>
       <TextInput
         value={value}
         onChangeText={onChangeText}
@@ -135,12 +135,174 @@ export function Field({
             backgroundColor: colors.inset,
             borderColor: error ? colors.dangerText : colors.border,
             color: colors.text,
-            minHeight: multiline ? 88 : MIN_TAP_TARGET,
+            minHeight: multiline ? 88 : CONTROL_HEIGHT,
           },
         ]}
       />
       {error ? <Text style={[styles.errorText, { color: colors.dangerText }]}>{error}</Text> : null}
     </View>
+  );
+}
+
+/* ── Labels and controls ─────────────────────────────────────────────────── */
+
+/**
+ * Height every text control in the app shares.
+ *
+ * Inputs, password boxes and picker rows are built by different components, and
+ * when their paddings or heights disagree the form looks broken even though each
+ * piece is fine on its own. They all read this number instead.
+ */
+export const CONTROL_HEIGHT = 48;
+
+/** The uppercase field label used by every form, auth screens included. */
+export function Label({
+  children,
+  style,
+}: {
+  children: React.ReactNode;
+  style?: StyleProp<TextStyle>;
+}) {
+  const { colors } = useTheme();
+  return <Text style={[styles.fieldLabel, { color: colors.textMuted }, style]}>{children}</Text>;
+}
+
+/**
+ * A single-line text control with an optional leading icon and trailing slot
+ * (the show/hide eye, a unit, a spinner).
+ *
+ * Same height, padding, radius and type size as `Field`, which is the whole
+ * point: Login, Signup and Forgot password mix these freely and the columns
+ * still line up.
+ */
+export function TextControl({
+  value,
+  onChangeText,
+  placeholder,
+  icon,
+  right,
+  error = false,
+  secureTextEntry = false,
+  keyboardType = "default",
+  autoCapitalize = "none",
+  autoComplete,
+  textContentType,
+  maxLength,
+  returnKeyType,
+  onSubmitEditing,
+  accessibilityLabel,
+  autoFocus = false,
+  editable = true,
+}: {
+  value: string;
+  onChangeText: (text: string) => void;
+  placeholder?: string;
+  icon?: React.ReactNode;
+  right?: React.ReactNode;
+  error?: boolean;
+  secureTextEntry?: boolean;
+  keyboardType?: "default" | "email-address" | "numeric" | "phone-pad" | "number-pad";
+  autoCapitalize?: "none" | "sentences" | "words" | "characters";
+  autoComplete?: "email" | "password" | "tel" | "name" | "one-time-code" | "off";
+  textContentType?: "emailAddress" | "password" | "newPassword" | "telephoneNumber" | "name" | "oneTimeCode";
+  maxLength?: number;
+  returnKeyType?: "done" | "next" | "go" | "search" | "send";
+  onSubmitEditing?: () => void;
+  accessibilityLabel?: string;
+  autoFocus?: boolean;
+  editable?: boolean;
+}) {
+  const { colors } = useTheme();
+  return (
+    <View
+      style={[
+        styles.control,
+        {
+          backgroundColor: colors.inset,
+          borderColor: error ? colors.dangerText : colors.border,
+          opacity: editable ? 1 : 0.6,
+        },
+      ]}
+    >
+      {icon}
+      <TextInput
+        value={value}
+        onChangeText={onChangeText}
+        placeholder={placeholder}
+        placeholderTextColor={colors.textFaint}
+        secureTextEntry={secureTextEntry}
+        keyboardType={keyboardType}
+        autoCapitalize={autoCapitalize}
+        autoComplete={autoComplete}
+        textContentType={textContentType}
+        autoCorrect={false}
+        maxLength={maxLength}
+        returnKeyType={returnKeyType}
+        onSubmitEditing={onSubmitEditing}
+        editable={editable}
+        autoFocus={autoFocus}
+        accessibilityLabel={accessibilityLabel ?? placeholder}
+        style={[styles.controlInput, { color: colors.text }]}
+      />
+      {right}
+    </View>
+  );
+}
+
+/**
+ * A themed switch.
+ *
+ * React Native's `Switch` is the platform control — on iOS it is a UISwitch, on
+ * web a browser checkbox — so it never matches either palette. This is two views
+ * and a translate, which does.
+ */
+export function Toggle({
+  label,
+  sub,
+  value,
+  onChange,
+  disabled = false,
+}: {
+  label: string;
+  sub?: string;
+  value: boolean;
+  onChange: (next: boolean) => void;
+  disabled?: boolean;
+}) {
+  const { colors: c } = useTheme();
+  return (
+    <Pressable
+      onPress={() => onChange(!value)}
+      disabled={disabled}
+      accessibilityRole="switch"
+      accessibilityState={{ checked: value, disabled }}
+      accessibilityLabel={label}
+      style={({ pressed }) => [styles.toggleRow, { opacity: disabled ? 0.5 : pressed ? 0.85 : 1 }]}
+    >
+      <View style={styles.grow}>
+        <Text style={[styles.toggleLabel, { color: c.text }]}>{label}</Text>
+        {sub ? <Text style={[styles.toggleSub, { color: c.textMuted }]}>{sub}</Text> : null}
+      </View>
+      <View
+        style={[
+          styles.track,
+          {
+            backgroundColor: value ? c.primary : c.inset,
+            borderColor: value ? c.primary : c.border,
+          },
+        ]}
+      >
+        <View
+          style={[
+            styles.knob,
+            {
+              backgroundColor: value ? c.primaryText : c.textFaint,
+              transform: [{ translateX: value ? 18 : 0 }],
+            },
+          ]}
+        />
+      </View>
+    </Pressable>
   );
 }
 
@@ -288,13 +450,56 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
     letterSpacing: 0.8,
   },
+  fieldLabel: {
+    fontSize: fontSize.sm,
+    marginBottom: space["1"],
+    fontWeight: "900",
+    textTransform: "uppercase",
+    letterSpacing: 0.8,
+  },
+  control: {
+    minHeight: CONTROL_HEIGHT,
+    borderWidth: 1,
+    borderRadius: radius["2xl"],
+    paddingHorizontal: space["3.5"],
+    flexDirection: "row",
+    alignItems: "center",
+    gap: space["2"],
+  },
+  controlInput: {
+    flex: 1,
+    minWidth: 0,
+    fontSize: fontSize.lg,
+    fontWeight: "600",
+    paddingVertical: space["2"],
+  },
+  grow: { flex: 1, minWidth: 0 },
+  toggleRow: {
+    minHeight: 56,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: space["3"],
+    paddingVertical: space["2"],
+  },
+  toggleLabel: { fontSize: fontSize.base, fontWeight: "800" },
+  toggleSub: { marginTop: 2, fontSize: fontSize.xs, lineHeight: 16 },
+  track: {
+    width: 44,
+    height: 26,
+    borderWidth: 1,
+    borderRadius: radius.full,
+    padding: 2,
+    justifyContent: "center",
+  },
+  knob: { width: 20, height: 20, borderRadius: radius.full },
   input: {
     borderWidth: 1,
     borderRadius: radius["2xl"],
     paddingHorizontal: space["3.5"],
-    paddingVertical: space["2.5"],
+    paddingVertical: space["2"],
     fontSize: fontSize.lg,
-    minHeight: MIN_TAP_TARGET,
+    fontWeight: "600",
+    minHeight: CONTROL_HEIGHT,
   },
   multilineInput: {
     textAlignVertical: "top",

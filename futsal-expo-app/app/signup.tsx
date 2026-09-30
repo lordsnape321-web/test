@@ -9,13 +9,12 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from "react-native";
 import { Picker } from "@/components/ThemedPicker";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { seedDemo } from "@/api";
-import { Button, Field, Notice } from "@/components/ui";
+import { Button, Field, Label, Notice, TextControl } from "@/components/ui";
 import { useAuth } from "@/context/AuthContext";
 import { useTheme } from "@/context/ThemeContext";
 import { useBreakpoints } from "@/lib/responsive";
@@ -141,62 +140,71 @@ export default function Signup() {
             </LinearGradient>
 
             <View style={styles.form}>
-              <View style={styles.roleGrid}>
-                <RoleCard
-                  active={role === "player"}
-                  icon={<Zap size={20} color={role === "player" ? tokens.emerald600 : c.textFaint} />}
-                  title="I want to play"
-                  subtitle="Book courts, join games & teams"
-                  onPress={() => setRole("player")}
-                  activeColor={tokens.emerald600}
-                  colors={c}
-                />
-                <RoleCard
-                  active={role === "owner"}
-                  icon={<Crown size={20} color={role === "owner" ? tokens.orange500 : c.textFaint} />}
-                  title="I own a court"
-                  subtitle="Welcome players, grow bookings"
-                  onPress={() => setRole("owner")}
-                  activeColor={tokens.orange500}
-                  colors={c}
-                />
+              <View style={styles.roleBlock}>
+                <View style={[styles.roleBar, { backgroundColor: c.inset, borderColor: c.border }]}>
+                  <RoleOption
+                    active={role === "player"}
+                    label="I want to play"
+                    icon={<Zap size={16} color={role === "player" ? c.primary : c.textFaint} />}
+                    activeColor={c.primary}
+                    onPress={() => setRole("player")}
+                  />
+                  <RoleOption
+                    active={role === "owner"}
+                    label="I own a court"
+                    icon={<Crown size={16} color={role === "owner" ? tokens.orange500 : c.textFaint} />}
+                    activeColor={tokens.orange500}
+                    onPress={() => setRole("owner")}
+                  />
+                </View>
+                <Text style={[styles.roleHint, { color: c.textMuted }]}>
+                  {role === "player"
+                    ? "Book courts, join open games and split the bill with your squad."
+                    : "List your venue, set court hours and take booking requests in Owner Studio."}
+                </Text>
               </View>
 
-              <Field label="What should we call you?" value={name} onChangeText={setName} placeholder="Your name" error={touched ? nameError : null} />
+              <Field label="Your name" value={name} onChangeText={setName} placeholder="What should we call you?" error={touched ? nameError : null} />
               {sm ? (
                 <View style={styles.twoCol}>
                   <View style={styles.twoColItem}>
                     <Field label="Email" value={email} onChangeText={setEmail} placeholder="you@mail.com" keyboardType="email-address" autoCapitalize="none" error={touched ? emailError : null} />
                   </View>
                   <View style={styles.twoColItem}>
-                    <Field label="Phone (one account per number)" value={phone} onChangeText={setPhone} placeholder="98XXXXXXXX" keyboardType="phone-pad" autoCapitalize="none" error={touched ? phoneError : null} />
+                    <Field label="Phone number" value={phone} onChangeText={setPhone} placeholder="98XXXXXXXX" keyboardType="phone-pad" autoCapitalize="none" error={touched ? phoneError : null} />
                   </View>
                 </View>
               ) : (
                 <>
                   <Field label="Email" value={email} onChangeText={setEmail} placeholder="you@mail.com" keyboardType="email-address" autoCapitalize="none" error={touched ? emailError : null} />
-                  <Field label="Phone (one account per number)" value={phone} onChangeText={setPhone} placeholder="98XXXXXXXX" keyboardType="phone-pad" autoCapitalize="none" error={touched ? phoneError : null} />
+                  <Field label="Phone number" value={phone} onChangeText={setPhone} placeholder="98XXXXXXXX" keyboardType="phone-pad" autoCapitalize="none" error={touched ? phoneError : null} />
                 </>
               )}
+              <Text style={[styles.fieldHint, { color: c.textFaint }]}>
+                One account per phone number — it is how a booking finds you. We email your booking
+                confirmations and a reminder before kick-off.
+              </Text>
 
               <View style={styles.fieldBlock}>
-                <Text style={[styles.label, { color: c.textFaint }]}>Pick a password (min 6 chars)</Text>
-                <View style={[styles.passwordWrap, { backgroundColor: inputFill, borderColor: touched && passwordError ? c.dangerText : c.border }]}>
-                  <Lock size={16} color={c.textFaint} />
-                  <TextInput
-                    value={password}
-                    onChangeText={setPassword}
-                    placeholder="Something you&apos;ll remember"
-                    placeholderTextColor={c.textFaint}
-                    secureTextEntry={!showPw}
-                    autoCapitalize="none"
-                    maxLength={100}
-                    style={[styles.passwordInput, { color: c.text }]}
-                  />
-                  <Pressable onPress={() => setShowPw((v) => !v)} accessibilityLabel={showPw ? "Hide password" : "Show password"}>
-                    {showPw ? <EyeOff size={17} color={c.textFaint} /> : <Eye size={17} color={c.textFaint} />}
-                  </Pressable>
-                </View>
+                <Label style={styles.labelFlush}>Pick a password (min 6 chars)</Label>
+                <TextControl
+                  value={password}
+                  onChangeText={setPassword}
+                  placeholder="Something you&apos;ll remember"
+                  icon={<Lock size={16} color={c.textFaint} />}
+                  secureTextEntry={!showPw}
+                  autoCapitalize="none"
+                  autoComplete="password"
+                  textContentType="newPassword"
+                  maxLength={100}
+                  error={Boolean(touched && passwordError)}
+                  accessibilityLabel="Password"
+                  right={
+                    <Pressable onPress={() => setShowPw((v) => !v)} accessibilityLabel={showPw ? "Hide password" : "Show password"}>
+                      {showPw ? <EyeOff size={17} color={c.textFaint} /> : <Eye size={17} color={c.textFaint} />}
+                    </Pressable>
+                  }
+                />
                 {password ? (
                   <View style={styles.strengthWrap}>
                     <View style={styles.strengthBars}>
@@ -214,7 +222,7 @@ export default function Signup() {
               </View>
 
               <View style={styles.fieldBlock}>
-                <Text style={[styles.label, { color: c.textFaint }]}>Home city 🏠 — your search starts here</Text>
+                <Label style={styles.labelFlush}>Home city 🏠 — your search starts here</Label>
                 <View style={[styles.pickerWrap, { backgroundColor: inputFill, borderColor: touched && cityError ? c.dangerText : c.border }]}>
                   <Picker selectedValue={defaultCity} onValueChange={(v) => setDefaultCity(String(v))} style={{ color: c.text }} dropdownIconColor={c.textMuted}>
                     {CITY_OPTIONS.filter((city) => city !== "All Cities").map((city) => <Picker.Item key={city} label={city} value={city} />)}
@@ -258,13 +266,32 @@ export default function Signup() {
   );
 }
 
-function RoleCard({ active, icon, title, subtitle, onPress, activeColor, colors: c }: { active: boolean; icon: React.ReactNode; title: string; subtitle: string; onPress: () => void; activeColor: string; colors: { surface: string; border: string; text: string; textMuted: string; textFaint: string } }) {
+/**
+ * One half of the "I want to play / I own a court" bar.
+ *
+ * A segmented control rather than two big cards: it reads as one choice, it
+ * cannot be mistaken for two buttons, and the selected half uses the same
+ * surface + accent treatment as the rest of the app's selected states.
+ */
+function RoleOption({ active, label, icon, activeColor, onPress }: { active: boolean; label: string; icon: React.ReactNode; activeColor: string; onPress: () => void }) {
+  const { colors: c } = useTheme();
   return (
-    <Pressable onPress={onPress} style={[styles.roleCard, { backgroundColor: active ? `${activeColor}12` : c.surface, borderColor: active ? activeColor : c.border }]} accessibilityRole="button" accessibilityState={{ selected: active }}>
-      {active ? <View style={[styles.check, { backgroundColor: activeColor }]}><Check size={12} color="#FFFFFF" strokeWidth={3.5} /></View> : null}
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityState={{ selected: active }}
+      style={[
+        styles.roleOption,
+        active
+          ? { backgroundColor: c.surface, borderColor: activeColor }
+          : { backgroundColor: "transparent", borderColor: "transparent" },
+      ]}
+    >
       {icon}
-      <Text style={[styles.roleTitle, { color: c.text }]}>{title}</Text>
-      <Text style={[styles.roleSubtitle, { color: c.textMuted }]}>{subtitle}</Text>
+      <Text style={[styles.roleOptionText, { color: active ? c.text : c.textMuted }]} numberOfLines={1}>
+        {label}
+      </Text>
+      {active ? <Check size={14} color={activeColor} strokeWidth={3.5} /> : null}
     </Pressable>
   );
 }
@@ -273,7 +300,7 @@ function ChoiceRow({ label, options, value, onChange }: { label: string; options
   const { colors: c } = useTheme();
   return (
     <View style={styles.fieldBlock}>
-      <Text style={[styles.label, { color: c.textFaint }]}>{label}</Text>
+      <Label style={styles.labelFlush}>{label}</Label>
       <View style={[styles.pickerWrap, { backgroundColor: c.inset, borderColor: c.border }]}>
         <Picker selectedValue={value} onValueChange={(next) => onChange(String(next))} style={{ color: c.text }} dropdownIconColor={c.textMuted}>
           {options.map((option) => <Picker.Item key={option} label={option} value={option} />)}
@@ -299,16 +326,25 @@ const styles = StyleSheet.create({
   heroTitle: { marginTop: space[3], color: "#FFFFFF", fontSize: fontSize["2xl"], fontWeight: "900", textAlign: "center" },
   heroSub: { marginTop: space[1], color: "rgba(209,250,229,0.85)", fontSize: fontSize.base, textAlign: "center", lineHeight: 20 },
   form: { padding: space[6], gap: space[3] },
-  roleGrid: { flexDirection: "row", gap: space[2], marginBottom: space[2] },
-  roleCard: { flex: 1, minHeight: 118, borderWidth: 1, borderRadius: radius["2xl"], padding: space[3], position: "relative" },
-  check: { position: "absolute", top: 10, right: 10, width: 20, height: 20, borderRadius: 10, alignItems: "center", justifyContent: "center" },
-  roleTitle: { marginTop: space[2], fontSize: fontSize.base, fontWeight: "900" },
-  roleSubtitle: { marginTop: 2, fontSize: fontSize.xs, lineHeight: 16 },
+  roleBlock: { gap: space[2] },
+  roleBar: { flexDirection: "row", gap: space[1], borderWidth: 1, borderRadius: radius["2xl"], padding: space[1] },
+  roleOption: {
+    flex: 1,
+    minHeight: 44,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    borderWidth: 1,
+    borderRadius: radius.xl,
+    paddingHorizontal: space[2],
+  },
+  roleOptionText: { flexShrink: 1, fontSize: fontSize.sm, fontWeight: "900" },
+  roleHint: { fontSize: fontSize.xs, lineHeight: 17, textAlign: "center" },
   fieldBlock: { gap: space[1] },
-  label: { fontSize: fontSize.sm, fontWeight: "900", textTransform: "uppercase", letterSpacing: 0.8 },
-  labelRow: { flexDirection: "row", alignItems: "center", gap: 5 },
-  passwordWrap: { minHeight: 48, borderWidth: 1, borderRadius: radius["2xl"], paddingHorizontal: space[4], flexDirection: "row", alignItems: "center", gap: space[2] },
-  passwordInput: { flex: 1, fontSize: 16, fontWeight: "600", paddingVertical: 11 },
+  // `Label` carries its own bottom margin; inside a gap'd block that doubles up.
+  labelFlush: { marginBottom: 0 },
+  fieldHint: { fontSize: fontSize.xs, lineHeight: 17, marginTop: -space[1] },
   pickerWrap: { borderWidth: 1, borderRadius: radius["2xl"], overflow: "hidden", minHeight: 48, justifyContent: "center" },
   hint: { fontSize: fontSize.xs, fontWeight: "600" },
   error: { fontSize: fontSize.xs, fontWeight: "700" },

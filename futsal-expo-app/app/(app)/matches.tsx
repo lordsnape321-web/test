@@ -648,7 +648,7 @@ function OpenMatchCard({
           {queue.map((r) => (
             <View key={r.id} style={[styles.queueRow, { borderColor: c.border }]}>
               <Avatar
-                user={{ name: r.name, avatarColor: r.avatarColor, avatarUrl: r.avatarUrl }}
+                user={{ name: r.name ?? "", avatarColor: r.avatarColor, avatarUrl: r.avatarUrl }}
                 size={32}
               />
               <View style={styles.grow}>
