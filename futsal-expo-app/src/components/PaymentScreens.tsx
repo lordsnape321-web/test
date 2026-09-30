@@ -69,9 +69,9 @@ function GatewayMock({ kind, params, onDone, onCancel }: { kind: "esewa" | "khal
           method: label,
         });
       } else if (kind === "esewa") {
-        await verifyEsewa(Number(bookingId), true, teamPaymentId ? Number(teamPaymentId) : undefined, paymentRequestId ? Number(paymentRequestId) : undefined, numberParam(params.userId) || undefined, one(params.uuid) || checkoutId);
+        await verifyEsewa(Number(bookingId), true, teamPaymentId ? Number(teamPaymentId) : undefined, paymentRequestId ? Number(paymentRequestId) : undefined, numberParam(params.userId) || undefined, one(params.uuid) || checkoutId, one(params.paymentPurpose) === "advance" ? "advance" : undefined, amount);
       } else {
-        await verifyKhalti(Number(bookingId), one(params.pidx) && one(params.pidx) !== "mock-pidx" ? one(params.pidx) : checkoutId, true, teamPaymentId ? Number(teamPaymentId) : undefined, paymentRequestId ? Number(paymentRequestId) : undefined, numberParam(params.userId) || undefined);
+        await verifyKhalti(Number(bookingId), one(params.pidx) && one(params.pidx) !== "mock-pidx" ? one(params.pidx) : checkoutId, true, teamPaymentId ? Number(teamPaymentId) : undefined, paymentRequestId ? Number(paymentRequestId) : undefined, numberParam(params.userId) || undefined, one(params.paymentPurpose) === "advance" ? "advance" : undefined, amount);
       }
       if (isLeague) {
         // League checkout returns to its detail page, just like the web mock.

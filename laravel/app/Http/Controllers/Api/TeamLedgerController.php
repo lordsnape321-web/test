@@ -3,14 +3,15 @@
 namespace App\Http\Controllers\Api;
 
 use App\Models\Booking;
+use App\Models\BookingGuestPayment;
+use App\Services\ParticipantLedger;
+use Illuminate\Support\Facades\DB;
 use App\Models\BookingTeamPayment;
-use App\Models\Team;
 use App\Models\TeamLedgerEntry;
 use App\Models\TeamMember;
 use App\Models\User;
 use App\Services\Notifier;
 use App\Support\BookingLedger;
-use App\Support\TeamStore;
 use App\Support\Futsal;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -33,7 +34,7 @@ use Illuminate\Http\Request;
  */
 class TeamLedgerController extends ApiController
 {
-    private const ACTIONS = ['collect', 'void'];
+    private const ACTIONS = ['collect', 'void', 'guest', 'voidGuest'];
 
     /** GET — every squad member, their share, and what they have handed over. */
     public function show(Request $request, int $id): JsonResponse
@@ -52,6 +53,11 @@ class TeamLedgerController extends ApiController
 
     /** POST — the captain records money in, or takes back a mistaken line. */
     public function store(Request $request, int $id): JsonResponse
+    {
+        return DB::transaction(fn () => $this->writeLedger($request, $id));
+    }
+
+    private function writeLedger(Request $request, int $id): JsonResponse
     {
         $action = (string) $request->input('action', '');
 
@@ -73,6 +79,8 @@ class TeamLedgerController extends ApiController
         }
 
         return match ($action) {
+            'guest' => $this->guest($booking, $request, $actorId),
+            'voidGuest' => $this->voidGuest($booking, $request, $actorId),
             'collect' => $this->collect($booking, $request, $actorId),
             'void' => $this->void($booking, $request, $actorId),
             default => $this->fail('Unhandled action 📋', 400),
@@ -112,8 +120,12 @@ class TeamLedgerController extends ApiController
         // Default to settling the whole outstanding share; an explicit amount
         // is allowed so a captain can take a part payment, but never more than
         // is owed — an overpayment here would silently make the totals lie.
+        if ($request->filled('amount') && filter_var($request->input('amount'), FILTER_VALIDATE_INT) === false) {
+            return $this->fail('Enter a whole-rupee amount', 400);
+        }
+
         $amount = $request->filled('amount')
-            ? (int) round((float) $request->input('amount'))
+            ? (int) $request->input('amount')
             : $outstanding;
 
         if ($amount <= 0) {
@@ -160,6 +172,7 @@ class TeamLedgerController extends ApiController
             );
         }
 
+        BookingLedger::syncCachedState($booking);
         $next = $this->payload($booking->fresh() ?? $booking, $actorId, true);
         $left = $next['totals']['outstanding'];
 
@@ -206,16 +219,17 @@ class TeamLedgerController extends ApiController
             ->first();
 
         if ($share) {
-            $paid = (int) TeamLedgerEntry::forBooking($booking->id)
-                ->where('user_id', (int) $entry->user_id)
-                ->whereNull('voided_at')
-                ->sum('amount');
+            // Remove only this manual contribution, preserving direct venue
+            // and gateway payments already reflected in the same share.
+            $paid = max(0, (int) $share->paid_amount - (int) $entry->amount);
 
             $share->forceFill([
                 'paid_amount' => $paid,
                 'payment_status' => $paid <= 0 ? 'pending' : ($paid >= (int) $share->amount_due ? 'paid' : 'partial'),
             ])->save();
         }
+
+        BookingLedger::syncCachedState($booking);
 
         return $this->ok([
             'ok' => true,
@@ -231,151 +245,50 @@ class TeamLedgerController extends ApiController
      */
     private function payload(Booking $booking, int $actorId, bool $isCaptain): array
     {
-        $shares = BookingTeamPayment::where('booking_id', $booking->id)->orderBy('id')->get();
-        $entries = TeamLedgerEntry::forBooking($booking->id)->orderBy('id')->get();
-        $team = $booking->team_id ? Team::find((int) $booking->team_id) : null;
-
-        // The whole squad, not only the members who happen to have a share row.
-        //
-        // A share is created when the cost is split, so a teammate who joined
-        // the squad later — or whose share was written off — had no row and
-        // simply did not appear. The captain was looking at a ledger of the
-        // people who happened to owe, not at the team they play for. The
-        // roster is the source of truth; a share, when one exists, supplies
-        // the amounts. Anyone with a share but no longer on the roster is
-        // still listed, because their money is still in the ledger.
-        $shareByUser = $shares->keyBy('user_id');
-        $rosterIds = $team ? TeamMember::where('team_id', $team->id)->orderBy('id')->pluck('user_id')->all() : [];
-
-        $memberIds = array_values(array_unique(array_merge(
-            array_map('intval', $rosterIds),
-            $shares->pluck('user_id')->map(fn ($id) => (int) $id)->all()
-        )));
-
-        $people = User::whereIn('id', $memberIds)->get()->keyBy('id');
-
-        $due = 0;
-        $paid = 0;
-
-        $members = collect($memberIds)->map(function (int $userId) use ($shareByUser, $people, $entries, $actorId, $team, &$due, &$paid) {
-            $share = $shareByUser->get($userId);
-            $person = $people->get($userId);
-            $mine = $entries->filter(
-                fn (TeamLedgerEntry $e) => (int) $e->user_id === $userId && ! $e->voided_at
-            );
-
-            $amountDue = $share ? (int) $share->amount_due : 0;
-            $collected = (int) $mine->sum('amount');
-            $due += $amountDue;
-            $paid += $collected;
-
-            return [
-                // 0 rather than null: a squad member with no share row is a
-                // real person on the roster who simply has nothing split out.
-                'shareId' => $share ? (int) $share->id : 0,
-                'userId' => $userId,
-                'userName' => $person?->name ?? 'Player',
-                'userAvatarColor' => $person?->avatar_color ?? '#10B981',
-                'userAvatarUrl' => $person?->avatar_url ?? '',
-                'userLevel' => $person?->level ?? '',
-                'isYou' => $userId === $actorId,
-                'isCaptain' => $team ? TeamStore::isCaptain((int) $team->id, $userId) : false,
-                'amountDue' => $amountDue,
-                'collected' => $collected,
-                'outstanding' => max(0, $amountDue - $collected),
-                'status' => $amountDue <= 0
-                    ? 'none'
-                    : ($collected <= 0 ? 'pending' : ($collected >= $amountDue ? 'paid' : 'partial')),
-                'declaredMethod' => $share?->payment_method ?? '',
-                'entries' => $mine->map(fn (TeamLedgerEntry $e) => $this->entry($e, $people))->values()->all(),
-            ];
-        })->values()->all();
-
-        return [
-            'bookingId' => (int) $booking->id,
-            'date' => $booking->date,
-            'teamId' => (int) $booking->team_id,
-            'teamName' => $booking->team_name ?: ($team?->name ?? 'Your squad'),
-            'isCaptain' => $isCaptain,
-            'actorId' => $actorId,
-            'members' => $members,
-            'totals' => [
-                'due' => $due,
-                'collected' => $paid,
-                'outstanding' => max(0, $due - $paid),
-            ],
-        ];
+        return ParticipantLedger::payload($booking, $actorId, $isCaptain);
     }
 
-    /**
-     * @param  \Illuminate\Support\Collection<int, \App\Models\User>  $people
-     * @return array<string, mixed>
-     */
-    private function entry(TeamLedgerEntry $entry, $people): array
+    private function guest(Booking $booking, Request $request, int $actorId): JsonResponse
     {
-        $by = $people->get((int) $entry->recorded_by);
-
-        return [
-            'id' => $entry->id,
-            'userId' => (int) $entry->user_id,
-            'userName' => $people->get((int) $entry->user_id)?->name ?? 'Player',
-            'amount' => (int) $entry->amount,
-            'method' => $entry->method,
-            'note' => $entry->note ?? '',
-            'recordedByName' => $by?->name ?? 'Captain',
-            'createdAt' => $entry->created_at,
-        ];
+        $name = $request->input('playerName');
+        if (! is_string($name) || trim($name) === '' || mb_strlen(trim($name)) > 120) {
+            return $this->fail('Enter the guest player name (1–120 characters).', 400);
+        }
+        $error = BookingLedger::validateInstalment($request->input('amount'), $request->input('method'));
+        if ($error) return $this->fail($error, 400);
+        $entry = BookingGuestPayment::create([
+            'booking_id' => $booking->id, 'player_name' => trim($name),
+            'amount' => (int) $request->input('amount'), 'method' => $request->input('method'),
+            'note' => mb_substr((string) $request->input('note', ''), 0, 200), 'recorded_by' => $actorId,
+        ]);
+        return $this->ok(['entryId' => $entry->id, 'ledger' => $this->payload($booking, $actorId, true),
+            'message' => 'Guest payment saved to the organizer ledger. This is not a venue receipt.'], 201);
     }
 
-    /**
-     * Who may see this ledger, and who may change it.
-     *
-     * Reading is for the squad; writing is the captain alone. "Captain" means
-     * the player who booked it *and* captains that team, so a squad member who
-     * booked a pitch for their team is not suddenly able to rewrite the
-     * captain's books.
-     *
+    private function voidGuest(Booking $booking, Request $request, int $actorId): JsonResponse
+    {
+        $entry = BookingGuestPayment::where('booking_id', $booking->id)->find((int) $request->input('entryId'));
+        if (! $entry) return $this->fail('Guest entry not found on this booking.', 404);
+        if (! $entry->voided_at) $entry->forceFill(['voided_at' => now(), 'voided_by' => $actorId])->save();
+        return $this->ok(['ledger' => $this->payload($booking, $actorId, true), 'message' => 'Guest payment voided; history retained.']);
+    }
+
+    /** Organizer writes; team members may read. Open-spot names are shown to
+     * the organizer without granting strangers access to the squad's finances.
      * @return array{0: Booking, 1: bool}|JsonResponse
      */
     private function guardBooking(int $id, int $actorId, bool $read)
     {
-        $booking = Booking::find($id);
-
-        if ($actorId <= 0) {
-            return $this->fail('Sign in to see the squad ledger 🔒', 401);
+        $booking = $read ? Booking::find($id) : Booking::lockForUpdate()->find($id);
+        if ($actorId <= 0) return $this->fail('Sign in to see the player ledger.', 401);
+        if (! $booking) return $this->fail('Booking not found', 404);
+        $isOrganizer = (int) $booking->user_id === $actorId;
+        $isMember = $booking->team_id && TeamMember::where('team_id', $booking->team_id)->where('user_id', $actorId)->exists();
+        // Open-spot players are listed for the organizer. They are not granted
+        // access to the entire team's private financial history.
+        if (! $isOrganizer && (! $read || ! $isMember)) {
+            return $this->fail($read ? 'Only the booking organizer and team can view this ledger.' : 'Only the booking organizer can record collections.', 403);
         }
-
-        if (! $booking) {
-            return $this->fail('Booking not found', 404);
-        }
-
-        if (! $booking->team_id) {
-            return $this->fail('This is not a team booking 👥', 400);
-        }
-
-        $isMember = TeamMember::where('team_id', $booking->team_id)->where('user_id', $actorId)->exists();
-        $captainsBooking = (int) $booking->user_id === $actorId;
-        $isCaptain = $captainsBooking && $this->isTeamCaptain((int) $booking->team_id, $actorId);
-
-        if (! $isMember) {
-            return $this->fail('Only this booking team can see its ledger 🔒', 403);
-        }
-
-        if (! $read && ! $isCaptain) {
-            return $this->fail('Only the captain can record what the squad handed over 👑', 403);
-        }
-
-        return [$booking, $isCaptain];
-    }
-
-    /**
-     * One definition of "captain" for the whole app: the squad's captain_id,
-     * not a hand-rolled read of team_members.role. Anything else would let the
-     * two drift apart and hand the ledger to someone the rest of the product
-     * treats as an ordinary squad member.
-     */
-    private function isTeamCaptain(int $teamId, int $userId): bool
-    {
-        return TeamStore::isCaptain($teamId, $userId);
+        return [$booking, $isOrganizer];
     }
 }

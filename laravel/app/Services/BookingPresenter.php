@@ -175,12 +175,12 @@ class BookingPresenter
         );
 
         // An advance counts as received only up to what has actually landed in
-        // the ledger — a partial advance is not a paid one.
+        // the ledger. Show partial receipts without marking the advance paid.
         $advanceRequested = (bool) $booking->advance_payment_required
             ? max(0, (int) $booking->advance_payment_amount)
             : 0;
 
-        $advanceReceived = ((bool) $booking->advance_payment_required && $booking->advance_payment_status === 'paid')
+        $advanceReceived = (bool) $booking->advance_payment_required
             ? min($advanceRequested, $totals['paid'])
             : 0;
 
@@ -189,7 +189,7 @@ class BookingPresenter
         $advanceReceivable = (! $closed
             && (bool) $booking->advance_payment_required
             && ! in_array($booking->advance_payment_status, ['paid', 'expired'], true))
-            ? $advanceRequested
+            ? max(0, $advanceRequested - $advanceReceived)
             : 0;
 
         $paymentSummary = [

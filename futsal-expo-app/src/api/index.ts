@@ -420,10 +420,12 @@ export function verifyEsewa(
   paymentRequestId?: number,
   userId?: number,
   uuid?: string,
+  paymentPurpose?: "advance",
+  expectedAmount?: number,
 ): Promise<Record<string, unknown>> {
   return apiJson("/api/payments/esewa/verify", {
     method: "POST",
-    json: { bookingId, mockApprove, teamPaymentId, paymentRequestId, userId, uuid },
+    json: { bookingId, mockApprove, teamPaymentId, paymentRequestId, userId, uuid, paymentPurpose, expectedAmount },
   });
 }
 
@@ -440,10 +442,12 @@ export function verifyKhalti(
   teamPaymentId?: number,
   paymentRequestId?: number,
   userId?: number,
+  paymentPurpose?: "advance",
+  expectedAmount?: number,
 ): Promise<Record<string, unknown>> {
   return apiJson("/api/payments/khalti/verify", {
     method: "POST",
-    json: { bookingId, pidx, mockApprove, teamPaymentId, paymentRequestId, userId },
+    json: { bookingId, pidx, mockApprove, teamPaymentId, paymentRequestId, userId, paymentPurpose, expectedAmount },
   });
 }
 
@@ -531,6 +535,13 @@ export function createBookingPaymentRequest(
   input: { requesterId: number; payerIds?: number[]; payerId?: number; amount: number; purpose: "advance" | "booking"; note?: string },
 ): Promise<Record<string, unknown>> {
   return apiJson(`/api/bookings/${bookingId}/payment-requests`, { method: "POST", json: input });
+}
+
+/** Keep cancelled requests in the database as history. */
+export function cancelBookingPaymentRequest(bookingId: number, requestId: number, userId: number): Promise<Record<string, unknown>> {
+  return apiJson(`/api/bookings/${bookingId}/payment-requests/${requestId}`, {
+    method: "PATCH", json: { userId, action: "cancel" },
+  });
 }
 
 /** PATCH /api/bookings/:id/payment-requests/:requestId → payer selects eSewa/Khalti. */

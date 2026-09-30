@@ -6,7 +6,9 @@ import { BookingVenueName } from "@/components/BookingVenueName";
 import TeamLedgerPanel from "@/components/TeamLedgerPanel";
 import { Button, Card, Field, Notice, Pill, Spinner } from "@/components/ui";
 import {
+  cancelBookingPaymentRequest,
   chooseBookingPayment,
+  chooseBookingTeamPayment,
   chooseBookingPaymentRequest,
   createBookingPaymentRequest,
   fetchBooking,
@@ -18,6 +20,7 @@ import { useTheme } from "@/context/ThemeContext";
 import { ApiError } from "@/lib/api";
 import { formatWindowLeft } from "@/lib/booking-ledger";
 import { formatNPR, prettyDate } from "@/lib/futsal";
+import { advanceOf } from "@/lib/booking-advance";
 import { moneyOf } from "@/lib/money";
 import type { Booking, Ledger } from "@/lib/types";
 import { fontSize, space } from "@/theme";
@@ -64,6 +67,7 @@ export default function BookingDetail() {
   const [settleError, setSettleError] = useState<string | null>(null);
   // The captain's own money ledger for this team booking.
   const [squadLedgerOpen, setSquadLedgerOpen] = useState(false);
+  const [showAdvanceRequests, setShowAdvanceRequests] = useState(false);
   const [requestPayerIds, setRequestPayerIds] = useState<string[]>([]);
   const [requestAmount, setRequestAmount] = useState("");
   const [requestNote, setRequestNote] = useState("");
@@ -82,6 +86,7 @@ export default function BookingDetail() {
       ]);
       setBooking(b);
       setLedger(l);
+      setBusy(null);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Could not load this booking.");
     } finally {
@@ -97,7 +102,7 @@ export default function BookingDetail() {
   useFocusEffect(
     useCallback(() => {
       void load(true);
-    }, [bookingId, user?.id])
+    }, [load])
   );
 
   /**
@@ -109,7 +114,7 @@ export default function BookingDetail() {
    * check skipped, ledger row appended, statuses updated, audit trail written.
    * Swapping in a real gateway SDK later changes only this function.
    */
-  async function pay(method: "esewa" | "khalti") {
+  async function pay(method: "esewa" | "khalti", target: "auto" | "advance" = "auto", requestId?: number) {
     if (!booking || !user) return;
     setBusy(method);
     setError(null);
@@ -117,23 +122,28 @@ export default function BookingDetail() {
     try {
       // Keep the gateway step visible on native too. The mock screens call the
       // same verify endpoints, then return through the success/callback route.
-      const request = booking.paymentRequests?.find(
-        (item) => item.payerId === user.id && item.status === "pending",
+      const payingAdvance = target === "advance" && booking.userId === user.id;
+      const request = payingAdvance ? undefined : booking.paymentRequests?.find(
+        (item) => item.payerId === user.id && item.status === "pending" && (!requestId || item.id === requestId),
       );
-      const teamShare = booking.teamPayments?.find((share) => share.userId === user.id);
+      const teamShare = payingAdvance ? undefined : booking.teamPayments?.find((share) => share.userId === user.id);
       if (request) {
         await chooseBookingPaymentRequest(bookingId, request.id, user.id, method === "esewa" ? "eSewa" : "Khalti");
-      } else if (!teamShare && booking.advancePaymentRequired && booking.advancePaymentStatus !== "paid") {
+      } else if (teamShare) {
+        await chooseBookingTeamPayment(bookingId, user.id, method === "esewa" ? "eSewa" : "Khalti");
+      } else {
         await chooseBookingPayment(bookingId, user.id, method === "esewa" ? "eSewa" : "Khalti");
       }
       const amount = request
         ? request.amountDue
         : teamShare && teamShare.paymentStatus !== "paid"
-          ? teamShare.amountDue
+          ? Math.max(0, teamShare.amountDue - teamShare.paidAmount)
           : booking.advancePaymentRequired && booking.advancePaymentStatus !== "paid"
-            ? booking.advancePaymentAmount ?? 0
+            ? advanceOf(booking, ledger?.totals.paid ?? 0).remaining
             : Math.max(0, ledger?.totals.balance ?? 0);
-      const targetQuery = request
+      const targetQuery = payingAdvance
+        ? `&userId=${user.id}&paymentPurpose=advance`
+        : request
         ? `&paymentRequestId=${request.id}&userId=${user.id}`
         : teamShare && teamShare.paymentStatus !== "paid"
           ? `&teamPaymentId=${teamShare.id}&userId=${user.id}`
@@ -148,6 +158,21 @@ export default function BookingDetail() {
     }
   }
 
+  async function cancelRequest(requestId: number) {
+    if (!user) return;
+    setRequestBusy(true);
+    setError(null);
+    try {
+      await cancelBookingPaymentRequest(bookingId, requestId, user.id);
+      await load(true);
+      setSuccess("Request cancelled. Its history is kept on this booking.");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not cancel this request.");
+    } finally {
+      setRequestBusy(false);
+    }
+  }
+
   async function requestMoney() {
     if (!booking || !user || booking.userId !== user.id || !booking.teamId) return;
     const payerIds = requestPayerIds.map(Number).filter((value) => Number.isInteger(value) && value > 0);
@@ -158,6 +183,11 @@ export default function BookingDetail() {
     }
     if (!Number.isInteger(amount) || amount < 10) {
       setError("Enter at least Rs. 10 from each selected player.");
+      return;
+    }
+    const advance = advanceOf(booking, ledger?.totals.paid ?? 0);
+    if (advance.active && amount * payerIds.length > advance.available) {
+      setError(`Only ${formatNPR(advance.available)} is available to request toward the advance.`);
       return;
     }
     setRequestBusy(true);
@@ -174,7 +204,7 @@ export default function BookingDetail() {
       setRequestAmount("");
       setRequestNote("");
       setSuccess(`Payment request sent to ${payerIds.length} teammate${payerIds.length === 1 ? "" : "s"}. They can pay the venue owner through eSewa or Khalti.`);
-      await load();
+      await load(true);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Could not send the payment request.");
     } finally {
@@ -223,7 +253,9 @@ export default function BookingDetail() {
           };
         })()
     : { status: money.status, label: money.label };
-  const advanceDue = booking.status !== "cancelled" && booking.status !== "rejected" && booking.advancePaymentRequired && booking.advancePaymentStatus !== "paid" ? booking.advancePaymentAmount ?? 0 : 0;
+  const advance = advanceOf(booking, totals.paid);
+  const advanceDue = advance.active ? advance.remaining : 0;
+  const isBooker = booking.userId === user?.id;
   const competitionWaiting = booking.competition?.competitionStatus === "pending";
   const requestedForMe = booking.paymentRequests?.filter(
     (request) => request.payerId === user?.id && request.status === "pending",
@@ -232,7 +264,7 @@ export default function BookingDetail() {
   const payAmount = payRequest
     ? payRequest.amountDue
     : teamShare && teamShare.paymentStatus !== "paid"
-      ? teamShare.amountDue
+      ? Math.max(0, teamShare.amountDue - teamShare.paidAmount)
       : advanceDue > 0
         ? advanceDue
         : balance;
@@ -240,6 +272,7 @@ export default function BookingDetail() {
     booking.status !== "cancelled" &&
     booking.status !== "rejected" &&
     !competitionWaiting &&
+    !(isBooker && advance.active) &&
     requestedForMe.length === 0 &&
     (teamShare
       ? teamShare.paymentStatus !== "paid" && ["eSewa", "Khalti"].includes(teamShare.paymentMethod)
@@ -256,7 +289,7 @@ export default function BookingDetail() {
       });
       setSuccess(res.message ?? "Share settled ✅");
       setSettleTo(null);
-      await load();
+      await load(true);
     } catch (e) {
       setSettleError(e instanceof Error ? e.message : "Couldn't record that payment 🙏");
     } finally {
@@ -265,9 +298,9 @@ export default function BookingDetail() {
   }
 
   const captainCanRequest = Boolean(
-    user && booking.teamId && booking.userId === user.id && booking.status !== "cancelled" && booking.status !== "rejected",
+    user && booking.teamId && isBooker && !competitionWaiting && !["cancelled", "rejected", "completed"].includes(booking.status),
   );
-  const captainCanViewTeamDetails = Boolean(user && booking.teamId && booking.userId === user.id);
+  const captainCanViewTeamDetails = Boolean(user && booking.userId === user.id);
   const teamReceived = (booking.teamPayments ?? []).reduce((sum, share) => sum + Math.max(0, Number(share.paidAmount) || 0), 0);
   const teamDue = (booking.teamPayments ?? []).reduce((sum, share) => sum + Math.max(0, Number(share.amountDue) || 0), 0);
 
@@ -313,12 +346,46 @@ export default function BookingDetail() {
 
         {error ? <Notice message={error} /> : null}
         {success ? <Notice message={success} tone="success" /> : null}
-        {advanceDue > 0 ? (
-          <Notice message={`Venue advance requested: ${formatNPR(advanceDue)}. Pay within 30 minutes using eSewa or Khalti only; Cash at Venue cannot satisfy this advance.`} tone="info" />
-        ) : (booking.status === "cancelled" || booking.status === "rejected") && (booking.cancellationReceivedAmount ?? 0) > 0 ? (
-          <Notice message={`Received ${formatNPR(booking.cancellationReceivedAmount ?? 0)} before this booking was ${booking.status === "rejected" ? "rejected" : "cancelled"}. ${booking.cancellationMoneyStatus === "refunded" ? "Refund recorded." : booking.cancellationMoneyStatus === "retained" ? "Kept by the venue under its cancellation policy." : "Refund decision is pending with the venue."}`} tone={booking.cancellationMoneyStatus === "refunded" ? "success" : "info"} />
-        ) : booking.advancePaymentRequired && booking.advancePaymentStatus === "paid" ? (
-          <Notice message={`Advance verified. Remaining ${formatNPR(Math.max(0, balance))} may be paid at the venue.`} tone="success" />
+        {booking.advancePaymentRequired ? (
+          <Card style={{ marginTop: space["3"] }}>
+            <View style={{ gap: space["3"] }}>
+              <Text style={[styles.cardTitle, { color: colors.text }]}>Venue advance</Text>
+              <Text style={[styles.meta, { color: colors.textMuted }]}>{booking.venue?.name ?? "The owner"} requested an advance before confirming this booking.</Text>
+              <MoneyRow label="Advance requested" value={formatNPR(advance.requested)} colors={colors} />
+              <MoneyRow label="Received by venue" value={formatNPR(advance.received)} colors={colors} />
+              <MoneyRow label="Advance remaining" value={formatNPR(advance.remaining)} colors={colors} />
+              <Pill label={paymentStatusLabel(booking.advancePaymentStatus ?? "pending")} tone={advance.remaining === 0 ? "success" : "warning"} />
+              {advance.active ? (
+                <>
+                  <Text style={[styles.hint, { color: colors.textMuted }]}>
+                    {booking.advancePaymentRequestedAt ? `Pay by ${new Date(new Date(booking.advancePaymentRequestedAt).getTime() + 30 * 60 * 1000).toLocaleString()}. ` : "Pay within 30 minutes of the owner's request. "}
+                    Only verified eSewa or Khalti payments to the venue count. Cash held by the captain does not cover this advance.
+                  </Text>
+                  {isBooker && !competitionWaiting ? (
+                    <>
+                      <Text style={[styles.subTitle, { color: colors.text }]}>Pay myself</Text>
+                      <Button label={`Pay advance ${formatNPR(advance.remaining)} · eSewa`} onPress={() => void pay("esewa", "advance")} disabled={busy !== null} loading={busy === "esewa"} />
+                      <Button label={`Pay advance ${formatNPR(advance.remaining)} · Khalti`} variant="secondary" onPress={() => void pay("khalti", "advance")} disabled={busy !== null} loading={busy === "khalti"} />
+                      {captainCanRequest ? (
+                        <Button label={showAdvanceRequests ? "Hide teammate request form" : "Ask teammates to pay their contribution"} variant="ghost" onPress={() => setShowAdvanceRequests((value) => !value)} />
+                      ) : <Text style={[styles.hint, { color: colors.textMuted }]}>Teammate requests are available for bookings linked to a team.</Text>}
+                      {advance.pending > 0 ? <Text style={[styles.hint, { color: colors.textMuted }]}>Awaiting {formatNPR(advance.pending)} from teammates. You can cover the remaining advance yourself; unpaid requests that are no longer needed will be cancelled.</Text> : null}
+                    </>
+                  ) : null}
+                </>
+              ) : <Text style={[styles.meta, { color: colors.textMuted }]}>{advance.remaining === 0 ? `Advance covered. Venue balance: ${formatNPR(balance)}.` : "This booking is no longer collecting an advance."}</Text>}
+              {advance.requests.map((request) => (
+                <View key={request.id} style={[styles.requestDetail, { backgroundColor: colors.bg, borderColor: colors.border }]}>
+                  <Text style={[styles.teamPlayerName, { color: colors.text }]}>{request.payerName} · {formatNPR(request.amountDue)}</Text>
+                  <Text style={[styles.meta, { color: colors.textMuted }]}>{paymentStatusLabel(request.status)} · Paid {formatNPR(request.paidAmount)} · {paymentMethodLabel(request.paymentMethod)}</Text>
+                  {isBooker && request.status === "pending" ? <Button label="Cancel request" variant="ghost" onPress={() => void cancelRequest(request.id)} disabled={requestBusy} /> : null}
+                </View>
+              ))}
+            </View>
+          </Card>
+        ) : null}
+        {(booking.status === "cancelled" || booking.status === "rejected") && (booking.cancellationReceivedAmount ?? 0) > 0 ? (
+          <Notice message={`Received ${formatNPR(booking.cancellationReceivedAmount ?? 0)} before cancellation. Refund status: ${paymentStatusLabel(booking.cancellationMoneyStatus ?? "review")}.`} tone="info" />
         ) : null}
         {teamShare ? (
           <Notice
@@ -332,7 +399,7 @@ export default function BookingDetail() {
             tone="info"
           />
         ) : null}
-        {teamShare && teamShare.paymentStatus !== "paid" ? (
+        {teamShare && teamShare.paymentStatus !== "paid" && !advance.active ? (
           <Card style={{ marginTop: space["3"] }}>
             <Text style={[styles.cardTitle, { color: colors.text }]}>Settle your share</Text>
             <Text style={[styles.meta, { color: colors.textMuted }]}>
@@ -400,35 +467,39 @@ export default function BookingDetail() {
             <Text style={[styles.hint, { color: colors.textFaint }]}>Only eSewa or Khalti is supported for a directed teammate payment.</Text>
             <Button
               label={`Pay ${formatNPR(request.amountDue)} with eSewa`}
-              onPress={() => void pay("esewa")}
+              onPress={() => void pay("esewa", "auto", request.id)}
               loading={busy === "esewa"}
               disabled={busy !== null}
             />
             <Button
               label={`Pay ${formatNPR(request.amountDue)} with Khalti`}
               variant="secondary"
-              onPress={() => void pay("khalti")}
+              onPress={() => void pay("khalti", "auto", request.id)}
               loading={busy === "khalti"}
               disabled={busy !== null}
               style={{ marginTop: space["2"] }}
             />
           </Card>
         ))}
-        {captainCanRequest ? (
+        {captainCanRequest && (!advance.active || showAdvanceRequests) ? (
           <Card style={{ marginTop: space["3"] }}>
             {/* Card lays its children out flush and Field has no bottom margin,
                 so without a gap here the "Send payment request" button sat
                 against the note box and read as part of it. */}
             <View style={{ gap: space["3"] }}>
-              <Text style={[styles.cardTitle, { color: colors.text }]}>Ask a teammate to pay</Text>
-              <Text style={[styles.meta, { color: colors.textMuted }]}>Tick everyone who owes you. The amount below is requested from each one, and their verified eSewa or Khalti payment is recorded against this booking.</Text>
+              <Text style={[styles.cardTitle, { color: colors.text }]}>{advance.active ? "Ask teammates to cover the advance" : "Ask a teammate to pay"}</Text>
+              <Text style={[styles.meta, { color: colors.textMuted }]}>Select teammates and enter each contribution. They pay the venue directly; the request and verified payment are saved against this booking.</Text>
+              {advance.active ? <Text style={[styles.meta, { color: colors.textMuted }]}>Available to request: {formatNPR(advance.available)} · {formatNPR(advance.pending)} already requested</Text> : null}
+              {(booking.teamPlayers ?? []).filter((p) => p.id !== user?.id).length === 0 ? <Text style={[styles.hint, { color: colors.textMuted }]}>No teammates are on this booking's team yet.</Text> : null}
               <View style={styles.playerChoices}>
                 {(booking.teamPlayers ?? []).filter((player) => player.id !== user?.id).map((player) => {
                   const selected = requestPayerIds.includes(String(player.id));
+                  const pending = advance.active && advance.requests.some((r) => r.payerId === player.id && r.status === "pending");
                   return (
                     <Button
                       key={player.id}
-                      label={selected ? `✓ ${player.name}` : player.name}
+                      label={pending ? `${player.name} · requested` : selected ? `✓ ${player.name}` : player.name}
+                      disabled={pending}
                       variant={selected ? "primary" : "ghost"}
                       onPress={() => setRequestPayerIds((current) => selected ? current.filter((id) => id !== String(player.id)) : [...current, String(player.id)])}
                       style={styles.playerButton}
@@ -450,7 +521,7 @@ export default function BookingDetail() {
                 placeholder="What should this cover?"
                 multiline
               />
-              <Button label="Send payment request" onPress={() => void requestMoney()} loading={requestBusy} disabled={requestBusy} />
+              <Button label="Send payment request" onPress={() => void requestMoney()} loading={requestBusy} disabled={requestBusy || requestPayerIds.length === 0 || (advance.active && Number(requestAmount) * requestPayerIds.length > advance.available)} />
             </View>
           </Card>
         ) : null}
@@ -464,14 +535,14 @@ export default function BookingDetail() {
               accessibilityState={{ expanded: teamDetailsOpen }}
             >
               <View style={styles.grow}>
-                <Text style={[styles.cardTitle, { color: colors.text }]}>Team payment details</Text>
+                <Text style={[styles.cardTitle, { color: colors.text }]}>Player payment details</Text>
                 <Text style={[styles.meta, { color: colors.textMuted }]}>How your friends chose to pay · {formatNPR(teamReceived)} received of {formatNPR(teamDue)}</Text>
               </View>
               <Text style={[styles.expandText, { color: colors.textMuted }]}>{teamDetailsOpen ? "Hide" : "Open"}</Text>
             </Pressable>
             {user ? (
               <Button
-                label="Open squad ledger"
+                label="Open player ledger (team, open spots & guests)"
                 variant="secondary"
                 onPress={() => setSquadLedgerOpen(true)}
                 style={{ marginTop: space["2"] }}
@@ -655,17 +726,23 @@ export default function BookingDetail() {
         ) : (
           <Notice
             message={
-              competitionWaiting
+              advance.active
+                ? "The venue advance is still outstanding. Use the advance section above to pay or request teammate contributions."
+                : requestedForMe.length > 0
+                  ? "You have a payment request above awaiting payment."
+                : competitionWaiting
                 ? "Waiting for the opposition captain to accept this competition request. Payment opens only after acceptance."
                 : booking.status === "cancelled"
                   ? "This booking was cancelled."
                   : booking.status === "rejected"
                     ? "This competition request was declined and was not sent to the venue owner."
-                    : teamShare
-                      ? "Your share is settled. Enjoy the game! ⚽"
-                      : "This booking is fully paid. Enjoy the game! ⚽"
+                    : teamShare && teamShare.paymentStatus !== "paid"
+                      ? "Your share is still outstanding. Choose a payment method from My Bookings."
+                      : balance > 0
+                        ? `The venue still has ${formatNPR(balance)} to collect. Your team share and the venue balance are tracked separately.`
+                        : "The venue has received the full booking amount. Enjoy the game! ⚽"
             }
-            tone={competitionWaiting || booking.status === "cancelled" || booking.status === "rejected" ? "error" : "success"}
+            tone={advance.active || requestedForMe.length > 0 || balance > 0 ? "info" : competitionWaiting || booking.status === "cancelled" || booking.status === "rejected" ? "error" : "success"}
           />
         )}
       </ScrollView>

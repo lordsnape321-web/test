@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Support\GuestLedgerSchema;
 use App\Console\Commands\ReconcileBookingPayments;
 use Illuminate\Console\Events\CommandStarting;
 use Illuminate\Support\Facades\Event;
@@ -14,6 +15,10 @@ class DevelopmentServerPreparationTest extends TestCase
 {
     public function test_serve_applies_payment_repair_before_starting(): void
     {
+        $schema = Mockery::mock(GuestLedgerSchema::class);
+        $schema->shouldReceive('ensure')->once();
+        $this->app->instance(GuestLedgerSchema::class, $schema);
+
         $command = Mockery::mock(ReconcileBookingPayments::class);
         $command->shouldReceive('setLaravel')->once()->with($this->app);
         $command->shouldReceive('run')->once()
@@ -29,6 +34,10 @@ class DevelopmentServerPreparationTest extends TestCase
 
     public function test_other_commands_do_not_access_the_payment_database(): void
     {
+        $schema = Mockery::mock(GuestLedgerSchema::class);
+        $schema->shouldReceive('ensure')->never();
+        $this->app->instance(GuestLedgerSchema::class, $schema);
+
         $command = Mockery::mock(ReconcileBookingPayments::class);
         $command->shouldNotReceive('run');
         $this->app->instance(ReconcileBookingPayments::class, $command);
@@ -42,6 +51,10 @@ class DevelopmentServerPreparationTest extends TestCase
 
     public function test_failed_repair_does_not_silently_start_the_server(): void
     {
+        $schema = Mockery::mock(GuestLedgerSchema::class);
+        $schema->shouldReceive('ensure')->once();
+        $this->app->instance(GuestLedgerSchema::class, $schema);
+
         $command = Mockery::mock(ReconcileBookingPayments::class);
         $command->shouldReceive('setLaravel')->once();
         $command->shouldReceive('run')->once()->andReturn(1);

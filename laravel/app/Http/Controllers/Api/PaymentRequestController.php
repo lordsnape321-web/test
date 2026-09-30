@@ -14,6 +14,7 @@ use App\Support\AdvancePayment;
 use App\Support\Futsal;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 /**
  * A captain's directed request for one teammate to pay a specific amount.
@@ -62,6 +63,11 @@ class PaymentRequestController extends ApiController
     {
         AdvancePayment::expireOverdueAdvanceRequests();
 
+        return DB::transaction(fn () => $this->storeLocked($request, $id));
+    }
+
+    private function storeLocked(Request $request, int $id): JsonResponse
+    {
         $requesterId = (int) $request->input('requesterId', 0);
 
         $rawPayerIds = is_array($request->input('payerIds'))
@@ -73,7 +79,11 @@ class PaymentRequestController extends ApiController
             fn ($v) => $v > 0
         )));
 
-        $amount = (int) $request->input('amount', 0);
+        $rawAmount = $request->input('amount');
+        if (filter_var($rawAmount, FILTER_VALIDATE_INT) === false) {
+            return $this->fail('Enter a whole-rupee amount', 400);
+        }
+        $amount = (int) $rawAmount;
         $purpose = (string) $request->input('purpose', 'booking');
         $note = mb_substr(trim((string) $request->input('note', '')), 0, 240);
 
@@ -93,7 +103,7 @@ class PaymentRequestController extends ApiController
             return $this->fail('Pick a valid payment purpose', 400);
         }
 
-        $booking = Booking::find($id);
+        $booking = Booking::lockForUpdate()->find($id);
 
         if (! $booking) {
             return $this->fail('Booking not found', 404);
@@ -115,9 +125,9 @@ class PaymentRequestController extends ApiController
             return $this->fail('Payment requests open after the opposition captain accepts this competition request 🆚', 409);
         }
 
-        // Only the captain who made the booking may ask for money on it.
-        if ((int) $team->captain_id !== $requesterId || (int) $booking->user_id !== $requesterId) {
-            return $this->fail('Only the captain who made this booking can request teammate money 👑', 403);
+        // Only the player who made the booking may ask for money on it.
+        if ((int) $booking->user_id !== $requesterId) {
+            return $this->fail('Only the player who made this booking can request teammate money', 403);
         }
 
         if (in_array($requesterId, $payerIds, true)) {
@@ -148,7 +158,7 @@ class PaymentRequestController extends ApiController
             ->filter(fn ($row) => $row->purpose === $purpose)
             ->sum('amount_due');
 
-        $paid = max(0, (int) $booking->paid_amount);
+        $paid = AdvancePayment::received($booking);
         $remaining = max(0, $target - $paid - $pendingForPurpose);
         $totalRequested = $amount * count($payerIds);
 
@@ -225,22 +235,24 @@ class PaymentRequestController extends ApiController
     {
         AdvancePayment::expireOverdueAdvanceRequests();
 
+        return DB::transaction(fn () => $this->updateLocked($request, $id, $requestId));
+    }
+
+    private function updateLocked(Request $request, int $id, int $requestId): JsonResponse
+    {
         $userId = (int) $request->input('userId', 0);
 
         if ($userId <= 0) {
             return $this->fail('Invalid payment request 🔒', 400);
         }
 
-        $row = BookingPaymentRequest::where('id', $requestId)->where('booking_id', $id)->first();
-
-        if (! $row) {
-            return $this->fail('Payment request not found', 404);
-        }
-
-        $booking = Booking::find($id);
-
+        $booking = Booking::lockForUpdate()->find($id);
         if (! $booking) {
             return $this->fail('Booking not found', 404);
+        }
+        $row = BookingPaymentRequest::where('id', $requestId)->where('booking_id', $id)->lockForUpdate()->first();
+        if (! $row) {
+            return $this->fail('Payment request not found', 404);
         }
 
         if ($row->status !== 'pending') {

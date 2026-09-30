@@ -3,12 +3,15 @@
 namespace App\Support;
 
 use App\Models\Booking;
+use App\Models\BookingPayment;
 use App\Models\BookingPaymentRequest;
 use App\Models\BookingTeamPayment;
 use App\Models\Court;
 use App\Models\Venue;
 use App\Services\Notifier;
 use Illuminate\Support\Facades\DB;
+use Symfony\Component\HttpKernel\Exception\HttpException;
+use Illuminate\Http\Request;
 
 /**
  * Owner-requested advance payments — `src/lib/advance-payment.ts`.
@@ -21,6 +24,64 @@ use Illuminate\Support\Facades\DB;
 class AdvancePayment
 {
     public const WINDOW_MS = 30 * 60 * 1000;
+
+    /** Money received by the venue, never cash still held by the captain. */
+    public static function received(Booking $booking): int
+    {
+        return BookingLedger::sumLive(BookingPayment::where('booking_id', $booking->id)->get());
+    }
+
+    public static function remaining(Booking $booking): int
+    {
+        return (bool) $booking->advance_payment_required
+            ? max(0, (int) $booking->advance_payment_amount - self::received($booking)) : 0;
+    }
+
+    /** Reject stale requests rather than silently charging a different amount. */
+    public static function requestAmount(Booking $booking, BookingPaymentRequest $request): int
+    {
+        $remaining = $request->purpose === 'advance'
+            ? self::remaining($booking)
+            : max(0, (int) $booking->total_price - self::received($booking));
+        if ($request->status !== 'pending' || $request->amount_due <= 0 || $request->amount_due > $remaining
+            || ($request->purpose === 'advance' && $booking->advance_payment_status === 'expired')) {
+            throw new HttpException(409, 'This payment request is no longer payable. Refresh the booking for the remaining amount.');
+        }
+        return (int) $request->amount_due;
+    }
+
+    /** The explicit booker advance checkout must not turn into a balance payment. */
+    public static function validateCheckout(Booking $booking, Request $request): void
+    {
+        if ($request->input('paymentPurpose') !== 'advance') {
+            return;
+        }
+        if ((int) $request->input('userId') !== (int) $booking->user_id
+            || $request->filled('teamPaymentId') || $request->filled('paymentRequestId')) {
+            throw new HttpException(403, 'Only the booking player can pay this advance directly.');
+        }
+        $remaining = self::remaining($booking);
+        if ($remaining <= 0 || $booking->advance_payment_status === 'expired'
+            || in_array($booking->status, ['cancelled', 'rejected', 'completed'], true)
+            || (int) $request->input('expectedAmount') !== $remaining) {
+            throw new HttpException(409, 'The advance amount changed. Refresh the booking before paying.');
+        }
+    }
+
+    /** Called under the booking lock after every gateway receipt is saved. */
+    public static function syncVenueAdvance(Booking $booking): void
+    {
+        if (! $booking->advance_payment_required || $booking->advance_payment_status === 'expired') {
+            return;
+        }
+        $remaining = self::remaining($booking);
+        $booking->forceFill(['advance_payment_status' => $remaining === 0 ? 'paid' : 'pending'])->save();
+        // The captain can cover the advance themselves after asking teammates.
+        // Keep the requests as history, but prevent a second collection.
+        BookingPaymentRequest::where('booking_id', $booking->id)
+            ->where('purpose', 'advance')->where('status', 'pending')
+            ->where('amount_due', '>', $remaining)->update(['status' => 'cancelled']);
+    }
 
     public static function deadline(mixed $requestedAt): ?\Carbon\CarbonInterface
     {
@@ -42,7 +103,7 @@ class AdvancePayment
      * this projection keeps the captain's team ledger honest without letting a
      * payment bigger than the share inflate it.
      */
-    public static function recordDirectedTeamSharePayment(int $bookingId, int $payerId, int $amount, string $reference): ?BookingTeamPayment
+    public static function recordDirectedTeamSharePayment(int $bookingId, int $payerId, int $amount, string $reference, ?string $method = null): ?BookingTeamPayment
     {
         $share = BookingTeamPayment::where('booking_id', $bookingId)->where('user_id', $payerId)->first();
 
@@ -57,6 +118,7 @@ class AdvancePayment
             'paid_amount' => $paid,
             'payment_status' => $paid >= $due ? 'paid' : 'pending',
             'gateway_txn_id' => mb_substr($reference, 0, 100),
+            'payment_method' => $method ?? $share->payment_method,
         ])->save();
 
         return $share->fresh();

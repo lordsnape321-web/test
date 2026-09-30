@@ -59,7 +59,7 @@ class KhaltiController extends ApiController
 
         $flags = $this->moneyFlags($booking, $teamPayment, $paymentRequest);
 
-        if (! $teamPayment && ! $paymentRequest && $booking->payment_status === 'paid') {
+        if (! $teamPayment && ! $paymentRequest && $booking->payment_status === 'paid' && ! $flags['payingAdvance']) {
             return $this->fail('Already paid ✅', 400, ['booking' => $booking->toArray()]);
         }
 
@@ -302,6 +302,8 @@ class KhaltiController extends ApiController
                 return $this->fail('Mock payment not approved', 400, ['ok' => false]);
             }
 
+            AdvancePayment::validateCheckout($booking, $request);
+
             $flags = $this->moneyFlags($booking, $teamPayment, $paymentRequest);
             $amount = $this->expectedAmount($booking, $teamPayment, $paymentRequest, $flags);
             $reference = $mockReference;
@@ -427,11 +429,13 @@ class KhaltiController extends ApiController
 
         $booking->forceFill($patch)->save();
 
-        // A captain's solo advance is not an equal-share settlement. Preserve
-        // that path until the team allocation is explicitly reconciled.
+        if ($payingAdvance) {
+            AdvancePayment::recordDirectedTeamSharePayment((int) $booking->id, (int) $booking->user_id, $amount, $reference, 'Khalti');
+        }
         if (! $booking->teamPayments()->exists()) {
             BookingLedger::syncCachedState($booking);
         }
+        AdvancePayment::syncVenueAdvance($booking);
 
         if (! $mock) {
             $venue = $this->venueOf($booking);
@@ -468,7 +472,7 @@ class KhaltiController extends ApiController
         $teamPayment->forceFill([
             'payment_status' => 'paid',
             'payment_method' => 'Khalti',
-            'paid_amount' => $amount,
+            'paid_amount' => min((int) $teamPayment->amount_due, (int) $teamPayment->paid_amount + $amount),
             'gateway_txn_id' => mb_substr($reference, 0, 100),
         ])->save();
 
@@ -496,6 +500,8 @@ class KhaltiController extends ApiController
             'advance_payment_status' => (bool) $booking->advance_payment_required ? ($advancePaid ? 'paid' : 'pending') : 'none',
             'gateway_txn_id' => mb_substr($reference, 0, 100),
         ])->save();
+
+        AdvancePayment::syncVenueAdvance($booking);
 
         $venue = $this->venueOf($booking);
 
@@ -558,7 +564,8 @@ class KhaltiController extends ApiController
             'note' => "Khalti teammate {$request->purpose} payment",
         ]);
 
-        AdvancePayment::recordDirectedTeamSharePayment((int) $booking->id, (int) $request->payer_id, $amount, $reference);
+        AdvancePayment::recordDirectedTeamSharePayment((int) $booking->id, (int) $request->payer_id, $amount, $reference, 'Khalti');
+        AdvancePayment::syncVenueAdvance($booking);
 
         $venue = $this->venueOf($booking);
 
@@ -664,9 +671,9 @@ class KhaltiController extends ApiController
     private function expectedAmount(Booking $booking, ?BookingTeamPayment $teamPayment, ?BookingPaymentRequest $paymentRequest, array $flags): int
     {
         return match (true) {
-            (bool) $paymentRequest => (int) $paymentRequest->amount_due,
-            (bool) $teamPayment => (int) $teamPayment->amount_due,
-            (bool) $flags['payingAdvance'] => (int) $booking->advance_payment_amount,
+            (bool) $paymentRequest => AdvancePayment::requestAmount($booking, $paymentRequest),
+            (bool) $teamPayment => max(0, (int) $teamPayment->amount_due - (int) $teamPayment->paid_amount),
+            (bool) $flags['payingAdvance'] => AdvancePayment::remaining($booking),
             (bool) $flags['payingDeposit'] => (int) $booking->deposit_amount,
             default => max(0, (int) $booking->total_price - (int) $booking->paid_amount),
         };

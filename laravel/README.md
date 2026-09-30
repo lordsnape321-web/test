@@ -137,7 +137,7 @@ MIT License.
 
 The booking ledger reads `booking_payments` and `booking_extras` using Eloquent
 attributes; database column names remain snake_case and the Expo JSON contract
-remains camelCase. No schema reset or new migration is required for this fix.
+remains camelCase. The payment calculation fix requires no schema reset. The guest-ledger extension adds one new table (see below).
 
 ### Normal local startup — no extra commands
 
@@ -160,8 +160,9 @@ not written, and booking timestamps are preserved. There is no repair scan on
 ordinary HTTP requests. A database/repair error stops startup visibly rather than
 silently serving inconsistent payment state. MySQL must already be running.
 
-No `migrate`, `optimize:clear`, `composer install`, or npm install is required for
-this update. No dependencies or schema were changed. Keep a normal database backup.
+No extra `migrate`, `optimize:clear`, `composer install`, or npm install command is
+required for local `artisan serve` startup. The guest-ledger migration below is
+applied automatically before reconciliation. No dependencies change. Keep a normal database backup.
 
 For deployments not using `artisan serve`, the manual command is still available
 (dry run by default); stop other payment writers before applying corrections:
@@ -190,3 +191,63 @@ Regression tests (use the dedicated `futsal_test` MySQL database configured in
 ```bash
 vendor/bin/phpunit tests/Unit/BookingLedgerTest.php tests/Feature/BookingPaymentFlowTest.php tests/Feature/DevelopmentServerPreparationTest.php
 ```
+
+### Player booking details: venue advance and teammate contributions
+
+The full booking detail screen displays the owner's saved advance, venue receipts,
+remaining advance and deadline. The booking player can pay the remaining advance
+personally (separate from their own team share), or select members of the booking's
+team and request an amount from each. Bookings without a linked team offer self-pay
+only. Pending requests can be cancelled without deleting their history.
+
+Persistence uses the existing tables, with no migration or dependency install:
+- `bookings`: owner's requested amount, deadline origin and verified advance status.
+- `booking_payment_requests`: recipient, amount, purpose, payment method, status,
+  paid amount and transaction reference; notifications are saved too.
+- `booking_payments`: verified money received by the venue, including payer and gateway.
+- `booking_team_payments`: the payer's contribution toward their share, capped at
+  that share; paying more than one's share does not mark someone else's share paid.
+
+Requests and verification are serialized using the booking lock. Partial receipts
+reduce the advance still due; captain-held cash does not. Requests that no longer
+fit the outstanding advance are cancelled, and stale checkout amounts are rejected
+instead of silently charging a different amount. Self-pay and teammate pay continue
+to use the existing sandbox checkout; this does not enable production payments.
+
+Regression coverage: `vendor/bin/phpunit tests/Feature/TeamAdvancePaymentTest.php`.
+
+
+### Player ledger: team shares, open spots and walk-in guests
+
+Full Booking Detail → **Player payment details → Open player ledger** is available
+for the booking organizer, including public bookings without a team. Paid teammates
+appear immediately from their existing share/receipt records; the client does not
+need to record those payments again. Rows identify captain collections, payments
+to the venue, stored share payments and open-spot contributions. Direct payments
+without an individually attributed historical receipt are labelled as stored share
+payments rather than fabricated gateway receipts.
+
+Accepted open-spot joins on this booking's linked matches are listed with their
+fees, payment methods and payment status. Paid declined/cancelled joins remain as
+history; an unpaid pending request is not an accepted player. Open-spot records
+stay in `match_joins` and are never copied into the venue ledger. Open-spot guests
+are not granted access to the squad's private finances by being listed here.
+
+The organizer can add an **unregistered guest payment** with player name, method
+and whole-rupee amount. These are collections by the organizer, stored in
+`booking_guest_payments`, not fake user accounts or venue receipts. Guest totals
+are separate and cannot erase another player's outstanding share. Undo marks a
+row voided with the actor/time and keeps it in history. Registered gateway and
+open-spot rows are read-only in this panel; their existing source workflows own
+any correction. Voiding a captain entry subtracts only that entry's contribution,
+not the player's gateway payments.
+
+`php artisan serve` automatically applies only the additive migration
+`2026_09_30_000029_create_booking_guest_payments_table.php` if its table is missing,
+then runs payment-cache reconciliation. An existing database and migrations table
+are required, as before. A normal `php artisan migrate` also discovers it for
+non-serve deployments. No existing tables are reset or altered. The database user
+must have permission to create the guest table. If creation fails startup stops
+visibly. Normal HTTP requests do not run migrations.
+
+Regression coverage: `vendor/bin/phpunit tests/Feature/ParticipantLedgerTest.php`.

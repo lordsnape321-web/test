@@ -360,6 +360,9 @@ export type LedgerTeamPayment = {
  */
 export type TeamLedgerEntry = {
   id: number;
+  source?: "captain" | "venue" | "share" | "open_spot";
+  canVoid?: boolean;
+  voidedAt?: string | null;
   userId: number;
   userName: string;
   amount: number;
@@ -375,6 +378,8 @@ export type TeamLedgerEntry = {
  */
 export type TeamLedgerMember = {
   shareId: number;
+  shareOutstanding?: number;
+  openSpots?: { matchId: number; joinId: number; status: string; position: string }[];
   userId: number;
   userName: string;
   userAvatarColor: string;
@@ -403,7 +408,8 @@ export type TeamLedger = {
   isCaptain: boolean;
   actorId: number;
   members: TeamLedgerMember[];
-  totals: { due: number; collected: number; outstanding: number };
+  guests?: { id: number; playerName: string; amount: number; method: string; note: string; voidedAt: string | null; recordedByName: string; createdAt: string | null }[];
+  totals: { due: number; collected: number; outstanding: number; guestCollected?: number };
 };
 
 export type Ledger = {

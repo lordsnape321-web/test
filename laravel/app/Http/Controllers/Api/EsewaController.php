@@ -108,14 +108,14 @@ class EsewaController extends ApiController
         $payingDeposit = ! $teamPayment && ! $paymentRequest && ! $payingAdvance
             && (bool) $booking->deposit_required && $booking->deposit_status !== 'paid';
 
-        if (! $teamPayment && ! $paymentRequest && $booking->payment_status === 'paid') {
+        if (! $teamPayment && ! $paymentRequest && $booking->payment_status === 'paid' && ! $payingAdvance) {
             return $this->fail('Already paid ✅', 400, ['booking' => $booking->toArray()]);
         }
 
         $amount = match (true) {
-            (bool) $paymentRequest => (int) ($paymentRequest->amount_due ?? 0),
-            (bool) $teamPayment => (int) ($teamPayment->amount_due ?? 0),
-            $payingAdvance => (int) ($booking->advance_payment_amount ?? 0),
+            (bool) $paymentRequest => AdvancePayment::requestAmount($booking, $paymentRequest),
+            (bool) $teamPayment => max(0, (int) $teamPayment->amount_due - (int) $teamPayment->paid_amount),
+            $payingAdvance => AdvancePayment::remaining($booking),
             $payingDeposit => (int) ($booking->deposit_amount ?? 0),
             default => max(0, (int) $booking->total_price - (int) $booking->paid_amount),
         };
@@ -389,6 +389,8 @@ class EsewaController extends ApiController
             return $this->fail('Payment opens after the opposition captain accepts this competition request 🆚', 409);
         }
 
+        AdvancePayment::validateCheckout($booking, $request);
+
         $amount = $this->expectedAmount($booking, $teamPayment, $paymentRequest);
 
         if ($paymentRequest) {
@@ -479,9 +481,9 @@ class EsewaController extends ApiController
             && (bool) $booking->deposit_required && $booking->deposit_status !== 'paid';
 
         return match (true) {
-            (bool) $paymentRequest => (int) $paymentRequest->amount_due,
-            (bool) $teamPayment => (int) $teamPayment->amount_due,
-            $payingAdvance => (int) $booking->advance_payment_amount,
+            (bool) $paymentRequest => AdvancePayment::requestAmount($booking, $paymentRequest),
+            (bool) $teamPayment => max(0, (int) $teamPayment->amount_due - (int) $teamPayment->paid_amount),
+            $payingAdvance => AdvancePayment::remaining($booking),
             $payingDeposit => (int) $booking->deposit_amount,
             default => max(0, (int) $booking->total_price - (int) $booking->paid_amount),
         };
@@ -501,7 +503,7 @@ class EsewaController extends ApiController
         $teamPayment->forceFill([
             'payment_status' => 'paid',
             'payment_method' => 'eSewa',
-            'paid_amount' => $amount,
+            'paid_amount' => min((int) $teamPayment->amount_due, (int) $teamPayment->paid_amount + $amount),
             'gateway_txn_id' => mb_substr($reference, 0, 100),
         ])->save();
 
@@ -532,6 +534,8 @@ class EsewaController extends ApiController
                 : 'none',
             'gateway_txn_id' => mb_substr($reference, 0, 100),
         ])->save();
+
+        AdvancePayment::syncVenueAdvance($booking);
 
         $venue = $this->venueOf($booking);
 
@@ -595,7 +599,8 @@ class EsewaController extends ApiController
             'note' => "eSewa teammate {$request->purpose} payment",
         ]);
 
-        AdvancePayment::recordDirectedTeamSharePayment((int) $booking->id, (int) $request->payer_id, $amount, $reference);
+        AdvancePayment::recordDirectedTeamSharePayment((int) $booking->id, (int) $request->payer_id, $amount, $reference, 'eSewa');
+        AdvancePayment::syncVenueAdvance($booking);
 
         $venue = $this->venueOf($booking);
 
@@ -663,11 +668,13 @@ class EsewaController extends ApiController
 
         $booking->forceFill($patch)->save();
 
-        // A captain's solo advance is not an equal-share settlement. Preserve
-        // that path until the team allocation is explicitly reconciled.
+        if ($payingAdvance) {
+            AdvancePayment::recordDirectedTeamSharePayment((int) $booking->id, (int) $booking->user_id, $amount, $reference, 'eSewa');
+        }
         if (! $booking->teamPayments()->exists()) {
             BookingLedger::syncCachedState($booking);
         }
+        AdvancePayment::syncVenueAdvance($booking);
 
         $venue = $this->venueOf($booking);
 

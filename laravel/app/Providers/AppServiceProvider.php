@@ -3,6 +3,7 @@
 namespace App\Providers;
 
 use App\Console\Commands\ReconcileBookingPayments;
+use App\Support\GuestLedgerSchema;
 use Illuminate\Console\Events\CommandStarting;
 use Illuminate\Support\ServiceProvider;
 use Symfony\Component\Console\Input\ArrayInput;
@@ -29,6 +30,8 @@ class AppServiceProvider extends ServiceProvider
             if ($event->command !== 'serve') {
                 return;
             }
+
+            $this->app->make(GuestLedgerSchema::class)->ensure($event->output);
 
             $event->output->writeln('<info>Checking booking payment caches against saved receipts...</info>');
             $command = $this->app->make(ReconcileBookingPayments::class);
