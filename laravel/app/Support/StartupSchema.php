@@ -41,11 +41,26 @@ class StartupSchema
         }
     }
 
-    /** courts gained columns rather than a table, so it needs its own check. */
+    /**
+     * Has this piece of storage already been applied?
+     *
+     * Most entries create their own table. The court hours are different: they
+     * are columns on an existing table, so they need their own check — and a
+     * database that has never been migrated at all has no `courts` table to
+     * alter. That case is left to `php artisan migrate`, which builds the whole
+     * schema in order; reporting the hours as "present" keeps `artisan serve`
+     * from failing on an empty database whose schema is simply not built yet.
+     */
     private function present(string $table): bool
     {
-        return $table === 'court_opening_hours'
-            ? Schema::hasTable('courts') && Schema::hasColumn('courts', 'opens_at') && Schema::hasColumn('courts', 'closes_at')
-            : Schema::hasTable($table);
+        if ($table !== 'court_opening_hours') {
+            return Schema::hasTable($table);
+        }
+
+        if (! Schema::hasTable('courts')) {
+            return true;
+        }
+
+        return Schema::hasColumn('courts', 'opens_at') && Schema::hasColumn('courts', 'closes_at');
     }
 }
