@@ -26,7 +26,8 @@ import { VenueCard } from "@/components/cards";
 import { Notice } from "@/components/ui";
 import { useAuth } from "@/context/AuthContext";
 import { useTheme } from "@/context/ThemeContext";
-import { fetchVenues, seedDemo } from "@/api";
+import { fetchVenues } from "@/api";
+import { demoSeedError, ensureDemoSeed } from "@/lib/demo-seed";
 import { CITY_OPTIONS } from "@/lib/futsal";
 import { validateSearch } from "@/lib/validation";
 import { useBreakpoints } from "@/lib/responsive";
@@ -123,20 +124,20 @@ export default function VenuesScreen() {
   }, [cityTouched, homeCity]);
 
   const load = useCallback(async () => {
-    let seedError: unknown = null;
-
-    // A fresh Laravel database can be populated from the idempotent demo seed.
-    // Keep this best-effort so existing production data still loads when the
-    // optional seed route is disabled.
-    try {
-      await seedDemo();
-    } catch (error) {
-      seedError = error;
-    }
+    // The idempotent demo seed runs at most once a session and never blocks a
+    // read: a database with venues in it should not wait for a seeding attempt
+    // that is going to answer "already present".
+    void ensureDemoSeed();
 
     try {
-      const next = await fetchVenues();
+      let next = await fetchVenues();
+
+      if (next.length === 0 && (await ensureDemoSeed())) {
+        next = await fetchVenues();
+      }
+
       setVenues(next);
+      const seedError = demoSeedError();
       setLoadError(
         next.length === 0 && seedError
           ? seedError instanceof Error

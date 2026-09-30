@@ -13,7 +13,7 @@ import {
 } from "react-native";
 import { Picker } from "@/components/ThemedPicker";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { seedDemo } from "@/api";
+import { ensureDemoSeed } from "@/lib/demo-seed";
 import { Button, Field, Label, Notice, TextControl } from "@/components/ui";
 import { useAuth } from "@/context/AuthContext";
 import { useTheme } from "@/context/ThemeContext";
@@ -76,7 +76,9 @@ export default function Signup() {
   // Match the web auth pages: seeded demo accounts are available immediately
   // when someone opens signup from a fresh development database.
   useEffect(() => {
-    void seedDemo().catch(() => undefined);
+    // Demo data, once a session at most, and never blocking the screen. See
+    // `ensureDemoSeed` — awaiting it here used to put a POST in front of login.
+    void ensureDemoSeed();
   }, []);
 
   useEffect(() => {

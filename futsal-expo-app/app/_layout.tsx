@@ -16,6 +16,7 @@ import { ThemeProvider, useTheme } from "@/context/ThemeContext";
 import { MobileNav } from "@/components/MobileNav";
 import { Navbar } from "@/components/Navbar";
 import { TurfBackdrop } from "@/components/TurfBackdrop";
+import { announce, mark } from "@/lib/perf";
 import { useBreakpoints } from "@/lib/responsive";
 import {
   APP_FONT_FAMILY,
@@ -24,6 +25,11 @@ import {
   ownerDarkPalette,
   ownerPalette,
 } from "@/theme";
+
+// The earliest code of ours the bundle runs: everything after this is measured
+// from here. See src/lib/perf.ts.
+announce();
+mark("bundle evaluated");
 
 /**
  * Root layout: fonts + providers + the native stack.
@@ -60,6 +66,12 @@ export default function RootLayout() {
     PlusJakartaSans_800ExtraBold,
   });
   useAppFontDefaults(fontsLoaded);
+
+  // The whole app is gated on five font faces; knowing how long that takes is
+  // the difference between blaming the fonts and blaming the bundle.
+  React.useEffect(() => {
+    if (fontsLoaded) mark("fonts ready");
+  }, [fontsLoaded]);
 
   if (!fontsLoaded) {
     return (
@@ -121,6 +133,12 @@ function Shell() {
   React.useEffect(() => {
     if (ownerOutsideStudio) router.replace("/admin");
   }, [ownerOutsideStudio, router]);
+
+  // First paint of the shell — bundle parsed, fonts in, providers mounted. This
+  // is the number to compare against the request timings in the same log.
+  React.useEffect(() => {
+    mark("app ready");
+  }, []);
 
   // Do not mount a player route while the persisted session is being restored.
   // An owner opening a saved player URL must never see the player shell, even

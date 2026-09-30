@@ -36,6 +36,7 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { CARD_IMAGE_WIDTH, sizedImage } from "@/lib/images";
 import { SafeAreaView } from "react-native-safe-area-context";
 import {
   attachBookingTeam,
@@ -1099,7 +1100,7 @@ function BookingCard({
       ) : null}
       <View style={styles.cardTop}>
         {b.venue?.imageUrl ? (
-          <Image source={{ uri: b.venue.imageUrl }} style={styles.cardImg} />
+          <Image source={{ uri: sizedImage(b.venue.imageUrl, CARD_IMAGE_WIDTH) }} style={styles.cardImg} />
         ) : (
           <View style={[styles.cardImg, { backgroundColor: muted + "33" }]} />
         )}

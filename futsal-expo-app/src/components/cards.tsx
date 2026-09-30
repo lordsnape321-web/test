@@ -3,6 +3,7 @@ import { useRouter } from "expo-router";
 import { ArrowRight, BadgeCheck, Clock, MapPin, Star, Users, Zap } from "lucide-react-native";
 import React from "react";
 import { Image, Pressable, StyleSheet, Text, View } from "react-native";
+import { CARD_IMAGE_WIDTH, sizedImage } from "@/lib/images";
 import { Avatar } from "@/components/Avatar";
 import { useTheme } from "@/context/ThemeContext";
 import { formatNPR, formatTime12, prettyDate } from "@/lib/futsal";
@@ -48,7 +49,11 @@ export function VenueCard({ v }: { v: VenueWithCourts }) {
     >
       <View style={styles.venueImageWrap}>
         {v.imageUrl ? (
-          <Image source={{ uri: v.imageUrl }} style={styles.venueImage} resizeMode="cover" />
+          <Image
+            source={{ uri: sizedImage(v.imageUrl, CARD_IMAGE_WIDTH) }}
+            style={styles.venueImage}
+            resizeMode="cover"
+          />
         ) : (
           <View style={[styles.venueImage, { backgroundColor: colors.stone200 }]} />
         )}

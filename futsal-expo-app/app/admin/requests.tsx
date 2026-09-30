@@ -27,6 +27,7 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { CARD_IMAGE_WIDTH, sizedImage } from "@/lib/images";
 import { fetchBookings, fetchVenues, patchBooking } from "@/api";
 import { PlayerRatingBadge } from "@/components/PlayerRating";
 import { BookingLedgerPanel } from "@/components/BookingLedgerPanel";
@@ -330,7 +331,7 @@ export default function OwnerRequests() {
               <View style={[styles.requestMain, !sm && styles.requestMainNarrow]}>
                 {b.venue?.imageUrl ? (
                   <Image
-                    source={{ uri: b.venue.imageUrl }}
+                    source={{ uri: sizedImage(b.venue.imageUrl, CARD_IMAGE_WIDTH) }}
                     style={[styles.cardImg, !sm && styles.cardImgNarrow]}
                   />
                 ) : (

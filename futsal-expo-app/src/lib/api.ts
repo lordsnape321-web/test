@@ -1,3 +1,5 @@
+import { noteRequest } from "@/lib/perf";
+
 /**
  * The one place that knows where the backend lives.
  *
@@ -152,6 +154,8 @@ type JsonInit = RequestInit & { json?: unknown; timeoutMs?: number };
 async function rawJson<T>(path: string, init?: JsonInit): Promise<T> {
   const { json, headers, timeoutMs, ...rest } = init ?? {};
   const url = apiUrl(path);
+  const startedAt = Date.now();
+  const method = (rest.method ?? "GET").toUpperCase();
   const controller = new AbortController();
   let timedOut = false;
   const timeoutId = setTimeout(() => {
@@ -182,6 +186,7 @@ async function rawJson<T>(path: string, init?: JsonInit): Promise<T> {
         0,
         `The API took too long to respond at ${url}. Check the backend connection and try again.`,
       );
+      noteRequest(`${method} ${path}`, Date.now() - startedAt, false, "timed out");
       if (process.env.NODE_ENV !== "production") {
         console.error("[Laravel API] request timed out", { url, error });
       }
@@ -190,6 +195,7 @@ async function rawJson<T>(path: string, init?: JsonInit): Promise<T> {
     // No response at all — connection/DNS/TLS level. Status 0 marks "never got
     // an HTTP status", distinct from any real 4xx/5xx the server could return.
     const error = new ApiError(0, networkMessage(url, e));
+    noteRequest(`${method} ${path}`, Date.now() - startedAt, false, "no response");
     if (process.env.NODE_ENV !== "production") {
       console.error("[Laravel API] request could not connect", { url, error, cause: e });
     }
@@ -205,6 +211,7 @@ async function rawJson<T>(path: string, init?: JsonInit): Promise<T> {
 
   if (!res.ok) {
     const error = new ApiError(res.status, messageFrom(body, `Request failed (${res.status})`), body);
+    noteRequest(`${method} ${path}`, Date.now() - startedAt, false, `HTTP ${res.status}`);
     if (process.env.NODE_ENV !== "production") {
       console.error("[Laravel API] backend returned an error", {
         url,
@@ -215,6 +222,9 @@ async function rawJson<T>(path: string, init?: JsonInit): Promise<T> {
     }
     throw error;
   }
+
+  noteRequest(`${method} ${path}`, Date.now() - startedAt, true, `HTTP ${res.status}`);
+
   return body as T;
 }
 
@@ -347,6 +357,7 @@ function standDown(): void {
 
 async function sendChunk(paths: string[], byPath: Map<string, QueuedRead[]>): Promise<void> {
   let payload: { responses?: unknown };
+  const startedAt = Date.now();
 
   try {
     payload = await rawJson<{ responses?: unknown }>("/api/batch", {
@@ -367,6 +378,8 @@ async function sendChunk(paths: string[], byPath: Map<string, QueuedRead[]>): Pr
     await readIndividually(paths, byPath);
     return;
   }
+
+  noteRequest("POST /api/batch", Date.now() - startedAt, true, `(${paths.length} reads)`);
 
   paths.forEach((path, index) => {
     const row = rows[index] as { status?: unknown; body?: unknown } | null;

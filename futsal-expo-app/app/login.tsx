@@ -12,7 +12,7 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { seedDemo } from "@/api";
+import { ensureDemoSeed } from "@/lib/demo-seed";
 import { Button, Label, Notice, TextControl } from "@/components/ui";
 import { useAuth } from "@/context/AuthContext";
 import { useTheme } from "@/context/ThemeContext";
@@ -34,7 +34,9 @@ export default function Login() {
   const [touched, setTouched] = useState(false);
 
   useEffect(() => {
-    void seedDemo().catch(() => undefined);
+    // Demo data, once a session at most, and never blocking the screen. See
+    // `ensureDemoSeed` — awaiting it here used to put a POST in front of login.
+    void ensureDemoSeed();
   }, []);
 
   useEffect(() => {

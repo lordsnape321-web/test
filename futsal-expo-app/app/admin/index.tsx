@@ -22,6 +22,7 @@ import {
   Text,
   View,
 } from "react-native";
+import { CARD_IMAGE_WIDTH, sizedImage } from "@/lib/images";
 import { fetchBookings, fetchVenues, patchBooking } from "@/api";
 import {
   BookingDonut,
@@ -439,7 +440,7 @@ export default function OwnerHome() {
               style={[styles.venueCard, { borderColor: c.border, backgroundColor: c.inset }]}
             >
               {v.imageUrl ? (
-                <Image source={{ uri: v.imageUrl }} style={styles.venueImg} />
+                <Image source={{ uri: sizedImage(v.imageUrl, CARD_IMAGE_WIDTH) }} style={styles.venueImg} />
               ) : (
                 <View style={[styles.venueImg, { backgroundColor: c.border }]} />
               )}

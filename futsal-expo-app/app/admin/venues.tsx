@@ -12,6 +12,7 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { CARD_IMAGE_WIDTH, HERO_IMAGE_WIDTH, sizedImage } from "@/lib/images";
 import Slider from "@react-native-community/slider";
 import { Picker } from "@/components/ThemedPicker";
 import {
@@ -811,7 +812,7 @@ export default function OwnerVenues() {
               ]}
             >
               {v.imageUrl ? (
-                <Image source={{ uri: v.imageUrl }} style={styles.railImg} />
+                <Image source={{ uri: sizedImage(v.imageUrl, CARD_IMAGE_WIDTH) }} style={styles.railImg} />
               ) : (
                 <View style={[styles.railImg, { backgroundColor: c.border }]} />
               )}
@@ -843,7 +844,7 @@ export default function OwnerVenues() {
           {/* Hero */}
           <View style={[styles.hero, { backgroundColor: c.surface, borderColor: c.border }]}>
             {active.imageUrl ? (
-              <Image source={{ uri: active.imageUrl }} style={styles.heroImg} />
+              <Image source={{ uri: sizedImage(active.imageUrl, HERO_IMAGE_WIDTH) }} style={styles.heroImg} />
             ) : (
               <View style={[styles.heroImg, { backgroundColor: c.border }]} />
             )}
@@ -959,7 +960,7 @@ export default function OwnerVenues() {
                     >
                       <View style={styles.courtMain}>
                         {ct.imageUrl ? (
-                          <Image source={{ uri: ct.imageUrl }} style={styles.courtImg} />
+                          <Image source={{ uri: sizedImage(ct.imageUrl, CARD_IMAGE_WIDTH) }} style={styles.courtImg} />
                         ) : null}
                         <View style={styles.grow}>
                           <Text style={[styles.courtName, { color: c.text }]}>

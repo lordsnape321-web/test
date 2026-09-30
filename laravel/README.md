@@ -258,6 +258,33 @@ slow requests always, one in `PERF_SAMPLE` of the rest). Knobs, all optional:
 Nothing here runs in production: `APP_DEBUG=false` turns it off, and a
 production host has real APM anyway.
 
+### Reading the numbers
+
+The API measures itself (`perf` on `/api/health`) and so does the app: in
+development it logs a few `[perf]` lines to the console — the Metro terminal for
+native, the browser console for web. Together they answer "why is this slow"
+without guessing:
+
+```
+[perf] bundle evaluated — 0ms
+[perf] fonts ready — 412ms
+[perf] app ready — 640ms
+[perf] POST /api/batch — 318ms (4 reads)
+```
+
+Where the time is, and what to do about it:
+
+| What you see | What it means |
+|---|---|
+| `bundle evaluated` → `app ready` is seconds | the dev bundle: 10 MB unminified, parsed on every start. `npm run start:fast` serves a minified bundle — that is the honest number |
+| `fonts ready` is slow | five font faces are fetched before anything renders. In dev they come from Metro |
+| A `[perf]` request line over ~300 ms | look the same route up in `/api/health` → `perf.slowest`. If the server says 5 ms, the time is the network or the proxy, not the query |
+| Nothing slow in the log, but the screen feels heavy | it is rendering: images (`src/lib/images.ts` sizes them) or a long list |
+
+`node_modules/.cache` is where Metro keeps its transforms. `npm start` leaves it
+alone now; `npm run clear` throws it away when dependencies or `metro.config.js`
+actually change.
+
 ## Serving more than one person
 
 This is worth being blunt about, because it is the difference between "the app

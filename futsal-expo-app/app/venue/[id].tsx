@@ -39,6 +39,7 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { HERO_IMAGE_WIDTH, sizedImage } from "@/lib/images";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { ReviewsSection } from "@/components/Reviews";
 import { ReceiptUploader, isOnlineMethod } from "@/components/ReceiptUploader";
@@ -581,7 +582,7 @@ export default function VenueDetail() {
           </Pressable>
 
           <View style={[styles.cover, { backgroundColor: c.surface, borderColor: c.border }]}>
-            {venue.imageUrl ? <Image source={{ uri: venue.imageUrl }} style={styles.coverImage} resizeMode="cover" /> : null}
+            {venue.imageUrl ? <Image source={{ uri: sizedImage(venue.imageUrl, HERO_IMAGE_WIDTH) }} style={styles.coverImage} resizeMode="cover" /> : null}
             <View style={styles.coverShade} />
             <View style={styles.coverCopy}>
               <View style={styles.badges}>
