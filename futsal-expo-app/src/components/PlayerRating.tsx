@@ -76,7 +76,7 @@ export function PlayerRatingCard({ stats }: { stats: PlayerStats }) {
       <View style={styles.donutRow}>
         <View style={styles.donutBox}>
           <Svg width={96} height={96} viewBox="0 0 100 100">
-            <G rotation={-90} originX={50} originY={50}>
+            <G transform="rotate(-90 50 50)">
               <Circle cx={50} cy={50} r={42} stroke={track} strokeWidth={10} fill="none" />
               <Circle
                 cx={50}

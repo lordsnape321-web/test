@@ -192,6 +192,10 @@ export function BookingDonut({
                 let offset = 0;
                 return segments.map((s) => {
                   const len = (s.value / sum) * C;
+                  // `rotation`/`originX`/`originY` become an invalid `transform-origin`
+                  // DOM prop on web, which also spun the arc around the top-left
+                  // corner instead of the centre; the SVG `rotate(a cx cy)` string
+                  // does the same job on both web and native.
                   const el = (
                     <Circle
                       key={s.label}
@@ -204,9 +208,7 @@ export function BookingDonut({
                       strokeDasharray={`${len} ${C - len}`}
                       strokeDashoffset={-offset}
                       strokeLinecap="butt"
-                      rotation={-90}
-                      originX={50}
-                      originY={50}
+                      transform="rotate(-90 50 50)"
                     />
                   );
                   offset += len;
