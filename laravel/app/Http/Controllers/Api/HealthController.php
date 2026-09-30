@@ -17,7 +17,7 @@ class HealthController extends ApiController
      * `php artisan serve` process or an un-pulled checkout announces itself
      * instead of looking like the data is broken.
      */
-    public const BUILD = 'ba6a7a0';
+    public const BUILD = '529be58';
 
     /**
      * GET /api/health — is the API up, and can it reach the database?
