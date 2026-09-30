@@ -15,9 +15,9 @@ use Illuminate\Support\Facades\View;
  *
  *   1. Sending is never part of the response. A booking confirmation must not
  *      wait on Gmail's SMTP handshake (or fail the request when the wifi drops),
- *      so messages are written to `email_outbox` and drained by the next few API
- *      calls — see App\Http\Middleware\PumpOutbox. The user's workflow has no
- *      queue worker or scheduler, and this needs neither.
+ *      so messages are written to `email_outbox` and drained by a separate
+ *      process that `App\Services\MailPump` starts on demand. The user's
+ *      workflow has no queue worker or scheduler, and neither is needed.
  *   2. A broken inbox is never a broken app. Every failure is logged, the row
  *      keeps its error, and the caller carries on.
  *
@@ -127,7 +127,27 @@ class Mailer
     }
 
     /**
-     * Send a few queued messages. Safe to call on any request.
+     * Is there anything waiting to go out?
+     *
+     * One indexed EXISTS query — cheap enough to ask on every request, which is
+     * what lets the pump do nothing at all on a quiet app.
+     */
+    public static function hasPending(): bool
+    {
+        try {
+            return EmailOutbox::query()
+                ->where('status', 'pending')
+                ->where(fn ($q) => $q->whereNull('available_at')->orWhere('available_at', '<=', now()))
+                ->exists();
+        } catch (\Throwable $e) {
+            // Storage not prepared yet — nothing is queued either.
+            return false;
+        }
+    }
+
+    /**
+     * Send a few queued messages. Safe to call on any request, though it is
+     * normally the background helper that does (see App\Services\MailPump).
      *
      * @return int how many were sent
      */
@@ -145,6 +165,9 @@ class Mailer
             return 0;
         }
 
+        // The budget is checked *between* messages: one conversation with a
+        // dead SMTP host still gets to time out on its own terms rather than
+        // being cut off mid-handshake.
         $started = microtime(true);
         $sent = 0;
 

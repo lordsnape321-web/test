@@ -101,21 +101,33 @@ queue worker, no scheduler. So:
 
 * every message is written to the **`email_outbox`** table inside the request
   that caused it (a booking confirmation never waits on Gmail);
-* `App\Http\Middleware\PumpOutbox` drains up to two messages *after* the
-  response is sent, on ordinary API traffic — the app polls, so the gap is
-  milliseconds;
+* `App\Http\Middleware\PumpOutbox` notices there is something to send and
+  starts **`php artisan mail:drain` as a separate process**
+  (`App\Services\MailPump`). The request does not send anything and does not
+  wait for anything — it writes a stamp file and returns;
+* the helper takes a lock, sends as many messages as it can, and exits. Two
+  helpers never run at once, and a helper that dies merely gets replaced by the
+  next one;
 * the same middleware scans for games starting soon, throttled to once every
   five minutes, so `bookings.reminder_sent_at` is what guarantees exactly one
   reminder per game;
 * failures retry twice (5 and 10 minutes later) and are then parked as
   `failed` with the SMTP error in `email_outbox.error`.
 
-Each request drains at most two messages and five seconds' worth, because
-`php artisan serve` handles one request at a time — a long SMTP conversation
-would stall the next call. A backlog therefore clears over the following
-requests, which arrive constantly while the app is open (it polls). `GET
-/api/health` reports `mail.pending` if you want to watch the queue empty, and
-`email_outbox.error` says why anything did not go out.
+**Why a separate process.** `php artisan serve` answers one request at a time,
+so a request that spends five seconds in an SMTP conversation is five seconds
+in which every other screen times out — and because the app polls every few
+seconds, that is not a delay, it is a dead API. Sending off the request path is
+the whole point of the helper. If your host forbids starting processes (`exec`
+or `popen` disabled), the pump degrades to sending **one** message per request
+with a twenty-second gap between attempts, and `GET /api/health` reports
+`mail.drain` as `inline` instead of `background` when that happens.
+
+`GET /api/health` reports `mail.pending`, `mail.drain` and the driver;
+`email_outbox.error` says why anything did not go out; and the helper's own
+output (only written when something is wrong) is in
+`storage/framework/mail-log`. You can also run the drain by hand:
+`php artisan mail:drain` — nothing needs it, but it is nice to watch.
 
 What goes out:
 

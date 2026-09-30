@@ -9,9 +9,9 @@ use Illuminate\Support\Facades\Schema;
  *
  * The user's workflow is `git pull`, `php artisan serve`, `npx expo start` — no
  * queue worker, no scheduler. A player is never asked to wait for Gmail's SMTP
- * handshake either, so every message is queued here inside the request that
- * caused it and `App\Services\Mailer` drains the table during the next few API
- * calls (the app polls, so that is milliseconds later).
+ * handshake either: every message is queued here inside the request that caused
+ * it, and `App\Services\MailPump` starts a separate process to drain the table
+ * a moment later. The request does not send and does not wait.
  *
  * Rows are kept after sending: they are the receipt for "did the confirmation
  * email actually go out?", which is the first question when someone says they

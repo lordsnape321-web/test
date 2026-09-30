@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Models\EmailOutbox;
+use App\Services\MailPump;
 use App\Services\Mailer;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
@@ -42,6 +43,11 @@ class HealthController extends ApiController
                     'driver' => (string) config('mail.default'),
                     'from' => (string) config('mail.from.address'),
                     'pending' => $this->pendingMail(),
+                    // "background" means the API never talks to Gmail itself:
+                    // a helper process does, started on demand. "inline" means
+                    // the host would not let us spawn one and requests are
+                    // covering for it — which is worth seeing here.
+                    'drain' => MailPump::mode(),
                 ],
             ]);
         } catch (\Throwable $e) {

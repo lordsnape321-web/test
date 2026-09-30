@@ -50,6 +50,7 @@ const health = await call('/api/health');
 ok('health answers', health.status === 200, health.status + ' ' + JSON.stringify(health.body).slice(0, 120));
 ok('it describes the mailer', typeof health.body?.mail?.driver === 'string', JSON.stringify(health.body?.mail));
 ok('and says whether mail is configured', typeof health.body?.mail?.configured === 'boolean', JSON.stringify(health.body?.mail));
+ok('and how mail is drained', typeof health.body?.mail?.drain === 'string', JSON.stringify(health.body?.mail));
 
 console.log('\n— signing up queues the welcome email —');
 const signup = await call('/api/auth/signup', {
@@ -88,6 +89,28 @@ const mailed = await db.query(
   [email],
 );
 ok('a booking_confirmed email is queued', (mailed.rows?.length ?? 0) === 1, JSON.stringify(mailed.rows));
+
+/*
+ * The regression that hurt: the drain used to run inside every request, so a
+ * slow SMTP conversation blocked the single-threaded `php artisan serve` and
+ * every polling screen timed out. With a separate drain process the API must
+ * stay quick *while* mail is in flight — which is right now, with a couple of
+ * messages just queued for this account.
+ */
+console.log('\n— the API stays quick while mail is in flight —');
+const queued = (await db.query(
+  'select count(*) as n from email_outbox where to_email=? and status=?',
+  [email, 'pending'],
+)).rows?.[0]?.n ?? 0;
+
+let slowest = 0;
+for (let i = 0; i < 5; i++) {
+  const started = Date.now();
+  const r = await call('/api/health');
+  slowest = Math.max(slowest, Date.now() - started);
+  if (r.status !== 200) break;
+}
+ok('five polls, none slower than a second', slowest < 1000, `slowest ${slowest}ms with ${queued} still queued`);
 
 console.log('\n— forgot-password sends a code —');
 const first = await call('/api/auth/forgot-password', { email });

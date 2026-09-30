@@ -2,7 +2,7 @@
 
 namespace App\Http\Middleware;
 
-use App\Services\Mailer;
+use App\Services\MailPump;
 use App\Support\GameReminders;
 use Closure;
 use Illuminate\Http\Request;
@@ -12,15 +12,19 @@ use Symfony\Component\HttpFoundation\Response;
 /**
  * The deployment has no queue worker and no scheduler — the user runs
  * `php artisan serve` and `npx expo start`, and nothing else — so the two jobs
- * that would normally live there are pumped by ordinary API traffic:
+ * that would normally live there are kicked off by ordinary API traffic:
  *
- *   • queued email is delivered a couple of messages at a time, and
- *   • games starting soon get their reminder.
+ *   • games starting soon get their reminder, and
+ *   • the outbox gets drained *by a separate process* (App\Services\MailPump).
  *
- * Both are cheap and both are best-effort. This runs *after* the response has
- * been sent (`terminate`), so a slow Gmail handshake can never delay a player's
- * booking; and the reminder scan runs at most once every few minutes, because
- * the app polls and every poll is a request.
+ * Both run after the response (`terminate`) and both are best-effort.
+ *
+ * The important word is "kicked off". An earlier version sent the mail right
+ * here, after the response — which is not free: `php artisan serve` answers one
+ * request at a time, so five seconds spent talking to Gmail is five seconds in
+ * which every other screen times out. With the app polling every few seconds,
+ * that is not a delay, it is a dead API. Now the request only writes a stamp
+ * file and launches the helper, which costs microseconds and nothing else.
  */
 class PumpOutbox
 {
@@ -33,7 +37,7 @@ class PumpOutbox
     }
 
     /**
-     * Runs after the response is flushed to the client.
+     * Runs after the response has been flushed to the client.
      */
     public function terminate(Request $request, Response $response): void
     {
@@ -46,12 +50,9 @@ class PumpOutbox
         }
 
         try {
-            // Two per request, five seconds in total: enough to clear a burst
-            // (a squad of confirmations) over the next few calls, small enough
-            // that a dead SMTP host cannot tie the server up. `php artisan serve`
-            // is single-threaded, which is the other reason this is capped
-            // rather than "drain everything".
-            Mailer::flush(2, 5.0);
+            // Cheap by design: one EXISTS query when there is nothing queued,
+            // and a spawn at most once every few seconds when there is.
+            MailPump::tick();
         } catch (\Throwable $e) {
             report($e);
         }
