@@ -22,6 +22,8 @@ class Court extends Model
         'surface',
         'price_per_hour',
         'price_morning',
+        'opens_at',
+        'closes_at',
         'image_url',
         'is_active',
         'features',

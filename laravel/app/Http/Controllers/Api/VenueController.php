@@ -124,6 +124,7 @@ class VenueController extends ApiController
                 $courtError = Validation::firstError(
                     ! is_array($court) || mb_strlen(trim((string) ($court['name'] ?? ''))) < 2 ? 'Each court needs a proper name ⚽' : null,
                     Validation::money($court['pricePerHour'] ?? 1500, ['min' => 100, 'max' => 20000, 'label' => 'Court price']),
+                    Validation::clockRange($court['opensAt'] ?? null, $court['closesAt'] ?? null),
                 );
 
                 if ($courtError) {
@@ -167,6 +168,8 @@ class VenueController extends ApiController
                         'price_morning' => (int) ($court['priceMorning'] ?? (int) round($price * 0.75)),
                         'image_url' => mb_substr((string) ($court['imageUrl'] ?? ''), 0, 2000000),
                         'features' => mb_substr((string) ($court['features'] ?? 'Floodlights'), 0, 500),
+                        'opens_at' => Validation::normaliseClock($court['opensAt'] ?? null) ?: null,
+                        'closes_at' => Validation::normaliseClock($court['closesAt'] ?? null) ?: null,
                     ]);
                 }
             }

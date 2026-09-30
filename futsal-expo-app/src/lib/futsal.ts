@@ -166,3 +166,61 @@ export const VENUE_IMAGES = [
   "https://images.unsplash.com/photo-1606925797300-0b35e9d1794e?q=80&w=1200&auto=format&fit=crop",
   "https://images.unsplash.com/photo-1459865264687-595d652de67e?q=80&w=1200&auto=format&fit=crop",
 ];
+
+/** The venue shape the court-hours helpers need; hours may arrive as strings. */
+export type CourtHoursVenue = {
+  openingHour?: number | string | null;
+  closingHour?: number | string | null;
+};
+
+/** Every half hour a court can open or close at, for the owner's pickers. */
+export const CLOCK_OPTIONS: string[] = Array.from({ length: 49 }, (_, i) => {
+  const minutes = i * 30;
+  return `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
+});
+
+/**
+ * The hours one court actually trades in.
+ *
+ * A court with its own window keeps it; otherwise it follows the venue, which
+ * is what every court did before per-court hours existed.
+ */
+export function courtHours(
+  court?: { opensAt?: string | null; closesAt?: string | null } | null,
+  venue?: CourtHoursVenue | null,
+): { opensAt: string; closesAt: string; inherited: boolean } {
+  const opens = court?.opensAt ?? "";
+  const closes = court?.closesAt ?? "";
+  if (opens && closes) return { opensAt: opens, closesAt: closes, inherited: false };
+  // A venue that somehow carries no hours falls back to the historic 6–22,
+  // never to 0–0 (which would leave a court with no slots at all).
+  const open = venueHour(venue?.openingHour, 6);
+  const close = venueHour(venue?.closingHour, 22);
+  return {
+    opensAt: `${String(open).padStart(2, "0")}:00`,
+    closesAt: `${String(close).padStart(2, "0")}:00`,
+    inherited: true,
+  };
+}
+
+/** A venue hour as a number, tolerating the nulls and strings JSON can carry. */
+function venueHour(value: unknown, fallback: number): number {
+  if (value === null || value === undefined || value === "") return fallback;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+/** Slot list for a court: only the hours it is actually open. */
+export function courtTimeSlots(
+  court?: { opensAt?: string | null; closesAt?: string | null } | null,
+  venue?: CourtHoursVenue | null,
+): string[] {
+  const { opensAt, closesAt } = courtHours(court, venue);
+  const from = timeToMin(opensAt);
+  const to = timeToMin(closesAt);
+  const slots: string[] = [];
+  for (let minutes = from; minutes + 60 <= to; minutes += 60) {
+    slots.push(`${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`);
+  }
+  return slots;
+}

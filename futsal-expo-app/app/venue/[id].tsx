@@ -75,7 +75,8 @@ import {
   prettyDate,
   prettyDayShort,
   rangeSlots,
-  timeSlots,
+  courtHours,
+  courtTimeSlots,
   todayISO,
 } from "@/lib/futsal";
 import { normalizePromoCode } from "@/lib/promos";
@@ -275,10 +276,10 @@ export default function VenueDetail() {
 
   const court = useMemo(() => courts.find((item) => item.id === courtId) ?? null, [courts, courtId]);
   const days = useMemo(() => next14Days(), []);
-  const slots = useMemo(
-    () => (venue ? timeSlots(venue.openingHour, venue.closingHour) : []),
-    [venue],
-  );
+  // Slots come from the court the player picked: a pitch can keep its own
+  // window, and without one it follows the venue exactly as before.
+  const slots = useMemo(() => courtTimeSlots(court, venue), [court, venue]);
+  const hoursShown = useMemo(() => courtHours(court, venue), [court, venue]);
   const availableMethods = useMemo(() => parsePayments(venue?.acceptedPayments), [venue?.acceptedPayments]);
 
   useEffect(() => {
@@ -634,6 +635,7 @@ export default function VenueDetail() {
                     <View style={styles.rowBetween}><View style={[styles.formatPill, { backgroundColor: c.surface }]}><Users size={12} color={c.textMuted} /><Text style={[styles.tinyStrong, { color: c.textMuted }]}>{item.format ?? "Futsal"}</Text></View>{active ? <View style={styles.checkCircle}><Check size={13} color="#FFFFFF" strokeWidth={3} /></View> : null}</View>
                     <Text style={[styles.courtName, { color: c.text }]}>{item.name}</Text>
                     <Text style={[styles.small, { color: c.textMuted }]}>{item.surface ?? "Indoor turf"}</Text>
+                    <Text style={[styles.tiny, { color: c.textFaint }]}>🕐 {courtHours(item, venue).opensAt} – {courtHours(item, venue).closesAt}</Text>
                     <View style={styles.rowBetween}><Text style={[styles.price, { color: isDark ? colors.emerald300 : colors.emerald700 }]}>{formatNPR(item.pricePerHour)}<Text style={styles.priceSmall}>/hr</Text></Text><Text style={[styles.tiny, { color: c.textFaint }]}>☀️ {formatNPR(item.priceMorning ?? item.pricePerHour)}</Text></View>
                   </Pressable>
                 );
@@ -653,6 +655,12 @@ export default function VenueDetail() {
 
           <SectionCard title="Step 3 • How long + when?" accent="emerald">
             <Text style={[styles.small, { color: c.textMuted }]}>Pick 1, 2 or 3 hours first, then choose a start time. The whole block must be free.</Text>
+            {court ? (
+              <Text style={[styles.tinyStrong, { color: c.textFaint }]}>
+                🕐 {court.name} is open {hoursShown.opensAt} – {hoursShown.closesAt}
+                {hoursShown.inherited ? " (venue hours)" : ""}
+              </Text>
+            ) : null}
             <View style={styles.wrapRow}>
               {[1, 2, 3].map((value) => <Choice key={String(value)} label={`${value} hr${value > 1 ? "s" : ""} • ${value} slot${value > 1 ? "s" : ""}`} active={hours === value} onPress={() => { setHours(value); setStart(null); }} />)}
             </View>

@@ -302,6 +302,13 @@ class BookingController extends ApiController
         }
 
         $hourNum = (int) explode(':', $startTime)[0];
+        // A pitch can keep its own window (defaults to the venue's). Booking a
+        // slot the court is shut for used to be accepted and then cancelled by
+        // the owner; refusing it here is kinder than a rejected request.
+        if ($hoursError = $this->courtHoursError($court, $startTime, $endTime)) {
+            return $this->fail($hoursError, 400);
+        }
+
         $rate = $hourNum < 12 ? (int) $court->price_morning : (int) $court->price_per_hour;
 
         $venue = Venue::find($court->venue_id);
@@ -1502,6 +1509,34 @@ class BookingController extends ApiController
      * Refused once money is on the shares: re-splitting after collections would
      * silently rewrite who owes what.
      */
+    /**
+     * Is this block inside the court's opening hours?
+     *
+     * A court may set its own window; without one it follows the venue's
+     * `opening_hour`/`closing_hour`, so a venue that never set court hours keeps
+     * exactly the behaviour it had before.
+     */
+    private function courtHoursError(Court $court, string $startTime, string $endTime): ?string
+    {
+        $venue = Venue::find($court->venue_id);
+
+        $opensAt = $court->opens_at ?: sprintf('%02d:00', (int) ($venue->opening_hour ?? 6));
+        $closesAt = $court->closes_at ?: sprintf('%02d:00', (int) ($venue->closing_hour ?? 22));
+
+        $open = Validation::toMinutes($opensAt);
+        $close = Validation::toMinutes($closesAt);
+        $start = Validation::toMinutes($startTime);
+        $end = Validation::toMinutes($endTime);
+
+        // A block ending at or before it starts crosses midnight: futsal slots
+        // do not run past closing, so treat it as outside.
+        if ($end <= $start || $start < $open || $end > $close) {
+            return 'This court is open '.$opensAt.'–'.$closesAt.' — pick a slot inside those hours ⏰';
+        }
+
+        return null;
+    }
+
     private function handleTeamSelection(Booking $booking, array $prev, Request $request): ?JsonResponse
     {
         if (! $request->has('teamId')) {

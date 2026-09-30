@@ -31,6 +31,9 @@ export type Court = {
   imageUrl?: string | null;
   isActive?: boolean;
   deletedAt?: string | null;
+  /** "HH:MM" 24-hour. Null/absent means the court follows the venue's hours. */
+  opensAt?: string | null;
+  closesAt?: string | null;
 };
 
 export type Venue = {

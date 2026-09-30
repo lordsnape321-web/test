@@ -32,6 +32,7 @@ class CourtController extends ApiController
             $request->has('priceMorning')
                 ? Validation::money($request->input('priceMorning'), ['min' => 100, 'max' => 20000, 'label' => 'Morning price'])
                 : null,
+            Validation::clockRange($request->input('opensAt'), $request->input('closesAt')),
         );
 
         if ($error) {
@@ -57,6 +58,8 @@ class CourtController extends ApiController
             'surface' => mb_substr((string) $request->input('surface', 'Artificial Turf'), 0, 60),
             'price_per_hour' => $price,
             'price_morning' => (int) $request->input('priceMorning', (int) round($price * 0.75)),
+            'opens_at' => $this->courtHour($request->input('opensAt')),
+            'closes_at' => $this->courtHour($request->input('closesAt')),
             'image_url' => mb_substr((string) $request->input('imageUrl', ''), 0, 2000000),
             'features' => mb_substr((string) $request->input('features', 'Floodlights,Nets Provided,Match Balls'), 0, 500),
         ]);
@@ -85,6 +88,17 @@ class CourtController extends ApiController
 
         if (! $court) {
             return $this->fail('Court not found', 404);
+        }
+
+        if ($request->has('opensAt') || $request->has('closesAt')) {
+            $hoursError = Validation::clockRange(
+                $request->has('opensAt') ? $request->input('opensAt') : $court->opens_at,
+                $request->has('closesAt') ? $request->input('closesAt') : $court->closes_at,
+            );
+
+            if ($hoursError) {
+                return $this->fail($hoursError, 400);
+            }
         }
 
         $patch = [];
@@ -117,6 +131,15 @@ class CourtController extends ApiController
             $patch['features'] = mb_substr((string) $request->input('features'), 0, 500);
         }
 
+        // Empty string clears a court's own window, falling back to the venue.
+        if ($request->has('opensAt')) {
+            $patch['opens_at'] = $this->courtHour($request->input('opensAt')) ?: null;
+        }
+
+        if ($request->has('closesAt')) {
+            $patch['closes_at'] = $this->courtHour($request->input('closesAt')) ?: null;
+        }
+
         if ($request->has('imageUrl')) {
             $patch['image_url'] = mb_substr((string) $request->input('imageUrl'), 0, 2000000);
         }
@@ -126,6 +149,12 @@ class CourtController extends ApiController
         }
 
         return $this->ok(['court' => $court->fresh()->toArray()]);
+    }
+
+    /** "06:30" → "06:30"; blank/absent → '' (meaning “follow the venue”). */
+    private function courtHour(mixed $value): string
+    {
+        return Validation::normaliseClock($value);
     }
 
     /**

@@ -15,7 +15,7 @@ use App\Models\TeamLedgerEntry;
 use App\Models\TeamMember;
 use App\Models\User;
 use App\Models\Venue;
-use App\Support\GuestLedgerSchema;
+use App\Support\StartupSchema;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Symfony\Component\Console\Output\BufferedOutput;
 use Tests\TestCase;
@@ -240,8 +240,8 @@ class ParticipantLedgerTest extends TestCase
     public function test_startup_schema_check_is_safe_to_repeat_with_existing_guest_data(): void
     {
         $this->postJson($this->url(), ['action' => 'guest', 'actorId' => $this->host->id, 'playerName' => 'Guest', 'method' => 'Khalti', 'amount' => 100])->assertCreated();
-        app(GuestLedgerSchema::class)->ensure(new BufferedOutput);
-        app(GuestLedgerSchema::class)->ensure(new BufferedOutput);
+        app(StartupSchema::class)->ensure(new BufferedOutput);
+        app(StartupSchema::class)->ensure(new BufferedOutput);
         self::assertSame(1, BookingGuestPayment::count());
     }
 }

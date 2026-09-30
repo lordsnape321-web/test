@@ -338,3 +338,30 @@ tracking. Swapping the team after any share has money recorded is refused (409),
 because re-splitting would silently rewrite who owes what.
 
 Regression coverage: `vendor/bin/phpunit tests/Feature/BookingTeamAttachTest.php`.
+
+### Per-court opening hours
+
+Each court can now carry its own window (Owner Studio → Venue → Edit court →
+**Opens at / Closes at**, half-hour steps). `courts.opens_at` / `courts.closes_at`
+are nullable `"HH:MM"` strings; leaving them empty means "follow the venue", which
+is exactly the behaviour every court had before, so nothing changes for venues
+that never touch the new fields.
+
+The hours are not decoration — they decide what players can book:
+
+- **Player app**: the slot picker for a court is generated from that court's
+  window (`courtTimeSlots` in `src/lib/futsal.ts`), falling back to the venue's
+  `opening_hour`/`closing_hour`. The booking screen and the court list show the
+  window being used.
+- **API**: `POST /api/bookings` refuses a start/end block outside the court's
+  window with `This court is open 06:00–22:00 — pick a slot inside those hours ⏰`.
+  Previously such a game was happily created and then cancelled by the owner.
+
+`POST/PATCH /api/courts` validate the pair with `Validation::clockRange` — both
+hours or neither, close after open, at least an hour of play — and blank strings
+clear a court back to the venue's hours. The column pair arrives with the
+`court_opening_hours` startup migration (`StartupSchema`), so a plain
+`php artisan serve` applies it like the other additive schema steps.
+
+Regression coverage: `vendor/bin/phpunit tests/Feature/CourtHoursTest.php` plus
+`node` probe `futsal-expo-app/scripts/court-hours.test.ts`.

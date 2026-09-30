@@ -2,7 +2,7 @@
 
 namespace Tests\Feature;
 
-use App\Support\GuestLedgerSchema;
+use App\Support\StartupSchema;
 use App\Console\Commands\ReconcileBookingPayments;
 use Illuminate\Console\Events\CommandStarting;
 use Illuminate\Support\Facades\Event;
@@ -15,9 +15,9 @@ class DevelopmentServerPreparationTest extends TestCase
 {
     public function test_serve_applies_payment_repair_before_starting(): void
     {
-        $schema = Mockery::mock(GuestLedgerSchema::class);
+        $schema = Mockery::mock(StartupSchema::class);
         $schema->shouldReceive('ensure')->once();
-        $this->app->instance(GuestLedgerSchema::class, $schema);
+        $this->app->instance(StartupSchema::class, $schema);
 
         $command = Mockery::mock(ReconcileBookingPayments::class);
         $command->shouldReceive('setLaravel')->once()->with($this->app);
@@ -34,9 +34,9 @@ class DevelopmentServerPreparationTest extends TestCase
 
     public function test_other_commands_do_not_access_the_payment_database(): void
     {
-        $schema = Mockery::mock(GuestLedgerSchema::class);
+        $schema = Mockery::mock(StartupSchema::class);
         $schema->shouldReceive('ensure')->never();
-        $this->app->instance(GuestLedgerSchema::class, $schema);
+        $this->app->instance(StartupSchema::class, $schema);
 
         $command = Mockery::mock(ReconcileBookingPayments::class);
         $command->shouldNotReceive('run');
@@ -51,9 +51,9 @@ class DevelopmentServerPreparationTest extends TestCase
 
     public function test_failed_repair_does_not_silently_start_the_server(): void
     {
-        $schema = Mockery::mock(GuestLedgerSchema::class);
+        $schema = Mockery::mock(StartupSchema::class);
         $schema->shouldReceive('ensure')->once();
-        $this->app->instance(GuestLedgerSchema::class, $schema);
+        $this->app->instance(StartupSchema::class, $schema);
 
         $command = Mockery::mock(ReconcileBookingPayments::class);
         $command->shouldReceive('setLaravel')->once();

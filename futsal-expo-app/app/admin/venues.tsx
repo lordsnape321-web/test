@@ -42,7 +42,7 @@ import {
 import { ReviewRow } from "@/api";
 import { useAuth } from "@/context/AuthContext";
 import { useTheme } from "@/context/ThemeContext";
-import { formatNPR } from "@/lib/futsal";
+import { CLOCK_OPTIONS, courtHours, formatNPR, timeToMin as toMinutes } from "@/lib/futsal";
 import { useBreakpoints } from "@/lib/responsive";
 import { PAYMENT_OPTIONS } from "@/lib/loyalty";
 import type { Court, Venue } from "@/lib/types";
@@ -259,6 +259,9 @@ export default function OwnerVenues() {
   const [cSurface, setCSurface] = useState(SURFACES[0]);
   const [cPrice, setCPrice] = useState(1500);
   const [cMorning, setCMorning] = useState(1200);
+  // "" means "follow the venue's hours", which is what every court did before.
+  const [cOpens, setCOpens] = useState("");
+  const [cCloses, setCCloses] = useState("");
   const [cImage, setCImage] = useState("");
   const [cFeat, setCFeat] = useState<string[]>(["Floodlights", "Nets Provided", "Match Balls"]);
   const [savingCourt, setSavingCourt] = useState(false);
@@ -486,6 +489,12 @@ export default function OwnerVenues() {
     }
   }
 
+  // What "follow the venue" resolves to for this venue, shown in the picker so
+  // the owner never has to guess what the blank option means.
+  const venueHoursLabel = active
+    ? `${String(active.openingHour ?? 6).padStart(2, "0")}:00–${String(active.closingHour ?? 22).padStart(2, "0")}:00`
+    : "venue hours";
+
   function openAddCourt() {
     setEditingCourt(null);
     setCName("");
@@ -495,6 +504,8 @@ export default function OwnerVenues() {
     setCMorning(1200);
     setCImage("");
     setCFeat(["Floodlights", "Nets Provided", "Match Balls"]);
+    setCOpens("");
+    setCCloses("");
     setShowCourt(true);
   }
 
@@ -506,6 +517,8 @@ export default function OwnerVenues() {
     setCPrice(c.pricePerHour);
     setCMorning(c.priceMorning ?? Math.round(c.pricePerHour * 0.75));
     setCImage(c.imageUrl ?? "");
+    setCOpens(c.opensAt ?? "");
+    setCCloses(c.closesAt ?? "");
     setCFeat(
       String(c.features ?? "")
         .split(",")
@@ -521,6 +534,13 @@ export default function OwnerVenues() {
       validateCourtName(cName),
       validateMoney(cPrice, { min: 100, max: 20000, label: "Price per hour" }),
       validateMoney(cMorning, { min: 100, max: 20000, label: "Morning price" }),
+      // Both hours or neither: one alone would be ambiguous, not "open all day".
+      (cOpens === "") !== (cCloses === "")
+        ? "Set both court hours, or leave both blank to follow the venue 🕐"
+        : null,
+      cOpens !== "" && cCloses !== "" && toMinutes(cCloses) <= toMinutes(cOpens)
+        ? "Closing time must be after opening time 🕐"
+        : null,
     );
     if (err) {
       setCourtError(err);
@@ -537,6 +557,8 @@ export default function OwnerVenues() {
         priceMorning: cMorning,
         imageUrl: cImage,
         features: cFeat.join(","),
+        opensAt: cOpens,
+        closesAt: cCloses,
       };
       if (editingCourt) {
         await updateCourt(editingCourt.id, payload);
@@ -867,6 +889,10 @@ export default function OwnerVenues() {
                           <Text style={[styles.courtMeta, { color: c.textMuted }]}>
                             {ct.format ?? "5v5"} • {ct.surface ?? "Turf"} • ☀️ morning{" "}
                             {formatNPR(ct.priceMorning ?? Math.round(ct.pricePerHour * 0.75))}
+                          </Text>
+                          <Text style={[styles.courtMeta, { color: c.textMuted }]}>
+                            🕐 {courtHours(ct, active).opensAt} – {courtHours(ct, active).closesAt}
+                            {courtHours(ct, active).inherited ? " (venue hours)" : ""}
                           </Text>
                           <Text style={[styles.courtFeat, { color: c.textFaint }]}>
                             ✨ {features || "No facilities listed"}
@@ -1341,6 +1367,45 @@ export default function OwnerVenues() {
                   </View>
                 </View>
               </View>
+
+              <View style={styles.twoCol}>
+                <View style={styles.grow}>
+                  <FieldLabel>Opens at 🕐</FieldLabel>
+                  <View style={[styles.pickerWrap, { borderColor: c.border, backgroundColor: isDark ? "#0F172A" : "#FFFFFF" }]}>
+                    <Picker
+                      selectedValue={cOpens}
+                      onValueChange={(v) => setCOpens(String(v))}
+                      style={{ color: c.text, height: 44 }}
+                      dropdownIconColor={c.textMuted}
+                    >
+                      <Picker.Item label={`Venue hours (${venueHoursLabel})`} value="" />
+                      {CLOCK_OPTIONS.map((t) => (
+                        <Picker.Item key={t} label={t} value={t} />
+                      ))}
+                    </Picker>
+                  </View>
+                </View>
+                <View style={styles.grow}>
+                  <FieldLabel>Closes at 🕐</FieldLabel>
+                  <View style={[styles.pickerWrap, { borderColor: c.border, backgroundColor: isDark ? "#0F172A" : "#FFFFFF" }]}>
+                    <Picker
+                      selectedValue={cCloses}
+                      onValueChange={(v) => setCCloses(String(v))}
+                      style={{ color: c.text, height: 44 }}
+                      dropdownIconColor={c.textMuted}
+                    >
+                      <Picker.Item label={`Venue hours (${venueHoursLabel})`} value="" />
+                      {CLOCK_OPTIONS.map((t) => (
+                        <Picker.Item key={t} label={t} value={t} />
+                      ))}
+                    </Picker>
+                  </View>
+                </View>
+              </View>
+              <Text style={[styles.hint, { color: c.textFaint }]}>
+                Players only see start times inside these hours. Leave both blank and this court
+                follows the venue&apos;s opening hours.
+              </Text>
 
               <View style={styles.twoCol}>
                 <View style={styles.grow}>

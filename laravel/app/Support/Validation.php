@@ -489,6 +489,77 @@ class Validation
         return null;
     }
 
+    /** An "HH:MM" clock value, as the courts/venue opening hours are stored. */
+    public static function clock(mixed $value, string $label = 'Time'): ?string
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        $raw = trim((string) $value);
+
+        if (! preg_match('/^(\d{1,2}):(\d{2})$/', $raw, $m)) {
+            return "{$label} must look like 06:30 🕐";
+        }
+
+        $h = (int) $m[1];
+        $min = (int) $m[2];
+
+        if ($h > 24 || $min > 59 || ($h === 24 && $min !== 0)) {
+            return "{$label} is not a real time 🕐";
+        }
+
+        return null;
+    }
+
+    /** Optional pair of court hours; both or neither, and closing after opening. */
+    public static function clockRange(mixed $open, mixed $close): ?string
+    {
+        $openEmpty = $open === null || $open === '';
+        $closeEmpty = $close === null || $close === '';
+
+        if ($openEmpty && $closeEmpty) {
+            return null;
+        }
+
+        if ($openEmpty || $closeEmpty) {
+            return 'Set both the opening and the closing time for a court, or leave both empty to follow the venue hours 🕐';
+        }
+
+        return self::firstError(self::clock($open, 'Court opening time'), self::clock($close, 'Court closing time'))
+            ?? (self::toMinutes($close) <= self::toMinutes($open)
+                ? 'A court must close after it opens 🕐'
+                : (self::toMinutes($close) - self::toMinutes($open) < 60
+                    ? 'A court should stay open at least an hour 🕐'
+                    : null));
+    }
+
+    /** "HH:MM" → minutes past midnight; null when it isn't a clock value. */
+    public static function toMinutes(mixed $value): int
+    {
+        if (! preg_match('/^(\d{1,2}):(\d{2})$/', trim((string) $value), $m)) {
+            return 0;
+        }
+
+        return ((int) $m[1]) * 60 + (int) $m[2];
+    }
+
+    /** Normalise "6:5" / "06:05" into the stored "HH:MM"; "" when unusable. */
+    public static function normaliseClock(mixed $value): string
+    {
+        if ($value === null || $value === '') {
+            return '';
+        }
+
+        $raw = trim((string) $value);
+
+        if (! preg_match('/^(\d{1,2}):(\d{1,2})$/', $raw, $m)) {
+            return '';
+        }
+
+        return sprintf('%02d:%02d', (int) $m[1], (int) $m[2]);
+    }
+
     public static function hoursRange(mixed $open, mixed $close): ?string
     {
         if (! is_numeric($open) || ! is_numeric($close)) {
