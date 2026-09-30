@@ -56,6 +56,49 @@ php artisan optimize:clear
 php artisan route:list --path=api
 ```
 
+## Why screens answer in one round trip
+
+`php artisan serve` handles **one request at a time**, so a screen that needs
+nine things used to be nine requests queued end to end, each paying the
+framework's boot cost before it said anything — the venue screen was the worst
+of them (venue, courts, promos, teams, leagues, vouchers, stats, bookings).
+On a phone over Wi-Fi that reads as "this app is slow", with no single endpoint
+to blame.
+
+So the app batches its reads. Reads issued in the same tick — which is what
+`Promise.all` over several fetch helpers is — are collected by the client
+(`src/lib/api.ts` in the Expo app) and sent as one `POST /api/batch`:
+
+```json
+{ "requests": [{ "path": "/api/venues/3" }, { "path": "/api/courts?venueId=3" }] }
+```
+
+```json
+{ "responses": [{ "status": 200, "body": { "...": "…" } }, { "status": 200, "body": { "...": "…" } }] }
+```
+
+`App\Http\Controllers\Api\BatchController` replays them inside the process
+that is already booted, so nine calls cost one boot instead of nine. Screens did
+not change: they still call `fetchVenue()`, `fetchCourts()` and so on, and each
+promise resolves with the same body — or rejects with the same `{ error }`
+message — it always did.
+
+The rules it holds to:
+
+* **reads only.** Every sub-request is a GET, so nothing can be smuggled through
+  a route that does not expect a write;
+* at most **12** paths per batch, each one `/api/…`, no recursion, no traversal;
+* a lone read is sent as a plain request rather than waiting for a batch;
+* the client falls back to individual requests (and stops trying to batch for a
+  minute) if the route is missing or unhappy, so an older backend still works.
+
+You can watch it yourself:
+
+```
+curl -s -X POST localhost:8000/api/batch -H 'Content-Type: application/json' \
+  -d '{"requests":[{"path":"/api/venues"},{"path":"/api/stats"}]}'
+```
+
 ## Email (Gmail)
 
 Booking confirmations, game reminders and password-reset codes are sent from

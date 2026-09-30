@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\BatchController;
 use App\Http\Controllers\Api\AvailabilityController;
 use App\Http\Controllers\Api\BookingController;
 use App\Http\Controllers\Api\CourtController;
@@ -44,6 +45,13 @@ use Illuminate\Support\Facades\Route;
 */
 
 Route::get('/health', HealthController::class);
+
+/*
+ * Several reads in one round trip. The expo client batches the requests a
+ * screen makes in the same tick through this route — see the controller for
+ * why the dev server makes that worth doing.
+ */
+Route::post('/batch', BatchController::class);
 Route::get('/stats', StatsController::class);
 Route::get('/availability', [AvailabilityController::class, 'index']);
 
