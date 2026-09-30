@@ -144,19 +144,20 @@ function networkMessage(url: string, e: unknown): string {
  * A network-level failure (fetch throws, no response) is also converted to an
  * ApiError — with status 0 — so callers have one error type to handle and the
  * message names the unreachable URL instead of vanishing behind a generic one.
+ *
+ * Reads are batched: see `apiJson` below.
  */
-export async function apiJson<T>(
-  path: string,
-  init?: RequestInit & { json?: unknown },
-): Promise<T> {
-  const { json, headers, ...rest } = init ?? {};
+type JsonInit = RequestInit & { json?: unknown; timeoutMs?: number };
+
+async function rawJson<T>(path: string, init?: JsonInit): Promise<T> {
+  const { json, headers, timeoutMs, ...rest } = init ?? {};
   const url = apiUrl(path);
   const controller = new AbortController();
   let timedOut = false;
   const timeoutId = setTimeout(() => {
     timedOut = true;
     controller.abort();
-  }, API_TIMEOUT_MS);
+  }, timeoutMs ?? API_TIMEOUT_MS);
   const parentSignal = rest.signal;
   const abortFromParent = () => controller.abort();
   if (parentSignal) {
@@ -215,6 +216,196 @@ export async function apiJson<T>(
     throw error;
   }
   return body as T;
+}
+
+/* ── read batching ───────────────────────────────────────────────────────── */
+
+/**
+ * The dev server answers one request at a time, so six reads from one screen are
+ * six queued round trips, each paying Laravel's boot cost before it says
+ * anything. Reads issued in the same tick — which is what `Promise.all` over
+ * several fetch helpers is — are collected here and sent as a single POST to
+ * `/api/batch`, which replays them in one already-booted process.
+ *
+ * Nothing above this layer changes: `fetchVenue()` and `fetchCourts()` are still
+ * the calls a screen makes, and each still resolves to the same body or rejects
+ * with the same ApiError.
+ *
+ * Three guards keep this from being clever at the app's expense:
+ *
+ *   • only plain GETs with no body, headers or AbortSignal are batched — a
+ *     request whose caller can cancel it stays a request of its own;
+ *   • a lone read is sent directly, so nothing waits on a batch that will never
+ *     have a second member;
+ *   • if the batch route is missing or unhappy (an older backend, a proxy that
+ *     drops POST), the reads are re-issued individually and batching stands down
+ *     for a minute rather than failing the screen.
+ */
+
+/** The server's own cap; mirrored here so a big flush is sent in legal chunks. */
+const BATCH_MAX = 12;
+
+const BATCH_TIMEOUT_MS = 30_000;
+
+/** After a batch fails at the transport level, don't try again for this long. */
+const BATCH_COOLDOWN_MS = 60_000;
+
+type QueuedRead = {
+  path: string;
+  resolve: (value: unknown) => void;
+  reject: (error: unknown) => void;
+};
+
+let readQueue: QueuedRead[] = [];
+let flushTimer: ReturnType<typeof setTimeout> | null = null;
+let batchingDisabledUntil = 0;
+let warnedAboutBatching = false;
+
+/** Is this request one the batch route can carry? */
+function canBatch(path: string, init?: JsonInit): boolean {
+  if (Date.now() < batchingDisabledUntil) return false;
+  if (!path.startsWith("/api/")) return false;
+  if (path.startsWith("/api/batch")) return false;
+  if (!init) return true;
+  if (init.method && init.method.toUpperCase() !== "GET") return false;
+  if (init.json !== undefined || init.body !== undefined) return false;
+  if (init.signal || init.headers) return false;
+  return true;
+}
+
+function scheduleFlush(): void {
+  if (flushTimer !== null) return;
+  flushTimer = setTimeout(() => {
+    flushTimer = null;
+    void flushReads();
+  }, 0);
+}
+
+async function flushReads(): Promise<void> {
+  const items = readQueue;
+  readQueue = [];
+
+  if (items.length === 0) return;
+
+  // A single read is not worth a second hop.
+  if (items.length === 1) {
+    const [only] = items;
+    rawJson(only.path).then(only.resolve, only.reject);
+    return;
+  }
+
+  // The same path twice in one tick (two screens wanting the venue list) is one
+  // read; both callers get the same answer.
+  const byPath = new Map<string, QueuedRead[]>();
+  const unique: string[] = [];
+
+  for (const item of items) {
+    const existing = byPath.get(item.path);
+
+    if (existing) {
+      existing.push(item);
+      continue;
+    }
+
+    byPath.set(item.path, [item]);
+    unique.push(item.path);
+  }
+
+  for (let start = 0; start < unique.length; start += BATCH_MAX) {
+    await sendChunk(unique.slice(start, start + BATCH_MAX), byPath);
+  }
+}
+
+function settlePath(byPath: Map<string, QueuedRead[]>, path: string, ok: boolean, value: unknown): void {
+  for (const item of byPath.get(path) ?? []) {
+    if (ok) item.resolve(value);
+    else item.reject(value);
+  }
+}
+
+/** Ask for every path again as its own request. Used when batching is unusable. */
+async function readIndividually(paths: string[], byPath: Map<string, QueuedRead[]>): Promise<void> {
+  await Promise.all(
+    paths.map(async (path) => {
+      try {
+        settlePath(byPath, path, true, await rawJson(path));
+      } catch (e) {
+        settlePath(byPath, path, false, e);
+      }
+    }),
+  );
+}
+
+function standDown(): void {
+  batchingDisabledUntil = Date.now() + BATCH_COOLDOWN_MS;
+
+  if (!warnedAboutBatching && process.env.NODE_ENV !== "production") {
+    warnedAboutBatching = true;
+    console.warn("[Laravel API] /api/batch unavailable — reading one request at a time");
+  }
+}
+
+async function sendChunk(paths: string[], byPath: Map<string, QueuedRead[]>): Promise<void> {
+  let payload: { responses?: unknown };
+
+  try {
+    payload = await rawJson<{ responses?: unknown }>("/api/batch", {
+      method: "POST",
+      json: { requests: paths.map((path) => ({ path })) },
+      timeoutMs: BATCH_TIMEOUT_MS,
+    });
+  } catch {
+    standDown();
+    await readIndividually(paths, byPath);
+    return;
+  }
+
+  const rows = Array.isArray(payload?.responses) ? payload.responses : [];
+
+  if (rows.length !== paths.length) {
+    standDown();
+    await readIndividually(paths, byPath);
+    return;
+  }
+
+  paths.forEach((path, index) => {
+    const row = rows[index] as { status?: unknown; body?: unknown } | null;
+    const status = Number(row?.status ?? 0);
+    const body = row?.body;
+
+    if (status >= 200 && status < 300) {
+      settlePath(byPath, path, true, body);
+      return;
+    }
+
+    settlePath(
+      byPath,
+      path,
+      false,
+      new ApiError(status || 500, messageFrom(body, `Request failed (${status || 500})`), body),
+    );
+  });
+}
+
+/**
+ * The call every screen already makes.
+ *
+ * Reads are queued for the next flush (one tick away, so `Promise.all` over
+ * several helpers lands in the same batch); everything else goes straight to the
+ * network as before.
+ */
+export function apiJson<T>(
+  path: string,
+  init?: RequestInit & { json?: unknown },
+): Promise<T> {
+  if (canBatch(path, init)) {
+    return new Promise<T>((resolve, reject) => {
+      readQueue.push({ path, resolve: resolve as (value: unknown) => void, reject });
+      scheduleFlush();
+    });
+  }
+
+  return rawJson<T>(path, init);
 }
 
 function safeParse(text: string): unknown {
