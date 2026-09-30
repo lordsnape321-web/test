@@ -938,8 +938,6 @@ const styles = StyleSheet.create({
   },
   gateBtnText: { fontSize: fontSize.sm, fontWeight: "900" },
 
-
-
   heading: { flexDirection: "row", alignItems: "center", gap: space[4] },
   h1: { fontSize: fontSize["3xl"], fontWeight: "900" },
   subheading: { fontSize: fontSize.base, color: colors.stone500 },
