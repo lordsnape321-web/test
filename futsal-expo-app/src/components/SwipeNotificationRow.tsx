@@ -3,6 +3,7 @@ import React, { useRef, useState } from "react";
 import {
   Animated,
   PanResponder,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -49,7 +50,7 @@ export function SwipeNotificationRow({
     setOffset(0);
     Animated.spring(translateX, {
       toValue: 0,
-      useNativeDriver: true,
+      useNativeDriver: Platform.OS !== "web",
       bounciness: 0,
       speed: 24,
     }).start();
@@ -75,12 +76,12 @@ export function SwipeNotificationRow({
 
         suppressPress.current = true;
         if (finalOffset >= 72 && !n.isRead) {
-          Animated.timing(translateX, { toValue: 112, duration: 150, useNativeDriver: true }).start(() => {
+          Animated.timing(translateX, { toValue: 112, duration: 150, useNativeDriver: Platform.OS !== "web" }).start(() => {
             onRead(n);
             resetPosition();
           });
         } else if (finalOffset <= -72) {
-          Animated.timing(translateX, { toValue: -112, duration: 150, useNativeDriver: true }).start(() => {
+          Animated.timing(translateX, { toValue: -112, duration: 150, useNativeDriver: Platform.OS !== "web" }).start(() => {
             onDelete(n.id);
             resetPosition();
           });
@@ -104,7 +105,7 @@ export function SwipeNotificationRow({
 
   return (
     <View style={styles.swipeShell}>
-      <View style={[styles.actionUnderlay, { backgroundColor: c.inset }]} pointerEvents="none">
+      <View style={[styles.actionUnderlay, { backgroundColor: c.inset, pointerEvents: "none" }]}>
         {offset > 8 && !n.isRead ? (
           <View style={styles.actionCue}>
             <ArrowRight size={15} color={colors.emerald600} />

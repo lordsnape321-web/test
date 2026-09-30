@@ -847,7 +847,7 @@ export default function OwnerVenues() {
             ) : (
               <View style={[styles.heroImg, { backgroundColor: c.border }]} />
             )}
-            <View style={styles.heroOverlay} pointerEvents="none" />
+            <View style={[styles.heroOverlay, { pointerEvents: "none" }]} />
             <View style={styles.heroBottom}>
               <View style={styles.grow}>
                 <Text style={styles.heroTitle}>{active.name}</Text>
