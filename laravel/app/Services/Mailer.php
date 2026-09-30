@@ -146,6 +146,33 @@ class Mailer
     }
 
     /**
+     * Put parked messages back in the queue.
+     *
+     * A row lands in `failed` after three real SMTP errors — a wrong app
+     * password, an address that does not exist, a bad afternoon at Google. The
+     * fix is almost always in `.env`, and this is how the mail that piled up
+     * while it was wrong gets another chance: `php artisan mail:drain
+     * --retry-failed`.
+     *
+     * @return int how many rows were requeued
+     */
+    public static function requeueFailed(): int
+    {
+        try {
+            return EmailOutbox::query()
+                ->where('status', 'failed')
+                ->update([
+                    'status' => 'pending',
+                    'attempts' => 0,
+                    'available_at' => now(),
+                    'error' => null,
+                ]);
+        } catch (\Throwable $e) {
+            return 0;
+        }
+    }
+
+    /**
      * Send a few queued messages. Safe to call on any request, though it is
      * normally the background helper that does (see App\Services\MailPump).
      *

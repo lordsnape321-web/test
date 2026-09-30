@@ -127,7 +127,10 @@ with a twenty-second gap between attempts, and `GET /api/health` reports
 `email_outbox.error` says why anything did not go out; and the helper's own
 output (only written when something is wrong) is in
 `storage/framework/mail-log`. You can also run the drain by hand:
-`php artisan mail:drain` — nothing needs it, but it is nice to watch.
+`php artisan mail:drain` — nothing needs it, but it is nice to watch. If a
+message was parked as `failed` (three SMTP errors — usually a missing app
+password at the time), `php artisan mail:drain --retry-failed` puts the whole
+parked pile back in the queue and sends it.
 
 What goes out:
 

@@ -21,7 +21,10 @@ use Illuminate\Console\Command;
  */
 class DrainMail extends Command
 {
-    protected $signature = 'mail:drain {--limit=50 : Most messages to send before exiting} {--budget=120 : Seconds of SMTP time to allow}';
+    protected $signature = 'mail:drain
+        {--limit=50 : Most messages to send before exiting}
+        {--budget=120 : Seconds of SMTP time to allow}
+        {--retry-failed : Put parked (failed) messages back in the queue first}';
 
     protected $description = 'Send queued emails and due game reminders (normally started automatically)';
 
@@ -42,6 +45,14 @@ class DrainMail extends Command
         try {
             $limit = max(1, (int) $this->option('limit'));
             $budget = max(1.0, (float) $this->option('budget'));
+
+            if ($this->option('retry-failed')) {
+                $requeued = Mailer::requeueFailed();
+
+                if ($requeued > 0) {
+                    $this->line("Requeued {$requeued} parked message(s).");
+                }
+            }
 
             // Reminders come first: they create mail, so doing them before the
             // flush means a reminder sent this run still goes out this run.
