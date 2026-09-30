@@ -1,6 +1,7 @@
 import { useFocusEffect, useLocalSearchParams } from "expo-router";
 import {
   CalendarCheck,
+  Banknote,
   Check,
   Gift,
   ReceiptText,
@@ -471,16 +472,18 @@ export default function OwnerBookings() {
                                 <Pressable
                                   onPress={() => resolveCancellation(b, "refunded")}
                                   disabled={resolvingCancellation === b.id}
-                                  style={[styles.cancelMoneyBtn, { backgroundColor: colors.emerald600, opacity: resolvingCancellation === b.id ? 0.5 : 1 }]}
+                                  style={[styles.actionBtn, styles.actionPrimary, { opacity: resolvingCancellation === b.id ? 0.5 : 1 }]}
+                                  accessibilityRole="button"
                                 >
-                                  <Text style={styles.cancelMoneyBtnText}>{resolvingCancellation === b.id ? "Saving…" : "Mark refunded"}</Text>
+                                  <Text style={[styles.actionText, { color: "#FFFFFF" }]}>{resolvingCancellation === b.id ? "Saving…" : "Mark refunded"}</Text>
                                 </Pressable>
                                 <Pressable
                                   onPress={() => resolveCancellation(b, "retained")}
                                   disabled={resolvingCancellation === b.id}
-                                  style={[styles.cancelMoneyBtn, { borderColor: c.border, borderWidth: 1, opacity: resolvingCancellation === b.id ? 0.5 : 1 }]}
+                                  style={[styles.actionBtn, { borderColor: c.border, opacity: resolvingCancellation === b.id ? 0.5 : 1 }]}
+                                  accessibilityRole="button"
                                 >
-                                  <Text style={[styles.cancelMoneyBtnText, { color: c.textMuted }]}>Keep payment</Text>
+                                  <Text style={[styles.actionText, { color: c.textMuted }]}>Keep payment</Text>
                                 </Pressable>
                               </View>
                             </>
@@ -503,10 +506,12 @@ export default function OwnerBookings() {
                   ) : (
                     <Pressable
                       onPress={() => setLedgerFor(b)}
-                      style={[styles.chip, { backgroundColor: "rgba(245,158,11,0.15)" }]}
-                      accessibilityLabel="Record payments and extra charges"
+                      style={[styles.actionBtn, styles.actionMoney]}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Record payments and extra charges for booking #FN-${b.id}`}
                     >
-                      <Text style={[styles.chipText, { color: "#B45309" }]}>💰 Record payment</Text>
+                      <Banknote size={13} color={isDark ? "#FCD34D" : "#B45309"} />
+                      <Text style={[styles.actionText, { color: isDark ? "#FCD34D" : "#B45309" }]}>Record payment</Text>
                     </Pressable>
                   )}
                   {b.depositRequired ? (
@@ -518,10 +523,12 @@ export default function OwnerBookings() {
                   {b.receiptUrl ? (
                     <Pressable
                       onPress={() => setViewReceipt(b.receiptUrl ?? "")}
-                      style={[styles.chip, { backgroundColor: "rgba(14,165,233,0.15)" }]}
+                      style={[styles.actionBtn, styles.actionReceipt]}
+                      accessibilityRole="button"
+                      accessibilityLabel={`View the uploaded receipt for booking #FN-${b.id}`}
                     >
-                      <ReceiptText size={9} color="#0369A1" />
-                      <Text style={[styles.chipText, { color: "#0369A1" }]}>Receipt</Text>
+                      <ReceiptText size={13} color={isDark ? "#7DD3FC" : "#0369A1"} />
+                      <Text style={[styles.actionText, { color: isDark ? "#7DD3FC" : "#0369A1" }]}>Receipt</Text>
                     </Pressable>
                   ) : null}
                 </View>
@@ -534,71 +541,79 @@ export default function OwnerBookings() {
                   </View>
                 </View>
 
-                <View style={[styles.colActions, !xl && styles.stackColumn]}>
+                <View style={[styles.colActions, !xl && styles.stackColumn, !xl && styles.colActionsNarrow]}>
+                  {/*
+                    Actions say what they do. Icon-only circles made the desk
+                    guess between three different checks, and a label is what
+                    tells "Accept" apart from "Mark played" at a glance. Each
+                    button is width-flexible and wraps, so a long row never
+                    bursts the card.
+                  */}
                   {b.status !== "cancelled" && b.status !== "rejected" ? (
-                    <SettleAmendButton settledAt={b.settledAt ?? null} onOpen={() => setLedgerFor(b)} />
+                    <SettleAmendButton
+                      settledAt={b.settledAt ?? null}
+                      onOpen={() => setLedgerFor(b)}
+                    />
                   ) : null}
                   {b.status === "pending" ? (
-                    <>
-                      <Pressable
-                        onPress={() => void setStatus(b.id, "confirmed")}
-                        style={[styles.iconAction, { backgroundColor: colors.emerald600 }]}
-                        accessibilityLabel="Accept"
-                      >
-                        <Check size={14} color="#FFFFFF" />
-                      </Pressable>
-                      <Pressable
-                        onPress={() => void setStatus(b.id, "rejected")}
-                        style={[
-                          styles.iconAction,
-                          { backgroundColor: isDark ? "rgba(239,68,68,0.15)" : "#FEE2E2" },
-                        ]}
-                        accessibilityLabel="Decline"
-                      >
-                        <X size={14} color="#DC2626" />
-                      </Pressable>
-                    </>
+                    <Pressable
+                      onPress={() => void setStatus(b.id, "confirmed")}
+                      style={[styles.actionBtn, styles.actionPrimary]}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Accept booking #FN-${b.id}`}
+                    >
+                      <Check size={14} color="#FFFFFF" strokeWidth={3} />
+                      <Text style={[styles.actionText, { color: "#FFFFFF" }]}>Accept</Text>
+                    </Pressable>
                   ) : null}
                   {b.competition ? (
                     <Pressable
                       onPress={() => openScore(b)}
-                      style={[
-                        styles.iconAction,
-                        {
-                          backgroundColor:
-                            b.competition.scoreStatus === "recorded"
-                              ? colors.emerald600
-                              : "#4F46E5",
-                        },
-                      ]}
+                      style={[styles.actionBtn, styles.actionInfo]}
+                      accessibilityRole="button"
                       accessibilityLabel={
                         b.competition.scoreStatus === "recorded"
-                          ? "Fix the recorded score"
-                          : "Record the final score"
+                          ? `Fix the recorded score for booking #FN-${b.id}`
+                          : `Record the final score for booking #FN-${b.id}`
                       }
                     >
                       <Swords size={14} color="#FFFFFF" />
+                      <Text style={[styles.actionText, { color: "#FFFFFF" }]}>
+                        {b.competition.scoreStatus === "recorded" ? "Fix score" : "Record score"}
+                      </Text>
                     </Pressable>
                   ) : null}
                   {b.status === "confirmed" ? (
                     <Pressable
                       onPress={() => void setStatus(b.id, "completed")}
-                      style={[styles.iconAction, { backgroundColor: isDark ? "#FFFFFF" : "#0F172A" }]}
-                      accessibilityLabel="Complete"
+                      style={[styles.actionBtn, { backgroundColor: isDark ? "#FFFFFF" : "#0F172A", borderColor: isDark ? "#FFFFFF" : "#0F172A" }]}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Mark booking #FN-${b.id} as played`}
                     >
-                      <Check size={14} color={isDark ? "#0F172A" : "#FFFFFF"} />
+                      <Check size={14} color={isDark ? "#0F172A" : "#FFFFFF"} strokeWidth={3} />
+                      <Text style={[styles.actionText, { color: isDark ? "#0F172A" : "#FFFFFF" }]}>Mark played</Text>
                     </Pressable>
                   ) : null}
-                  {b.status === "confirmed" || b.status === "pending" ? (
+                  {b.status === "pending" ? (
+                    <Pressable
+                      onPress={() => void setStatus(b.id, "rejected")}
+                      style={[styles.actionBtn, styles.actionDanger]}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Decline booking #FN-${b.id}`}
+                    >
+                      <X size={14} color={isDark ? "#FCA5A5" : "#DC2626"} strokeWidth={3} />
+                      <Text style={[styles.actionText, { color: isDark ? "#FCA5A5" : "#DC2626" }]}>Decline</Text>
+                    </Pressable>
+                  ) : null}
+                  {b.status === "confirmed" ? (
                     <Pressable
                       onPress={() => void setStatus(b.id, "cancelled")}
-                      style={[
-                        styles.iconAction,
-                        { backgroundColor: isDark ? "rgba(239,68,68,0.15)" : "#FEE2E2" },
-                      ]}
-                      accessibilityLabel="Cancel"
+                      style={[styles.actionBtn, styles.actionDanger]}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Cancel booking #FN-${b.id}`}
                     >
-                      <X size={14} color="#DC2626" />
+                      <X size={14} color={isDark ? "#FCA5A5" : "#DC2626"} strokeWidth={3} />
+                      <Text style={[styles.actionText, { color: isDark ? "#FCA5A5" : "#DC2626" }]}>Cancel</Text>
                     </Pressable>
                   ) : null}
                 </View>
@@ -770,8 +785,6 @@ const styles = StyleSheet.create({
   colSlot: { flexBasis: 110, minWidth: 100, gap: 2 },
   colAmount: { flexBasis: 90, minWidth: 80, gap: 2 },
   cancellationActions: { flexDirection: "row", flexWrap: "wrap", gap: space[1.5] },
-  cancelMoneyBtn: { borderRadius: radius.full, paddingHorizontal: space[2], paddingVertical: space[1.5] },
-  cancelMoneyBtnText: { color: "#FFFFFF", fontSize: 10, fontWeight: "900" },
   colPay: { flexBasis: 110, minWidth: 100, gap: 4, alignItems: "flex-start" },
   colStatus: { minWidth: 80 },
   colActions: {
@@ -782,6 +795,31 @@ const styles = StyleSheet.create({
     minWidth: 140,
     justifyContent: "flex-end",
   },
+  /* Stacked on a phone, the buttons read as a left-aligned list under the card. */
+  colActionsNarrow: { justifyContent: "flex-start" },
+  /* One shape for every desk action: label first, colour for meaning only. */
+  actionBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 5,
+    borderRadius: radius.full,
+    borderWidth: 1,
+    paddingHorizontal: space[3],
+    paddingVertical: space[1.5],
+    minHeight: 34,
+    flexShrink: 1,
+    maxWidth: "100%",
+  },
+  actionPrimary: { backgroundColor: colors.emerald600, borderColor: colors.emerald600 },
+  actionInfo: { backgroundColor: "#4F46E5", borderColor: "#4F46E5" },
+  actionDanger: {
+    backgroundColor: "transparent",
+    borderColor: "rgba(220,38,38,0.45)",
+  },
+  actionMoney: { backgroundColor: "rgba(245,158,11,0.15)", borderColor: "rgba(245,158,11,0.35)" },
+  actionReceipt: { backgroundColor: "rgba(14,165,233,0.12)", borderColor: "rgba(14,165,233,0.3)" },
+  actionText: { fontSize: 11, fontWeight: "900", flexShrink: 1 },
   mono: { fontFamily: "monospace", fontSize: fontSize.xs, fontWeight: "700" },
   bold: { fontSize: fontSize.sm, fontWeight: "800" },
   meta: { fontSize: fontSize.xs, fontWeight: "600" },
@@ -798,13 +836,7 @@ const styles = StyleSheet.create({
   chipText: { fontSize: 10, fontWeight: "900" },
   strike: { fontSize: 10, textDecorationLine: "line-through", fontWeight: "700" },
   amount: { fontSize: fontSize.base, fontWeight: "900" },
-  iconAction: {
-    width: 32,
-    height: 32,
-    borderRadius: radius.full,
-    alignItems: "center",
-    justifyContent: "center",
-  },
+
   modalBackdrop: {
     flex: 1,
     backgroundColor: "rgba(15,23,42,0.55)",
