@@ -24,6 +24,14 @@ export const STORAGE_KEYS = {
   session: "futsal.session.userId",
   // Keep the theme key stable across native and Expo web builds.
   theme: "futsal-theme",
+  /**
+   * The payment checkout waiting on a gateway, if any.
+   *
+   * Outlives the app on purpose: a player leaves for eSewa or Khalti, and the
+   * return may reload the app or open it from scratch. Without this, a payment
+   * in flight left no trace and the screens looked untouched.
+   */
+  pendingCheckout: "futsal.pending-checkout",
 } as const;
 
 const HYDRATE = Object.values(STORAGE_KEYS);

@@ -2,11 +2,15 @@ import {
   initiateEsewa,
   initiateKhalti,
   initiateLeaguePayment,
+  leaguePaymentsAction,
+  verifyEsewa,
+  verifyKhalti,
   type LeaguePaymentInput,
   type PaymentInitiateInput,
 } from "@/api";
 import { openCheckout, prepareGatewayTab, realGatewayEnabled, releaseGatewayTab } from "@/lib/gateway";
 import { planCheckout, type GatewayInitiate, type GatewayMethod } from "@/lib/gateway-plan";
+import { STORAGE_KEYS, storage } from "@/lib/storage";
 
 /**
  * One checkout, from "the player tapped Pay" to "the gateway has the browser".
@@ -15,6 +19,14 @@ import { planCheckout, type GatewayInitiate, type GatewayMethod } from "@/lib/ga
  * for this exact target, then act on its answer — open the gateway, hand back a
  * simulator route, or report why neither happened. The screens only own the
  * sentence they show and the route they fall back to.
+ *
+ * The checkout is also *remembered*, as a serializable record, because paying
+ * happens in another app: the player leaves for eSewa or Khalti, and whatever
+ * brings them back — the gateway's redirect, a deep link, a notification, or
+ * their own thumb — lands on a screen that has no idea a payment was in flight.
+ * From the record this module can rebuild everything the return screens need:
+ * start it again, run the simulator if the gateway is down, ask the gateway
+ * whether the money actually moved, and say what the payment was for.
  */
 
 export type CheckoutOutcome =
@@ -24,6 +36,258 @@ export type CheckoutOutcome =
   | { status: "simulator" }
   /** Nothing was charged and nothing opened; `message` is worth showing. */
   | { status: "error"; message: string };
+
+/**
+ * What is waiting on a gateway, in a form that survives a reload.
+ *
+ * Deliberately plain data: the same object is handed to the pending card, put
+ * in AsyncStorage, and read back after the app restarts.
+ */
+export type PendingRecord =
+  | {
+      kind: "booking";
+      method: GatewayMethod;
+      input: PaymentInitiateInput;
+      label: string;
+      /** Where the simulator runs if the gateway cannot be reached. */
+      mockPath: string;
+      /** Where to go once the payment is settled. */
+      donePath: string;
+      /** A real Khalti session id, once one exists — needed to ask about it. */
+      pidx?: string;
+    }
+  | {
+      kind: "league";
+      leagueId: number;
+      method: "eSewa" | "Khalti";
+      input: LeaguePaymentInput;
+      label: string;
+      donePath: string;
+    };
+
+/** A record the return screens can act on. */
+export type RememberedCheckout = {
+  label: string;
+  /** Ask the server for a session, and open it (or report the fallback). */
+  run: () => Promise<CheckoutOutcome>;
+  /** Where the simulator runs when the gateway cannot be reached. */
+  mockPath?: string;
+  /**
+   * For a league entry fee, whose simulator runs in place instead of on its own
+   * route: the settle call itself. Returns the sentence to show.
+   */
+  settle?: () => Promise<string>;
+  /**
+   * Ask the gateway whether this payment actually happened.
+   *
+   * A test gateway can show "payment failed" while the money moved — eSewa's
+   * own status API is the tiebreaker, and it is the only way to tell a real
+   * cancel from a failure their side forgot to record. Resolves with the
+   * sentence to show once the payment is settled.
+   */
+  check?: () => Promise<{ settled: boolean; message: string }>;
+  /** Where to go once the fallback has settled the payment. */
+  donePath: string;
+};
+
+/** A record older than this is not worth chasing — the session is long gone. */
+const PENDING_TTL_MS = 6 * 60 * 60 * 1000;
+
+let lastCheckout: RememberedCheckout | null = null;
+let lastRecord: PendingRecord | null = null;
+const listeners = new Set<() => void>();
+
+function announce(): void {
+  for (const listener of listeners) listener();
+}
+
+/* ------------------------------------------------------------------ store */
+
+/** Remember how to start this checkout again (see `PendingRecord`). */
+export function rememberCheckout(record: PendingRecord): void {
+  lastRecord = record;
+  lastCheckout = attemptFor(record);
+  void persist(record);
+  announce();
+}
+
+/** The checkout waiting on a gateway, if there is one. */
+export function pendingCheckout(): RememberedCheckout | null {
+  return lastCheckout;
+}
+
+/** The plain record behind the pending checkout, for anything that needs it. */
+export function pendingRecord(): PendingRecord | null {
+  return lastRecord;
+}
+
+/** Stop tracking the pending checkout (after it settled, or on dismiss). */
+export function clearCheckout(): void {
+  lastCheckout = null;
+  lastRecord = null;
+  void storage.remove(STORAGE_KEYS.pendingCheckout);
+  announce();
+}
+
+/** Subscribe to pending-checkout changes; returns the unsubscribe. */
+export function subscribeCheckout(listener: () => void): () => void {
+  listeners.add(listener);
+
+  return () => {
+    listeners.delete(listener);
+  };
+}
+
+/**
+ * Bring back a checkout that outlived the app.
+ *
+ * `initStorage()` (called once at start-up) has already read the key into
+ * memory, so this is synchronous — which matters, because it runs while a
+ * screen is rendering and a flash of "no payment pending" would be exactly the
+ * thing this feature exists to avoid.
+ */
+export function restorePendingCheckout(): void {
+  if (lastCheckout) return;
+
+  const raw = storage.getCached(STORAGE_KEYS.pendingCheckout);
+
+  if (!raw) return;
+
+  try {
+    const saved = JSON.parse(raw) as { at?: number; record?: PendingRecord };
+
+    if (!saved?.record || Date.now() - (saved.at ?? 0) > PENDING_TTL_MS) {
+      void storage.remove(STORAGE_KEYS.pendingCheckout);
+      return;
+    }
+
+    lastRecord = saved.record;
+    lastCheckout = attemptFor(saved.record);
+    announce();
+  } catch {
+    void storage.remove(STORAGE_KEYS.pendingCheckout);
+  }
+}
+
+async function persist(record: PendingRecord): Promise<void> {
+  await storage.set(STORAGE_KEYS.pendingCheckout, JSON.stringify({ at: Date.now(), record }));
+}
+
+/**
+ * Note the gateway's session id once `initiate` returns one.
+ *
+ * Only Khalti needs it: its return URL carries a `pidx`, but a player who never
+ * makes it back to that URL can still be asked about — with this. The simulator's
+ * `mock-…` id is not stored, because it is not a gateway session.
+ */
+function rememberPidx(pidx: string): void {
+  if (!lastRecord || lastRecord.kind !== "booking" || lastRecord.method !== "khalti") return;
+  if (pidx.startsWith("mock-")) return;
+
+  lastRecord = { ...lastRecord, pidx };
+  void persist(lastRecord);
+}
+
+/* ------------------------------------------------------------- rebuilding */
+
+/** Turn a stored record back into something the screens can act on. */
+function attemptFor(record: PendingRecord): RememberedCheckout {
+  if (record.kind === "league") {
+    const input = record.input;
+
+    return {
+      label: record.label,
+      run: () => startLeagueCheckout(record.leagueId, record.method, input),
+      donePath: record.donePath,
+      settle: async () => {
+        const data = await leaguePaymentsAction(record.leagueId, {
+          action: "verify",
+          mockApprove: true,
+          userId: input.userId,
+          teamId: input.teamId,
+          amount: input.amount,
+          method: record.method,
+        });
+
+        return String(data.message ?? "Payment recorded ✅");
+      },
+    };
+  }
+
+  const input = record.input;
+
+  return {
+    label: record.label,
+    run: () => startGatewayCheckout(record.method, input),
+    mockPath: record.mockPath,
+    donePath: record.donePath,
+    check: checkFor(record),
+  };
+}
+
+/**
+ * How to ask about a booking payment — or nothing, when there is nothing to ask.
+ *
+ * eSewa is asked through the same verify endpoint the return page uses, which
+ * falls back to its status API when no signed payload came back. Khalti can only
+ * be asked with the session id it issued, so a checkout that never got that far
+ * offers no check button.
+ */
+function checkFor(record: Extract<PendingRecord, { kind: "booking" }>): (() => Promise<{ settled: boolean; message: string }>) | undefined {
+  const input = record.input;
+
+  if (record.method === "esewa") {
+    return async () => {
+      try {
+        await verifyEsewa({
+          bookingId: input.bookingId,
+          userId: input.userId,
+          teamPaymentId: input.teamPaymentId,
+          paymentRequestId: input.paymentRequestId,
+          paymentPurpose: input.paymentPurpose,
+        });
+
+        return { settled: true, message: "eSewa confirms this payment was completed. Your booking is settled. 🎉" };
+      } catch (e) {
+        return {
+          settled: false,
+          message: e instanceof Error ? e.message : "eSewa did not report a completed payment for this booking.",
+        };
+      }
+    };
+  }
+
+  if (!record.pidx) return undefined;
+
+  const pidx = record.pidx;
+
+  return async () => {
+    try {
+      await verifyKhalti({ bookingId: input.bookingId, pidx, userId: input.userId, teamPaymentId: input.teamPaymentId });
+
+      return { settled: true, message: "Khalti confirms this payment was completed. Your booking is settled. 🎉" };
+    } catch (e) {
+      return {
+        settled: false,
+        message: e instanceof Error ? e.message : "Khalti did not report a completed payment for this booking.",
+      };
+    }
+  };
+}
+
+/**
+ * True when this session has a checkout a failure screen can offer to retry.
+ */
+export function canRetryCheckout(): boolean {
+  return lastCheckout !== null;
+}
+
+/** True when the gateway itself can be asked about the last checkout. */
+export function canCheckCheckout(): boolean {
+  return lastCheckout?.check !== undefined;
+}
+
+/* --------------------------------------------------------------- starting */
 
 /**
  * Start a checkout. Call `prepareGatewayTab()` in the tap handler before this
@@ -56,6 +320,9 @@ export function startLeagueCheckout(
 async function runCheckout(method: GatewayMethod, load: () => Promise<GatewayInitiate>): Promise<CheckoutOutcome> {
   try {
     const initiate = await load();
+
+    if (initiate?.pidx && initiate.mock !== true) rememberPidx(String(initiate.pidx));
+
     const plan = planCheckout(method, initiate);
 
     if (plan.kind === "gateway" || plan.kind === "form") {
@@ -81,71 +348,8 @@ async function runCheckout(method: GatewayMethod, load: () => Promise<GatewayIni
   }
 }
 
-/* ------------------------------------------------------------------ retry */
+/* ----------------------------------------------------------------- retry */
 
-/**
- * The checkout a "Try again" press should re-run.
- *
- * A test gateway can hand the browser back without a payment — eSewa's own
- * wording for that is "Service is currently unavailable. Please try again
- * later." — and a cancelled Khalti session lands on the same return screen. That
- * screen is a different route from the booking that started it, so it cannot
- * know what to restart. One module-level slot remembers the last checkout of the
- * session: how to start it again, where the simulator lives if the gateway still
- * cannot be reached, and where to go once the fallback has settled it.
- */
-export type RememberedCheckout = {
-  /** Ask the server for a session, and open it (or report the fallback). */
-  run: () => Promise<CheckoutOutcome>;
-  /** Where the simulator runs when the gateway cannot be reached. */
-  mockPath?: string;
-  /**
-   * For a league entry fee, whose simulator runs in place instead of on its own
-   * route: the settle call itself. Returns the sentence to show.
-   */
-  settle?: () => Promise<string>;
-  /**
-   * Ask the gateway whether this payment actually happened.
-   *
-   * A test gateway can show "payment failed" while the money moved — eSewa's
-   * own status API is the tiebreaker, and it is the only way to tell a real
-   * cancel from a failure their side forgot to record. Resolves with the
-   * sentence to show once the payment is settled.
-   */
-  check?: () => Promise<{ settled: boolean; message: string }>;
-  /** Where to go once the fallback has settled the payment. */
-  donePath: string;
-};
-
-let lastCheckout: RememberedCheckout | null = null;
-
-/** Remember how to start this checkout again (see `RememberedCheckout`). */
-export function rememberCheckout(attempt: RememberedCheckout): void {
-  lastCheckout = attempt;
-}
-
-/** True when this session has a checkout a failure screen can offer to retry. */
-export function canRetryCheckout(): boolean {
-  return lastCheckout !== null;
-}
-
-/** True when the gateway itself can be asked about the last checkout. */
-export function canCheckCheckout(): boolean {
-  return lastCheckout?.check !== undefined;
-}
-
-export type RetryOutcome =
-  /** The gateway page is open again. */
-  | { status: "gateway" }
-  /** The gateway could not be reached — run the simulator route. */
-  | { status: "simulator"; mockPath: string }
-  /** The fallback settled it right here (a league entry fee). */
-  | { status: "settled"; donePath: string; message: string }
-  /** This session never ran a checkout. */
-  | { status: "nothing" }
-  | { status: "error"; message: string };
-
-/** Re-run the session's last checkout, from a failure screen. */
 export type CheckOutcome =
   | { status: "settled"; message: string; donePath: string }
   | { status: "open"; message: string }
@@ -160,9 +364,14 @@ export async function checkLastCheckout(): Promise<CheckOutcome> {
   try {
     const result = await attempt.check();
 
-    return result.settled
-      ? { status: "settled", message: result.message, donePath: attempt.donePath }
-      : { status: "open", message: result.message };
+    if (result.settled) {
+      // Settled: nothing left to chase, so stop showing the pending card.
+      clearCheckout();
+
+      return { status: "settled", message: result.message, donePath: attempt.donePath };
+    }
+
+    return { status: "open", message: result.message };
   } catch (e) {
     return {
       status: "open",
@@ -171,6 +380,18 @@ export async function checkLastCheckout(): Promise<CheckOutcome> {
   }
 }
 
+export type RetryOutcome =
+  /** The gateway page is open again. */
+  | { status: "gateway" }
+  /** The gateway could not be reached — run the simulator route. */
+  | { status: "simulator"; mockPath: string }
+  /** The fallback settled it right here (a league entry fee). */
+  | { status: "settled"; donePath: string; message: string }
+  /** This session never ran a checkout. */
+  | { status: "nothing" }
+  | { status: "error"; message: string };
+
+/** Re-run the session's last checkout, from a failure screen. */
 export async function retryLastCheckout(): Promise<RetryOutcome> {
   const attempt = lastCheckout;
 

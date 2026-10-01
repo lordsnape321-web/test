@@ -176,6 +176,68 @@ class Payments
         return self::appOrigin($request);
     }
 
+    /**
+     * Where a gateway should send the payer back for `$path`.
+     *
+     * The client is the only one who knows: a browser app returns to its own
+     * origin, while a native app has to be handed back to itself — that is a
+     * deep link (`exp://host:8081/--/…` in Expo Go, `futsalnepal://…` in a built
+     * app), and no origin can express it. So the client may send the full return
+     * URL, and this accepts it when it is a real address rather than a script.
+     *
+     * Hence the protocol whitelist: http, https and app schemes. `javascript:`,
+     * `data:` and friends would turn a return URL into an injection.
+     */
+    public static function returnUrl(Request $request, mixed $explicit, string $path): string
+    {
+        $candidate = trim(is_string($explicit) ? $explicit : '');
+
+        if (self::isUsableReturnUrl($candidate)) {
+            return $candidate;
+        }
+
+        return self::returnOrigin($request, $request->input('returnOrigin')).$path;
+    }
+
+    /** http(s) with a host, or a custom app scheme — never a script or a file. */
+    public static function isUsableReturnUrl(string $url): bool
+    {
+        if ($url === '' || strlen($url) > 500 || ! str_contains($url, '://')) {
+            return false;
+        }
+
+        $parts = parse_url($url);
+
+        if (empty($parts['scheme'])) {
+            return false;
+        }
+
+        $scheme = strtolower((string) $parts['scheme']);
+
+        if (! preg_match('/^[a-z][a-z0-9+.\-]*$/', $scheme)) {
+            return false;
+        }
+
+        if (in_array($scheme, ['javascript', 'data', 'file', 'blob', 'vbscript', 'about'], true)) {
+            return false;
+        }
+
+        if (isset($parts['user']) || isset($parts['pass'])) {
+            return false;
+        }
+
+        // A query of our own would collide with the gateway's appended one.
+        if (isset($parts['query']) || isset($parts['fragment'])) {
+            return false;
+        }
+
+        if (! in_array($scheme, ['http', 'https'], true)) {
+            return true;
+        }
+
+        return ! empty($parts['host']) && ! str_contains((string) $parts['host'], '0.0.0.0');
+    }
+
     /** http(s), a real host, no credentials, and not the meaningless 0.0.0.0. */
     public static function isUsableOrigin(string $origin): bool
     {

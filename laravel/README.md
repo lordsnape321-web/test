@@ -477,7 +477,12 @@ refreshed return page cannot charge twice.
 
 Return URLs carry no query string of their own, on purpose: both gateways
 append their own parameters and a URL that already has a query is a coin flip
-between `&` and a second `?`.
+between `&` and a second `?`. The client names them (`successUrl`, `failureUrl`,
+`returnUrl`) because only it knows where it can be reached: a browser returns to
+its own origin, while a phone returns *into the app* by deep link
+(`exp://…/--/payment/esewa/success`, `futsalnepal://…` in a built app). The
+server validates the scheme (`isUsableReturnUrl`) and falls back to `APP_URL` /
+`APP_WEB_URL` when it is missing or unusable.
 
 ## Running the acceptance suite
 

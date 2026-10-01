@@ -155,8 +155,9 @@ class EsewaController extends ApiController
          * the booking, the team share or the player request), so the return
          * pages take no arguments of their own.
          */
-        $successUrl = "{$origin}/payment/esewa/success";
-        $failureUrl = "{$origin}/payment/esewa/failure";
+        // A device sends its own deep link here; a browser sends its origin.
+        $successUrl = Payments::returnUrl($request, $request->input('successUrl'), '/payment/esewa/success');
+        $failureUrl = Payments::returnUrl($request, $request->input('failureUrl'), '/payment/esewa/failure');
 
         $fields = Payments::buildEsewaFields([
             'amount' => $amount,

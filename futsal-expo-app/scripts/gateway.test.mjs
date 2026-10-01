@@ -221,15 +221,17 @@ assert.ok(
   "both initiates use the app-supplied origin",
 );
 
-// Return URLs carry no query of their own: the gateways append theirs.
+// Return URLs carry no query of their own: the gateways append theirs. The
+// client may name them (a device sends a deep link), the server validates them,
+// and anything unusable falls back to the origin.
 assert.ok(
-  esewa.includes('$successUrl = "{$origin}/payment/esewa/success";') &&
-    esewa.includes('$failureUrl = "{$origin}/payment/esewa/failure";'),
-  "eSewa return URLs are clean",
+  esewa.includes("Payments::returnUrl($request, $request->input('successUrl'), '/payment/esewa/success')") &&
+    esewa.includes("Payments::returnUrl($request, $request->input('failureUrl'), '/payment/esewa/failure')"),
+  "eSewa return URLs come from the client, validated",
 );
 assert.ok(
-  khalti.includes('$returnUrl = "{$origin}/payment/khalti/callback";'),
-  "Khalti return URL is clean",
+  khalti.includes("Payments::returnUrl($request, $request->input('returnUrl'), '/payment/khalti/callback')"),
+  "Khalti return URL is the client's, validated",
 );
 
 // The hand-off page a native browser needs, reusing the one initiate path.
@@ -250,6 +252,7 @@ assert.ok(
 
 // The client sends its origin, not a guess.
 const api = php("futsal-expo-app/src/api/index.ts");
+const storage = php("futsal-expo-app/src/lib/storage.ts");
 assert.ok(
   api.includes("returnOrigin: paymentReturnOrigin()"),
   "both initiate calls send returnOrigin",
@@ -272,10 +275,10 @@ assert.ok(
   "league initiate takes the app's origin",
 );
 assert.ok(
-  league.includes('$successUrl = "{$origin}/payment/esewa/success";') &&
-    league.includes('$failureUrl = "{$origin}/payment/esewa/failure";') &&
+  league.includes("Payments::returnUrl($request, $request->input('successUrl'), '/payment/esewa/success')") &&
+    league.includes("Payments::returnUrl($request, $request->input('failureUrl'), '/payment/esewa/failure')") &&
     league.includes("'handoffPath' => '/api/payments/esewa/handoff/league?'"),
-  "league eSewa returns are query-free and carry a hand-off path",
+  "league eSewa returns come from the client and carry a hand-off path",
 );
 assert.ok(
   routes.includes("Route::get('/payments/esewa/handoff/league', [PaymentHandoffController::class, 'leagueEsewa'])") &&
@@ -284,9 +287,9 @@ assert.ok(
   "the league hand-off is routed and replays the tournament initiate",
 );
 assert.ok(
-  league.includes("'returnUrl' => \"{$origin}/payment/khalti/callback\"") &&
+  league.includes("Payments::returnUrl($request, $request->input('returnUrl'), '/payment/khalti/callback')") &&
     !league.includes("empty($cfg['secretKey'])"),
-  "league Khalti uses the sandbox and has no key-less bypass left",
+  "league Khalti uses the client's return URL and has no key-less bypass left",
 );
 assert.ok(
   league.includes("'mockUrl' => $mockUrl") && league.includes("'mock' => true"),
@@ -333,7 +336,8 @@ assert.ok(
 );
 assert.ok(
   api.includes("export function initiateLeaguePayment(") &&
-    api.includes("json: { action: \"initiate\", ...input, returnOrigin: paymentReturnOrigin() }"),
+    api.includes('action: "initiate",') &&
+    api.includes("returnOrigin: paymentReturnOrigin(),"),
   "the league initiate sends its origin like the booking one",
 );
 
@@ -362,10 +366,47 @@ assert.ok(
   "the hand-off page explains eSewa's error and offers the simulator",
 );
 
+// The checkout is remembered as plain data, so it survives a reload — the
+// player leaves for a gateway and the return may cold-start the app.
+assert.ok(
+  checkout.includes("export type PendingRecord =") &&
+    checkout.includes("function attemptFor(record: PendingRecord): RememberedCheckout") &&
+    checkout.includes("await storage.set(STORAGE_KEYS.pendingCheckout") &&
+    checkout.includes("export function restorePendingCheckout(): void"),
+  "the pending checkout is a serializable record with a restore path",
+);
+assert.ok(
+  checkout.includes("const PENDING_TTL_MS = 6 * 60 * 60 * 1000") &&
+    checkout.includes("Date.now() - (saved.at ?? 0) > PENDING_TTL_MS"),
+  "a record older than the payment session is dropped",
+);
+assert.ok(
+  checkout.includes("function rememberPidx(pidx: string): void") &&
+    checkout.includes("pidx.startsWith(\"mock-\")") &&
+    checkout.includes("record.pidx") &&
+    checkout.includes("verifyKhalti({ bookingId: input.bookingId, pidx, userId: input.userId"),
+  "a real Khalti session id is stored so it can be looked up later; the simulator's is not",
+);
+assert.ok(
+  storage.includes("pendingCheckout: \"futsal.pending-checkout\""),
+  "the pending checkout has a storage key, so initStorage() hydrates it",
+);
+const banner = php("futsal-expo-app/src/components/PaymentPendingBanner.tsx");
+assert.ok(
+  banner.includes("restorePendingCheckout()") &&
+    banner.includes("AppState.addEventListener") &&
+    banner.includes("Payment in progress") &&
+    banner.includes("Check payment"),
+  "the pending card restores, re-checks on foreground, and offers Check payment",
+);
+for (const site of ["futsal-expo-app/app/booking/[id].tsx", "futsal-expo-app/app/(app)/bookings.tsx", "futsal-expo-app/src/components/LeagueSquadPanel.tsx"]) {
+  assert.ok(php(site).includes("<PaymentPendingBanner"), `${site} shows the pending card`);
+}
+
 // And a returned payment can be retried in one tap: the failure screens live on
 // a different route, so the checkout that started one is remembered.
 assert.ok(
-  checkout.includes("export function rememberCheckout(attempt: RememberedCheckout): void") &&
+  checkout.includes("export function rememberCheckout(record: PendingRecord): void") &&
     checkout.includes("export async function retryLastCheckout(): Promise<RetryOutcome>") &&
     checkout.includes("export function canRetryCheckout(): boolean"),
   "checkout.ts remembers the last attempt and can re-run it",
@@ -384,14 +425,16 @@ assert.ok(
 for (const site of ["futsal-expo-app/app/booking/[id].tsx", "futsal-expo-app/app/(app)/bookings.tsx"]) {
   const file = php(site);
   assert.ok(
-    /rememberCheckout\(\{[\s\S]{0,400}?startGatewayCheckout\(/.test(file),
-    `${site} remembers its checkout`,
+    /rememberCheckout\(\{[\s\S]{0,300}?kind: "booking"/.test(file) && file.includes("mockPath:"),
+    `${site} remembers its checkout as a record`,
   );
 }
 const panelSource = php("futsal-expo-app/src/components/LeagueSquadPanel.tsx");
 assert.ok(
-  panelSource.includes("settle: settleOnSimulator") && panelSource.includes("donePath: `/leagues/${league.id}`"),
-  "a league checkout remembers its in-place simulator settle",
+  panelSource.includes('kind: "league"') &&
+    panelSource.includes("donePath: `/leagues/${league.id}`") &&
+    !panelSource.includes("settleOnSimulator"),
+  "a league checkout remembers its squad and amount instead of a closure",
 );
 
 /* ── a "failed" page must not hide money that moved ─────────────────────── */
@@ -427,10 +470,49 @@ assert.ok(
     screens.includes('if (outcome.status === "settled") setSettled(outcome.message);'),
   "the eSewa failure screen offers Check with eSewa and can flip to success",
 );
-const bookingFile = php("futsal-expo-app/app/booking/[id].tsx");
 assert.ok(
-  bookingFile.includes("check: async () => {") && bookingFile.includes("verifyEsewa({\n              bookingId,"),
-  "a booking checkout remembers how to check itself",
+  checkout.includes("function checkFor(record: Extract<PendingRecord, { kind: \"booking\" }>)") &&
+    checkout.includes("await verifyEsewa({") &&
+    checkout.includes("return { settled: true, message: \"eSewa confirms this payment was completed."),
+  "a booking checkout can be checked with the gateway from one place",
+);
+
+/* ── the gateway returns the payer to the app, not to a website ─────────── */
+
+const gatewayLib = php("futsal-expo-app/src/lib/gateway.ts");
+assert.ok(
+  gatewayLib.includes("export function paymentReturnUrl(path: string): string") &&
+    gatewayLib.includes("return Linking.createURL(path);") &&
+    gatewayLib.includes("return `${window.location.origin}${path}`;"),
+  "a device is returned by deep link; a browser by its own origin",
+);
+assert.ok(
+  api.includes("successUrl: paymentReturnUrl(\"/payment/esewa/success\")") &&
+    api.includes("failureUrl: paymentReturnUrl(\"/payment/esewa/failure\")") &&
+    api.includes("returnUrl: paymentReturnUrl(\"/payment/khalti/callback\")"),
+  "every initiate sends the return URLs it wants",
+);
+assert.ok(
+  payments.includes("public static function returnUrl(Request $request, mixed $explicit, string $path): string") &&
+    payments.includes("public static function isUsableReturnUrl(string $url): bool") &&
+    payments.includes("['javascript', 'data', 'file', 'blob', 'vbscript', 'about']") &&
+    payments.includes("if (isset($parts['query']) || isset($parts['fragment']))"),
+  "the server accepts an app-scheme return URL, and refuses scripts, files and pre-set queries",
+);
+assert.ok(
+  esewa.includes("Payments::returnUrl($request, $request->input('successUrl'), '/payment/esewa/success')") &&
+    khalti.includes("Payments::returnUrl($request, $request->input('returnUrl'), '/payment/khalti/callback')"),
+  "the booking routes honour the client's return URLs",
+);
+assert.ok(
+  flat("laravel/app/Http/Controllers/Api/TournamentPaymentController.php").includes("Payments::returnUrl($request, $request->input('successUrl')") &&
+    flat("laravel/app/Http/Controllers/Api/TournamentPaymentController.php").includes("Payments::returnUrl($request, $request->input('returnUrl')"),
+  "so does the league route",
+);
+assert.ok(
+  handoff.includes("'successUrl' => $request->query('successUrl')") &&
+    handoff.includes("'failureUrl' => $request->query('failureUrl')"),
+  "the hand-off page carries them through for a native browser",
 );
 
 /* ── the sandbox is no longer what a payer sees ─────────────────────────── */

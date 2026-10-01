@@ -403,8 +403,8 @@ class TournamentPaymentController extends ApiController
                  * blob names the league and squad inside the transaction uuid,
                  * so the return pages need no arguments of their own.
                  */
-                $successUrl = "{$origin}/payment/esewa/success";
-                $failureUrl = "{$origin}/payment/esewa/failure";
+                $successUrl = Payments::returnUrl($request, $request->input('successUrl'), '/payment/esewa/success');
+                $failureUrl = Payments::returnUrl($request, $request->input('failureUrl'), '/payment/esewa/failure');
 
                 $fields = Payments::buildEsewaFields([
                     'amount' => $amount,
@@ -469,7 +469,7 @@ class TournamentPaymentController extends ApiController
                 $init = Payments::khaltiInitiate([
                     'secretKey' => $cfg['secretKey'],
                     'initiateUrl' => $cfg['initiateUrl'] ?? '',
-                    'returnUrl' => "{$origin}/payment/khalti/callback",
+                    'returnUrl' => Payments::returnUrl($request, $request->input('returnUrl'), '/payment/khalti/callback'),
                     'websiteUrl' => $origin,
                     'amountPaisa' => $amount * 100,
                     'orderId' => $orderId,

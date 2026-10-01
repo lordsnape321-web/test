@@ -1,5 +1,6 @@
 import Constants from "expo-constants";
-import { Linking, Platform } from "react-native";
+import * as Linking from "expo-linking";
+import { Linking as RNLinking, Platform } from "react-native";
 import type { CheckoutPlan } from "@/lib/gateway-plan";
 
 /**
@@ -54,6 +55,29 @@ export function paymentReturnOrigin(): string {
   if (explicit !== "") return explicit.replace(/\/+$/, "");
 
   return devServerOrigin();
+}
+
+/**
+ * The full URL a gateway should send the payer back to for `path`.
+ *
+ * This is the difference between "come back to the app" and "come back to a
+ * website". A browser app returns to its own origin — where the same screens
+ * are — but a device has no origin, and the Expo web build it was loaded from
+ * is *not* the app: the player would finish (or fail) a payment in the browser
+ * and be stranded there, with no record of the checkout. A deep link
+ * (`exp://host:8081/--/payment/esewa/success` in Expo Go, `futsalnepal://…` in a
+ * built app) hands the browser back to the app itself, where the return screens
+ * and the checkout they remember live.
+ *
+ * Query-free on purpose: both gateways append their own parameters, and a URL
+ * that already carries a query is a coin flip between `&` and a second `?`.
+ */
+export function paymentReturnUrl(path: string): string {
+  if (Platform.OS === "web" && typeof window !== "undefined") {
+    return `${window.location.origin}${path}`;
+  }
+
+  return Linking.createURL(path);
 }
 
 /**
@@ -132,7 +156,7 @@ export function releaseGatewayTab(): void {
 /** Send the player to a gateway URL, in whatever surface this platform has. */
 export function openGatewayUrl(url: string): boolean {
   if (Platform.OS !== "web") {
-    void Linking.openURL(url).catch(() => undefined);
+    void RNLinking.openURL(url).catch(() => undefined);
     return true;
   }
 

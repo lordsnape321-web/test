@@ -33,6 +33,27 @@ local copy of them:
    HMAC plus its status API, or Khalti's lookup — the redirect itself never
    settles a payment.
 
+   **Where it returns to** is the client's call (`paymentReturnUrl`): a browser
+   comes back to its own origin, and a device comes back *into the app* — a deep
+   link (`exp://host:8081/--/…` in Expo Go, `futsalnepal://…` in a built app),
+   because the Expo web build is not the app and a player sent there would be
+   stranded in a browser with no record of the checkout. The server validates
+   what it is given (`Payments::isUsableReturnUrl`: http/https or an app scheme,
+   never `javascript:`/`data:`/`file:`, and no query of its own).
+
+## If the player comes back without finishing
+
+Paying happens in another app, so coming back is the normal case, not the edge
+one. The checkout that was started is kept as a small serializable record
+(`PendingRecord` in `src/lib/checkout.ts`) in AsyncStorage, so it survives a
+reload or a cold start, and the screens a player returns to show a **Payment in
+progress** card (`PaymentPendingBanner`): what the payment was for, a *Check
+payment* button that asks the gateway, and a *Finish on the simulator* button
+when the gateway could not be reached. Bringing the app to the foreground checks
+by itself (at most once every 20 seconds), so a payment that actually went
+through settles without the player doing anything. A record older than six hours
+is dropped — the gateway session is long gone by then.
+
 ## If eSewa says the payment failed
 
 Two different things can be going on, and they need different answers:

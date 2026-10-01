@@ -33,6 +33,8 @@ class PaymentHandoffController extends ApiController
             // Carried through untouched so the signed success/failure URLs point
             // back at the app that opened this page, not at this API.
             'returnOrigin' => $request->query('returnOrigin'),
+            'successUrl' => $request->query('successUrl'),
+            'failureUrl' => $request->query('failureUrl'),
         ];
 
         ['status' => $status, 'data' => $data] = $this->initiate($payload, $request);
@@ -74,6 +76,8 @@ class PaymentHandoffController extends ApiController
             'amount' => $request->query('amount'),
             'method' => 'eSewa',
             'returnOrigin' => $request->query('returnOrigin'),
+            'successUrl' => $request->query('successUrl'),
+            'failureUrl' => $request->query('failureUrl'),
         ];
 
         ['status' => $status, 'data' => $data] = $this->initiate($payload, $request, "/api/tournaments/{$leagueId}/payments");

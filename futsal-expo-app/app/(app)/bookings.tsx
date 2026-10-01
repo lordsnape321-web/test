@@ -50,10 +50,10 @@ import {
   fetchUserTeams,
   patchBooking,
   postReview,
-  verifyEsewa,
 } from "@/api";
 import { prepareGatewayTab, realGatewayEnabled, rememberCheckout, startGatewayCheckout } from "@/lib/checkout";
 import { BookingPaymentSummary } from "@/components/BookingPaymentSummary";
+import { PaymentPendingBanner } from "@/components/PaymentPendingBanner";
 import { BookingVenueName } from "@/components/BookingVenueName";
 import { PlayerRatingBadge } from "@/components/PlayerRating";
 import { ReceiptUploader, ReceiptViewer, isOnlineMethod } from "@/components/ReceiptUploader";
@@ -416,24 +416,15 @@ export default function BookingsScreen() {
         ? `/payment/esewa/mock?bookingId=${b.id}&amount=${encodeURIComponent(String(amount))}&userId=${user?.id ?? 0}${shareQuery}`
         : `/payment/khalti/mock?bookingId=${b.id}&amount=${encodeURIComponent(String(amount))}&pidx=mock-pidx&userId=${user?.id ?? 0}${shareQuery}`;
 
-      // Remembered so the return screens can offer "Try again" in one tap.
+      // Remembered so the return screens can offer "Try again" in one tap, and
+      // so the pending card shows up wherever the player comes back to.
       rememberCheckout({
-        run: () => startGatewayCheckout(gateway, input),
+        kind: "booking",
+        method: gateway,
+        input,
+        label: `${method} · booking #${b.id}`,
         mockPath: path,
         donePath: "/bookings?refresh=1",
-        // eSewa's page can say "failed" while the money moved; this asks their
-        // status API about the session this app started.
-        check:
-          method === "eSewa"
-            ? async () => {
-                try {
-                  await verifyEsewa({ bookingId: b.id, userId: user?.id, teamPaymentId: payingMyShare ? myShare!.id : undefined });
-                  return { settled: true, message: "eSewa confirms this payment was completed. Your booking is settled. 🎉" };
-                } catch (e) {
-                  return { settled: false, message: e instanceof Error ? e.message : "eSewa did not report a completed payment for this booking." };
-                }
-              }
-            : undefined,
       });
 
       if (realGatewayEnabled() && user) {
@@ -482,22 +473,15 @@ export default function BookingsScreen() {
       ? `/payment/esewa/mock?bookingId=${b.id}&amount=${encodeURIComponent(String(share.amountDue))}&teamPaymentId=${share.id}&userId=${user?.id ?? 0}`
       : `/payment/khalti/mock?bookingId=${b.id}&amount=${encodeURIComponent(String(share.amountDue))}&teamPaymentId=${share.id}&userId=${user?.id ?? 0}&pidx=mock-team-${share.id}`;
 
-    // Remembered so the return screens can offer "Try again" in one tap.
+    // Remembered so the return screens can offer "Try again" in one tap, and so
+    // the pending card shows up wherever the player comes back to.
     rememberCheckout({
-      run: () => startGatewayCheckout(gateway, input),
+      kind: "booking",
+      method: gateway,
+      input,
+      label: `${share.paymentMethod} · your share on booking #${b.id}`,
       mockPath: query,
       donePath: "/bookings?refresh=1",
-      check:
-        gateway === "esewa"
-          ? async () => {
-              try {
-                await verifyEsewa({ bookingId: b.id, userId: user?.id, teamPaymentId: share.id });
-                return { settled: true, message: "eSewa confirms this payment was completed. Your booking is settled. 🎉" };
-              } catch (e) {
-                return { settled: false, message: e instanceof Error ? e.message : "eSewa did not report a completed payment for this booking." };
-              }
-            }
-          : undefined,
     });
 
     if (realGatewayEnabled() && user) {
@@ -703,6 +687,7 @@ export default function BookingsScreen() {
           { paddingHorizontal: space[4], width: "100%" },
         ]}
       >
+        <PaymentPendingBanner onSettled={() => void load()} />
         <View style={styles.eyebrowRow}>
           <PartyPopper size={14} color={colors.orange500} />
           <ScrollView

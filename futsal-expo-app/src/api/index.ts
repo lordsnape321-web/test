@@ -1,4 +1,4 @@
-import { paymentReturnOrigin } from "@/lib/gateway";
+import { paymentReturnOrigin, paymentReturnUrl } from "@/lib/gateway";
 import { ApiError, apiJson } from "@/lib/api";
 import type { PlayerStats } from "@/lib/loyalty";
 import type { Quota as TeamQuota } from "@/lib/teams";
@@ -498,7 +498,15 @@ export type PaymentInitiate = {
 export function initiateEsewa(input: PaymentInitiateInput): Promise<PaymentInitiate> {
   return apiJson<PaymentInitiate>("/api/payments/esewa/initiate", {
     method: "POST",
-    json: { ...input, returnOrigin: paymentReturnOrigin() },
+    json: {
+      ...input,
+      returnOrigin: paymentReturnOrigin(),
+      // The gateway's redirect target. On a device this is the app's own deep
+      // link, so finishing (or failing) a payment lands back in the app instead
+      // of in the browser's copy of the web build.
+      successUrl: paymentReturnUrl("/payment/esewa/success"),
+      failureUrl: paymentReturnUrl("/payment/esewa/failure"),
+    },
   });
 }
 
@@ -545,7 +553,14 @@ export function initiateLeaguePayment(
 ): Promise<PaymentInitiate> {
   return apiJson<PaymentInitiate>(`/api/tournaments/${leagueId}/payments`, {
     method: "POST",
-    json: { action: "initiate", ...input, returnOrigin: paymentReturnOrigin() },
+    json: {
+      action: "initiate",
+      ...input,
+      returnOrigin: paymentReturnOrigin(),
+      successUrl: paymentReturnUrl("/payment/esewa/success"),
+      failureUrl: paymentReturnUrl("/payment/esewa/failure"),
+      returnUrl: paymentReturnUrl("/payment/khalti/callback"),
+    },
   });
 }
 
@@ -553,7 +568,11 @@ export function initiateLeaguePayment(
 export function initiateKhalti(input: PaymentInitiateInput): Promise<PaymentInitiate> {
   return apiJson<PaymentInitiate>("/api/payments/khalti/initiate", {
     method: "POST",
-    json: { ...input, returnOrigin: paymentReturnOrigin() },
+    json: {
+      ...input,
+      returnOrigin: paymentReturnOrigin(),
+      returnUrl: paymentReturnUrl("/payment/khalti/callback"),
+    },
   });
 }
 

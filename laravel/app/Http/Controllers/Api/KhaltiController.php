@@ -102,7 +102,7 @@ class KhaltiController extends ApiController
          * created) and the team share or player request by the order id — so
          * the callback screen needs no hints of its own.
          */
-        $returnUrl = "{$origin}/payment/khalti/callback";
+        $returnUrl = Payments::returnUrl($request, $request->input('returnUrl'), '/payment/khalti/callback');
 
         $amountPaisa = (int) round($amountNpr * 100);
 

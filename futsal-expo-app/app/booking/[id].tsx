@@ -4,6 +4,7 @@ import { AppState, Pressable, ScrollView, StyleSheet, Text, View } from "react-n
 import { SafeAreaView } from "react-native-safe-area-context";
 import { BookingVenueName } from "@/components/BookingVenueName";
 import TeamLedgerPanel from "@/components/TeamLedgerPanel";
+import { PaymentPendingBanner } from "@/components/PaymentPendingBanner";
 import { Button, Card, Field, Notice, Pill, Spinner } from "@/components/ui";
 import {
   cancelBookingPaymentRequest,
@@ -16,7 +17,6 @@ import {
   fetchLedger,
   fetchUserTeams,
   settleTeamShare,
-  verifyEsewa,
 } from "@/api";
 import { useAuth } from "@/context/AuthContext";
 import { useTheme } from "@/context/ThemeContext";
@@ -214,48 +214,27 @@ export default function BookingDetail() {
         ? `/payment/esewa/mock?bookingId=${bookingId}&amount=${encodeURIComponent(String(amount))}${targetQuery}`
         : `/payment/khalti/mock?bookingId=${bookingId}&amount=${encodeURIComponent(String(amount))}${targetQuery}&pidx=mock-pidx`;
 
-      // Remembered so the return screens can offer "Try again" in one tap —
-      // they are a different route and know nothing about this booking.
+      // One input, used both to start the checkout and to remember it: the
+      // return screens live on a different route and have to rebuild it.
+      const input = {
+        bookingId,
+        userId: user.id,
+        teamPaymentId: !payingAdvance && teamShare && teamShare.paymentStatus !== "paid" ? teamShare.id : undefined,
+        paymentRequestId: request?.id,
+        paymentPurpose: payingAdvance ? ("advance" as const) : undefined,
+      };
+
       rememberCheckout({
-        run: () =>
-          startGatewayCheckout(method, {
-            bookingId,
-            userId: user.id,
-            teamPaymentId: !payingAdvance && teamShare && teamShare.paymentStatus !== "paid" ? teamShare.id : undefined,
-            paymentRequestId: request?.id,
-            paymentPurpose: payingAdvance ? "advance" : undefined,
-          }),
+        kind: "booking",
+        method,
+        input,
+        label: `${method === "esewa" ? "eSewa" : "Khalti"} · booking #${bookingId}`,
         mockPath: path,
         donePath: "/bookings?refresh=1",
-        // eSewa's page can say "failed" while the money moved; this asks their
-        // status API about the session this app started.
-        check: async () => {
-          try {
-            await verifyEsewa({
-              bookingId,
-              userId: user.id,
-              teamPaymentId: !payingAdvance && teamShare && teamShare.paymentStatus !== "paid" ? teamShare.id : undefined,
-              paymentRequestId: request?.id,
-            });
-
-            return { settled: true, message: "eSewa confirms this payment was completed. Your booking is settled. 🎉" };
-          } catch (e) {
-            return {
-              settled: false,
-              message: e instanceof ApiError ? e.message : "eSewa did not report a completed payment for this booking.",
-            };
-          }
-        },
       });
 
       if (realGatewayEnabled()) {
-        const outcome = await startGatewayCheckout(method, {
-          bookingId,
-          userId: user.id,
-          teamPaymentId: !payingAdvance && teamShare && teamShare.paymentStatus !== "paid" ? teamShare.id : undefined,
-          paymentRequestId: request?.id,
-          paymentPurpose: payingAdvance ? "advance" : undefined,
-        });
+        const outcome = await startGatewayCheckout(method, input);
 
         if (outcome.status === "gateway") {
           setBusy(null);
@@ -495,6 +474,7 @@ export default function BookingDetail() {
   return (
     <SafeAreaView style={[styles.flex, { backgroundColor: colors.bg }]} edges={["bottom"]}>
       <ScrollView contentContainerStyle={styles.scroll}>
+        <PaymentPendingBanner onSettled={() => void load(true, true)} />
         <BookingVenueName name={booking.venue?.name} color={colors.text} />
         <ScrollView
           horizontal
