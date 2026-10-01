@@ -1,6 +1,12 @@
-import { initiateEsewa, initiateKhalti, type PaymentInitiateInput } from "@/api";
+import {
+  initiateEsewa,
+  initiateKhalti,
+  initiateLeaguePayment,
+  type LeaguePaymentInput,
+  type PaymentInitiateInput,
+} from "@/api";
 import { openCheckout, prepareGatewayTab, releaseGatewayTab } from "@/lib/gateway";
-import { planCheckout, type GatewayMethod } from "@/lib/gateway-plan";
+import { planCheckout, type GatewayInitiate, type GatewayMethod } from "@/lib/gateway-plan";
 
 /**
  * One checkout, from "the player tapped Pay" to "the gateway has the browser".
@@ -23,12 +29,33 @@ export type CheckoutOutcome =
  * Start a checkout. Call `prepareGatewayTab()` in the tap handler before this
  * (see its note): the tab has to be reserved while the tap is still live.
  */
-export async function startGatewayCheckout(
+export function startGatewayCheckout(
   method: GatewayMethod,
   input: PaymentInitiateInput,
 ): Promise<CheckoutOutcome> {
+  return runCheckout(method, () => (method === "esewa" ? initiateEsewa(input) : initiateKhalti(input)));
+}
+
+/**
+ * The same checkout for a league entry fee.
+ *
+ * `method` is the app's own label — the panel speaks in "eSewa"/"Khalti" — and
+ * `input` is the squad and the amount. Everything after the initiate call is
+ * identical to a booking payment, because the server's answer is identical.
+ */
+export function startLeagueCheckout(
+  leagueId: number,
+  method: "eSewa" | "Khalti",
+  input: LeaguePaymentInput,
+): Promise<CheckoutOutcome> {
+  return runCheckout(method === "eSewa" ? "esewa" : "khalti", () =>
+    initiateLeaguePayment(leagueId, { ...input, method }),
+  );
+}
+
+async function runCheckout(method: GatewayMethod, load: () => Promise<GatewayInitiate>): Promise<CheckoutOutcome> {
   try {
-    const initiate = method === "esewa" ? await initiateEsewa(input) : await initiateKhalti(input);
+    const initiate = await load();
     const plan = planCheckout(method, initiate);
 
     if (plan.kind === "gateway" || plan.kind === "form") {

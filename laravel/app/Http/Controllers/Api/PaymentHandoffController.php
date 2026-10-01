@@ -52,6 +52,47 @@ class PaymentHandoffController extends ApiController
     }
 
     /**
+     * The same hand-off for a league entry fee.
+     *
+     * A league payment starts at `POST /api/tournaments/{id}/payments` with
+     * `action=initiate` rather than the booking endpoint, so the replay points
+     * there — but everything else (the signed form, the query-free return URLs,
+     * the error page) is identical, and deliberately so: one page, one contract.
+     */
+    public function leagueEsewa(Request $request)
+    {
+        $leagueId = (int) $request->query('leagueId', 0);
+
+        if ($leagueId <= 0) {
+            return $this->html($this->errorPage('That league payment could not start.'), 400);
+        }
+
+        $payload = [
+            'action' => 'initiate',
+            'teamId' => $request->query('teamId'),
+            'userId' => $request->query('userId'),
+            'amount' => $request->query('amount'),
+            'method' => 'eSewa',
+            'returnOrigin' => $request->query('returnOrigin'),
+        ];
+
+        ['status' => $status, 'data' => $data] = $this->initiate($payload, $request, "/api/tournaments/{$leagueId}/payments");
+
+        $fields = is_array($data['fields'] ?? null) ? $data['fields'] : null;
+        $formUrl = is_string($data['url'] ?? null) ? $data['url'] : '';
+
+        if ($status !== 200 || $fields === null || $formUrl === '') {
+            return $this->html($this->errorPage(
+                is_string($data['error'] ?? null)
+                    ? $data['error']
+                    : 'The gateway could not start this payment.'
+            ), $status === 200 ? 502 : $status);
+        }
+
+        return $this->html($this->formPage($formUrl, $fields, $data));
+    }
+
+    /**
      * Ask the real initiate endpoint, in-process.
      *
      * `app()->handle()` runs the request through the normal middleware stack, so
@@ -61,9 +102,9 @@ class PaymentHandoffController extends ApiController
      *
      * @return array{status: int, data: array<string, mixed>}
      */
-    private function initiate(array $payload, Request $outer): array
+    private function initiate(array $payload, Request $outer, string $path = '/api/payments/esewa/initiate'): array
     {
-        $sub = Request::create('/api/payments/esewa/initiate', 'POST', $payload, [], [], [
+        $sub = Request::create($path, 'POST', $payload, [], [], [
             'HTTP_ACCEPT' => 'application/json',
             'HTTP_X_REQUESTED_WITH' => 'XMLHttpRequest',
             'REMOTE_ADDR' => $outer->ip(),
@@ -107,7 +148,7 @@ class PaymentHandoffController extends ApiController
 
         return $this->shell('Opening eSewa…', <<<HTML
             <h1>Taking you to eSewa</h1>
-            <p class="lead">Paying <strong>{$amount}</strong> on the eSewa test server. Nothing is charged — this is the sandbox eSewa hands out for testing.</p>
+            <p class="lead">Paying <strong>{$amount}</strong> on the eSewa test server — the one eSewa publishes for testing. No real money moves.</p>
             <p class="hint">{$hint}</p>
             <form id="esewa" method="POST" action="{$formUrl}" autocomplete="off">
                 {$inputs}

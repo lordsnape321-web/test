@@ -1,3 +1,4 @@
+import Constants from "expo-constants";
 import { Linking, Platform } from "react-native";
 import type { CheckoutPlan } from "@/lib/gateway-plan";
 
@@ -13,29 +14,58 @@ export { esewaDataFromLocation, planCheckout } from "@/lib/gateway-plan";
 const configuredMode = (process.env.EXPO_PUBLIC_PAYMENT_MODE ?? "").trim().toLowerCase();
 
 /**
+ * The Expo dev server this build was loaded from, as an http(s) origin.
+ *
+ * Expo Go and dev-client builds know the machine that served them. That machine
+ * serves the *web* build of this same app on the same port, and the app's return
+ * screens live there — so a phone that finishes an eSewa checkout in its browser
+ * lands on a page that can verify the payment (Metro proxies its `/api` calls
+ * back to Laravel).
+ */
+function devServerOrigin(): string {
+  const host = (Constants.expoConfig?.hostUri ?? "").trim();
+
+  if (!host) return "";
+
+  // A tunnel (and anything on :443) is https; a LAN dev server is plain http.
+  const scheme = host.endsWith(":443") || host.endsWith(".exp.direct") ? "https" : "http";
+
+  return `${scheme}://${host}`;
+}
+
+/**
  * Where the gateway should send the browser when it is done.
  *
  * On the web this is simply the page's own origin — the app is served by Expo,
- * not by the API, and the two are different hosts even locally. A native build
- * has no origin at all, so it needs `EXPO_PUBLIC_APP_ORIGIN` (the Expo web dev
- * server, e.g. `http://192.168.1.20:8081`); without it a native build keeps
- * using the simulator, because a return URL that points nowhere would strand the
- * payment in the system browser.
+ * not by the API, and the two are different hosts even locally. A device has no
+ * origin of its own: it uses `EXPO_PUBLIC_APP_ORIGIN` when the build sets one,
+ * and otherwise the dev server it came from. If even that is unknown — a
+ * production build — the app sends nothing and the server falls back to the web
+ * origin the deployment configured (`APP_WEB_URL`), which is where the return
+ * screens are anyway.
  */
 export function paymentReturnOrigin(): string {
   if (Platform.OS === "web" && typeof window !== "undefined") {
     return window.location.origin;
   }
 
-  return (process.env.EXPO_PUBLIC_APP_ORIGIN ?? "").trim().replace(/\/+$/, "");
+  const explicit = (process.env.EXPO_PUBLIC_APP_ORIGIN ?? "").trim();
+
+  if (explicit !== "") return explicit.replace(/\/+$/, "");
+
+  return devServerOrigin();
 }
 
-/** False only when the build asks for the simulator, or a device has no return origin. */
+/**
+ * True unless the build explicitly asks for the simulator.
+ *
+ * The gateways' own test servers are the default on every platform — that is
+ * the feature. `EXPO_PUBLIC_PAYMENT_MODE=simulator` is only for working with no
+ * network at all; nothing in the app sets it, and the automatic fallback in
+ * `startGatewayCheckout` already covers a gateway that cannot be reached.
+ */
 export function realGatewayEnabled(): boolean {
-  if (configuredMode === "simulator") return false;
-  if (Platform.OS === "web") return true;
-
-  return paymentReturnOrigin() !== "";
+  return configuredMode !== "simulator";
 }
 
 /** True when the app is running inside someone else's page (the Arena preview). */

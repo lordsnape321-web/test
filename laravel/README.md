@@ -422,6 +422,12 @@ defaults, exactly like `EPAYTEST`. `KHALTI_SECRET_KEY` (from
 test-admin.khalti.com) and `ESEWA_MERCHANT_CODE` / `ESEWA_SECRET_KEY` replace
 them for a real merchant account.
 
+Every payment button in the app goes through it — booking balances, one
+member's share, a directed "please pay" request, an advance, and a **league
+entry fee**. They all settle through the same ledger rules; a league captain who
+pays online gets exactly the rows, totals and automatic invite-acceptance they
+would get from cash.
+
 ### What the flow looks like from here
 
 1. `POST /api/payments/{esewa,khalti}/initiate` resolves the target (booking
@@ -437,7 +443,16 @@ them for a real merchant account.
 3. If the test server cannot be reached at all, `initiate` answers
    `mock: true` with a simulator URL, and the app runs the local checkout
    instead. A refused session — a played game, a paid share, the wrong amount —
-   is a normal 4xx, not a fallback.
+   is a normal 4xx, not a fallback. The simulator is never the default: the app
+   tries the real test server on every platform, and only a genuinely
+   unreachable gateway sends it here.
+
+A league entry fee has no booking, so its `LG-…` reference is what names the
+squad: eSewa's signed blob carries it in `transaction_uuid`, Khalti's lookup
+returns it as `purchase_order_id`. Both verify routes hand it to
+`App\Services\LeagueEntry`, which is also what the simulator and cash paths use —
+one settlement path, and idempotent on the gateway's transaction code, so a
+refreshed return page cannot charge twice.
 
 Return URLs carry no query string of their own, on purpose: both gateways
 append their own parameters and a URL that already has a query is a coin flip
@@ -489,7 +504,7 @@ request validation and authorization separate from the persistence models.
 | Variable | Meaning |
 |---|---|
 | `APP_URL` | API origin used for gateway return URLs |
-| `APP_WEB_URL` | Expo/web origin used in app return links |
+| `APP_WEB_URL` | The app's web origin — used for return links, and as the return origin when a client cannot name one |
 | `CORS_ALLOWED_ORIGINS` | Comma-separated production web origins, or `*` locally |
 | `SETTLE_EDIT_WINDOW_MINUTES` | Settlement correction window, five minutes by default |
 | `ESEWA_*`, `KHALTI_*` | Override the published test-gateway values with your own merchant credentials |

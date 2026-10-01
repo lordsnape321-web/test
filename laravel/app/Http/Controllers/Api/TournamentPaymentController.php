@@ -7,6 +7,7 @@ use App\Models\Tournament;
 use App\Models\TournamentPayment;
 use App\Models\TournamentTeam;
 use App\Models\User;
+use App\Services\LeagueEntry;
 use App\Services\Notifier;
 use App\Support\Futsal;
 use App\Support\League;
@@ -115,9 +116,11 @@ class TournamentPaymentController extends ApiController
      * - `receipt` — attach a screenshot without moving money.
      * - `prize`  — the host pays the winner out of the pool at the end.
      *
-     * Payments are simulated (the same test-gateway spirit as the rest of the
-     * app): no card is charged, but every row of the ledger is real, dated and
-     * attributed.
+     * `initiate` builds a real eSewa/Khalti test-server session; the return
+     * pages verify it (signature + status API, or Khalti's lookup) before any
+     * row is written. The simulator is only what runs when neither test server
+     * can be reached — no card is ever charged on either path, but the ledger,
+     * the dates and the attribution are real.
      */
     public function store(Request $request, int $id): JsonResponse
     {
@@ -384,8 +387,8 @@ class TournamentPaymentController extends ApiController
                 return $this->fail('Enter the amount you’re paying 💰', 400);
             }
 
-            $origin = Payments::appOrigin($request);
-            $backTo = "{$origin}/leagues/{$id}";
+            // The app tells us where it lives — same rule as the booking flow.
+            $origin = Payments::returnOrigin($request, $request->input('returnOrigin'));
 
             if ($method === 'eSewa') {
                 $cfg = Payments::esewaConfig();
@@ -393,14 +396,26 @@ class TournamentPaymentController extends ApiController
 
                 $row->forceFill(['pay_method' => $method, 'gateway_txn_id' => '', 'updated_at' => now()])->save();
 
+                /*
+                 * Query-free return URLs, like the booking flow: eSewa appends
+                 * its own `?data=<base64>`, and a URL that already carries a
+                 * query is a coin flip between `&` and a second `?`. The signed
+                 * blob names the league and squad inside the transaction uuid,
+                 * so the return pages need no arguments of their own.
+                 */
+                $successUrl = "{$origin}/payment/esewa/success";
+                $failureUrl = "{$origin}/payment/esewa/failure";
+
                 $fields = Payments::buildEsewaFields([
                     'amount' => $amount,
                     'transactionUuid' => $transactionUuid,
                     'productCode' => $cfg['productCode'] ?? '',
                     'secretKey' => $cfg['secretKey'] ?? '',
-                    'successUrl' => $backTo,
-                    'failureUrl' => $backTo,
+                    'successUrl' => $successUrl,
+                    'failureUrl' => $failureUrl,
                 ]);
+
+                $login = Payments::esewaTestLogin();
 
                 return $this->ok([
                     'url' => $cfg['formUrl'] ?? '',
@@ -408,8 +423,21 @@ class TournamentPaymentController extends ApiController
                     'amount' => $amount,
                     'transactionUuid' => $transactionUuid,
                     'testMode' => true,
+                    'returnOrigin' => $origin,
+                    'successUrl' => $successUrl,
+                    'failureUrl' => $failureUrl,
                     'mockUrl' => "{$origin}/payment/esewa/mock?leagueId={$id}&teamId={$teamId}&userId={$userId}&amount={$amount}&uuid=".rawurlencode($transactionUuid),
-                    'testHint' => 'eSewa UAT: ID 9806800001 / password 123456 / MPIN 1122 / token 123456',
+                    // A native app can only open GETs, so the signed form needs
+                    // a page to POST it from — the same hand-off the booking
+                    // flow uses, aimed at this league instead.
+                    'handoffPath' => '/api/payments/esewa/handoff/league?'.http_build_query([
+                        'leagueId' => $id,
+                        'teamId' => $teamId,
+                        'userId' => $userId,
+                        'amount' => $amount,
+                        'returnOrigin' => $origin,
+                    ]),
+                    'testHint' => "eSewa test server: log in with {$login['id']} / {$login['password']}, MPIN {$login['mpin']}, token {$login['token']}",
                 ]);
             }
 
@@ -422,22 +450,11 @@ class TournamentPaymentController extends ApiController
 
             $mockUrl = "{$origin}/payment/khalti/mock?leagueId={$id}&teamId={$teamId}&userId={$userId}&amount={$amount}&pidx=".rawurlencode('mock-'.$orderId);
 
-            if (empty($cfg['secretKey'])) {
-                return $this->ok([
-                    'mock' => true,
-                    'pidx' => 'mock-'.$orderId,
-                    'payment_url' => $mockUrl,
-                    'amount' => $amount,
-                    'orderId' => $orderId,
-                    'testHint' => 'Sandbox simulator — no KHALTI_SECRET_KEY set.',
-                ]);
-            }
-
             try {
                 $init = Payments::khaltiInitiate([
                     'secretKey' => $cfg['secretKey'],
                     'initiateUrl' => $cfg['initiateUrl'] ?? '',
-                    'returnUrl' => $backTo,
+                    'returnUrl' => "{$origin}/payment/khalti/callback",
                     'websiteUrl' => $origin,
                     'amountPaisa' => $amount * 100,
                     'orderId' => $orderId,
@@ -447,20 +464,28 @@ class TournamentPaymentController extends ApiController
                     'customerPhone' => $captain->phone ?? '9800000000',
                 ]);
 
+                $login = Payments::khaltiTestLogin();
+
                 return $this->ok([
                     'mock' => false,
                     'pidx' => $init['pidx'] ?? null,
                     'payment_url' => $init['payment_url'] ?? null,
                     'amount' => $amount,
                     'orderId' => $orderId,
+                    'returnOrigin' => $origin,
+                    'testHint' => "Khalti test server: pay with {$login['id']}, MPIN {$login['mpin']}, OTP {$login['otp']}",
                 ]);
-            } catch (\Throwable) {
+            } catch (\Throwable $e) {
                 return $this->ok([
                     'mock' => true,
                     'pidx' => 'mock-'.$orderId,
                     'payment_url' => $mockUrl,
+                    'mockUrl' => $mockUrl,
                     'amount' => $amount,
                     'orderId' => $orderId,
+                    'returnOrigin' => $origin,
+                    'fallback' => true,
+                    'fallbackError' => $e->getMessage(),
                     'testHint' => 'Khalti sandbox unreachable — falling back to the local simulator.',
                 ]);
             }
@@ -478,75 +503,22 @@ class TournamentPaymentController extends ApiController
                 return $this->fail('Nothing to verify yet 💳', 400);
             }
 
-            $due = max(0, $entryFee - (int) $row->paid_amount);
-
-            if ($due <= 0) {
-                return $this->fail('This entry fee is already settled ✅', 400);
-            }
-
-            $amount = min((int) floor((float) $request->input('amount', $due)), $due);
+            $amount = (int) floor((float) $request->input('amount', 0));
             $method = in_array((string) $request->input('method'), Loyalty::ONLINE_PAYMENTS, true)
                 ? (string) $request->input('method')
                 : 'eSewa';
 
+            // The simulator's own reference: deterministic enough to be the
+            // ledger's idempotency key, and clearly not a gateway transaction.
             $txn = mb_substr('MOCK-'.mb_strtoupper($method)."-{$id}-{$teamId}-".base_convert((string) now()->timestamp, 10, 36), 0, 100);
 
-            TournamentPayment::create([
-                'tournament_id' => $id,
-                'team_id' => $teamId,
-                'user_id' => $userId,
-                'kind' => 'entry',
-                'amount' => $amount,
-                'method' => $method,
-                'reference' => mb_substr("{$method} checkout (txn {$txn})", 0, 120),
-                'recorded_by' => $userId,
-            ]);
+            $result = LeagueEntry::settle((int) $id, $teamId, $amount, $method, $txn);
 
-            $row->forceFill(['pay_method' => $method, 'gateway_txn_id' => $txn, 'updated_at' => now()])->save();
-
-            $totals = LeagueStore::recalcTeamTotals((int) $id, $teamId);
-
-            $state = League::paymentState([
-                'entryFee' => $entryFee,
-                'paidAmount' => $totals['paidAmount'],
-                'refundedAmount' => $totals['refundedAmount'],
-                'depositPercent' => $league->deposit_percent,
-                'refundPercent' => $league->refund_percent,
-            ]);
-
-            $approved = false;
-
-            if (($state['depositMet'] ?? false) && $row->status === League::TEAM_INVITED) {
-                $row->forceFill([
-                    'status' => League::TEAM_APPROVED,
-                    'decided_by' => $userId,
-                    'decided_at' => now(),
-                    'updated_at' => now(),
-                ])->save();
-
-                $approved = true;
+            if (! ($result['ok'] ?? false)) {
+                return $this->fail((string) ($result['error'] ?? 'That payment could not be recorded'), (int) ($result['status'] ?? 400));
             }
 
-            Notifier::notify(
-                (int) $league->host_id,
-                'league',
-                '💰 '.Futsal::formatNPR($amount)." from {$team->name} via {$method}",
-                ($captain->name ?? 'The captain').' cleared '.Futsal::formatNPR($amount)." on the {$league->name} entry fee through {$method} (txn {$txn}). "
-                .Futsal::formatNPR($totals['paidAmount']).' of '.Futsal::formatNPR($entryFee).' in — '
-                .($state['due'] > 0 ? Futsal::formatNPR($state['due']).' to go.' : 'settled in full 🎉'),
-                $hostLink
-            );
-
-            return $this->ok([
-                'ok' => true,
-                'approved' => $approved,
-                'txn' => $txn,
-                'paidAmount' => $totals['paidAmount'],
-                'depositMet' => $state['depositMet'],
-                'message' => $approved
-                    ? 'Paid — and you’re in! '.Futsal::formatNPR($totals['paidAmount']).' of '.Futsal::formatNPR($entryFee).' settled 🎉'
-                    : Futsal::formatNPR($amount)." received via {$method} ✅".($state['due'] > 0 ? ' '.Futsal::formatNPR($state['due']).' left on the entry fee.' : ''),
-            ]);
+            return $this->ok($result);
         }
 
         /* --------------------------------------------------------- receipt */

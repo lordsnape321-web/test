@@ -108,6 +108,18 @@ class Payments
             return $candidate;
         }
 
+        /*
+         * No usable origin from the client — a native build that has not been
+         * told its own address, for instance. The deployment may still name the
+         * app's own web origin (`APP_WEB_URL`), and that is a better answer than
+         * this API's host: the return screens are app routes, not API routes.
+         */
+        $webUrl = rtrim(trim((string) env('APP_WEB_URL', '')), '/');
+
+        if ($webUrl !== '' && self::isUsableOrigin($webUrl)) {
+            return $webUrl;
+        }
+
         return self::appOrigin($request);
     }
 

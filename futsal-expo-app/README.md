@@ -96,8 +96,9 @@ node scripts/.tmp/gateway.mjs
 
 It covers the checkout decision (real gateway vs. form POST vs. simulator vs.
 error) and reads the Laravel side to pin the contract it depends on: the
-published test credentials, `returnOrigin`, the query-free return URLs, and the
-eSewa hand-off page. See `PAYMENT_PORT_NOTES.md` for how a checkout runs and how
+published test credentials, `returnOrigin`, the query-free return URLs, the
+eSewa hand-off pages (booking and league), and that the simulator settles
+through the same ledger path as a gateway payment. See `PAYMENT_PORT_NOTES.md` for how a checkout runs and how
 to point a native build at the gateways.
 
 Bundling for a device can be checked with:

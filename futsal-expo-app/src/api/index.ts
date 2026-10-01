@@ -523,6 +523,32 @@ export function verifyEsewa(input: {
   return apiJson("/api/payments/esewa/verify", { method: "POST", json: input });
 }
 
+/** The league entry-fee equivalent of `PaymentInitiateInput` — no booking. */
+export type LeaguePaymentInput = {
+  teamId: number;
+  userId: number;
+  /** Rupees. The server caps it at what the entry fee still owes. */
+  amount: number;
+};
+
+/**
+ * POST /api/tournaments/:id/payments with action=initiate.
+ *
+ * A league entry fee gets exactly the same answer as a booking payment — a real
+ * eSewa form (with `handoffPath` for a native browser), a real Khalti
+ * `payment_url`, or `mock: true` with a simulator URL — because it is the same
+ * money and the same two test servers.
+ */
+export function initiateLeaguePayment(
+  leagueId: number,
+  input: LeaguePaymentInput & { method: "eSewa" | "Khalti" },
+): Promise<PaymentInitiate> {
+  return apiJson<PaymentInitiate>(`/api/tournaments/${leagueId}/payments`, {
+    method: "POST",
+    json: { action: "initiate", ...input, returnOrigin: paymentReturnOrigin() },
+  });
+}
+
 /** POST /api/payments/khalti/initiate → { pidx, payment_url } */
 export function initiateKhalti(input: PaymentInitiateInput): Promise<PaymentInitiate> {
   return apiJson<PaymentInitiate>("/api/payments/khalti/initiate", {
@@ -739,8 +765,11 @@ export function leagueTeamsAction(
 
 /**
  * POST /api/tournaments/:id/payments — pay / record / initiate / verify /
- * receipt / prize. Native calls `verify` with `mockApprove: true` directly
- * (the same body the web mock-gateway page posts), skipping initiate+redirect.
+ * receipt / prize.
+ *
+ * `initiate` goes through `initiateLeaguePayment` (the real test servers);
+ * `verify` with `mockApprove: true` is the simulator's door — the same body the
+ * mock screens post — used only when no gateway can be reached.
  */
 export function leaguePaymentsAction(
   id: number,

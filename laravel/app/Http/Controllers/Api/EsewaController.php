@@ -8,6 +8,7 @@ use App\Models\BookingPaymentRequest;
 use App\Models\BookingTeamPayment;
 use App\Models\Court;
 use App\Models\Venue;
+use App\Services\LeagueEntry;
 use App\Services\Notifier;
 use App\Support\AdvancePayment;
 use App\Support\BookingLedger;
@@ -246,6 +247,15 @@ class EsewaController extends ApiController
         }
 
         $uuid = (string) ($payload['transaction_uuid'] ?? '');
+
+        // A league entry fee rides the same rails. Its uuid names the league and
+        // squad (`LG-…`) instead of a booking, so it settles through the league
+        // ledger — same rows, same totals, same auto-approval a simulator or
+        // cash payment would produce.
+        if ($league = Payments::parseLeagueRef($uuid)) {
+            return $this->settleLeagueEntry($payload, $uuid, $cfg, $league);
+        }
+
         $bookingId = $hintBookingId ?: Payments::parseBookingIdFromEsewaUuid($uuid);
         $teamPaymentId = (int) $request->input('teamPaymentId', 0) ?: $this->teamPaymentIdFromUuid($uuid);
         $paymentRequestId = (int) $request->input('paymentRequestId', 0) ?: ((int) ($this->matchId($uuid, '-PR-') ?? 0) ?: null);
@@ -333,6 +343,58 @@ class EsewaController extends ApiController
         }
 
         return $this->settleBookingPayment($booking, (int) round($paidTotal), $txnCode, 'eSewa', false);
+    }
+
+    /* ------------------------------------------------------------ league */
+
+    /**
+     * A league captain paid their entry fee on the real eSewa test server.
+     *
+     * The signature is already verified above; this adds the same defence in
+     * depth the booking flow uses (ask eSewa's own status API) and then hands
+     * the money to the shared league ledger. Replays are safe: the ledger keys
+     * on the gateway's transaction code.
+     *
+     * @param  array<string, mixed>  $payload
+     * @param  array{leagueId: int, teamId: int}  $league
+     */
+    private function settleLeagueEntry(array $payload, string $uuid, array $cfg, array $league): JsonResponse
+    {
+        if (strtoupper((string) ($payload['status'] ?? '')) !== 'COMPLETE') {
+            return $this->fail('eSewa payment not completed', 400, ['ok' => false, 'status' => $payload['status'] ?? null]);
+        }
+
+        $paid = (float) str_replace(',', '', (string) ($payload['total_amount'] ?? '0'));
+
+        if (! is_finite($paid) || $paid <= 0) {
+            return $this->fail('eSewa did not report an amount 🛡️', 400);
+        }
+
+        try {
+            $status = Payments::esewaStatusCheck([
+                'statusUrl' => $cfg['statusUrl'],
+                'productCode' => $cfg['productCode'],
+                'transactionUuid' => $uuid,
+                'totalAmount' => $paid,
+            ]);
+
+            $s = strtoupper((string) ($status['status'] ?? ''));
+
+            if ($s !== '' && $s !== 'COMPLETE') {
+                return $this->fail("eSewa says: {$s}", 400, ['ok' => false, 'status' => $s]);
+            }
+        } catch (\Throwable) {
+            // Status API unreachable — the verified signature plus COMPLETE stands.
+        }
+
+        $reference = ((string) ($payload['transaction_code'] ?? '')) ?: $uuid;
+        $result = LeagueEntry::settle($league['leagueId'], $league['teamId'], (int) round($paid), 'eSewa', $reference);
+
+        if (! ($result['ok'] ?? false)) {
+            return $this->fail((string) ($result['error'] ?? 'Could not record that payment'), (int) ($result['status'] ?? 400));
+        }
+
+        return $this->ok($result);
     }
 
     /* -------------------------------------------------------------- mock */

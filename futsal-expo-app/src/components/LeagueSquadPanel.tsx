@@ -21,6 +21,7 @@ import {
   View,
 } from "react-native";
 import { fetchUserTeams, leaguePaymentsAction, leagueTeamsAction } from "@/api";
+import { prepareGatewayTab, startLeagueCheckout } from "@/lib/checkout";
 import { PaymentLine } from "@/components/LeagueCard";
 import { ReceiptUploader, isOnlineMethod } from "@/components/ReceiptUploader";
 import { useTheme } from "@/context/ThemeContext";
@@ -41,10 +42,12 @@ const LEAGUE_PAY_METHODS = ["eSewa", "Khalti", "Cash at Venue"];
  * left, and leave and take the 10% back. The rules the server enforces are the
  * same ones written here — the panel just says them before you press anything.
  *
- * Payment adaptation (same seam as booking/[id]): the web initiates a gateway
- * redirect; native posts `action: "verify"` with `mockApprove: true` directly —
- * the exact body the web's mock-gateway page posts, so it runs the identical
- * server path (ledger row + auto-approve on a met deposit).
+ * Paying runs the same checkout as a booking (see `src/lib/checkout.ts`): the
+ * captain is sent to eSewa's or Khalti's own test server, and the return page
+ * verifies the payment before a row is written. `action: "verify"` with
+ * `mockApprove: true` is only the fallback for a gateway that cannot be
+ * reached — same server path from there on (ledger row + auto-approve once the
+ * deposit is met).
  */
 export function LeagueSquadPanel({
   league,
@@ -122,8 +125,9 @@ export function LeagueSquadPanel({
    * Pay through the medium the captain picked 💳
    *
    * Cash at venue moves no money here: the host records it when they take it,
-   * and the screenshot is what bridges the gap. Online methods go straight to
-   * verify+mockApprove (see the note at the top of this file).
+   * and the screenshot is what bridges the gap. Online methods open the real
+   * test server first — eSewa's UAT page or Khalti's sandbox — and only fall
+   * back to the simulator when neither can be reached.
    */
   async function pay(teamId: number, amount: number) {
     const method = methodFor(teamId);
@@ -135,7 +139,26 @@ export function LeagueSquadPanel({
     setBusy(`pay-${teamId}`);
     setMsg("");
     setErr("");
+    // Reserve the browser tab while the tap that started this is still live.
+    prepareGatewayTab();
     try {
+      const outcome = await startLeagueCheckout(league.id, method as "eSewa" | "Khalti", {
+        teamId,
+        userId: viewerId,
+        amount,
+      });
+
+      if (outcome.status === "gateway") {
+        setMsg("Finish the payment in the browser, then come back — the entry updates the moment the gateway confirms it.");
+        return;
+      }
+
+      if (outcome.status === "error") {
+        setErr(outcome.message);
+        return;
+      }
+
+      // Simulator: the same server path the gateway's return page takes.
       const data = await leaguePaymentsAction(league.id, {
         action: "verify",
         mockApprove: true,

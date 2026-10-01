@@ -110,7 +110,7 @@ function GatewayMock({ kind, params, onDone, onCancel }: { kind: "esewa" | "khal
         <View style={styles.gatewayCard}>
           <View style={[styles.gatewayHead, { backgroundColor: accent }]}>
             <Text style={styles.gatewayName}>{label}</Text>
-            <Text style={styles.sandbox}>Sandbox simulator • test mode</Text>
+            <Text style={styles.fallbackChip}>Simulator • gateway unreachable</Text>
           </View>
           <View style={styles.gatewayBody}>
             <View style={[styles.amountCard, { backgroundColor: soft }]}>
@@ -151,6 +151,10 @@ export function EsewaSuccessScreen() {
   const [bookingId, setBookingId] = useState(one(params.bookingId));
   const [state, setState] = useState<"loading" | "success" | "failure">(mock ? "success" : "loading");
   const [message, setMessage] = useState("");
+  // What the server said it settled — a booking, a teammate's share, a league
+  // entry fee. It knows which; this screen does not, so it shows that wording
+  // instead of guessing "your booking".
+  const [settled, setSettled] = useState("");
 
   useEffect(() => {
     if (state !== "loading") return;
@@ -175,6 +179,7 @@ export function EsewaSuccessScreen() {
       .then((result) => {
         const booking = (result as { booking?: { id?: number } }).booking;
         if (booking?.id) setBookingId(String(booking.id));
+        setSettled(String((result as { message?: string }).message ?? ""));
         setState("success");
       })
       .catch((e) => {
@@ -192,12 +197,11 @@ export function EsewaSuccessScreen() {
       bookingId={bookingId}
       message={
         state === "success"
-          ? mock
-            ? "eSewa test payment confirmed."
-            : "eSewa confirmed the payment and your booking is settled. 🎉"
+          ? settled || (mock ? "eSewa test payment confirmed." : "eSewa confirmed the payment and your booking is settled. 🎉")
           : message
       }
-      onPrimary={() => router.replace("/bookings?refresh=1")}
+      primaryLabel={!bookingId && state === "success" ? "Back to the app" : undefined}
+      onPrimary={() => router.replace(bookingId ? "/bookings?refresh=1" : "/leagues")}
       onSecondary={() => router.replace("/venues")}
     />
   );
@@ -259,10 +263,10 @@ function LoadingResult({ label }: { label: string }) {
   return <SafeAreaView style={[styles.flex, { backgroundColor: c.bg }]} edges={["bottom"]}><View style={styles.loading}><Loader2 size={44} color={colors.emerald600} /><Text style={[styles.loadingText, { color: c.text }]}>{label}</Text></View></SafeAreaView>;
 }
 
-function ResultScreen({ kind, gateway, bookingId, message, onPrimary, onSecondary }: { kind: "success" | "failure"; gateway: string; bookingId: string; message: string; onPrimary: () => void; onSecondary: () => void }) {
+function ResultScreen({ kind, gateway, bookingId, message, primaryLabel, onPrimary, onSecondary }: { kind: "success" | "failure"; gateway: string; bookingId: string; message: string; primaryLabel?: string; onPrimary: () => void; onSecondary: () => void }) {
   const { colors: c } = useTheme();
   const success = kind === "success";
-  return <SafeAreaView style={[styles.flex, { backgroundColor: c.bg }]} edges={["bottom"]}><ScrollView contentContainerStyle={styles.resultScroll}><View style={[styles.resultCard, { backgroundColor: c.surface, borderColor: c.border }]}><View style={[styles.resultIcon, { backgroundColor: success ? colors.emerald600 : colors.red500 }]}>{success ? <PartyPopper size={32} color="#FFFFFF" /> : <XCircle size={32} color="#FFFFFF" />}</View><Text style={[styles.resultTitle, { color: c.text }]}>{success ? "Payment verified! 🎉" : `${gateway} payment cancelled 😌`}</Text><Text style={[styles.resultBody, { color: c.textMuted }]}>{message}{bookingId ? ` Booking #FN-${bookingId}.` : ""}</Text><View style={styles.resultActions}><Pressable onPress={onPrimary} style={[styles.resultPrimary, { backgroundColor: colors.emerald600 }]}><CheckCircle2 size={16} color="#FFFFFF" /><Text style={styles.resultPrimaryText}>{success ? "Track booking" : "Pay from bookings"}</Text></Pressable><Pressable onPress={onSecondary} style={[styles.resultSecondary, { borderColor: c.border }]}><CreditCard size={16} color={c.text} /><Text style={[styles.resultSecondaryText, { color: c.text }]}>Browse courts</Text></Pressable></View></View></ScrollView></SafeAreaView>;
+  return <SafeAreaView style={[styles.flex, { backgroundColor: c.bg }]} edges={["bottom"]}><ScrollView contentContainerStyle={styles.resultScroll}><View style={[styles.resultCard, { backgroundColor: c.surface, borderColor: c.border }]}><View style={[styles.resultIcon, { backgroundColor: success ? colors.emerald600 : colors.red500 }]}>{success ? <PartyPopper size={32} color="#FFFFFF" /> : <XCircle size={32} color="#FFFFFF" />}</View><Text style={[styles.resultTitle, { color: c.text }]}>{success ? "Payment verified! 🎉" : `${gateway} payment cancelled 😌`}</Text><Text style={[styles.resultBody, { color: c.textMuted }]}>{message}{bookingId ? ` Booking #FN-${bookingId}.` : ""}</Text><View style={styles.resultActions}><Pressable onPress={onPrimary} style={[styles.resultPrimary, { backgroundColor: colors.emerald600 }]}><CheckCircle2 size={16} color="#FFFFFF" /><Text style={styles.resultPrimaryText}>{primaryLabel ?? (success ? "Track booking" : "Pay from bookings")}</Text></Pressable><Pressable onPress={onSecondary} style={[styles.resultSecondary, { borderColor: c.border }]}><CreditCard size={16} color={c.text} /><Text style={[styles.resultSecondaryText, { color: c.text }]}>Browse courts</Text></Pressable></View></View></ScrollView></SafeAreaView>;
 }
 
 const styles = StyleSheet.create({
@@ -271,7 +275,7 @@ const styles = StyleSheet.create({
   gatewayCard: { width: "100%", maxWidth: 440, alignSelf: "center", overflow: "hidden", borderRadius: 32, backgroundColor: "#FFFFFF", shadowColor: "#000", shadowOpacity: 0.25, shadowRadius: 24, shadowOffset: { width: 0, height: 12 }, elevation: 8 },
   gatewayHead: { padding: space[6], alignItems: "center" },
   gatewayName: { color: "#FFFFFF", fontSize: 26, fontWeight: "900", fontStyle: "italic" },
-  sandbox: { color: "rgba(255,255,255,0.9)", backgroundColor: "rgba(255,255,255,0.18)", borderRadius: 99, paddingHorizontal: 12, paddingVertical: 5, marginTop: 8, fontSize: 10, fontWeight: "900", textTransform: "uppercase", letterSpacing: 1 },
+  fallbackChip: { color: "rgba(255,255,255,0.9)", backgroundColor: "rgba(255,255,255,0.18)", borderRadius: 99, paddingHorizontal: 12, paddingVertical: 5, marginTop: 8, fontSize: 10, fontWeight: "900", textTransform: "uppercase", letterSpacing: 1 },
   gatewayBody: { padding: space[6], gap: space[3] },
   amountCard: { borderRadius: radius["2xl"], padding: space[4], alignItems: "center" },
   amountKicker: { fontSize: 10, fontWeight: "900", textTransform: "uppercase", letterSpacing: 1, textAlign: "center" },

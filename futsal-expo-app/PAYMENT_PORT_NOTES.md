@@ -36,17 +36,25 @@ local copy of them:
 be reached; the app then opens the local `/payment/{esewa,khalti}/mock` screens,
 which verify with `mockApprove` on the identical server path. A refused session
 (a played game, a paid share, the wrong amount) stays an error — it never turns
-into a fake payment.
+into a fake payment. The simulator is what happens *after* the real server
+refuses to answer, never a mode the app starts in.
 
 ## Environment
 
 | Variable | Meaning |
 |---|---|
-| `EXPO_PUBLIC_PAYMENT_MODE` | `simulator` forces the local mock everywhere; unset means the real test servers |
-| `EXPO_PUBLIC_APP_ORIGIN` | A native build's return origin, e.g. `http://192.168.1.20:8081`. Without it a device keeps using the simulator, since a return URL that points nowhere would strand the payment in the system browser |
+| `EXPO_PUBLIC_PAYMENT_MODE` | `simulator` forces the local mock everywhere — only for working offline, nothing sets it |
+| `EXPO_PUBLIC_APP_ORIGIN` | Overrides where a device is returned to, e.g. `http://192.168.1.20:8081`. Not needed while developing: the app derives it from the Expo dev server it was loaded from, and the server falls back to `APP_WEB_URL` |
 
-## Not wired yet
+Nothing has to be configured for the test servers — the published sandbox
+credentials are the defaults.
 
-League entry fees still run on the simulator: the league verify branch records
-`MOCK-…` receipts by design and has no signature/lookup path, so pointing it at
-the real gateway needs a server-side verification branch first.
+## League entry fees
+
+Captains pay entry fees through the same checkout: `startLeagueCheckout` in
+`src/lib/checkout.ts`, `initiateLeaguePayment` in `src/api/index.ts`, and the
+league hand-off page `GET /api/payments/esewa/handoff/league` for a browser that
+cannot POST eSewa's form. The reference (`LG-<league>-<team>-…`) is what the
+return pages verify against, and every path — gateway, simulator, or the host
+recording cash — settles through `App\Services\LeagueEntry`, so a squad's totals
+and its invite acceptance are identical however the money arrived.

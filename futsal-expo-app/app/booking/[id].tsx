@@ -181,8 +181,8 @@ export default function BookingDetail() {
     // Reserve the browser tab while the tap that started this is still live.
     prepareGatewayTab();
     try {
-      // Keep the gateway step visible on native too. The mock screens call the
-      // same verify endpoints, then return through the success/callback route.
+      // The simulator screens call the same verify endpoints, so a fallback
+      // payment moves through the identical server path.
       const payingAdvance = target === "advance" && booking.userId === user.id;
       const request = payingAdvance ? undefined : booking.paymentRequests?.find(
         (item) => item.payerId === user.id && item.status === "pending" && (!requestId || item.id === requestId),
@@ -958,8 +958,8 @@ export default function BookingDetail() {
               </>
             )}
             <Text style={[styles.hint, { color: colors.textFaint }]}>
-              Sandbox mode — no real money moves. The ledger row, statuses and audit trail are the
-              same as a live payment.
+              You'll pay on eSewa's or Khalti's own test server — no real money moves, and the
+              ledger row, statuses and audit trail are the same as a live payment.
             </Text>
           </>
         ) : (

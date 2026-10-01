@@ -119,6 +119,8 @@ Route::patch('/bookings/{id}/payment-requests/{requestId}', [PaymentRequestContr
 // A page, not JSON: browsers that cannot POST a form (a native app's system
 // browser) open this to finish an eSewa checkout. See the controller.
 Route::get('/payments/esewa/handoff', [PaymentHandoffController::class, 'esewa']);
+// The same page for a league entry fee, replaying the tournament endpoint.
+Route::get('/payments/esewa/handoff/league', [PaymentHandoffController::class, 'leagueEsewa']);
 Route::post('/payments/esewa/initiate', [EsewaController::class, 'initiate']);
 Route::post('/payments/esewa/verify', [EsewaController::class, 'verify']);
 Route::post('/payments/khalti/initiate', [KhaltiController::class, 'initiate']);

@@ -8,6 +8,7 @@ use App\Models\BookingTeamPayment;
 use App\Models\Court;
 use App\Models\User;
 use App\Models\Venue;
+use App\Services\LeagueEntry;
 use App\Services\Notifier;
 use App\Support\AdvancePayment;
 use App\Support\BookingLedger;
@@ -32,6 +33,13 @@ use Illuminate\Support\Facades\DB;
  */
 class KhaltiController extends ApiController
 {
+    /**
+     * A Khalti lookup already made while working out what this session is.
+     *
+     * @var array<string, mixed>|null
+     */
+    private ?array $cachedLookup = null;
+
     /** Build a payment session and hand back the page to open. */
     public function initiate(Request $request): JsonResponse
     {
@@ -187,6 +195,17 @@ class KhaltiController extends ApiController
         $teamPaymentId = (int) $request->input('teamPaymentId', 0) ?: $this->idFromOrder($orderId, '-TP-');
         $paymentRequestId = (int) $request->input('paymentRequestId', 0) ?: $this->idFromOrder($orderId, '-PR-');
 
+        /*
+         * A league entry fee has no booking; its `LG-…` order id comes back from
+         * the return URL, or from Khalti's own lookup. Resolve that before we
+         * insist on finding a booking that was never created.
+         */
+        if (! $bookingId && ! $mockApprove && ! str_starts_with($pidx, 'mock-')) {
+            if ($league = $this->leagueEntry($pidx, $orderId)) {
+                return $league;
+            }
+        }
+
         if ($bookingId) {
             $booking = Booking::lockForUpdate()->find($bookingId);
         } else {
@@ -302,7 +321,7 @@ class KhaltiController extends ApiController
         }
 
         try {
-            $lookup = Payments::khaltiLookup([
+            $lookup = $this->cachedLookup ?? Payments::khaltiLookup([
                 'secretKey' => $cfg['secretKey'],
                 'lookupUrl' => $cfg['lookupUrl'],
                 'pidx' => $pidx,
@@ -691,6 +710,69 @@ class KhaltiController extends ApiController
         $court = Court::find((int) $booking->court_id);
 
         return $court ? Venue::find((int) $court->venue_id) : null;
+    }
+
+    /**
+     * Settle a league entry fee from a Khalti callback — when this session is one.
+     *
+     * The `purchase_order_id` Khalti echoes is the only link back to our own
+     * records, so it decides everything: a booking order id (`KH-…`) means this
+     * is not a league payment and the caller carries on with the booking path;
+     * an `LG-…` one names the league and squad. Null means "not a league".
+     *
+     * A lookup already made here is cached, so a booking payment that reached
+     * this probe is not looked up twice.
+     */
+    private function leagueEntry(string $pidx, string $orderId): ?JsonResponse
+    {
+        $league = Payments::parseLeagueRef($orderId);
+
+        // The client told us what this order is and it is not a league one.
+        if ($league === null && $orderId !== '') {
+            return null;
+        }
+
+        $cfg = Payments::khaltiConfig();
+
+        try {
+            $lookup = Payments::khaltiLookup([
+                'secretKey' => $cfg['secretKey'],
+                'lookupUrl' => $cfg['lookupUrl'],
+                'pidx' => $pidx,
+            ]);
+        } catch (\Throwable $e) {
+            // Nothing here says this is a league payment, so leave the booking
+            // path to report the unreachable gateway in its own words.
+            return $league === null ? null : $this->fail($e->getMessage(), 400);
+        }
+
+        $this->cachedLookup = $lookup;
+        $league ??= Payments::parseLeagueRef((string) ($lookup['purchase_order_id'] ?? ''));
+
+        if ($league === null) {
+            return null;
+        }
+
+        $status = (string) ($lookup['status'] ?? '');
+
+        if ($status !== 'Completed') {
+            return $this->fail('Khalti says: '.($status ?: 'not completed'), 400, ['ok' => false, 'status' => $status]);
+        }
+
+        $paidPaisa = (float) ($lookup['total_amount'] ?? 0);
+
+        if ($paidPaisa <= 0) {
+            return $this->fail('Khalti did not report an amount 🛡️', 400);
+        }
+
+        $reference = mb_substr((string) ($lookup['transaction_id'] ?? $pidx), 0, 100);
+        $result = LeagueEntry::settle($league['leagueId'], $league['teamId'], (int) round($paidPaisa / 100), 'Khalti', $reference);
+
+        if (! ($result['ok'] ?? false)) {
+            return $this->fail((string) ($result['error'] ?? 'Could not record that payment'), (int) ($result['status'] ?? 400));
+        }
+
+        return $this->ok($result);
     }
 
     private function idFromOrder(string $orderId, string $marker): ?int

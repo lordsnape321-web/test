@@ -227,7 +227,8 @@ assert.ok(
   "hand-off route is registered",
 );
 assert.ok(
-  handoff.includes("Request::create('/api/payments/esewa/initiate'") &&
+  handoff.includes("string $path = '/api/payments/esewa/initiate'") &&
+    handoff.includes("Request::create($path, 'POST', $payload, [], [], [") &&
     handoff.includes("app()->instance('request', $outer)"),
   "hand-off replays the real initiate in-process and restores the request binding",
 );
@@ -246,6 +247,113 @@ const gatewayPlan = php("futsal-expo-app/src/lib/gateway-plan.ts");
 assert.ok(
   !/from\s+["']react-native["']/.test(gatewayPlan),
   "gateway-plan.ts has no react-native import, so it can be bundled and tested",
+);
+
+/* ── league entry fees ride the same gateways ───────────────────────────── */
+
+const league = flat("laravel/app/Http/Controllers/Api/TournamentPaymentController.php");
+const leagueEntry = flat("laravel/app/Services/LeagueEntry.php");
+
+// The initiate builds a real session, tells the app where to go, and offers the
+// hand-off page a native browser needs.
+assert.ok(
+  league.includes("Payments::returnOrigin($request, $request->input('returnOrigin'))"),
+  "league initiate takes the app's origin",
+);
+assert.ok(
+  league.includes('$successUrl = "{$origin}/payment/esewa/success";') &&
+    league.includes('$failureUrl = "{$origin}/payment/esewa/failure";') &&
+    league.includes("'handoffPath' => '/api/payments/esewa/handoff/league?'"),
+  "league eSewa returns are query-free and carry a hand-off path",
+);
+assert.ok(
+  routes.includes("Route::get('/payments/esewa/handoff/league', [PaymentHandoffController::class, 'leagueEsewa'])") &&
+    handoff.includes("Request::create($path, 'POST', $payload, [], [], [") &&
+    handoff.includes("'action' => 'initiate'"),
+  "the league hand-off is routed and replays the tournament initiate",
+);
+assert.ok(
+  league.includes("'returnUrl' => \"{$origin}/payment/khalti/callback\"") &&
+    !league.includes("empty($cfg['secretKey'])"),
+  "league Khalti uses the sandbox and has no key-less bypass left",
+);
+assert.ok(
+  league.includes("'mockUrl' => $mockUrl") && league.includes("'mock' => true"),
+  "an unreachable gateway still falls back to the simulator, with a URL to reach it",
+);
+
+// Both real-gateway returns settle through one ledger path, and it is idempotent.
+assert.ok(
+  esewa.includes("if ($league = Payments::parseLeagueRef($uuid))") &&
+    esewa.includes("LeagueEntry::settle($league['leagueId'], $league['teamId'], (int) round($paid), 'eSewa', $reference)"),
+  "eSewa verifies a league entry from the signed blob",
+);
+assert.ok(
+  khalti.includes("private function leagueEntry(string $pidx, string $orderId): ?JsonResponse") &&
+    khalti.includes("LeagueEntry::settle($league['leagueId'], $league['teamId'], (int) round($paidPaisa / 100), 'Khalti', $reference)") &&
+    khalti.includes("$this->cachedLookup = $lookup;"),
+  "Khalti resolves a league entry from purchase_order_id without a second lookup",
+);
+assert.ok(
+  leagueEntry.includes("if ($reference !== '' && self::alreadyRecorded($leagueId, $teamId, $reference))") &&
+    leagueEntry.includes("League::TEAM_INVITED") &&
+    leagueEntry.includes("Notifier::notify("),
+  "the shared settle path is idempotent, accepts the invite, and tells the host",
+);
+assert.ok(
+  league.includes("LeagueEntry::settle((int) $id, $teamId, $amount, $method, $txn)") &&
+    !league.includes("TournamentPayment::create([\n                'tournament_id' => $id,\n                'team_id' => $teamId,\n                'user_id' => $userId,\n                'kind' => 'entry',\n                'amount' => $amount,\n                'method' => $method,\n                'reference' => mb_substr(\"{$method} checkout"),
+  "the simulator route uses the same settle path instead of its own copy",
+);
+
+// The client: the captain's Pay button opens the gateway, not the simulator.
+const panel = php("futsal-expo-app/src/components/LeagueSquadPanel.tsx");
+assert.ok(
+  panel.includes("prepareGatewayTab()") &&
+    panel.includes("startLeagueCheckout(league.id, method as \"eSewa\" | \"Khalti\"") &&
+    panel.includes("if (outcome.status === \"gateway\")"),
+  "the league Pay button opens the real gateway first",
+);
+const checkout = php("futsal-expo-app/src/lib/checkout.ts");
+assert.ok(
+  checkout.includes("export function startLeagueCheckout(") &&
+    checkout.includes("initiateLeaguePayment(leagueId, { ...input, method })"),
+  "checkout.ts covers league entry fees",
+);
+assert.ok(
+  api.includes("export function initiateLeaguePayment(") &&
+    api.includes("json: { action: \"initiate\", ...input, returnOrigin: paymentReturnOrigin() }"),
+  "the league initiate sends its origin like the booking one",
+);
+
+/* ── the sandbox is no longer what a payer sees ─────────────────────────── */
+
+const gateway = php("futsal-expo-app/src/lib/gateway.ts");
+assert.ok(
+  gateway.includes("Constants.expoConfig?.hostUri") &&
+    gateway.includes("return configuredMode !== \"simulator\";"),
+  "every platform tries the real server; a device derives its origin from the dev server",
+);
+const enabledFn = gateway.slice(
+  gateway.indexOf("export function realGatewayEnabled"),
+  gateway.indexOf("export function realGatewayEnabled") + 220,
+);
+assert.ok(
+  !enabledFn.includes("Platform.OS") && !enabledFn.includes("paymentReturnOrigin"),
+  "realGatewayEnabled has no platform gate: a phone is not sent to the simulator",
+);
+const screens = php("futsal-expo-app/src/components/PaymentScreens.tsx");
+const bookingDetail = php("futsal-expo-app/app/booking/[id].tsx");
+assert.ok(
+  !screens.includes("Sandbox simulator") &&
+    screens.includes("Simulator • gateway unreachable") &&
+    screens.includes("const [settled, setSettled] = useState(\"\");"),
+  "the mock screen is labelled a fallback, and it shows the server's own sentence",
+);
+assert.ok(
+  !bookingDetail.includes("Sandbox mode — no real money moves") &&
+    bookingDetail.includes("test server"),
+  "the booking screen no longer promises a sandbox",
 );
 
 console.log("gateway: all assertions passed");
