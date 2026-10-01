@@ -33,7 +33,7 @@ const assert = {
   },
 };
 
-import { esewaDataFromLocation, planCheckout } from "../src/lib/gateway-plan";
+import { demoAppPath, esewaDataFromLocation, planCheckout } from "../src/lib/gateway-plan";
 
 /* ── the decision ───────────────────────────────────────────────────────── */
 
@@ -76,49 +76,65 @@ import { esewaDataFromLocation, planCheckout } from "../src/lib/gateway-plan";
   if (plan.kind === "gateway") assert.equal(plan.url, "https://test-pay.khalti.com/?pidx=abc");
 }
 
-// The demo checkout is the backend's own page, opened exactly like a gateway's.
+// The demo checkout is a screen in this app: the server names the route, and
+// the app pushes it. That is the whole checkout — sign in, MPIN, token, then
+// the wallet's balance and the Pay button — with no page to load and nowhere to
+// get lost on the way back.
 {
   const plan = planCheckout("esewa", {
     mock: true,
     demo: true,
-    demoUrl: "http://192.168.1.20:8000/demo-esewa.html?bookingId=12&amount=1200",
-    mockUrl: "/payment/esewa/mock?bookingId=12",
+    demoUrl: "http://192.168.1.20:8000/api/payments/esewa/demo?bookingId=12&amount=1200",
+    mockUrl: "http://192.168.1.20:8081/payment/esewa/mock?bookingId=12&amount=1200&uuid=FN-12-abc",
   });
 
-  assert.equal(plan.kind, "gateway", "the demo checkout opens as a page");
-  if (plan.kind === "gateway") {
-    assert.equal(plan.demo, true, "…and says it is the replica");
-    assert.equal(plan.url, "http://192.168.1.20:8000/demo-esewa.html?bookingId=12&amount=1200");
+  assert.equal(plan.kind, "demo", "the demo checkout runs as an app screen");
+  if (plan.kind === "demo") {
+    assert.equal(plan.path, "/payment/esewa/mock?bookingId=12&amount=1200&uuid=FN-12-abc");
+    assert.equal(plan.amount, undefined);
   }
 }
 
-// Khalti answers a fallback with `payment_url` on its simulator route rather
-// than a `mockUrl`. Both name the same thing, and a page is a page.
+// Khalti answers a fallback with `payment_url` rather than a `mockUrl`. Both
+// name the same screen, so both resolve to it.
 {
   const plan = planCheckout("khalti", {
     mock: true,
-    demoUrl: "http://192.168.1.20:8000/demo-khalti.html?pidx=mock-1",
-    payment_url: "/payment/khalti/mock?pidx=mock-1",
+    demoUrl: "http://192.168.1.20:8000/api/payments/khalti/demo?pidx=mock-1",
+    payment_url: "http://192.168.1.20:8081/payment/khalti/mock?pidx=mock-1",
   });
 
-  assert.equal(plan.kind, "gateway", "a Khalti fallback opens the replica page");
+  assert.equal(plan.kind, "demo", "a Khalti fallback opens the same screen");
+  if (plan.kind === "demo") assert.equal(plan.path, "/payment/khalti/mock?pidx=mock-1");
+}
+
+// A server that names no screen, only a page, still gets a checkout: the
+// replica as a website, opened exactly like a gateway's page.
+{
+  const plan = planCheckout("esewa", {
+    mock: true,
+    demoUrl: "http://192.168.1.20:8000/api/payments/esewa/demo?bookingId=12",
+  });
+
+  assert.equal(plan.kind, "gateway", "a page-only answer opens the replica page");
   if (plan.kind === "gateway") assert.equal(plan.demo, true);
 }
 
-// A server that answers without a page (an older backend) still gets the
-// simulator route named, so `demoPageUrl` can move it onto the replica.
-{
-  const plan = planCheckout("khalti", { mock: true, mockUrl: "/payment/khalti/mock?pidx=mock-1" });
+// A foreign http mock URL is a page too; a path that is not one of the app's
+// checkout routes never becomes an in-app screen.
+assert.equal(demoAppPath("/cart/1"), "", "only a checkout route becomes an app screen");
+assert.equal(demoAppPath("https://elsewhere.example/checkout"), "", "…and only this app's");
+assert.equal(
+  demoAppPath("http://192.168.1.20:8081/payment/khalti/mock?pidx=mock-1"),
+  "/payment/khalti/mock?pidx=mock-1",
+  "an absolute URL keeps its path and query",
+);
 
-  assert.equal(plan.kind, "simulator", "mock:true without a page keeps the app route");
-  if (plan.kind === "simulator") assert.equal(plan.url, "/payment/khalti/mock?pidx=mock-1");
-}
-
-// mock:true with no fallback URL is an error worth showing, not a blank tab.
+// mock:true with nothing to open is an error worth showing, not a blank tab.
 {
   const plan = planCheckout("esewa", { mock: true, testHint: "gateway down" });
 
-  assert.equal(plan.kind, "error", "mock without a simulator URL is an error");
+  assert.equal(plan.kind, "error", "mock without a checkout to open is an error");
   if (plan.kind === "error") assert.equal(plan.message, "gateway down");
 }
 
@@ -564,9 +580,9 @@ assert.ok(
   "the choice is saved before the other gateway is asked, and the old session id is dropped",
 );
 assert.ok(
-  switched.includes("pidx: undefined, demoUrl: undefined") &&
-    switched.includes("method: label as \"eSewa\" | \"Khalti\", demoUrl: undefined"),
-  "a switched checkout drops the other gateway's session id and page",
+  switched.includes("pidx: undefined,\n        demoPath: undefined,") &&
+    switched.includes('method: label as "eSewa" | "Khalti", demoPath: undefined, demoUrl: undefined'),
+  "a switched checkout drops the other gateway's session id and checkout route",
 );
 assert.ok(
   screens.includes('"Pay with Khalti instead"') &&
@@ -704,46 +720,72 @@ assert.ok(
   "arriving at a settled demo clears the pending checkout",
 );
 assert.ok(
-  checkout.includes("function rememberDemoUrl(url: string): void") &&
-    checkout.includes("check: record.demoUrl ? undefined : checkFor(record),") &&
-    checkout.includes("if (plan.demo && plan.kind === \"gateway\") rememberDemoUrl(plan.url);"),
-  "a demo record keeps its page to reopen, and gets no gateway check",
+  checkout.includes("function forgetDemo(): void") &&
+    checkout.includes("if (plan.demo && plan.kind === \"gateway\") rememberDemoUrl(plan.url);\n      else forgetDemo();"),
+  "a real checkout drops the replica's screen and page from the record",
 );
 assert.ok(
-  php("futsal-expo-app/src/components/PaymentPendingBanner.tsx").includes("reopenDemoCheckout(attempt.demoUrl, attempt.label)") &&
-    gatewayLib.includes("export function reopenDemoCheckout(url: string, label: string): boolean"),
-  "the pending card reopens the replica page in the sheet instead of pushing a route",
+  checkout.includes("function rememberDemoPath(path: string): void") &&
+    checkout.includes("if (plan.kind === \"demo\") {\n      rememberDemoPath(plan.path);") &&
+    checkout.includes("return { status: \"demo\", path: plan.path };") &&
+    checkout.includes("check: record.demoPath || record.demoUrl ? undefined : checkFor(record),"),
+  "a demo record keeps its screen to reopen, and gets no gateway check",
+);
+assert.ok(
+  php("futsal-expo-app/src/components/PaymentPendingBanner.tsx").includes("router.push(attempt.demoPath as never)") &&
+    php("futsal-expo-app/src/components/PaymentPendingBanner.tsx").includes("reopenDemoCheckout(attempt.demoUrl, attempt.label)"),
+  "the pending card reopens the replica — its screen in the app, or its page in the sheet",
 );
 
-// The three React screens that faked the gateways are gone: the replica is the
-// page above, and the app has one checkout path, not two.
+// The demo checkout, run inside the app: the routes are real routes again, and
+// the flow is the real one — login → MPIN → token → confirm, with the wallet's
+// balance and the Pay button on the confirm screen.
 assert.ok(
-  !existsSync("futsal-expo-app/app/payment/esewa/mock.tsx") &&
-    !existsSync("futsal-expo-app/app/payment/khalti/mock.tsx") &&
-    !screens.includes("GatewayMock") &&
-    !screens.includes("EsewaMockScreen") &&
-    !screens.includes("KhaltiMockScreen"),
-  "the native mock screens are removed, leaving one checkout path",
+  existsSync(repoFile("futsal-expo-app/app/payment/esewa/mock.tsx")) &&
+    existsSync(repoFile("futsal-expo-app/app/payment/khalti/mock.tsx")) &&
+    screens.includes("export function EsewaMockScreen()") &&
+    screens.includes("export function KhaltiMockScreen()") &&
+    screens.includes("function GatewayMock({"),
+  "the demo checkout is a screen in this app, at the route a Pay button opens",
+);
+assert.ok(
+  screens.indexOf("Sign in to eSewa") < screens.indexOf("Confirm with MPIN") &&
+    screens.indexOf("Confirm with MPIN") < screens.indexOf("Verification token") &&
+    screens.includes('{paying ? "Confirm your payment" : stepDef.title}') &&
+    screens.includes("Balance after payment") &&
+    screens.includes("`Pay ${formatNPR(amount)}`"),
+  "…and it walks the whole flow: sign in → MPIN → token → balance + Pay",
+);
+assert.ok(
+  screens.includes("const balance = Math.max(DEMO_BALANCE[kind], amount + 500);") &&
+    screens.includes("const DEMO_BALANCE = { esewa: 25000, khalti: 18500 } as const;"),
+  "the confirmation screen shows a demo balance that always covers the payment",
 );
 
-// A build older than the page still asks for `/payment/{gateway}/mock`. That
-// path answers — with a way to resume the checkout, not with a dead end.
-const legacy = php("futsal-expo-app/app/payment/[gateway]/mock.tsx");
+// The Pay buttons open that screen: no page, no tab, nothing to lose.
+const firstSite = php("futsal-expo-app/app/booking/[id].tsx");
+const secondSite = php("futsal-expo-app/app/(app)/bookings.tsx");
 assert.ok(
-  legacy.includes("useLocalSearchParams") &&
-    legacy.includes('retryLastCheckout("demo")') &&
-    !legacy.includes("mockApprove") &&
-    !legacy.includes("TextControl"),
-  "an old demo-checkout link resumes on the replica page instead of dead-ending",
+  firstSite.includes('if (outcome.status === "demo") router.push(outcome.path as never);') &&
+    (secondSite.match(/if \(outcome.status === "demo"\) router.push\(outcome.path as never\);/g) ?? []).length === 2 &&
+    panel.includes('if (outcome.status === "demo")') &&
+    panel.includes("router.push(outcome.path as never);"),
+  "a demo checkout is opened in the app, on every Pay button",
 );
+assert.ok(
+  screens.includes('if (outcome.status === "demo")') &&
+    screens.includes("router.replace(outcome.path as never);"),
+  "retrying, or switching gateways, reopens the demo checkout the same way",
+);
+
 assert.ok(
   checkout.includes("export function checkoutMode(force?: CheckoutMode): CheckoutMode") &&
     checkout.includes('const payload = { ...input, demo: checkoutMode(force) === "demo" };') &&
-    checkout.includes("export function demoPageUrl") === false &&
-    gatewayLib.includes("export function demoPageUrl(method: GatewayMethod, mockUrl: string, amount?: number): string") &&
-    gatewayLib.includes("/api/payments/${method === \"esewa\" ? \"esewa\" : \"khalti\"}/demo?"),
-  "the mode travels with the request, and the page URL lives with the other platform code",
+    checkout.includes("demoPageUrl") === false &&
+    !gatewayLib.includes("export function demoPageUrl"),
+  "the mode travels with the request, and the page assembly is gone with the fallback",
 );
+
 /* ── the gateway returns the payer to the app, not to a website ─────────── */
 
 assert.ok(

@@ -434,6 +434,10 @@ export default function BookingsScreen() {
       if (outcome.status === "error") setPayError(outcome.message);
 
       setPaying(null);
+
+      // The demo checkout is a screen in this app — sign in, MPIN, token, then
+      // the wallet's balance and the Pay button. Nothing leaves the app.
+      if (outcome.status === "demo") router.push(outcome.path as never);
     } catch (e) {
       setPayError(e instanceof Error ? e.message : "Could not start the payment");
       setPaying(null);
@@ -482,6 +486,8 @@ export default function BookingsScreen() {
     if (outcome.status === "error") setPayError(outcome.message);
 
     setPaying(null);
+
+    if (outcome.status === "demo") router.push(outcome.path as never);
   }
 
   function needsOnlinePay(b: DiaryBooking) {

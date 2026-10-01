@@ -165,53 +165,49 @@ to go back and find the booking again.
 eSewa's test wallets are shared between every integrator ("adequate balance will
 be updated to test user account" is a promise, not a standing balance), Khalti's
 sandbox locks accounts, and neither is reachable from wherever a demo might
-happen. So the backend serves a replica of both gateway pages:
+happen. So the checkout itself is built in:
 
-- **`laravel/public/demo-esewa.html`** and **`demo-khalti.html`** are plain
-  pages: eSewa's green header, Khalti's purple one, the merchant row and the
-  amount, and the whole flow — sign in → confirm with the MPIN → the token
-  (eSewa) or the OTP (Khalti), with the published test credentials accepted and
-  a *Fill demo credentials* button. A wrong value at any step gets that step's
-  own message, a *Cancel payment* hands the payer back as a failure, and the
-  page says at the bottom that it is a replica and not affiliated with either
-  provider.
-  They are served at **`GET /api/payments/{esewa,khalti}/demo`**, not beside the
-  app's own routes: the web build reaches this backend only through its `/api`
-  proxy, and a page at `/demo-esewa.html` lands on the app's router instead
-  ("Unmatched Route"). From the API path the page's own `/api/...` posts stay
-  relative to whichever host opened it, on a device and in a browser alike.
-- **The app opens it exactly like a real gateway page.** `Payments::demoGatewayUrl()`
-  builds the URL on the host the client reached the API on, and every initiate
-  answer carries it as `demoUrl` — the replica when the mode asked for it, and
-  also on a real answer, so a failure screen can still switch sides. It travels
-  in the same in-app sheet (`GatewaySheet`) a real checkout uses, so the header,
-  the amount, the reference and the return-URL interception are one
-  implementation.
-- **It settles through the same verify endpoint.** The page POSTs
+- **The app runs it as screens** (`/payment/{esewa,khalti}/mock`, `GatewayMock`
+  in `src/components/PaymentScreens.tsx`). The Pay buttons open it; it never
+  leaves the app. The flow is the real one, in order: **sign in** (eSewa ID +
+  password; Khalti mobile number) → **MPIN** → the 6-digit **token / OTP** →
+  **the confirmation screen**, which shows the wallet's balance, the amount,
+  what is left after paying, and the *Pay* button. The published test
+  credentials are accepted, a wrong value at any step is refused with the step's
+  own message, *Fill demo credentials* does all of it in one tap, and *Cancel
+  payment* hands the payer back as a failure.
+- **The server decides that a demo is what runs.** The mode travels with the
+  request (`demo: true`), `initiate` prices and validates the target — a played
+  game, a paid share, the wrong amount are refused *before* any screen opens —
+  and answers `mock: true` with the route at `/payment/{gateway}/mock?…` in
+  `mockUrl`. `planCheckout` turns that into a `demo` plan and the caller pushes
+  the route. Nothing at eSewa or Khalti is contacted.
+- **It settles through the same verify endpoint.** The last step posts
   `/api/payments/{esewa,khalti}/verify` (or `/api/tournaments/:id/payments` for
-  a league entry) with `mockApprove: true` and then hands the payer to the app's
-  own return URL, so the booking states, ledger, amounts, notifications and
-  league settlement are the real code paths. Only the gateway is pretend.
+  a league entry) with `mockApprove: true`, so the booking states, ledger,
+  amounts, notifications, receipts and league settlement are the real code
+  paths. Only the gateway is pretend.
+- **The same replica exists as a page**, for a browser and for a backend that
+  answers with a page instead of the app's route: `laravel/public/demo-esewa.html`
+  and `demo-khalti.html`, served at `GET /api/payments/{gateway}/demo` and named
+  in every initiate answer as `demoUrl`. `/api` is not decoration — the web
+  build reaches this backend only through its `/api` proxy, and a page at
+  `/demo-esewa.html` lands on the app's router instead ("Unmatched Route"). A
+  page-only answer opens in the in-app sheet like a gateway page, and the
+  pending card offers *Finish on the demo checkout* for it.
 - **It is the default.** `src/lib/payment-mode.ts` leads with the replica; the
   switch in *Settings → Help and about → Use the real eSewa and Khalti test
   servers* turns the providers on, and `EXPO_PUBLIC_PAYMENT_MODE=real` does the
   same for a build (`demo` and the older `simulator` spell the default out). The
   choice is read at checkout time, so it takes effect on the next payment.
-- **A demo is never checked against a gateway.** The pending card keeps the
-  demo's page so it can be reopened (the sheet again, not a browser tab), and it
-  offers no *Check payment* button: nothing at eSewa knows about a payment eSewa
-  never saw, and asking used to answer "eSewa has no completed payment for this
-  booking" about a booking that was already settled.
+- **A demo is never checked against a gateway.** The pending card reopens the
+  demo's screen (or its page, when that is what was opened) and offers no *Check
+  payment* button: nothing at eSewa knows about a payment eSewa never saw, and
+  asking used to answer "eSewa has no completed payment for this booking" about
+  a booking that was already settled.
 
-The mode is sent **with the request** (`demo: true`), and the server builds the
-page from the booking it priced — never from the client's own numbers. A refused
-session (a played game, a paid share, the wrong amount) stays an error: neither
-the replica nor the fallback turns it into a fake payment.
-
-The old native mock screens (`app/payment/{esewa,khalti}/mock.tsx` and
-`GatewayMock` in `src/components/PaymentScreens.tsx`) are gone. A page cannot
-drift from the flow it copies the way a second implementation does, and there is
-now one checkout path in the app instead of two.
+A refused session stays an error: neither the replica nor the fallback turns it
+into a fake payment.
 
 ## When the test server is down
 

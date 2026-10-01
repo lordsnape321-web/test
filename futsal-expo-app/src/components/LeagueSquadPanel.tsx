@@ -162,8 +162,13 @@ export function LeagueSquadPanel({
         return;
       }
 
-      // A checkout page is open — the gateway's, or the replica's — and it
-      // settles the entry fee and returns to this league when it is done.
+      if (outcome.status === "demo") {
+        router.push(outcome.path as never);
+        return;
+      }
+
+      // A gateway page is open; it settles the entry fee and returns to this
+      // league's page when it is done.
       setMsg("Finish the payment in the checkout, then come back — the entry updates the moment it is verified.");
     } catch (e) {
       setErr(e instanceof Error ? e.message : "That didn't work 🙏");

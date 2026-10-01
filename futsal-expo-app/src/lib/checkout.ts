@@ -12,7 +12,7 @@ import {
 } from "@/api";
 import { ApiError } from "@/lib/api";
 import { formatNPR } from "@/lib/futsal";
-import { demoPageUrl, openCheckout, prepareGatewayTab, realGatewayEnabled, releaseGatewayTab } from "@/lib/gateway";
+import { openCheckout, prepareGatewayTab, realGatewayEnabled, releaseGatewayTab } from "@/lib/gateway";
 import { demoPayments } from "@/lib/payment-mode";
 import { planCheckout, type GatewayInitiate, type GatewayMethod } from "@/lib/gateway-plan";
 import { STORAGE_KEYS, storage } from "@/lib/storage";
@@ -40,6 +40,8 @@ export type CheckoutOutcome =
    * own, or the backend's replica of it. `demo` says which.
    */
   | { status: "gateway"; demo?: boolean }
+  /** The replica runs as a screen in this app: push this route. */
+  | { status: "demo"; path: string }
   /** Nothing was charged and nothing opened; `message` is worth showing. */
   | { status: "error"; message: string };
 
@@ -78,12 +80,14 @@ export type PendingRecord =
       /** A real Khalti session id, once one exists — needed to ask about it. */
       pidx?: string;
       /**
-       * The replica page this checkout opened, once it has one.
+       * The replica's screen in this app, once it has been opened.
        *
-       * A demo payment is finished on its own page — there is nothing at the
+       * A demo payment is finished on that screen — there is nothing at the
        * gateway to ask about — so this is what the pending card offers to
        * reopen, and why a demo record never gets a gateway check.
        */
+      demoPath?: string;
+      /** The replica as a page, for a checkout that opened as one instead. */
       demoUrl?: string;
     }
   | {
@@ -93,6 +97,7 @@ export type PendingRecord =
       input: LeaguePaymentInput;
       label: string;
       donePath: string;
+      demoPath?: string;
       demoUrl?: string;
     };
 
@@ -101,7 +106,9 @@ export type RememberedCheckout = {
   label: string;
   /** Ask the server for a session, and open it (or report the fallback). */
   run: (force?: CheckoutMode) => Promise<CheckoutOutcome>;
-  /** The replica page this checkout opened, when there is one to reopen. */
+  /** The replica's in-app screen, when one was opened. */
+  demoPath?: string;
+  /** The replica's page, when the checkout opened as a page instead. */
   demoUrl?: string;
   /**
    * Ask the gateway whether this payment actually happened.
@@ -203,10 +210,37 @@ async function persist(record: PendingRecord): Promise<void> {
 }
 
 /**
- * Note the page a demo checkout opened, so the pending card can reopen it.
+ * Note the replica screen a demo checkout opened, so the pending card can
+ * reopen it (and so a demo record never offers a gateway check).
  *
  * Only the replica needs this: a real gateway is asked about through its own
- * API (`check`), while a demo is finished on its page and nowhere else.
+ * API (`check`), while a demo is finished on its screen and nowhere else.
+ */
+function rememberDemoPath(path: string): void {
+  if (!lastRecord) return;
+
+  lastRecord = { ...lastRecord, demoPath: path, demoUrl: undefined };
+  void persist(lastRecord);
+  announce();
+}
+
+/**
+ * Forget the replica: a real checkout has replaced it.
+ *
+ * The pending card reads these to decide what to offer, and a demo's screen or
+ * page is not where a gateway session finishes.
+ */
+function forgetDemo(): void {
+  if (!lastRecord) return;
+  if (lastRecord.demoPath === undefined && lastRecord.demoUrl === undefined) return;
+
+  lastRecord = { ...lastRecord, demoPath: undefined, demoUrl: undefined };
+  void persist(lastRecord);
+  announce();
+}
+
+/**
+ * Note the replica *page* a demo checkout opened, when it opened as one.
  */
 function rememberDemoUrl(url: string): void {
   if (!lastRecord) return;
@@ -242,6 +276,7 @@ function attemptFor(record: PendingRecord): RememberedCheckout {
       label: record.label,
       run: (force) => startLeagueCheckout(record.leagueId, record.method, input, force),
       donePath: record.donePath,
+      demoPath: record.demoPath,
       demoUrl: record.demoUrl,
     };
   }
@@ -252,11 +287,12 @@ function attemptFor(record: PendingRecord): RememberedCheckout {
     label: record.label,
     run: (force) => startGatewayCheckout(record.method, input, force),
     donePath: record.donePath,
+    demoPath: record.demoPath,
     demoUrl: record.demoUrl,
     // A demo checkout has no gateway session to ask about, so it offers no
     // check at all rather than one that answers "no completed payment" about a
     // payment the app itself settled.
-    check: record.demoUrl ? undefined : checkFor(record),
+    check: record.demoPath || record.demoUrl ? undefined : checkFor(record),
   };
 }
 
@@ -410,32 +446,20 @@ async function runCheckout(method: GatewayMethod, load: () => Promise<GatewayIni
 
     const plan = planCheckout(method, initiate);
 
-    if (plan.kind === "gateway" || plan.kind === "form") {
-      if (plan.demo && plan.kind === "gateway") rememberDemoUrl(plan.url);
-      if (openCheckout(plan)) return { status: "gateway", demo: plan.demo === true };
-    }
-
-    /*
-     * The server answered the demo checkout without a page of its own — an
-     * older backend. Its mock URL names this app's own route, which is not what
-     * a page is opened from, but it carries every parameter the replica page
-     * needs; `demoPageUrl` moves them onto the page that does exist.
-     */
-    if (plan.kind === "simulator") {
-      const url = demoPageUrl(method, plan.url, initiate?.amount);
-
-      if (url !== "" && openCheckout({ kind: "gateway", url, demo: true, amount: initiate?.amount })) {
-        rememberDemoUrl(url);
-
-        return { status: "gateway", demo: true };
-      }
-
+    // The replica, as a screen in this app: nothing to open, just the route to
+    // push. Remembered so the pending card can send the payer back to it.
+    if (plan.kind === "demo") {
+      rememberDemoPath(plan.path);
       releaseGatewayTab();
 
-      return {
-        status: "error",
-        message: plan.message ?? "The checkout page could not be opened — check the connection and try again.",
-      };
+      return { status: "demo", path: plan.path };
+    }
+
+    if (plan.kind === "gateway" || plan.kind === "form") {
+      if (plan.demo && plan.kind === "gateway") rememberDemoUrl(plan.url);
+      else forgetDemo();
+
+      if (openCheckout(plan)) return { status: "gateway", demo: plan.demo === true };
     }
 
     releaseGatewayTab();
@@ -492,8 +516,10 @@ export async function checkLastCheckout(): Promise<CheckOutcome> {
 }
 
 export type RetryOutcome =
-  /** A checkout page is open again (the gateway's, or the replica). */
+  /** A checkout page is open again (the gateway's, or the replica page). */
   | { status: "gateway"; demo?: boolean }
+  /** The replica's in-app screen is open again: push this route. */
+  | { status: "demo"; path: string }
   /** This session never ran a checkout. */
   | { status: "nothing" }
   | { status: "error"; message: string };
@@ -557,8 +583,15 @@ export async function switchLastCheckoutGateway(method: GatewayMethod): Promise<
   // The old session's id and page belong to the other gateway — both are
   // dropped, and the new checkout sets its own.
   const next: PendingRecord = record.kind === "booking"
-    ? { ...record, method, pidx: undefined, demoUrl: undefined, label: relabel(record.label, label) }
-    : { ...record, method: label as "eSewa" | "Khalti", demoUrl: undefined };
+    ? {
+        ...record,
+        method,
+        pidx: undefined,
+        demoPath: undefined,
+        demoUrl: undefined,
+        label: relabel(record.label, label),
+      }
+    : { ...record, method: label as "eSewa" | "Khalti", demoPath: undefined, demoUrl: undefined };
 
   rememberCheckout(next);
   prepareGatewayTab();
@@ -583,6 +616,7 @@ async function finishAttempt(
   void attempt;
 
   if (outcome.status === "gateway") return { status: "gateway", demo: outcome.demo };
+  if (outcome.status === "demo") return { status: "demo", path: outcome.path };
 
   releaseGatewayTab();
 

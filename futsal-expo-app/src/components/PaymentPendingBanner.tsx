@@ -87,7 +87,7 @@ export function PaymentPendingBanner({ onSettled }: { onSettled?: () => void }) 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  if (!attempt || (!attempt.check && !attempt.demoUrl)) return null;
+  if (!attempt || (!attempt.check && !attempt.demoPath && !attempt.demoUrl)) return null;
 
   if (settled) {
     return (
@@ -128,8 +128,8 @@ export function PaymentPendingBanner({ onSettled }: { onSettled?: () => void }) 
       </View>
 
       <Text style={[styles.body, { color: c.textMuted }]}>
-        {attempt.label} was started{attempt.demoUrl ? " on the demo checkout" : " on the gateway's page"}. If you
-        finished it, check now — if you did not, it is still waiting.
+        {attempt.label} was started{attempt.demoPath || attempt.demoUrl ? " on the demo checkout" : " on the gateway's page"}. If
+        you finished it, check now — if you did not, it is still waiting.
       </Text>
 
       {message ? <Text style={[styles.body, { color: colors.red600 }]}>{message}</Text> : null}
@@ -148,9 +148,14 @@ export function PaymentPendingBanner({ onSettled }: { onSettled?: () => void }) 
           </Pressable>
         ) : null}
 
-        {attempt.demoUrl ? (
+        {attempt.demoPath || attempt.demoUrl ? (
           <Pressable
             onPress={() => {
+              if (attempt.demoPath) {
+                router.push(attempt.demoPath as never);
+                return;
+              }
+
               if (attempt.demoUrl) reopenDemoCheckout(attempt.demoUrl, attempt.label);
             }}
             disabled={busy}

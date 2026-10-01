@@ -18,12 +18,13 @@ import { apiUrl } from "@/lib/api";
  *     `fields`/`url` are the raw form if some other client wants to build it.
  *   • Khalti — `payment_url`, the test-pay page, already carrying the session.
  *
- * Both also carry `demoUrl`, the replica of the gateway's page
- * (`laravel/public/demo-*.html`): the checkout to run when the caller asked for
- * the demo, and the way out when `mock: true` says the gateway could not be
- * reached. An older backend answers `mock: true` with a URL for this app's own
- * mock route instead; that is what the `simulator` plan below is — a page that
- * has to be moved onto the replica before it can be opened.
+ * `mock: true` means the replica runs instead of a gateway. It names the app's
+ * own screen for it in `mockUrl` (`/payment/{gateway}/mock?…`), which is the
+ * checkout the Pay buttons open — inside the app, with the login → MPIN → token
+ * → confirm flow and the demo wallet's balance. `demoUrl` is the same replica
+ * as a *page* (`laravel/public/demo-*.html`, served at
+ * `/api/payments/{gateway}/demo`), which is what a browser gets; it is used
+ * when the answer names no in-app screen to open.
  */
 
 export type GatewayMethod = "esewa" | "khalti";
@@ -59,8 +60,26 @@ export type CheckoutPlan =
   | { kind: "gateway"; url: string; amount?: number; demo?: boolean }
   /** Legacy API shape: eSewa fields to POST from this browser. */
   | { kind: "form"; url: string; fields: Record<string, string>; amount?: number; demo?: boolean }
-  | { kind: "simulator"; url: string; message?: string }
+  /** The replica as a screen in this app: the route to open. */
+  | { kind: "demo"; path: string; amount?: number }
   | { kind: "error"; message: string };
+
+/**
+ * The app route a `mockUrl` names, if it names one.
+ *
+ * The server answers with an absolute URL on whichever origin this client gave
+ * it (the web origin, or a device's dev server), and the screen behind it is an
+ * expo-router route, not a page: only its path and query are wanted.
+ */
+export function demoAppPath(mockUrl: string | undefined): string {
+  const url = (mockUrl ?? "").trim();
+
+  if (url === "" || /^\/\//.test(url)) return "";
+
+  const path = /^https?:/i.test(url) ? url.replace(/^https?:\/\/[^/]+/i, "") : url;
+
+  return path.startsWith("/payment/") ? path : "";
+}
 
 /**
  * Decide what a checkout should do, without touching the browser or the OS.
@@ -70,24 +89,21 @@ export type CheckoutPlan =
  */
 export function planCheckout(method: GatewayMethod, init: GatewayInitiate): CheckoutPlan {
   if (init.mock === true) {
-    /*
-     * The demo checkout is a *page*, served by the backend, and it opens in the
-     * in-app sheet exactly like a gateway page — same interception, same return
-     * route, same verify endpoint. That is the whole point of it being a
-     * website: nothing downstream needs to know the gateway was a replica.
-     *
-     * The one exception is a server that answers without `demoUrl` (an older
-     * backend, or the web app's own mock route): that is a route inside this
-     * app, so it keeps the old name and `openCheckout` below refuses it.
-     */
     // Khalti answers a fallback with `payment_url` rather than a `mockUrl`;
     // both name the same thing, so both are read here.
     const mockPath = init.mockUrl ?? init.payment_url;
+
+    // The in-app replica first: it is the demo checkout the server named, it
+    // never leaves the app, and the wait for a page to load is a wait a demo
+    // does not need.
+    const path = demoAppPath(mockPath);
+
+    if (path) return { kind: "demo", path, amount: init.amount };
+
+    // No screen named — the replica as a page, if the server sent one.
     const demo = init.demoUrl ?? (/^https?:/i.test(mockPath ?? "") ? mockPath : "");
 
     if (demo) return { kind: "gateway", url: demo, demo: true, amount: init.amount };
-
-    if (mockPath) return { kind: "simulator", url: mockPath, message: init.testHint };
 
     return { kind: "error", message: init.testHint ?? "The gateway is unavailable right now." };
   }

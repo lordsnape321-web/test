@@ -2,7 +2,7 @@ import Constants from "expo-constants";
 import { Linking as RNLinking, Platform } from "react-native";
 import { apiUrl } from "@/lib/api";
 import { formatNPR } from "@/lib/futsal";
-import type { CheckoutPlan, GatewayMethod } from "@/lib/gateway-plan";
+import type { CheckoutPlan } from "@/lib/gateway-plan";
 import { openInAppGateway } from "@/lib/inapp-gateway";
 import { demoPayments } from "@/lib/payment-mode";
 
@@ -236,11 +236,12 @@ export function openGatewayUrl(url: string): boolean {
 }
 
 /**
- * Reopen a demo checkout that was left unfinished.
+ * Reopen a demo checkout *page* that was left unfinished.
  *
- * The pending card's job: a payer who closed the sheet before finishing has a
- * page to go back to, and on a phone that means the in-app sheet rather than a
- * browser tab. Nothing is re-initiated — the page carries its own session.
+ * The in-app replica is a route the pending card pushes (see `demoPath`); this
+ * is for a record that only carries a page — one started in a browser, or on a
+ * backend that answers with the page rather than the app's own screen. On a
+ * phone the page opens in the in-app sheet rather than a browser tab.
  */
 export function reopenDemoCheckout(url: string, label: string): boolean {
   const method = url.includes("khalti") ? "khalti" : "esewa";
@@ -310,50 +311,9 @@ function postEsewaForm(url: string, fields: Record<string, string>): boolean {
   }
 }
 
-/**
- * The replica page for a checkout, assembled here.
- *
- * A fallback for a backend that answers the demo checkout without a `demoUrl`
- * of its own. The page is static (`/demo-esewa.html`, `/demo-khalti.html`) and
- * the server's mock URL already carries every parameter it needs — the app
- * route inside that URL is simply not what a page is opened from.
- *
- * The return URLs are what make it usable: on a phone the sheet intercepts
- * them, and on the web they are this app's own screens. Both are built here
- * because only the client knows which origin it is served from.
- */
-export function demoPageUrl(method: GatewayMethod, mockUrl: string, amount?: number): string {
-  const [, query = ""] = mockUrl.split("?");
-  const params = new URLSearchParams(query);
-  const origin = paymentWebOrigin();
-
-  if (origin === "") return "";
-
-  // A league entry fee returns to its own page, exactly like the in-app
-  // simulator did; a booking returns to the screen that verifies it.
-  const leagueId = params.get("leagueId") ?? "";
-  const success = leagueId ? `${origin}/leagues/${leagueId}` : paymentReturnUrl(method === "esewa" ? "/payment/esewa/success" : "/payment/khalti/callback");
-  const failure = leagueId
-    ? success
-    : paymentReturnUrl(method === "esewa" ? "/payment/esewa/failure" : "/payment/khalti/callback");
-
-  params.set("success", success);
-  params.set("failure", failure);
-
-  if (amount && !params.has("amount")) params.set("amount", String(amount));
-
-  // The same path the server builds, for a backend that answered without one.
-  const url = apiUrl(`/api/payments/${method === "esewa" ? "esewa" : "khalti"}/demo?${params.toString()}`);
-
-  if (/^https?:/i.test(url)) return url;
-
-  // On the web build the API is same-origin (`/api`), so this is a path — and a
-  // path on the proxy that carries `/api` to the backend is exactly right.
-  return typeof window !== "undefined" ? new URL(url, window.location.href).href : "";
-}
 
 /**
- * Run a plan. Returns false when the caller should fall back to the simulator.
+ * Run a plan. Returns false when the caller should report why instead.
  *
  * On a phone the gateway page opens *inside* the app (see `GatewaySheet`): the
  * same signed form, posted in a WebView, with the return URL intercepted before

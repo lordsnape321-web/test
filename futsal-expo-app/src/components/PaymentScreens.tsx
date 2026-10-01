@@ -1,11 +1,11 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { CheckCircle2, CreditCard, Loader2, PartyPopper, XCircle } from "lucide-react-native";
+import { CheckCircle2, CreditCard, Loader2, PartyPopper, ShieldCheck, XCircle } from "lucide-react-native";
 import React, { useEffect, useRef, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { ApiError } from "@/lib/api";
 import { formatNPR } from "@/lib/futsal";
-import { verifyEsewa, verifyKhalti } from "@/api";
+import { leaguePaymentsAction, verifyEsewa, verifyKhalti } from "@/api";
 import {
   appReturnLinks,
   esewaDataFromLocation,
@@ -24,6 +24,7 @@ import {
   switchLastCheckoutGateway,
   type CheckoutMode,
 } from "@/lib/checkout";
+import { TextControl } from "@/components/ui";
 import { useTheme } from "@/context/ThemeContext";
 import { colors, fontSize, radius, space } from "@/theme";
 
@@ -54,14 +55,399 @@ function numberParam(value: string | string[] | undefined): number {
 }
 
 /**
- * The demo checkout is a *page*, not a screen here.
+ * The demo checkout: eSewa's and Khalti's pages, run inside the app.
  *
- * It used to be two React screens that faked the gateways. They are gone: the
- * replica now lives in `laravel/public/demo-esewa.html` and `demo-khalti.html`,
- * and it opens in the in-app sheet exactly like the real gateway's page — so
- * the interception, the return route and the verify call are the same code
- * path for both, and the app carries no second checkout to keep in step.
+ * These are the screens the Pay buttons open in demo mode — the same checkout
+ * this app has always run for a demo, with the flow the real test server has:
+ *
+ *   1. sign in (eSewa ID + password; Khalti mobile number),
+ *   2. confirm with the 4-digit MPIN,
+ *   3. the 6-digit verification token / OTP,
+ *   4. the confirmation screen — the wallet's balance, the amount, what is left
+ *      after paying, and the button that pays.
+ *
+ * The credentials are the published test logins, so a rehearsal here uses the
+ * values that work on the real servers, and a wrong value is refused with the
+ * value to use instead. The balance is the replica's own — a demo wallet is
+ * never short — and the ledger behind it is real: finishing posts `mockApprove`
+ * to the same verify endpoint a real payment uses, so bookings, shares, league
+ * entries, notifications and receipts are the real code paths.
+ *
+ * A page does the same job for a browser (`laravel/public/demo-*.html`, served
+ * at `/api/payments/{gateway}/demo`); the app uses the screens, because a
+ * checkout that never leaves the app cannot lose the payer on the way back.
  */
+
+/** What the replica's wallet holds. Never less than the payment: a demo is not
+ *  where anyone should meet "insufficient balance". */
+const DEMO_BALANCE = { esewa: 25000, khalti: 18500 } as const;
+
+const DEMO_LOGINS = {
+  esewa: {
+    ids: ["9711111111", "9711111112", "9711111113", "9711111114", "9806800001", "9806800002", "9806800003", "9806800004", "9806800005"],
+    id: "9711111111",
+    password: "Test@123",
+    pin: "1122",
+    token: "123456",
+    steps: [
+      { title: "Sign in to eSewa", sub: "Your eSewa ID and password.", cta: "Log in" },
+      { title: "Confirm with MPIN", sub: "The 4-digit MPIN of your eSewa wallet.", cta: "Continue" },
+      { title: "Verification token", sub: "The 6-digit token eSewa sent to your phone.", cta: "Continue" },
+    ],
+  },
+  khalti: {
+    ids: ["9800000000", "9800000001", "9800000002", "9800000003", "9800000004", "9800000005"],
+    id: "9800000001",
+    password: "",
+    pin: "1111",
+    token: "987654",
+    steps: [
+      { title: "Sign in to Khalti", sub: "Your Khalti mobile number.", cta: "Log in" },
+      { title: "Confirm with MPIN", sub: "The 4-digit MPIN of your Khalti account.", cta: "Continue" },
+      { title: "OTP verification", sub: "The 6-digit code Khalti sent you.", cta: "Continue" },
+    ],
+  },
+} as const;
+
+export function EsewaMockScreen() {
+  const params = useLocalSearchParams() as Params;
+  const router = useRouter();
+  const leagueId = one(params.leagueId);
+  const requestId = one(params.paymentRequestId);
+
+  return (
+    <GatewayMock
+      kind="esewa"
+      params={params}
+      onDone={(id) =>
+        router.replace(
+          (leagueId
+            ? `/leagues/${leagueId}?paid=1`
+            : `/payment/esewa/success?mock=1&bookingId=${id}${requestId ? `&paymentRequestId=${requestId}` : ""}`) as never,
+        )
+      }
+      onCancel={(id) => router.replace((leagueId ? `/leagues/${leagueId}` : `/payment/esewa/failure?bookingId=${id}`) as never)}
+    />
+  );
+}
+
+export function KhaltiMockScreen() {
+  const params = useLocalSearchParams() as Params;
+  const router = useRouter();
+  const leagueId = one(params.leagueId);
+  const requestId = one(params.paymentRequestId);
+
+  return (
+    <GatewayMock
+      kind="khalti"
+      params={params}
+      onDone={(id) =>
+        router.replace(
+          (leagueId
+            ? `/leagues/${leagueId}?paid=1`
+            : `/payment/khalti/callback?mock=1&pidx=${encodeURIComponent(one(params.pidx))}&bookingId=${id}${
+                requestId ? `&paymentRequestId=${requestId}` : ""
+              }&status=Completed`) as never,
+        )
+      }
+      onCancel={(id) => router.replace((leagueId ? `/leagues/${leagueId}` : `/payment/khalti/callback?bookingId=${id}&status=User%20canceled`) as never)}
+    />
+  );
+}
+
+function GatewayMock({
+  kind,
+  params,
+  onDone,
+  onCancel,
+}: {
+  kind: "esewa" | "khalti";
+  params: Params;
+  onDone: (bookingId: string) => void;
+  onCancel: (bookingId: string) => void;
+}) {
+  const retry = useCheckoutRetry();
+  const [busy, setBusy] = useState(false);
+  // One id per checkout, retained if verification is retried. A subsequent
+  // checkout (e.g. the balance after a deposit) must get a different id.
+  const [checkoutId] = useState(() => `mock-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  const [error, setError] = useState("");
+  const [step, setStep] = useState(0);
+  const [id, setId] = useState("");
+  const [password, setPassword] = useState("");
+  const [pin, setPin] = useState("");
+  const [token, setToken] = useState("");
+  const bookingId = one(params.bookingId);
+  const teamPaymentId = one(params.teamPaymentId);
+  const paymentRequestId = one(params.paymentRequestId);
+  const leagueId = one(params.leagueId);
+  const teamId = one(params.teamId);
+  const amount = numberParam(params.amount);
+  const isLeague = Boolean(leagueId && teamId);
+  const purple = kind === "khalti";
+  const accent = purple ? "#5C2D91" : "#087443";
+  const soft = purple ? "#FAF5FF" : colors.emerald50;
+  const label = purple ? "Khalti" : "eSewa";
+  const login = DEMO_LOGINS[kind];
+  const steps = login.steps;
+  // The confirmation screen is the fourth step; the three above are the login.
+  const confirmStep = steps.length;
+  const balance = Math.max(DEMO_BALANCE[kind], amount + 500);
+  // `demo=1` means the replica was chosen; without it the gateway was down and
+  // this is the fallback, which the header says out loud.
+  const chosen = one(params.demo) === "1";
+  const fallbackReason = one(params.fallback);
+
+  async function pay() {
+    setBusy(true);
+    setError("");
+
+    try {
+      if (isLeague) {
+        await leaguePaymentsAction(Number(leagueId), {
+          action: "verify",
+          mockApprove: true,
+          userId: numberParam(params.userId),
+          teamId: Number(teamId),
+          amount,
+          method: label,
+        });
+      } else if (kind === "esewa") {
+        await verifyEsewa({
+          bookingId: Number(bookingId),
+          mockApprove: true,
+          teamPaymentId: teamPaymentId ? Number(teamPaymentId) : undefined,
+          paymentRequestId: paymentRequestId ? Number(paymentRequestId) : undefined,
+          userId: numberParam(params.userId) || undefined,
+          uuid: one(params.uuid) || checkoutId,
+          paymentPurpose: one(params.paymentPurpose) === "advance" ? "advance" : undefined,
+          expectedAmount: amount,
+        });
+      } else {
+        await verifyKhalti({
+          bookingId: Number(bookingId),
+          pidx: one(params.pidx) && one(params.pidx) !== "mock-pidx" ? one(params.pidx) : checkoutId,
+          mockApprove: true,
+          teamPaymentId: teamPaymentId ? Number(teamPaymentId) : undefined,
+          paymentRequestId: paymentRequestId ? Number(paymentRequestId) : undefined,
+          userId: numberParam(params.userId) || undefined,
+          paymentPurpose: one(params.paymentPurpose) === "advance" ? "advance" : undefined,
+          expectedAmount: amount,
+        });
+      }
+
+      onDone(bookingId);
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "That demo payment could not be recorded. Nothing was charged.");
+      setBusy(false);
+    }
+  }
+
+  /** Fill every step at once, and land on the confirmation screen. */
+  function fillDemo() {
+    setId(login.id);
+    setPassword(login.password);
+    setPin(login.pin);
+    setToken(login.token);
+    setError("");
+    setStep(confirmStep);
+  }
+
+  /**
+   * Move to the next step, or pay on the last one.
+   *
+   * Each step checks its own value against the published test credentials — the
+   * replica is a rehearsal for the real thing, so the values that work there are
+   * the values that work here.
+   */
+  function advance() {
+    const wrong =
+      step === 0
+        ? !(login.ids as readonly string[]).includes(id.trim())
+          ? `Use a demo ${label} ID — ${login.id} works, and the other test wallets do too.`
+          : kind === "esewa" && password !== login.password
+            ? `Wrong password. The eSewa demo password is ${login.password}.`
+            : ""
+        : step === 1
+          ? pin !== login.pin
+            ? `Wrong MPIN. The ${label} demo MPIN is ${login.pin}.`
+            : ""
+          : step === 2
+            ? token !== login.token
+              ? `Wrong token. The ${label} demo ${purple ? "OTP" : "token"} is ${login.token}.`
+              : ""
+            : "";
+
+    if (wrong) {
+      setError(wrong);
+      return;
+    }
+
+    setError("");
+
+    if (step < confirmStep) {
+      setStep(step + 1);
+      return;
+    }
+
+    void pay();
+  }
+
+  const stepDef = steps[Math.min(step, steps.length - 1)];
+  const paying = step === confirmStep;
+
+  return (
+    <SafeAreaView style={[styles.flex, { backgroundColor: accent }]} edges={["bottom"]}>
+      <ScrollView contentContainerStyle={styles.gatewayScroll} keyboardShouldPersistTaps="handled">
+        <View style={styles.gatewayCard}>
+          <View style={[styles.gatewayHead, { backgroundColor: accent }]}>
+            <Text style={styles.gatewayName}>{label}</Text>
+            <Text style={styles.fallbackChip}>
+              {chosen ? `Demo checkout • replica of ${label}` : `Fallback checkout • ${fallbackReason || "gateway unreachable"}`}
+            </Text>
+          </View>
+          <View style={styles.gatewayBody}>
+            <View style={[styles.amountCard, { backgroundColor: soft }]}>
+              <Text style={[styles.amountKicker, { color: accent }]}>Paying to FutsalNepal test store</Text>
+              <Text style={[styles.amount, { color: purple ? "#4C1D95" : "#064E3B" }]}>{formatNPR(amount)}</Text>
+              <Text style={[styles.reference, { color: accent }]}>
+                {isLeague ? `league #${leagueId} • squad #${teamId}` : `booking #${bookingId}`}
+              </Text>
+            </View>
+
+            <View style={styles.stepHead}>
+              <Text style={[styles.stepTitle, { color: accent }]}>
+                {paying ? "Confirm your payment" : stepDef.title}
+              </Text>
+              <Text style={styles.stepCount}>
+                Step {step + 1} of {confirmStep + 1}
+              </Text>
+            </View>
+            <Text style={styles.testText}>
+              {paying ? `Check the details, then pay with your ${label} wallet.` : stepDef.sub}
+            </Text>
+
+            {step === 0 ? (
+              <>
+                <TextControl
+                  value={id}
+                  onChangeText={setId}
+                  placeholder={purple ? "98XXXXXXXX" : "9711111111"}
+                  keyboardType="number-pad"
+                  accessibilityLabel={`${label} ID`}
+                />
+                {!purple ? (
+                  <TextControl
+                    value={password}
+                    onChangeText={setPassword}
+                    placeholder="Password"
+                    secureTextEntry
+                    accessibilityLabel="eSewa password"
+                  />
+                ) : null}
+              </>
+            ) : null}
+
+            {step === 1 ? (
+              <TextControl
+                value={pin}
+                onChangeText={setPin}
+                placeholder="MPIN"
+                secureTextEntry
+                keyboardType="number-pad"
+                maxLength={4}
+                accessibilityLabel="MPIN"
+              />
+            ) : null}
+
+            {step === 2 ? (
+              <TextControl
+                value={token}
+                onChangeText={setToken}
+                placeholder={purple ? "OTP" : "Token"}
+                keyboardType="number-pad"
+                maxLength={6}
+                accessibilityLabel={purple ? "OTP" : "Token"}
+              />
+            ) : null}
+
+            {paying ? (
+              <View style={[styles.confirmCard, { borderColor: accent }]}>
+                <View style={styles.confirmRow}>
+                  <Text style={styles.confirmKey}>Merchant</Text>
+                  <Text style={styles.confirmValue}>FutsalNepal test store</Text>
+                </View>
+                <View style={styles.confirmRow}>
+                  <Text style={styles.confirmKey}>{label} balance (demo)</Text>
+                  <Text style={styles.confirmValue}>{formatNPR(balance)}</Text>
+                </View>
+                <View style={styles.confirmRow}>
+                  <Text style={[styles.confirmKey, { color: accent }]}>Amount to pay</Text>
+                  <Text style={[styles.confirmValue, { color: accent, fontWeight: "700" }]}>{formatNPR(amount)}</Text>
+                </View>
+                <View style={styles.confirmRow}>
+                  <Text style={styles.confirmKey}>Balance after payment</Text>
+                  <Text style={styles.confirmValue}>{formatNPR(balance - amount)}</Text>
+                </View>
+                <Text style={styles.confirmNote}>
+                  {label} wallet {login.id} — a replica, and the ledger behind it is real. No money moves.
+                </Text>
+              </View>
+            ) : null}
+
+            <View style={styles.testInfo}>
+              <Text style={styles.testText}>
+                Demo credentials: {login.id}
+                {login.password ? ` / ${login.password}` : ""} · MPIN {login.pin} · {purple ? "OTP" : "token"} {login.token}
+              </Text>
+              <Text style={styles.testText}>A replica of the real page, and the ledger is real — no money moves.</Text>
+            </View>
+
+            {error ? <Text style={styles.error}>{error}</Text> : null}
+
+            <Pressable onPress={advance} disabled={busy} style={[styles.payButton, { backgroundColor: accent }]}>
+              {busy ? <Loader2 size={18} color="#FFFFFF" /> : <ShieldCheck size={18} color="#FFFFFF" />}
+              <Text style={styles.payText}>
+                {busy ? "Processing…" : paying ? `Pay ${formatNPR(amount)}` : stepDef.cta}
+              </Text>
+            </Pressable>
+
+            <Pressable onPress={fillDemo} disabled={busy} style={[styles.cancelButton, { borderColor: accent }]}>
+              <Text style={[styles.cancelText, { color: accent }]}>Fill demo credentials</Text>
+            </Pressable>
+
+            {step > 0 ? (
+              <Pressable
+                onPress={() => {
+                  setStep(step - 1);
+                  setError("");
+                }}
+                disabled={busy}
+              >
+                <Text style={styles.stepBack}>Back a step</Text>
+              </Pressable>
+            ) : null}
+
+            <Pressable onPress={() => onCancel(bookingId)} disabled={busy} style={styles.cancelButton}>
+              <XCircle size={17} color={colors.stone500} />
+              <Text style={styles.cancelText}>Cancel payment</Text>
+            </Pressable>
+
+            {chosen && retry.retryable ? (
+              <Pressable onPress={() => void retry.retryOn("real")} disabled={retry.busy}>
+                <Text style={[styles.stepBack, { color: accent }]}>
+                  {retry.busy ? "Opening…" : `Use the real ${label} test server instead`}
+                </Text>
+              </Pressable>
+            ) : null}
+
+            <Text style={styles.disclaimer}>You can return to My Bookings and try again whenever you&apos;re ready.</Text>
+          </View>
+        </View>
+      </ScrollView>
+    </SafeAreaView>
+  );
+}
 
 /**
  * The page eSewa sends the browser back to.
@@ -79,11 +465,10 @@ export function EsewaSuccessScreen() {
   const router = useRouter();
   const mock = one(params.mock) === "1";
 
-  // Settled. The demo checkout (and the simulator before it) verified before it
-  // sent the payer here, so there is nothing left to chase — and leaving the
-  // record behind is what made a settled payment still show "Payment in
-  // progress" and then answer "eSewa has no completed payment" about a session
-  // eSewa was never part of.
+  // Settled. The demo checkout verified before it sent the payer here, so there
+  // is nothing left to chase — and leaving the record behind is what made a
+  // settled payment still show "Payment in progress" and then answer "eSewa has
+  // no completed payment" about a session eSewa was never part of.
   useEffect(() => {
     if (mock) clearCheckout();
   }, [mock]);
@@ -432,10 +817,17 @@ function useCheckoutRetry() {
 
     const outcome = await retryLastCheckout(mode);
 
-    // A checkout page is open (the gateway's, or the replica's) — the sheet is
-    // over this screen, and the app comes back through it when it is done.
+    // A checkout page is open (the gateway's, or the replica's), or the replica
+    // screen is (the demo checkout, which this pushes) — either way the payer
+    // is on a checkout and the app comes back when it is done.
     if (outcome.status === "gateway") {
       setBusy(false);
+      return;
+    }
+
+    if (outcome.status === "demo") {
+      setBusy(false);
+      router.replace(outcome.path as never);
       return;
     }
 
@@ -479,6 +871,12 @@ function useCheckoutRetry() {
 
     if (outcome.status === "gateway") {
       setSwitching(false);
+      return;
+    }
+
+    if (outcome.status === "demo") {
+      setSwitching(false);
+      router.replace(outcome.path as never);
       return;
     }
 
@@ -565,6 +963,22 @@ const styles = StyleSheet.create({
   stepHead: { flexDirection: "row", alignItems: "baseline", justifyContent: "space-between", gap: space[2], marginTop: space[2] },
   stepTitle: { fontSize: fontSize.base, fontWeight: "900" },
   stepCount: { color: colors.stone400, fontSize: fontSize.xs, fontWeight: "800" },
+  confirmCard: {
+    borderWidth: 1,
+    borderRadius: radius.lg,
+    paddingVertical: space[1],
+    paddingHorizontal: space[3],
+    marginTop: space[3],
+  },
+  confirmRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: space[2],
+  },
+  confirmKey: { fontSize: fontSize.sm, color: colors.stone500, fontWeight: "600" },
+  confirmValue: { fontSize: fontSize.base, color: "#1C1917", fontWeight: "600" },
+  confirmNote: { fontSize: fontSize.xs, color: colors.stone500, lineHeight: 16, paddingBottom: space[2] },
   stepBack: { color: colors.stone500, fontSize: fontSize.xs, fontWeight: "800", textAlign: "center", marginTop: space[1] },
   testInfo: { borderWidth: 1, borderStyle: "dashed", borderColor: "#E7E5E4", borderRadius: radius.xl, padding: space[3], gap: 3 },
   testText: { color: colors.stone500, fontSize: fontSize.xs, lineHeight: 17 },

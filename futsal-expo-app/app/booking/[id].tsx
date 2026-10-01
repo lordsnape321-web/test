@@ -227,6 +227,10 @@ export default function BookingDetail() {
       if (outcome.status === "error") setError(outcome.message);
 
       setBusy(null);
+
+      // The demo checkout is a screen in this app (see `PaymentScreens.tsx`):
+      // sign in, MPIN, token, then the balance and the Pay button.
+      if (outcome.status === "demo") router.push(outcome.path as never);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Could not start this payment.");
       setBusy(null);
