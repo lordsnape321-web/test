@@ -6,7 +6,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { ApiError } from "@/lib/api";
 import { formatNPR } from "@/lib/futsal";
 import { leaguePaymentsAction, verifyEsewa, verifyKhalti } from "@/api";
-import { esewaDataFromLocation } from "@/lib/gateway";
+import { appReturnLinks, esewaDataFromLocation, isMobileBrowser } from "@/lib/gateway";
 import { canCheckCheckout, canRetryCheckout, checkLastCheckout, retryLastCheckout } from "@/lib/checkout";
 import { useTheme } from "@/context/ThemeContext";
 import { colors, fontSize, radius, space } from "@/theme";
@@ -189,6 +189,18 @@ export function EsewaSuccessScreen() {
       });
   }, [params, state]);
 
+  const backToApp = useReturnToApp("/payment/esewa/success", params);
+
+  // Settled: take the player back into the app without making them hunt for it.
+  useEffect(() => {
+    if (state !== "success" || !backToApp.available) return;
+
+    const timer = setTimeout(backToApp.open, 1200);
+
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state, backToApp.available]);
+
   if (state === "loading") return <LoadingResult label="Confirming your eSewa payment… 💚" />;
 
   return (
@@ -203,7 +215,8 @@ export function EsewaSuccessScreen() {
       }
       primaryLabel={!bookingId && state === "success" ? "Back to the app" : undefined}
       onPrimary={() => router.replace(bookingId ? "/bookings?refresh=1" : "/leagues")}
-      onSecondary={() => router.replace("/venues")}
+      secondaryLabel={backToApp.available ? "Open the app" : undefined}
+      onSecondary={backToApp.available ? backToApp.open : () => router.replace("/venues")}
     />
   );
 }
@@ -264,6 +277,16 @@ export function KhaltiCallbackScreen() {
   );
   const [message, setMessage] = useState("");
   const retry = useCheckoutRetry();
+  const backToApp = useReturnToApp("/payment/khalti/callback", params);
+
+  useEffect(() => {
+    if (state !== "success" || !backToApp.available) return;
+
+    const timer = setTimeout(backToApp.open, 1200);
+
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state, backToApp.available]);
 
   useEffect(() => {
     if (state !== "loading") return;
@@ -313,9 +336,51 @@ export function KhaltiCallbackScreen() {
           ? retry.retry
           : () => router.replace("/bookings?refresh=1")
       }
-      onSecondary={() => router.replace("/venues")}
+      secondaryLabel={backToApp.available ? "Open the app" : undefined}
+      onSecondary={backToApp.available ? backToApp.open : () => router.replace("/venues")}
     />
   );
+}
+
+/**
+ * Hand the player back to the app.
+ *
+ * The gateway needs an http(s) URL, so even on the phone that started the
+ * payment the return lands in a browser — on this web build, which verifies the
+ * payment and then offers the way back in (`exp://…` in Expo Go, the app's own
+ * scheme in a built app). It tries by itself once the payment is settled, since
+ * that is what the player wants next, and keeps the button for when the system
+ * prompt is dismissed.
+ */
+function useReturnToApp(path: string, params: Params) {
+  const [links, setLinks] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (!isMobileBrowser()) return;
+
+    const query = [
+      params.bookingId ? `bookingId=${one(params.bookingId)}` : "",
+      params.teamPaymentId ? `teamPaymentId=${one(params.teamPaymentId)}` : "",
+      params.paymentRequestId ? `paymentRequestId=${one(params.paymentRequestId)}` : "",
+      params.userId ? `userId=${one(params.userId)}` : "",
+      params.leagueId ? `leagueId=${one(params.leagueId)}` : "",
+      params.teamId ? `teamId=${one(params.teamId)}` : "",
+    ]
+      .filter(Boolean)
+      .join("&");
+
+    setLinks(appReturnLinks(query ? `${path}?${query}` : path));
+  }, [path, params]);
+
+  function open() {
+    const target = links[0];
+
+    if (!target || typeof window === "undefined") return;
+
+    window.location.href = target;
+  }
+
+  return { available: links.length > 0, open };
 }
 
 /**

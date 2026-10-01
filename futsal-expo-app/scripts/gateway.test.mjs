@@ -481,10 +481,17 @@ assert.ok(
 
 const gatewayLib = php("futsal-expo-app/src/lib/gateway.ts");
 assert.ok(
-  gatewayLib.includes("export function paymentReturnUrl(path: string): string") &&
-    gatewayLib.includes("return Linking.createURL(path);") &&
-    gatewayLib.includes("return `${window.location.origin}${path}`;"),
-  "a device is returned by deep link; a browser by its own origin",
+  gatewayLib.includes("export function paymentWebOrigin(): string") &&
+    gatewayLib.includes("export function paymentReturnUrl(path: string): string") &&
+    gatewayLib.includes("return `${origin}${path}`;"),
+  "a gateway is always given an http(s) URL it will accept",
+);
+assert.ok(
+  gatewayLib.includes("export function appReturnLinks(path: string): string[]") &&
+    gatewayLib.includes("links.push(`exp://${host}/--${path}`)") &&
+    gatewayLib.includes("links.push(`${scheme}://${path.replace(/^\\//, \"\")}`)") &&
+    gatewayLib.includes("export function isMobileBrowser(): boolean"),
+  "and the return page knows the app's own deep links to hand the player back",
 );
 assert.ok(
   api.includes("successUrl: paymentReturnUrl(\"/payment/esewa/success\")") &&
@@ -513,6 +520,16 @@ assert.ok(
   handoff.includes("'successUrl' => $request->query('successUrl')") &&
     handoff.includes("'failureUrl' => $request->query('failureUrl')"),
   "the hand-off page carries them through for a native browser",
+);
+
+// The return page runs in a browser even on the phone, so it hands the player
+// back to the app itself.
+assert.ok(
+  screens.includes("function useReturnToApp(path: string, params: Params)") &&
+    screens.includes("window.location.href = target;") &&
+    screens.includes('secondaryLabel={backToApp.available ? "Open the app" : undefined}') &&
+    screens.includes("const timer = setTimeout(backToApp.open, 1200);"),
+  "the return screens offer, and try, a way back into the app",
 );
 
 /* ── the sandbox is no longer what a payer sees ─────────────────────────── */

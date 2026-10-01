@@ -1,5 +1,4 @@
 import Constants from "expo-constants";
-import * as Linking from "expo-linking";
 import { Linking as RNLinking, Platform } from "react-native";
 import type { CheckoutPlan } from "@/lib/gateway-plan";
 
@@ -58,26 +57,76 @@ export function paymentReturnOrigin(): string {
 }
 
 /**
- * The full URL a gateway should send the payer back to for `path`.
+ * The http(s) origin of this app's *web* build.
  *
- * This is the difference between "come back to the app" and "come back to a
- * website". A browser app returns to its own origin — where the same screens
- * are — but a device has no origin, and the Expo web build it was loaded from
- * is *not* the app: the player would finish (or fail) a payment in the browser
- * and be stranded there, with no record of the checkout. A deep link
- * (`exp://host:8081/--/payment/esewa/success` in Expo Go, `futsalnepal://…` in a
- * built app) hands the browser back to the app itself, where the return screens
- * and the checkout they remember live.
+ * Both gateways want an `http`/`https` URL to redirect to — a custom scheme is
+ * a risk they need not accept — so the return always points at the web build,
+ * which serves the same screens and can verify the payment itself. On a phone
+ * that URL is the dev server the app was loaded from (`192.168.x.x:8081`), whose
+ * Metro proxies `/api` back to Laravel; on the web it is simply this page.
+ */
+export function paymentWebOrigin(): string {
+  if (Platform.OS === "web" && typeof window !== "undefined") {
+    return window.location.origin;
+  }
+
+  const explicit = (process.env.EXPO_PUBLIC_APP_ORIGIN ?? "").trim();
+
+  if (explicit !== "") return explicit.replace(/\/+$/, "");
+
+  const host = (Constants.expoConfig?.hostUri ?? "").trim();
+
+  return host ? `http://${host}` : "";
+}
+
+/**
+ * The full URL a gateway should send the payer back to for `path`.
  *
  * Query-free on purpose: both gateways append their own parameters, and a URL
  * that already carries a query is a coin flip between `&` and a second `?`.
  */
 export function paymentReturnUrl(path: string): string {
-  if (Platform.OS === "web" && typeof window !== "undefined") {
-    return `${window.location.origin}${path}`;
+  const origin = paymentWebOrigin();
+
+  if (origin !== "") return `${origin}${path}`;
+
+  // Nothing to point at (a production build with no web origin configured):
+  // the server falls back to APP_URL / APP_WEB_URL.
+  return "";
+}
+
+/**
+ * Ways back into the app itself, best first.
+ *
+ * The return page runs in a browser, even on the phone that started the
+ * payment — the gateways need an http(s) URL. This is how that page hands the
+ * player back to the app: the deep link this build answers to. Expo Go listens
+ * on `exp://<dev server>/--/…`, an installed build on the scheme in app.json.
+ */
+export function appReturnLinks(path: string): string[] {
+  const links: string[] = [];
+  const host = (Constants.expoConfig?.hostUri ?? "").trim();
+
+  if (host && !host.startsWith("localhost") && !host.startsWith("127.")) {
+    links.push(`exp://${host}/--${path}`);
   }
 
-  return Linking.createURL(path);
+  const configured = Constants.expoConfig?.scheme;
+  const scheme = (Array.isArray(configured) ? configured[0] ?? "" : configured ?? "").trim();
+
+  if (scheme && !scheme.includes("://")) {
+    links.push(`${scheme}://${path.replace(/^\//, "")}`);
+  }
+
+  return links;
+}
+
+/** True on a phone/tablet browser, where handing back to the app makes sense. */
+export function isMobileBrowser(): boolean {
+  if (Platform.OS !== "web") return false;
+  if (typeof navigator === "undefined") return false;
+
+  return /android|iphone|ipad|ipod|mobile/i.test(navigator.userAgent ?? "");
 }
 
 /**
