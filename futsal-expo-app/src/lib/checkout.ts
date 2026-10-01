@@ -1,4 +1,7 @@
 import {
+  chooseBookingPayment,
+  chooseBookingPaymentRequest,
+  chooseBookingTeamPayment,
   initiateEsewa,
   initiateKhalti,
   initiateLeaguePayment,
@@ -8,6 +11,8 @@ import {
   type LeaguePaymentInput,
   type PaymentInitiateInput,
 } from "@/api";
+import { ApiError } from "@/lib/api";
+import { formatNPR } from "@/lib/futsal";
 import { openCheckout, prepareGatewayTab, realGatewayEnabled, releaseGatewayTab } from "@/lib/gateway";
 import { planCheckout, type GatewayInitiate, type GatewayMethod } from "@/lib/gateway-plan";
 import { STORAGE_KEYS, storage } from "@/lib/storage";
@@ -249,10 +254,7 @@ function checkFor(record: Extract<PendingRecord, { kind: "booking" }>): (() => P
 
         return { settled: true, message: "eSewa confirms this payment was completed. Your booking is settled. 🎉" };
       } catch (e) {
-        return {
-          settled: false,
-          message: e instanceof Error ? e.message : "eSewa did not report a completed payment for this booking.",
-        };
+        return { settled: false, message: describeCheck(e, input) };
       }
     };
   }
@@ -276,6 +278,42 @@ function checkFor(record: Extract<PendingRecord, { kind: "booking" }>): (() => P
 }
 
 /**
+ * What the gateway said, in a sentence a payer can act on.
+ *
+ * The server's message carries eSewa's own verdict ("eSewa says: FAILED —
+ * nothing has been settled yet") and its body names the amount and the
+ * transaction it asked about. Those three facts are what turn "it failed" into
+ * something worth showing: they say it was the debit, not the login, and they
+ * are the first thing to check against the wallet.
+ */
+function describeCheck(e: unknown, input: PaymentInitiateInput): string {
+  const base = e instanceof Error ? e.message : "eSewa did not report a completed payment for this booking.";
+
+  if (!(e instanceof ApiError)) return base;
+
+  const info = (e.body as {
+    esewa?: { status?: string; amount_asked?: number; transaction_uuid?: string };
+  } | undefined)?.esewa;
+
+  if (!info) return base;
+
+  const bits: string[] = [];
+
+  if (typeof info.amount_asked === "number" && info.amount_asked > 0) {
+    bits.push(`asked for ${formatNPR(info.amount_asked)}`);
+  }
+  if (info.transaction_uuid) bits.push(`txn ${info.transaction_uuid}`);
+  // The server's sentence already names the status in the usual case; only
+  // repeat it when it does not (NOT_FOUND, or a status we did not expect).
+  if (info.status && String(info.status) !== "UNKNOWN" && !base.toUpperCase().includes(String(info.status).toUpperCase())) {
+    bits.push(`eSewa status ${info.status}`);
+  }
+  if (input.bookingId) bits.push(`booking #${input.bookingId}`);
+
+  return bits.length > 0 ? `${base} (${bits.join(" · ")})` : base;
+}
+
+/**
  * True when this session has a checkout a failure screen can offer to retry.
  */
 export function canRetryCheckout(): boolean {
@@ -285,6 +323,16 @@ export function canRetryCheckout(): boolean {
 /** True when the gateway itself can be asked about the last checkout. */
 export function canCheckCheckout(): boolean {
   return lastCheckout?.check !== undefined;
+}
+
+/** True when the pending checkout can be re-pointed at the other gateway. */
+export function canSwitchCheckout(): boolean {
+  return lastRecord !== null;
+}
+
+/** True when the pending checkout is the given gateway already. */
+export function pendingGateway(): GatewayMethod | null {
+  return lastRecord ? (lastRecord.method === "eSewa" ? "esewa" : lastRecord.method === "Khalti" ? "khalti" : lastRecord.method) : null;
 }
 
 /* --------------------------------------------------------------- starting */
@@ -403,6 +451,101 @@ export async function retryLastCheckout(): Promise<RetryOutcome> {
     ? await attempt.run()
     : ({ status: "simulator" } as CheckoutOutcome);
 
+  return finishAttempt(attempt, outcome);
+}
+
+/**
+ * Pay the same thing with the other gateway.
+ *
+ * The two test servers are independent: eSewa refusing a debit says nothing
+ * about Khalti, and a payer who was refused should not have to go back to the
+ * booking, find the card, and pick a different button to try the other one.
+ * So the pending checkout is re-pointed at `method` and started again.
+ *
+ * Both gateways refuse a target that is marked for the other one, so the
+ * choice is saved first — the same call the app makes when a player picks a
+ * gateway from a booking card. A switched checkout also drops the old session
+ * id and mock path: they name a session the other gateway never issued.
+ */
+export async function switchLastCheckoutGateway(method: GatewayMethod): Promise<RetryOutcome> {
+  const record = lastRecord;
+
+  if (!record) return { status: "nothing" };
+
+  const label = method === "esewa" ? "eSewa" : "Khalti";
+
+  if (record.kind === "booking" && record.input.userId) {
+    const { bookingId, userId, teamPaymentId, paymentRequestId } = record.input;
+
+    try {
+      if (teamPaymentId) {
+        await chooseBookingTeamPayment(bookingId, userId, label);
+      } else if (paymentRequestId) {
+        await chooseBookingPaymentRequest(bookingId, paymentRequestId, userId, label);
+      } else {
+        await chooseBookingPayment(bookingId, userId, label);
+      }
+    } catch (e) {
+      return {
+        status: "error",
+        message: e instanceof Error ? e.message : `Could not move this payment to ${label}.`,
+      };
+    }
+  }
+
+  const next: PendingRecord = record.kind === "booking"
+    ? {
+        ...record,
+        method,
+        pidx: undefined,
+        label: relabel(record.label, label),
+        mockPath: switchMockPath(record.mockPath, method),
+      }
+    : { ...record, method: label as "eSewa" | "Khalti" };
+
+  rememberCheckout(next);
+  prepareGatewayTab();
+
+  const attempt = attemptFor(next);
+  const outcome = realGatewayEnabled()
+    ? await attempt.run()
+    : ({ status: "simulator" } as CheckoutOutcome);
+
+  return finishAttempt(attempt, outcome);
+}
+
+/** "eSewa · booking #12" → "Khalti · booking #12" (and the other way round). */
+function relabel(label: string, method: "eSewa" | "Khalti"): string {
+  return /^(eSewa|Khalti)\b/.test(label)
+    ? label.replace(/^(eSewa|Khalti)\b/, method)
+    : `${method} · ${label}`;
+}
+
+/**
+ * The simulator route for the other gateway.
+ *
+ * The two mock screens take the same parameters, but the session ids do not
+ * cross over (`uuid` is eSewa's, `pidx` is Khalti's) — both are dropped so the
+ * simulator issues a fresh one instead of verifying a stranger's transaction.
+ */
+function switchMockPath(path: string, method: GatewayMethod): string {
+  const [base, query = ""] = path.split("?");
+  const swapped = base.replace(/\/(esewa|khalti)\/mock$/, `/${method}/mock`);
+  const params = new URLSearchParams(query);
+
+  params.delete("uuid");
+  params.delete("pidx");
+
+  const rest = params.toString();
+
+  return rest ? `${swapped}?${rest}` : swapped;
+}
+
+/** Turn a started checkout into the sentence (or route) a screen acts on. */
+async function finishAttempt(
+  attempt: RememberedCheckout,
+  outcome: CheckoutOutcome,
+): Promise<RetryOutcome> {
   if (outcome.status === "gateway") return { status: "gateway" };
 
   if (outcome.status === "simulator") {

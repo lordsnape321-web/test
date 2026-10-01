@@ -1,5 +1,6 @@
 import Constants from "expo-constants";
 import { Linking as RNLinking, Platform } from "react-native";
+import { formatNPR } from "@/lib/futsal";
 import type { CheckoutPlan } from "@/lib/gateway-plan";
 import { openInAppGateway } from "@/lib/inapp-gateway";
 
@@ -295,14 +296,27 @@ export function openCheckout(plan: CheckoutPlan): boolean {
     if (plan.kind === "gateway" || plan.kind === "form") {
       const origin = paymentWebOrigin();
 
+      const method = plan.url.includes("khalti") ? "khalti" : "esewa";
+
       openInAppGateway({
-        method: plan.url.includes("khalti") ? "khalti" : "esewa",
+        method,
         url: plan.url,
         fields: plan.kind === "form" ? plan.fields : undefined,
         // The return screens, at the origin this app's web build is served
         // from. The first one the WebView tries to load ends the checkout.
         returnPrefixes: origin === "" ? [] : [`${origin}/payment/`],
         label: lastCheckoutLabel(),
+        // The amount is on the header so the payer can compare it with what the
+        // gateway asks for *before* paying: a mismatch wearing a gateway's
+        // branding is exactly the thing nobody questions.
+        detail: plan.amount ? formatNPR(plan.amount) : undefined,
+        // eSewa's UAT ends a login session that sits for about five minutes,
+        // and reports it as a plain failure. Say so while the payer can still
+        // act on it.
+        note:
+          method === "esewa"
+            ? "eSewa's test session ends about 5 minutes after login — finish in one go."
+            : "Khalti test payer: 9800000001 · MPIN 1111 · OTP 987654.",
       });
 
       return true;

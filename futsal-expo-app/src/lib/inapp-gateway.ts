@@ -22,8 +22,23 @@ export type InAppGatewaySession = {
    * closes and the app takes over (verify, then show the result).
    */
   returnPrefixes: string[];
-  /** A human label for the sheet's header: "booking #12", "league entry". */
+  /** A human label for the sheet's header: "eSewa · booking #12". */
   label: string;
+  /**
+   * What is being paid, in one line: "Rs. 1,200 · booking #12".
+   *
+   * On the sheet because the payer has to be able to see, before typing
+   * anything into the gateway's page, that the amount there is the amount the
+   * app meant — a mismatch is worth noticing before the debit, not after.
+   */
+  detail?: string;
+  /**
+   * A caution the gateway needs, in the payer's words.
+   *
+   * eSewa drops a test login session that has sat for about five minutes, and
+   * that failure looks exactly like a cancel, so the sheet says it up front.
+   */
+  note?: string;
 };
 
 let session: InAppGatewaySession | null = null;

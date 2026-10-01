@@ -459,12 +459,31 @@ class EsewaController extends ApiController
         $s = strtoupper((string) ($status['status'] ?? ''));
 
         if ($s !== 'COMPLETE') {
+            /*
+             * The status API is the only witness to what eSewa did with the
+             * session, so hand its own answer back whole. "FAILED" is eSewa
+             * refusing the debit — their shared test wallet no longer covers
+             * the amount, or the login session sat past its limit — and the
+             * screen can only say something useful if it has the amount, the
+             * uuid and the status eSewa reported.
+             */
             return $this->fail(
                 $s === 'NOT_FOUND'
                     ? 'eSewa has no completed payment for this booking — nothing was charged 🔎'
                     : 'eSewa says: '.($s ?: 'not completed').' — nothing has been settled yet',
                 409,
-                ['ok' => false, 'status' => $s ?: 'UNKNOWN']
+                [
+                    'ok' => false,
+                    'status' => $s ?: 'UNKNOWN',
+                    'esewa' => [
+                        'status' => $s ?: 'UNKNOWN',
+                        'transaction_uuid' => $uuid,
+                        'product_code' => $cfg['productCode'],
+                        'amount_asked' => $expected,
+                        'total_amount' => $status['total_amount'] ?? null,
+                        'ref_id' => $status['ref_id'] ?? null,
+                    ],
+                ]
             );
         }
 

@@ -1,17 +1,46 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { CheckCircle2, CreditCard, Loader2, PartyPopper, ShieldCheck, XCircle } from "lucide-react-native";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { ApiError } from "@/lib/api";
 import { formatNPR } from "@/lib/futsal";
 import { leaguePaymentsAction, verifyEsewa, verifyKhalti } from "@/api";
-import { appReturnLinks, esewaDataFromLocation, isMobileBrowser } from "@/lib/gateway";
-import { canCheckCheckout, canRetryCheckout, checkLastCheckout, retryLastCheckout } from "@/lib/checkout";
+import {
+  appReturnLinks,
+  esewaDataFromLocation,
+  isMobileBrowser,
+  type GatewayMethod,
+} from "@/lib/gateway";
+import {
+  canCheckCheckout,
+  canRetryCheckout,
+  canSwitchCheckout,
+  checkLastCheckout,
+  pendingGateway,
+  pendingRecord,
+  retryLastCheckout,
+  switchLastCheckoutGateway,
+} from "@/lib/checkout";
 import { useTheme } from "@/context/ThemeContext";
 import { colors, fontSize, radius, space } from "@/theme";
 
 type Params = Record<string, string | string[] | undefined>;
+
+/**
+ * What a refused eSewa debit is, and what to do about it.
+ *
+ * eSewa reports FAILED whenever its own test wallet could not cover the amount
+ * — their test users are shared, and "adequate balance" is a promise, not a
+ * standing balance — and also when a test login has sat for more than about
+ * five minutes. Neither is the app's error, and both are worth saying out loud
+ * instead of leaving the payer to guess.
+ */
+const ESEWA_REFUSED_HINT =
+  "eSewa reports FAILED when its shared test wallet can't cover the amount, or when the login session sat for more than five minutes. Worth trying: a smaller payment, another test wallet (…1112 to …1114), or pay with Khalti instead.";
+
+/** Where the other gateway's test payer comes from. */
+const KHALTI_HINT = "Khalti's test payer: 9800000001 · MPIN 1111 · OTP 987654.";
 
 function one(value: string | string[] | undefined): string {
   return Array.isArray(value) ? value[0] ?? "" : value ?? "";
@@ -226,15 +255,31 @@ export function EsewaFailureScreen() {
   const router = useRouter();
   const retry = useCheckoutRetry();
   const [settled, setSettled] = useState("");
+  const autoChecked = useRef(false);
   const base = "No money moved. Your booking is still waiting — pay from My Bookings whenever you are ready.";
+  // The failure URL carries no query of its own (eSewa appends what it likes),
+  // so the checkout this session started is what says which booking it was.
+  const pending = pendingRecord();
+  const bookingId = one(params.bookingId) ||
+    (pending?.kind === "booking" ? String(pending.input.bookingId) : "");
+  // Only offer the other gateway when the money in flight is with this one.
+  const canSwitch = retry.switchable && retry.gateway !== "esewa";
 
   // eSewa's page can say a payment failed while the money actually moved (their
   // UAT does this). Their status API is the only thing that can tell the two
-  // apart, so offer to ask it before the player pays twice.
+  // apart, so ask it — on arrival, not behind a button the payer may not press.
   async function check() {
     const outcome = await retry.check();
     if (outcome.status === "settled") setSettled(outcome.message);
   }
+
+  useEffect(() => {
+    if (autoChecked.current || !retry.checkable) return;
+
+    autoChecked.current = true;
+    void check();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [retry.checkable]);
 
   if (settled) {
     return (
@@ -253,14 +298,33 @@ export function EsewaFailureScreen() {
     <ResultScreen
       kind="failure"
       gateway="eSewa"
-      bookingId={one(params.bookingId)}
+      bookingId={bookingId}
       message={retry.message || base}
+      hint={ESEWA_REFUSED_HINT}
       primaryLabel={retry.retryable ? (retry.busy ? "Opening…" : "Try again") : undefined}
       primaryBusy={retry.busy}
       onPrimary={retry.retryable ? retry.retry : () => router.replace("/bookings?refresh=1")}
-      secondaryLabel={retry.checkable ? (retry.checking ? "Asking eSewa…" : "Check with eSewa") : undefined}
-      secondaryBusy={retry.checking}
-      onSecondary={retry.checkable ? () => void check() : () => router.replace("/venues")}
+      secondaryLabel={
+        canSwitch
+          ? retry.switching
+            ? "Opening Khalti…"
+            : "Pay with Khalti instead"
+          : retry.checkable
+            ? retry.checking
+              ? "Asking eSewa…"
+              : "Check with eSewa"
+            : undefined
+      }
+      secondaryBusy={canSwitch ? retry.switching : retry.checking}
+      onSecondary={
+        canSwitch
+          ? () => void retry.switchTo("khalti")
+          : retry.checkable
+            ? () => void check()
+            : () => router.replace("/venues")
+      }
+      linkLabel={canSwitch && retry.checkable ? (retry.checking ? "Asking eSewa…" : "Check with eSewa again") : undefined}
+      onLink={check}
     />
   );
 }
@@ -319,6 +383,12 @@ export function KhaltiCallbackScreen() {
 
   if (state === "loading") return <LoadingResult label="Verifying Khalti payment… 💜" />;
 
+  const failed = state === "failure";
+  // A Khalti test checkout can fail on its own terms (a sandbox that is not
+  // answering, a session that expired) — eSewa is a working second opinion, and
+  // the pending record is what knows how to reach it.
+  const canSwitch = failed && retry.switchable && retry.gateway !== "khalti";
+
   return (
     <ResultScreen
       kind={state === "success" ? "success" : "failure"}
@@ -329,6 +399,7 @@ export function KhaltiCallbackScreen() {
           ? "Khalti test payment confirmed."
           : retry.message || message || "Could not verify the payment."
       }
+      hint={failed ? (canSwitch ? KHALTI_HINT : undefined) : undefined}
       primaryLabel={state === "failure" && retry.retryable ? (retry.busy ? "Opening…" : "Try again") : undefined}
       primaryBusy={retry.busy}
       onPrimary={
@@ -336,8 +407,23 @@ export function KhaltiCallbackScreen() {
           ? retry.retry
           : () => router.replace("/bookings?refresh=1")
       }
-      secondaryLabel={backToApp.available ? "Open the app" : undefined}
-      onSecondary={backToApp.available ? backToApp.open : () => router.replace("/venues")}
+      secondaryLabel={
+        canSwitch
+          ? retry.switching
+            ? "Opening eSewa…"
+            : "Pay with eSewa instead"
+          : backToApp.available
+            ? "Open the app"
+            : undefined
+      }
+      secondaryBusy={canSwitch ? retry.switching : false}
+      onSecondary={
+        canSwitch
+          ? () => void retry.switchTo("esewa")
+          : backToApp.available
+            ? backToApp.open
+            : () => router.replace("/venues")
+      }
     />
   );
 }
@@ -395,9 +481,12 @@ function useCheckoutRetry() {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [checking, setChecking] = useState(false);
+  const [switching, setSwitching] = useState(false);
   const [message, setMessage] = useState("");
   const retryable = canRetryCheckout();
   const checkable = canCheckCheckout();
+  const switchable = canSwitchCheckout();
+  const gateway = pendingGateway();
 
   async function retry() {
     setBusy(true);
@@ -447,14 +536,49 @@ function useCheckoutRetry() {
     return outcome;
   }
 
+  /**
+   * Pay the same thing with the other gateway, from the screen that refused
+   * this one. The record is re-pointed at `method` and started again, so the
+   * payer does not have to go back to the booking and find a different button.
+   */
+  async function switchTo(method: GatewayMethod) {
+    setSwitching(true);
+    setMessage("");
+
+    const outcome = await switchLastCheckoutGateway(method);
+
+    if (outcome.status === "gateway") return;
+
+    if (outcome.status === "simulator") {
+      router.replace(outcome.mockPath as never);
+      return;
+    }
+
+    if (outcome.status === "settled") {
+      router.replace(outcome.donePath as never);
+      return;
+    }
+
+    setSwitching(false);
+    setMessage(
+      outcome.status === "error"
+        ? outcome.message
+        : "Could not start that payment with the other gateway.",
+    );
+  }
+
   return {
     retry: () => void retry(),
     check,
+    switchTo,
     busy,
     checking,
+    switching,
     message,
     retryable,
     checkable,
+    switchable,
+    gateway,
   };
 }
 
@@ -463,10 +587,43 @@ function LoadingResult({ label }: { label: string }) {
   return <SafeAreaView style={[styles.flex, { backgroundColor: c.bg }]} edges={["bottom"]}><View style={styles.loading}><Loader2 size={44} color={colors.emerald600} /><Text style={[styles.loadingText, { color: c.text }]}>{label}</Text></View></SafeAreaView>;
 }
 
-function ResultScreen({ kind, gateway, bookingId, message, primaryLabel, primaryBusy, secondaryLabel, secondaryBusy, onPrimary, onSecondary }: { kind: "success" | "failure"; gateway: string; bookingId: string; message: string; primaryLabel?: string; primaryBusy?: boolean; secondaryLabel?: string; secondaryBusy?: boolean; onPrimary: () => void; onSecondary: () => void }) {
+function ResultScreen({ kind, gateway, bookingId, message, hint, primaryLabel, primaryBusy, secondaryLabel, secondaryBusy, onPrimary, onSecondary, linkLabel, onLink }: { kind: "success" | "failure"; gateway: string; bookingId: string; message: string; hint?: string; primaryLabel?: string; primaryBusy?: boolean; secondaryLabel?: string; secondaryBusy?: boolean; onPrimary: () => void; onSecondary: () => void; linkLabel?: string; onLink?: () => void }) {
   const { colors: c } = useTheme();
   const success = kind === "success";
-  return <SafeAreaView style={[styles.flex, { backgroundColor: c.bg }]} edges={["bottom"]}><ScrollView contentContainerStyle={styles.resultScroll}><View style={[styles.resultCard, { backgroundColor: c.surface, borderColor: c.border }]}><View style={[styles.resultIcon, { backgroundColor: success ? colors.emerald600 : colors.red500 }]}>{success ? <PartyPopper size={32} color="#FFFFFF" /> : <XCircle size={32} color="#FFFFFF" />}</View><Text style={[styles.resultTitle, { color: c.text }]}>{success ? "Payment verified! 🎉" : `${gateway} payment cancelled 😌`}</Text><Text style={[styles.resultBody, { color: c.textMuted }]}>{message}{bookingId ? ` Booking #FN-${bookingId}.` : ""}</Text><View style={styles.resultActions}><Pressable onPress={onPrimary} style={[styles.resultPrimary, { backgroundColor: colors.emerald600 }]}>{primaryBusy ? <Loader2 size={16} color="#FFFFFF" /> : <CheckCircle2 size={16} color="#FFFFFF" />}<Text style={styles.resultPrimaryText}>{primaryLabel ?? (success ? "Track booking" : "Pay from bookings")}</Text></Pressable><Pressable onPress={onSecondary} disabled={secondaryBusy} style={[styles.resultSecondary, { borderColor: c.border }]}>{secondaryBusy ? <Loader2 size={16} color={c.text} /> : <CreditCard size={16} color={c.text} />}<Text style={[styles.resultSecondaryText, { color: c.text }]}>{secondaryLabel ?? "Browse courts"}</Text></Pressable></View></View></ScrollView></SafeAreaView>;
+  return (
+    <SafeAreaView style={[styles.flex, { backgroundColor: c.bg }]} edges={["bottom"]}>
+      <ScrollView contentContainerStyle={styles.resultScroll}>
+        <View style={[styles.resultCard, { backgroundColor: c.surface, borderColor: c.border }]}>
+          <View style={[styles.resultIcon, { backgroundColor: success ? colors.emerald600 : colors.red500 }]}>
+            {success ? <PartyPopper size={32} color="#FFFFFF" /> : <XCircle size={32} color="#FFFFFF" />}
+          </View>
+          <Text style={[styles.resultTitle, { color: c.text }]}>
+            {success ? "Payment verified! 🎉" : `${gateway} payment didn’t go through 😌`}
+          </Text>
+          <Text style={[styles.resultBody, { color: c.textMuted }]}>
+            {message}
+            {bookingId ? ` Booking #FN-${bookingId}.` : ""}
+          </Text>
+          {hint ? <Text style={[styles.resultHint, { color: c.textMuted }]}>{hint}</Text> : null}
+          <View style={styles.resultActions}>
+            <Pressable onPress={onPrimary} style={[styles.resultPrimary, { backgroundColor: colors.emerald600 }]}>
+              {primaryBusy ? <Loader2 size={16} color="#FFFFFF" /> : <CheckCircle2 size={16} color="#FFFFFF" />}
+              <Text style={styles.resultPrimaryText}>{primaryLabel ?? (success ? "Track booking" : "Pay from bookings")}</Text>
+            </Pressable>
+            <Pressable onPress={onSecondary} disabled={secondaryBusy} style={[styles.resultSecondary, { borderColor: c.border }]}>
+              {secondaryBusy ? <Loader2 size={16} color={c.text} /> : <CreditCard size={16} color={c.text} />}
+              <Text style={[styles.resultSecondaryText, { color: c.text }]}>{secondaryLabel ?? "Browse courts"}</Text>
+            </Pressable>
+          </View>
+          {linkLabel && onLink ? (
+            <Pressable onPress={onLink} hitSlop={8}>
+              <Text style={[styles.resultLink, { color: colors.emerald600 }]}>{linkLabel}</Text>
+            </Pressable>
+          ) : null}
+        </View>
+      </ScrollView>
+    </SafeAreaView>
+  );
 }
 
 const styles = StyleSheet.create({
@@ -494,6 +651,8 @@ const styles = StyleSheet.create({
   resultIcon: { width: 64, height: 64, borderRadius: 32, alignItems: "center", justifyContent: "center" },
   resultTitle: { fontSize: fontSize["2xl"], fontWeight: "900", textAlign: "center", marginTop: space[4] },
   resultBody: { fontSize: fontSize.base, lineHeight: 20, textAlign: "center", marginTop: space[2] },
+  resultHint: { fontSize: fontSize.xs, lineHeight: 17, textAlign: "center", marginTop: space[3] },
+  resultLink: { fontSize: fontSize.xs, fontWeight: "800", textAlign: "center", marginTop: space[3] },
   resultActions: { width: "100%", gap: space[2], marginTop: space[6] },
   resultPrimary: { minHeight: 48, borderRadius: radius["2xl"], alignItems: "center", justifyContent: "center", flexDirection: "row", gap: space[2] },
   resultPrimaryText: { color: "#FFFFFF", fontSize: fontSize.base, fontWeight: "900" },

@@ -44,9 +44,11 @@ export type GatewayInitiate = {
 };
 
 export type CheckoutPlan =
-  | { kind: "gateway"; url: string }
+  /** `amount` is what the payer is about to be charged — carried so the sheet
+   *  can show it next to the gateway's own page. */
+  | { kind: "gateway"; url: string; amount?: number }
   /** Legacy API shape: eSewa fields to POST from this browser. */
-  | { kind: "form"; url: string; fields: Record<string, string> }
+  | { kind: "form"; url: string; fields: Record<string, string>; amount?: number }
   | { kind: "simulator"; url: string }
   | { kind: "error"; message: string };
 
@@ -71,18 +73,18 @@ export function planCheckout(method: GatewayMethod, init: GatewayInitiate): Chec
      * fallback rather than the default.
      */
     if (init.url && init.fields && Object.keys(init.fields).length > 0) {
-      return { kind: "form", url: init.url, fields: init.fields };
+      return { kind: "form", url: init.url, fields: init.fields, amount: init.amount };
     }
 
     if (init.handoffPath) {
-      return { kind: "gateway", url: apiUrl(init.handoffPath) };
+      return { kind: "gateway", url: apiUrl(init.handoffPath), amount: init.amount };
     }
 
     return { kind: "error", message: "eSewa did not return a checkout form." };
   }
 
   if (init.payment_url) {
-    return { kind: "gateway", url: init.payment_url };
+    return { kind: "gateway", url: init.payment_url, amount: init.amount };
   }
 
   return { kind: "error", message: "Khalti did not return a payment page." };

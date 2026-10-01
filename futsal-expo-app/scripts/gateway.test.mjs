@@ -466,15 +466,80 @@ assert.ok(
   "checkout.ts can ask the gateway about the last attempt",
 );
 assert.ok(
-  screens.includes("secondaryLabel={retry.checkable ? (retry.checking ? \"Asking eSewa…\" : \"Check with eSewa\") : undefined}") &&
-    screens.includes('if (outcome.status === "settled") setSettled(outcome.message);'),
-  "the eSewa failure screen offers Check with eSewa and can flip to success",
+  screens.includes("if (autoChecked.current || !retry.checkable) return;") &&
+    screens.includes('if (outcome.status === "settled") setSettled(outcome.message);') &&
+    screens.includes('"Check with eSewa again"'),
+  "the eSewa failure screen asks on arrival, and can still flip to success",
 );
 assert.ok(
   checkout.includes("function checkFor(record: Extract<PendingRecord, { kind: \"booking\" }>)") &&
     checkout.includes("await verifyEsewa({") &&
     checkout.includes("return { settled: true, message: \"eSewa confirms this payment was completed."),
   "a booking checkout can be checked with the gateway from one place",
+);
+
+/* ── a refusal says what the gateway said, and offers the other one ─────── */
+
+// "eSewa says FAILED" is eSewa refusing the *debit* — its shared test wallet
+// cannot cover the amount, or the login session sat too long. The screen can
+// only be useful if it carries the amount and the transaction with it.
+assert.ok(
+  esewa.includes("'esewa' => [") &&
+    esewa.includes("'amount_asked' => $expected,") &&
+    esewa.includes("'transaction_uuid' => $uuid,") &&
+    checkout.includes("function describeCheck(e: unknown, input: PaymentInitiateInput): string") &&
+    checkout.includes("info.amount_asked") &&
+    checkout.includes("return { settled: false, message: describeCheck(e, input) };"),
+  "a refused eSewa session reports the status, the amount and the transaction it asked about",
+);
+assert.ok(
+  screens.includes("const ESEWA_REFUSED_HINT =") &&
+    screens.includes("shared test wallet can't cover the amount") &&
+    screens.includes("hint={ESEWA_REFUSED_HINT}"),
+  "the failure screen says why a test debit is refused, not just that it was",
+);
+
+// The two test servers are independent, so one refusing a payment is a reason
+// to try the other — from the screen that refused it, in one tap.
+assert.ok(
+  checkout.includes("export async function switchLastCheckoutGateway(method: GatewayMethod): Promise<RetryOutcome>") &&
+    checkout.includes("export function canSwitchCheckout(): boolean") &&
+    checkout.includes("export function pendingGateway(): GatewayMethod | null"),
+  "checkout.ts can re-point the pending checkout at the other gateway",
+);
+const switched = checkout.slice(checkout.indexOf("export async function switchLastCheckoutGateway"));
+assert.ok(
+  switched.indexOf("await chooseBookingTeamPayment(") < switched.indexOf("rememberCheckout(next);") &&
+    switched.includes("await chooseBookingPaymentRequest(") &&
+    switched.includes("await chooseBookingPayment(") &&
+    !switched.includes("pidx: lastRecord"),
+  "the choice is saved before the other gateway is asked, and the old session id is dropped",
+);
+assert.ok(
+  checkout.includes("function switchMockPath(path: string, method: GatewayMethod): string") &&
+    checkout.includes('params.delete("uuid");') &&
+    checkout.includes('params.delete("pidx");'),
+  "a switched simulator run issues its own session instead of verifying a stranger's",
+);
+assert.ok(
+  screens.includes('"Pay with Khalti instead"') &&
+    screens.includes('"Pay with eSewa instead"') &&
+    screens.includes("const canSwitch = retry.switchable && retry.gateway !== \"esewa\";") &&
+    screens.includes("const canSwitch = failed && retry.switchable && retry.gateway !== \"khalti\";") &&
+    screens.includes("switchLastCheckoutGateway(method)"),
+  "both failure screens offer the other gateway, and only when it is the other one",
+);
+
+// The amount is on the sheet's header, so the payer can check it against what
+// the gateway asks for *before* the debit rather than after.
+const gatewaySource = php("futsal-expo-app/src/lib/gateway.ts");
+const sheetSource = php("futsal-expo-app/src/components/GatewaySheet.tsx");
+assert.ok(
+  gatewaySource.includes("detail: plan.amount ? formatNPR(plan.amount) : undefined") &&
+    gatewaySource.includes("eSewa's test session ends about 5 minutes after login") &&
+    sheetSource.includes("{session.detail ?") &&
+    sheetSource.includes("{session.note ?"),
+  "the sheet shows what is being paid and how long the test session lasts",
 );
 
 /* ── the gateway returns the payer to the app, not to a website ─────────── */

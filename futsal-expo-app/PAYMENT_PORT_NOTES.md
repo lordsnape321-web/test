@@ -8,7 +8,8 @@ local copy of them:
   `9711111112`/`9711111113`) / password `Test@123` / MPIN `1122` / token
   `123456`. The older `9806800001–5` / `Nepal@123` set still appears in eSewa's
   ePay v2 walkthrough and may work — the wallets are shared, so a spent or
-  locked one looks exactly like a broken integration.
+  locked one looks exactly like a broken integration. If a payment dies at the
+  debit step, see *If eSewa says the payment failed* below.
 - **Khalti** — `https://dev.khalti.com/api/v2/epayment/*`, Khalti's published
   sandbox key by default (`KHALTI_SECRET_KEY` overrides it with your own from
   test-admin.khalti.com), test payer `9800000001` / MPIN `1111` / OTP `987654`.
@@ -87,6 +88,12 @@ surface that cannot POST a form — a system browser — but it is the fallback 
 not the route a phone takes: `planCheckout` prefers the signed fields whenever
 the client can use them.
 
+The sheet's header carries three things a payer can check against what the
+gateway's own page asks for: the amount (`detail`, taken from the initiate
+response), the gateway's reference for this attempt
+(`fields.transaction_uuid`), and the caution that matters — for eSewa, that the
+test session ends about five minutes after login.
+
 ## If eSewa says the payment failed
 
 Two different things can be going on, and they need different answers:
@@ -97,21 +104,50 @@ Two different things can be going on, and they need different answers:
   can be verified from that page, so `initiate` checks the host first and the
   simulator takes over instead (see below).
 - **The transaction failed after login.** If the token verifies and the confirm
-  screen appears, the credentials were fine — the *debit* is what failed. That is
-  almost always the test wallet's balance against the amount (these wallets are
-  shared between every integrator, and the app pays a real booking amount, so a
-  large booking can exceed what the wallet holds), or eSewa's own UAT. Try
-  another wallet (`9711111111`–`9711111114`; `9806800001`–`9806800005` are older
-  but sometimes funded) and a smaller payment. `Payments::esewaTestLoginHint()`
-  prints the current login and the alternates on the checkout page for exactly
-  this.
+  screen appears, the credentials were fine — the *debit* is what failed, and
+  eSewa's status API says so in one word: `FAILED` (a session it never saw is
+  `NOT_FOUND` instead, which is a different bug). Two things cause it:
+
+  1. **The shared test wallet cannot cover the amount.** The docs promise
+     "adequate balance will be updated to test user account", but the wallets
+     are shared between every integrator and a real booking amount (hundreds or
+     thousands of rupees) can exceed what is in them. Pay a *small* amount — a
+     teammate's share or a small payment request with eSewa — or another wallet
+     (`9711111111`–`9711111114`; `9806800001`–`9806800005` are older but
+     sometimes funded).
+  2. **The login session sat for about five minutes.** eSewa's own docs: if the
+     payment is not made within five minutes of logging in, the transaction
+     fails and must be reinitiated. Logging in again and paying straight away is
+     the whole fix; the sheet's header says so while the payer is on the page.
+
+  `Payments::esewaTestLoginHint()` prints the current login and the alternates
+  on the checkout page for exactly this.
+
+The app says all of this on the failure screen itself. The server hands back
+what eSewa answered — status, amount, transaction uuid (`'esewa' => [… ]` in
+`recoverSession`) — and the screen spells it out
+(`describeCheck` in `src/lib/checkout.ts`), so "it failed" arrives with the
+amount and the reference worth quoting.
 
 Because eSewa can also show a failure *after* taking the money, the failure
-screen offers **Check with eSewa**: the server looks up the transaction it
-started (`recoverSession`, using the stored uuid) and settles it through the
-normal path if eSewa's status API says COMPLETE. And a status that lags —
-PENDING, AMBIGUOUS, even NOT_FOUND moments after completion — no longer blocks a
-signed COMPLETE payment; only CANCELED and the refunds do.
+screen asks eSewa itself, on arrival (`Check with eSewa again` repeats it): the
+server looks up the transaction it started (`recoverSession`, using the stored
+uuid) and settles it through the normal path if eSewa's status API says
+COMPLETE. And a status that lags — PENDING, AMBIGUOUS, even NOT_FOUND moments
+after completion — no longer blocks a signed COMPLETE payment; only CANCELED and
+the refunds do.
+
+### When one gateway refuses, try the other one
+
+The two test servers are independent: eSewa's shared wallets failing says
+nothing about Khalti's sandbox (test payer `9800000001`, MPIN `1111`, OTP
+`987654`), and vice versa. So both failure screens offer the *other* gateway as
+their second button, and `switchLastCheckoutGateway` in `src/lib/checkout.ts`
+carries it out: it saves the choice the way the booking cards do
+(`chooseBookingPayment`, `chooseBookingTeamPayment`, `chooseBookingPaymentRequest`
+— both gateways refuse a target marked for the other one), drops the old session
+id and simulator path, and starts the new checkout in place. The payer never has
+to go back and find the booking again.
 
 ## Falling back, and the simulator
 

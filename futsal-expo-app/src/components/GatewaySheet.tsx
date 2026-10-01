@@ -80,21 +80,23 @@ export function GatewaySheet() {
 
     const params = returnParams(url);
     const isEsewa = url.includes("/payment/esewa");
+    const query = Object.entries(params)
+      .map(([key, value]) => `${key}=${encodeURIComponent(value)}`)
+      .join("&");
 
     closeInAppGateway();
 
     if (isEsewa) {
+      // Everything eSewa appended is carried through. On success that is the
+      // signed `data` blob; on a failure it is whatever reason it chose to
+      // give, which is worth showing rather than swallowing.
       router.push(
         (params.data
           ? `/payment/esewa/success?data=${encodeURIComponent(params.data)}`
-          : `/payment/esewa/failure`) as never,
+          : `/payment/esewa/failure${query ? `?${query}` : ""}`) as never,
       );
       return;
     }
-
-    const query = Object.entries(params)
-      .map(([key, value]) => `${key}=${encodeURIComponent(value)}`)
-      .join("&");
 
     router.push(`/payment/khalti/callback?${query}` as never);
   }
@@ -123,10 +125,24 @@ export function GatewaySheet() {
             </Text>
             <View style={styles.subRow}>
               <Lock size={11} color={colors.emerald600} />
-              <Text style={[styles.sub, { color: c.textMuted }]}>{session.label}</Text>
+              <Text style={[styles.sub, { color: c.textMuted }]}>
+                {session.label}
+                {/* eSewa's own reference for this attempt: support asks for it,
+                    and it is how the status API names the session afterwards. */}
+                {session.fields?.transaction_uuid ? ` · ref ${session.fields.transaction_uuid}` : ""}
+              </Text>
             </View>
+            {session.detail ? (
+              <Text style={[styles.detail, { color: c.text }]}>{session.detail}</Text>
+            ) : null}
           </View>
         </View>
+
+        {session.note ? (
+          <Text style={[styles.note, { color: c.textMuted, borderColor: c.border, backgroundColor: c.surface }]}>
+            {session.note}
+          </Text>
+        ) : null}
 
         {problem ? (
           <View style={[styles.problem, { backgroundColor: c.surface, borderColor: c.border }]}>
@@ -196,6 +212,15 @@ const styles = StyleSheet.create({
   title: { fontSize: fontSize.base, fontWeight: "900" },
   subRow: { flexDirection: "row", alignItems: "center", gap: 4, marginTop: 2 },
   sub: { fontSize: fontSize.xs, fontWeight: "700" },
+  detail: { fontSize: fontSize.sm, fontWeight: "800", marginTop: 2 },
+  note: {
+    fontSize: fontSize.xs,
+    lineHeight: 17,
+    fontWeight: "700",
+    paddingHorizontal: space[3],
+    paddingVertical: space[2],
+    borderBottomWidth: 1,
+  },
   loading: {
     position: "absolute",
     top: 0,
