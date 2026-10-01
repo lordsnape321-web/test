@@ -69,7 +69,17 @@ values are inlined into the bundle at build time. Before opening the app, check
 ```bash
 npm run typecheck   # tsc --noEmit
 npm run smoke       # live Laravel API booking/payment smoke test
+node scripts/parity.test.mjs   # web/mobile parity guards (no backend needed)
 ```
+
+`scripts/armband.test.mjs`, `scripts/batch.test.mjs` and
+`scripts/parity.test.mjs` are source-level regression guards and run plain.
+`scripts/parity.test.mjs` is the web/mobile parity one — it pins that every
+confirmation goes through `src/lib/confirm.ts` (the browser's own dialog on web,
+`Alert` on a phone) instead of `Alert.alert`, which react-native-web implements
+as a no-op, and it holds the shapes of this round's other five fixes: a single
+label per field, a swatch row that wraps, a delete cue on the side the swipe
+uncovers, and the owner's delete-account flow.
 
 `npm run smoke` bundles `scripts/smoke.ts` with esbuild and drives the same
 `src/lib/api.ts` and `src/api/index.ts` modules the app ships through signup →

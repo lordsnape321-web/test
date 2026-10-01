@@ -1,4 +1,5 @@
-import { Alert, Linking } from "react-native";
+import { Linking } from "react-native";
+import { notify } from "@/lib/confirm";
 import { mapsUrl } from "@/lib/location";
 
 /**
@@ -21,7 +22,7 @@ export async function openLocation(
     return true;
   } catch {
     // A desktop browser preview, or a phone with no maps app and no browser.
-    Alert.alert("Couldn't open Maps", "Copy the address and search for it in your maps app.");
+    notify("Couldn't open Maps", "Copy the address and search for it in your maps app.");
 
     return false;
   }

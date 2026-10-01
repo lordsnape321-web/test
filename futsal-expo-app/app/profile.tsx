@@ -569,8 +569,10 @@ const styles = StyleSheet.create({
   fieldError: { fontSize: fontSize.xs, fontWeight: "700", color: colors.red500, marginTop: 4 },
   fieldHint: { fontSize: fontSize.xs, marginTop: 4 },
 
-  /* Swatches */
-  swatches: { flexDirection: "row", gap: space[2] },
+  /* Swatches — wrap, so the eighth 36px dot never hangs off a narrow phone
+     (or a split web window). The selected ring is drawn inside the fixed
+     36px box, so picking a colour never changes the dot's size either. */
+  swatches: { flexDirection: "row", flexWrap: "wrap", gap: space[2] },
   swatch: { width: 36, height: 36, borderRadius: 18, alignItems: "center", justifyContent: "center", borderWidth: 2, borderColor: "transparent" },
 
   /* Password strength */

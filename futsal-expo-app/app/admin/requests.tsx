@@ -17,7 +17,6 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   AppState,
   ActivityIndicator,
-  Alert,
   DeviceEventEmitter,
   Image,
   Pressable,
@@ -29,6 +28,7 @@ import {
 } from "react-native";
 import { CARD_IMAGE_WIDTH, sizedImage } from "@/lib/images";
 import { fetchBookings, fetchVenues, patchBooking } from "@/api";
+import { confirmAction, notify } from "@/lib/confirm";
 import { PlayerRatingBadge } from "@/components/PlayerRating";
 import { BookingLedgerPanel } from "@/components/BookingLedgerPanel";
 import { ReceiptViewer } from "@/components/ReceiptUploader";
@@ -171,19 +171,19 @@ export default function OwnerRequests() {
 
   function decide(id: number, ok: boolean) {
     if (!ok) {
-      Alert.alert(
-        "Decline this booking request?",
-        "The player will be notified.",
-        [
-          { text: "Keep pending", style: "cancel" },
-          {
-            text: "Decline",
-            style: "destructive",
-            onPress: () => {
-              void runDecide(id, false);
-            },
-          },
-        ],
+      // Confirm on every platform: the native alert is a no-op on the web
+      // build, which is what made Decline do nothing in the browser.
+      confirmAction(
+        {
+          title: "Decline this booking request?",
+          message: "The player will be notified.",
+          confirmLabel: "Decline",
+          cancelLabel: "Keep pending",
+          destructive: true,
+        },
+        () => {
+          void runDecide(id, false);
+        },
       );
       return;
     }
@@ -208,7 +208,7 @@ export default function OwnerRequests() {
       DeviceEventEmitter.emit("owner-bookings-changed");
       await load();
     } catch {
-      Alert.alert("Something went wrong", "Try again in a moment.");
+      notify("Something went wrong", "Try again in a moment.");
     } finally {
       setActing(null);
     }
@@ -234,7 +234,7 @@ export default function OwnerRequests() {
       });
       await load();
     } catch (e) {
-      Alert.alert("Couldn't save advance", e instanceof Error ? e.message : "Try again");
+      notify("Couldn't save advance", e instanceof Error ? e.message : "Try again");
     } finally {
       setAdvanceSaving(null);
     }

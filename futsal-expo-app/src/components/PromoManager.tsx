@@ -29,6 +29,7 @@ import {
 import { useTheme } from "@/context/ThemeContext";
 import * as Clipboard from "expo-clipboard";
 import { apiJson } from "@/lib/api";
+import { confirmAction } from "@/lib/confirm";
 import { formatNPR, todayISO } from "@/lib/futsal";
 import { normalizePromoCode, promoDiscountFor, suggestPromoCode } from "@/lib/promos";
 import {
@@ -360,38 +361,34 @@ export function PromoManager({
   }
 
   async function remove(p: Promo) {
-    // confirm() has no RN equivalent — a second explicit tap would be easy to
-    // hit by accident, so deletion requires typing the code is overkill for a
-    // promo; use a simple Alert from RN.
-    const { Alert } = await import("react-native");
-    Alert.alert(
-      `Delete ${p.code}?`,
-      "Players won't be able to use it any more.",
-      [
-        { text: "Keep it", style: "cancel" },
-        {
-          text: "Delete",
-          style: "destructive",
-          onPress: () => {
-            void (async () => {
-              setBusy(p.id);
-              setError("");
-              try {
-                await apiJson(`/api/promos/${p.id}?ownerId=${ownerId}`, { method: "DELETE" });
-                setNotice(`${p.code} deleted 🗑️`);
-                await load();
-              } catch (e) {
-                // Already-redeemed codes are paused server-side and returned as
-                // a useful 409 message; show that Laravel message in the notice.
-                setNotice(e instanceof Error ? e.message : "Couldn't delete 🙏");
-                await load();
-              } finally {
-                setBusy(null);
-              }
-            })();
-          },
-        },
-      ],
+    // A real dialog on both platforms: `Alert.alert` is a no-op on web, and a
+    // promo should not disappear (or refuse to) without being asked.
+    confirmAction(
+      {
+        title: `Delete ${p.code}?`,
+        message: "Players won't be able to use it any more.",
+        confirmLabel: "Delete",
+        cancelLabel: "Keep it",
+        destructive: true,
+      },
+      () => {
+        void (async () => {
+          setBusy(p.id);
+          setError("");
+          try {
+            await apiJson(`/api/promos/${p.id}?ownerId=${ownerId}`, { method: "DELETE" });
+            setNotice(`${p.code} deleted 🗑️`);
+            await load();
+          } catch (e) {
+            // Already-redeemed codes are paused server-side and returned as
+            // a useful 409 message; show that Laravel message in the notice.
+            setNotice(e instanceof Error ? e.message : "Couldn't delete 🙏");
+            await load();
+          } finally {
+            setBusy(null);
+          }
+        })();
+      },
     );
   }
 

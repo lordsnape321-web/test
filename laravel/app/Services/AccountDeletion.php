@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Booking;
 use App\Models\BookingPaymentRequest;
+use App\Models\Court;
 use App\Models\MatchJoin;
 use App\Models\Notification;
 use App\Models\OpenMatch;
@@ -11,6 +12,7 @@ use App\Models\TeamInvite;
 use App\Models\TeamMember;
 use App\Models\TeamRequest;
 use App\Models\User;
+use App\Models\Venue;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -59,6 +61,7 @@ class AccountDeletion
             self::releaseGameSpots($id);
             self::leaveTeams($id);
             self::clearNotifications($id);
+            self::retireVenues($id);
 
             $user->forceFill([
                 'name' => self::CLOSED_NAME,
@@ -131,5 +134,32 @@ class AccountDeletion
     private static function clearNotifications(int $userId): void
     {
         Notification::where('user_id', $userId)->delete();
+    }
+
+    /**
+     * The venues this account runs.
+     *
+     * Closing an owner's account must not leave a ground advertised with nobody
+     * on the desk, so each one is retired the same way the My Venues screen
+     * retires it: the courts go dark, requests still waiting on that desk are
+     * withdrawn, and the venue leaves every listing. Bookings already confirmed
+     * or played stay on record — the players' history and the ledger still add
+     * up, they just point at a retired ground.
+     */
+    private static function retireVenues(int $userId): void
+    {
+        foreach (Venue::where('owner_id', $userId)->get() as $venue) {
+            $courtIds = Court::where('venue_id', $venue->id)->pluck('id')->all();
+
+            if ($courtIds !== []) {
+                Court::whereIn('id', $courtIds)->update(['is_active' => false]);
+
+                Booking::whereIn('court_id', $courtIds)
+                    ->where('status', 'pending')
+                    ->update(['status' => 'cancelled', 'advance_payment_status' => 'cancelled']);
+            }
+
+            $venue->forceFill(['deleted_at' => now()])->save();
+        }
     }
 }

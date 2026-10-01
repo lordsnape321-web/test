@@ -661,7 +661,7 @@ export function LeagueForm({
                   <ImagePlus size={14} color={c.textFaint} />
                   <Text style={labelStyle}>Banner</Text>
                 </View>
-                <ImagePicker value={bannerUrl} onChange={setBannerUrl} label="League banner" />
+                <ImagePicker value={bannerUrl} onChange={setBannerUrl} label="" />
               </View>
 
               {error ? (

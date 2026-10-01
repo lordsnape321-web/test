@@ -16,7 +16,6 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   AppState,
   ActivityIndicator,
-  Alert,
   Modal,
   Pressable,
   ScrollView,
@@ -32,6 +31,7 @@ import { ReceiptViewer } from "@/components/ReceiptUploader";
 import { SettleAmendButton } from "@/components/SettleAmendButton";
 import { useAuth } from "@/context/AuthContext";
 import { useTheme } from "@/context/ThemeContext";
+import { confirmAction, notify } from "@/lib/confirm";
 import { formatNPR, formatTime12, prettyDate } from "@/lib/futsal";
 import { SETTLE_EDIT_WINDOW_MS, formatWindowLeft, settleWindow } from "@/lib/booking-ledger";
 import { useBreakpoints } from "@/lib/responsive";
@@ -172,9 +172,33 @@ export default function OwnerBookings() {
     return mine.filter((b) => b.status === filter);
   }, [bookings, myVenueIds, filter]);
 
+  /** Decline and Cancel ask first — on every platform, not only where Alert works. */
+  function confirmStatus(b: Booking, status: "rejected" | "cancelled", label: string) {
+    confirmAction(
+      {
+        title: `${label} booking #FN-${b.id}?`,
+        message:
+          status === "rejected"
+            ? "The player will be told the request was declined."
+            : "The venue stops holding the slot, and the cancellation policy applies.",
+        confirmLabel: label,
+        cancelLabel: "Keep it",
+        destructive: true,
+      },
+      () => void setStatus(b.id, status),
+    );
+  }
+
   async function setStatus(id: number, status: string, actor: string = "owner") {
-    await patchBooking(id, { status, actor, actorId: user?.id });
-    await load();
+    // Was fire-and-forget: a refused update (or a dead network) looked exactly
+    // like a working button, because nothing was shown and the list did not
+    // move. Now the desk says why.
+    try {
+      await patchBooking(id, { status, actor, actorId: user?.id });
+      await load();
+    } catch (e) {
+      notify(`Could not mark #FN-${id} ${status}`, e instanceof Error ? e.message : "Try again");
+    }
   }
 
   async function submitCancellationMoney(b: Booking, decision: "refunded" | "retained") {
@@ -184,7 +208,7 @@ export default function OwnerBookings() {
       await patchBooking(b.id, { cancellationMoney: decision, actor: "owner", actorId: user.id });
       await load();
     } catch (e) {
-      Alert.alert("Could not update cancellation money", e instanceof Error ? e.message : "Try again");
+      notify("Could not update cancellation money", e instanceof Error ? e.message : "Try again");
     } finally {
       setResolvingCancellation(null);
     }
@@ -192,15 +216,17 @@ export default function OwnerBookings() {
 
   function resolveCancellation(b: Booking, decision: "refunded" | "retained") {
     const label = decision === "refunded" ? "Mark refunded" : "Keep payment";
-    Alert.alert(
-      label,
-      decision === "refunded"
-        ? "Only choose this after the money has actually been sent back."
-        : "Record that the received payment is being kept under the cancellation policy.",
-      [
-        { text: "Not now", style: "cancel" },
-        { text: label, onPress: () => void submitCancellationMoney(b, decision) },
-      ],
+    confirmAction(
+      {
+        title: label,
+        message:
+          decision === "refunded"
+            ? "Only choose this after the money has actually been sent back."
+            : "Record that the received payment is being kept under the cancellation policy.",
+        confirmLabel: label,
+        cancelLabel: "Not now",
+      },
+      () => void submitCancellationMoney(b, decision),
     );
   }
 
@@ -596,7 +622,7 @@ export default function OwnerBookings() {
                   ) : null}
                   {b.status === "pending" ? (
                     <Pressable
-                      onPress={() => void setStatus(b.id, "rejected")}
+                      onPress={() => confirmStatus(b, "rejected", "Decline")}
                       style={[styles.actionBtn, styles.actionDanger]}
                       accessibilityRole="button"
                       accessibilityLabel={`Decline booking #FN-${b.id}`}
@@ -607,7 +633,7 @@ export default function OwnerBookings() {
                   ) : null}
                   {b.status === "confirmed" ? (
                     <Pressable
-                      onPress={() => void setStatus(b.id, "cancelled")}
+                      onPress={() => confirmStatus(b, "cancelled", "Cancel")}
                       style={[styles.actionBtn, styles.actionDanger]}
                       accessibilityRole="button"
                       accessibilityLabel={`Cancel booking #FN-${b.id}`}

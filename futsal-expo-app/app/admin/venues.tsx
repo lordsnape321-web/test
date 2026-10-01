@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   Image,
   Modal,
   Pressable,
@@ -43,6 +42,7 @@ import {
   updateVenue,
 } from "@/api";
 import { ReviewRow } from "@/api";
+import { notify } from "@/lib/confirm";
 import { useAuth } from "@/context/AuthContext";
 import { useTheme } from "@/context/ThemeContext";
 import {
@@ -660,7 +660,7 @@ export default function OwnerVenues() {
     const price = draft ? Number(draft) : court.pricePerHour;
     const err = validateMoney(price, { min: 100, max: 20000, label: "Price per hour" });
     if (err) {
-      Alert.alert("Price", err);
+      notify("Price", err);
       return;
     }
     await updateCourt(court.id, {
@@ -1322,7 +1322,7 @@ export default function OwnerVenues() {
               />
 
               <FieldLabel>Cover photo 📸</FieldLabel>
-              <ImagePicker value={eImage} onChange={setEImage} label="Cover photo 📸" />
+              <ImagePicker value={eImage} onChange={setEImage} label="" />
 
               <View style={styles.twoCol}>
                 <View style={styles.grow}>
@@ -1392,18 +1392,19 @@ export default function OwnerVenues() {
                     style={inputStyle}
                   />
                 </View>
-                <View style={styles.grow}>
-                  <FieldLabel>What it&apos;s for</FieldLabel>
-                  <TextInput
-                    value={eExtraNote}
-                    onChangeText={setEExtraNote}
-                    placeholder="Water and refreshments"
-                    placeholderTextColor={c.textFaint}
-                    maxLength={120}
-                    style={inputStyle}
-                  />
-                </View>
+                <View style={styles.grow} />
               </View>
+
+              {/* Full width on purpose: this is a sentence, not a number. */}
+              <FieldLabel>What it&apos;s for</FieldLabel>
+              <TextInput
+                value={eExtraNote}
+                onChangeText={setEExtraNote}
+                placeholder="Water and refreshments"
+                placeholderTextColor={c.textFaint}
+                maxLength={120}
+                style={inputStyle}
+              />
               <Text style={[styles.hint, { color: c.textFaint }]}>
                 {eExtraFee > 0
                   ? `The payment desk prefills ${formatNPR(eExtraFee)}${eExtraNote ? ` for "${eExtraNote}"` : ""} — still editable per booking.`
@@ -1585,7 +1586,7 @@ export default function OwnerVenues() {
               </View>
 
               <FieldLabel>Court photo 📸</FieldLabel>
-              <ImagePicker value={cImage} onChange={setCImage} label="Court photo 📸" />
+              <ImagePicker value={cImage} onChange={setCImage} label="" />
 
               <FieldLabel>Included facilities ✨</FieldLabel>
               <ChipPicker
@@ -1918,7 +1919,7 @@ function AddVenueModal(props: {
             />
 
             <FieldLabel>Cover photo 📸</FieldLabel>
-            <ImagePicker value={fImage} onChange={setFImage} label="Cover photo 📸" />
+            <ImagePicker value={fImage} onChange={setFImage} label="" />
 
             <View style={styles.twoCol}>
               <View style={styles.grow}>
@@ -1989,18 +1990,19 @@ function AddVenueModal(props: {
                   style={inputStyle as never}
                 />
               </View>
-              <View style={styles.grow}>
-                <FieldLabel>What it&apos;s for</FieldLabel>
-                <TextInput
-                  value={fExtraNote}
-                  onChangeText={setFExtraNote}
-                  placeholder="Water and refreshments"
-                  placeholderTextColor={c.textFaint}
-                  maxLength={120}
-                  style={inputStyle as never}
-                />
-              </View>
+              <View style={styles.grow} />
             </View>
+
+            {/* Full width on purpose: this is a sentence, not a number. */}
+            <FieldLabel>What it&apos;s for</FieldLabel>
+            <TextInput
+              value={fExtraNote}
+              onChangeText={setFExtraNote}
+              placeholder="Water and refreshments"
+              placeholderTextColor={c.textFaint}
+              maxLength={120}
+              style={inputStyle as never}
+            />
             <Text style={[styles.hint, { color: c.textFaint }]}>
               Prefills the extra-charge line on the payment desk — the water and spare balls bought
               during a match, added on top of the court fee. Leave it at 0 if you don&apos;t

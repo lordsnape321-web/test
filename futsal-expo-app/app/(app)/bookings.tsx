@@ -26,7 +26,6 @@ import {
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   Image,
   Modal,
   Pressable,
@@ -66,6 +65,7 @@ import { useTheme } from "@/context/ThemeContext";
 import { hoursUntilGame, type PlayerStats } from "@/lib/loyalty";
 import type { TeamLedgerMember, UserTeamLite } from "@/lib/types";
 import { openLocation } from "@/lib/open-location";
+import { confirmAction, notify } from "@/lib/confirm";
 import { formatNPR, formatTime12, gamePlayed, prettyDate } from "@/lib/futsal";
 import { moneyOf } from "@/lib/money";
 import { APP_BUILD } from "@/lib/build";
@@ -264,7 +264,7 @@ export default function BookingsScreen() {
       const name = teamChoices.find((team) => team.id === teamId)?.name ?? "Your team";
       setTeamPickerFor(null);
       await load(true);
-      Alert.alert("Team added 👥", `${name} is now on this booking. Its cost is split across the squad, and you can ask each player to pay their part from the booking's details.`);
+      notify("Team added 👥", `${name} is now on this booking. Its cost is split across the squad, and you can ask each player to pay their part from the booking's details.`);
     } catch (e) {
       setTeamPickError(e instanceof Error ? e.message : "Could not add that team.");
     } finally {
@@ -363,7 +363,7 @@ export default function BookingsScreen() {
       await load();
       setUploadFor(null);
     } catch (e) {
-      Alert.alert("Couldn't save receipt", e instanceof Error ? e.message : "Try again");
+      notify("Couldn't save receipt", e instanceof Error ? e.message : "Try again");
     } finally {
       setUploading(false);
     }
@@ -572,30 +572,28 @@ export default function BookingsScreen() {
   }
 
   async function cancel(b: DiaryBooking) {
-    Alert.alert(
-      "Cancel this booking?",
-      "The venue will be told straight away — and it dings your reliability stars ⭐.",
-      [
-        { text: "Keep it", style: "cancel" },
-        {
-          text: "Cancel booking",
-          style: "destructive",
-          onPress: () => {
-            void (async () => {
-              setCancelling(b.id);
-              setCancelError("");
-              try {
-                await patchBooking(b.id, { status: "cancelled", actor: "player", actorId: user?.id });
-                await load();
-              } catch (e) {
-                setCancelError(e instanceof Error ? e.message : "Couldn't cancel");
-              } finally {
-                setCancelling(null);
-              }
-            })();
-          },
-        },
-      ],
+    confirmAction(
+      {
+        title: "Cancel this booking?",
+        message: "The venue will be told straight away — and it dings your reliability stars ⭐.",
+        confirmLabel: "Cancel booking",
+        cancelLabel: "Keep it",
+        destructive: true,
+      },
+      () => {
+        void (async () => {
+          setCancelling(b.id);
+          setCancelError("");
+          try {
+            await patchBooking(b.id, { status: "cancelled", actor: "player", actorId: user?.id });
+            await load();
+          } catch (e) {
+            setCancelError(e instanceof Error ? e.message : "Couldn't cancel");
+          } finally {
+            setCancelling(null);
+          }
+        })();
+      },
     );
   }
 
