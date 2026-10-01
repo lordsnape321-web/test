@@ -10,6 +10,7 @@ import {
   subscribeCheckout,
   type RememberedCheckout,
 } from "@/lib/checkout";
+import { reopenDemoCheckout } from "@/lib/gateway";
 import { useTheme } from "@/context/ThemeContext";
 import { colors, fontSize, radius, space } from "@/theme";
 
@@ -86,7 +87,7 @@ export function PaymentPendingBanner({ onSettled }: { onSettled?: () => void }) 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  if (!attempt || (!attempt.check && !attempt.mockPath && !attempt.settle)) return null;
+  if (!attempt || (!attempt.check && !attempt.demoUrl)) return null;
 
   if (settled) {
     return (
@@ -127,8 +128,8 @@ export function PaymentPendingBanner({ onSettled }: { onSettled?: () => void }) 
       </View>
 
       <Text style={[styles.body, { color: c.textMuted }]}>
-        {attempt.label} was started on the gateway&apos;s page. If you finished it, check now — if you did
-        not, it is still waiting.
+        {attempt.label} was started{attempt.demoUrl ? " on the demo checkout" : " on the gateway's page"}. If you
+        finished it, check now — if you did not, it is still waiting.
       </Text>
 
       {message ? <Text style={[styles.body, { color: colors.red600 }]}>{message}</Text> : null}
@@ -147,25 +148,10 @@ export function PaymentPendingBanner({ onSettled }: { onSettled?: () => void }) 
           </Pressable>
         ) : null}
 
-        {attempt.mockPath || attempt.settle ? (
+        {attempt.demoUrl ? (
           <Pressable
             onPress={() => {
-              if (attempt.mockPath) {
-                router.push(attempt.mockPath as never);
-                return;
-              }
-
-              void (async () => {
-                setBusy(true);
-                try {
-                  const line = await attempt.settle?.();
-                  if (line) setSettled(line);
-                } catch (e) {
-                  setMessage(e instanceof Error ? e.message : "That payment could not be recorded.");
-                } finally {
-                  setBusy(false);
-                }
-              })();
+              if (attempt.demoUrl) reopenDemoCheckout(attempt.demoUrl, attempt.label);
             }}
             disabled={busy}
             style={[styles.action, { borderColor: c.border }]}

@@ -21,7 +21,7 @@ import {
 import { useAuth } from "@/context/AuthContext";
 import { useTheme } from "@/context/ThemeContext";
 import { ApiError } from "@/lib/api";
-import { prepareGatewayTab, realGatewayEnabled, rememberCheckout, startGatewayCheckout } from "@/lib/checkout";
+import { prepareGatewayTab, rememberCheckout, startGatewayCheckout } from "@/lib/checkout";
 import { formatWindowLeft } from "@/lib/booking-ledger";
 import { formatNPR, formatTime12, prettyDate } from "@/lib/futsal";
 import { locationLabel } from "@/lib/location";
@@ -167,12 +167,12 @@ export default function BookingDetail() {
   /**
    * Pay via a gateway.
    *
-   * The real test servers — eSewa UAT and Khalti's sandbox — are the default:
-   * the server builds a session for this exact target, the browser is sent to
-   * the gateway, and the gateway returns it to a screen that verifies the
-   * payment before anything is marked paid. When the server cannot reach the
-   * gateway it answers `mock: true` and the app falls through to the local
-   * simulator below, so a checkout always has somewhere to go.
+   * The server builds a session for this exact target and answers with the page
+   * to open — the replica of the gateway's own page by default, the gateway's
+   * test server when the app is set to it. Either way the page returns to a
+   * screen that verifies the payment before anything is marked paid, and when
+   * the server cannot reach a real gateway it hands over the replica instead,
+   * so a checkout always has somewhere to go.
    */
   async function pay(method: "esewa" | "khalti", target: "auto" | "advance" = "auto", requestId?: number) {
     if (!booking || !user) return;
@@ -182,8 +182,6 @@ export default function BookingDetail() {
     // Reserve the browser tab while the tap that started this is still live.
     prepareGatewayTab();
     try {
-      // The simulator screens call the same verify endpoints, so a fallback
-      // payment moves through the identical server path.
       const payingAdvance = target === "advance" && booking.userId === user.id;
       const request = payingAdvance ? undefined : booking.paymentRequests?.find(
         (item) => item.payerId === user.id && item.status === "pending" && (!requestId || item.id === requestId),
@@ -203,19 +201,11 @@ export default function BookingDetail() {
           : booking.advancePaymentRequired && booking.advancePaymentStatus !== "paid"
             ? advanceOf(booking, ledger?.totals.paid ?? 0).remaining
             : Math.max(0, ledger?.totals.balance ?? 0);
-      const targetQuery = payingAdvance
-        ? `&userId=${user.id}&paymentPurpose=advance`
-        : request
-        ? `&paymentRequestId=${request.id}&userId=${user.id}`
-        : teamShare && teamShare.paymentStatus !== "paid"
-          ? `&teamPaymentId=${teamShare.id}&userId=${user.id}`
-          : `&userId=${user.id}`;
-      const path = method === "esewa"
-        ? `/payment/esewa/mock?bookingId=${bookingId}&amount=${encodeURIComponent(String(amount))}${targetQuery}`
-        : `/payment/khalti/mock?bookingId=${bookingId}&amount=${encodeURIComponent(String(amount))}${targetQuery}&pidx=mock-pidx`;
 
       // One input, used both to start the checkout and to remember it: the
       // return screens live on a different route and have to rebuild it.
+      // (`amount` above is what the ledger says is owed; the server prices the
+      // checkout itself and refuses a target that must not be paid.)
       const input = {
         bookingId,
         userId: user.id,
@@ -229,34 +219,14 @@ export default function BookingDetail() {
         method,
         input,
         label: `${method === "esewa" ? "eSewa" : "Khalti"} · booking #${bookingId}`,
-        mockPath: path,
         donePath: "/bookings?refresh=1",
       });
 
-      // Named apart from the `target` argument (which says *what* is being paid
-      // for): this one is where the demo checkout runs.
-      let mockRoute = path;
+      const outcome = await startGatewayCheckout(method, input);
 
-      if (realGatewayEnabled()) {
-        const outcome = await startGatewayCheckout(method, input);
+      if (outcome.status === "error") setError(outcome.message);
 
-        if (outcome.status === "gateway") {
-          setBusy(null);
-          return;
-        }
-
-        if (outcome.status === "error") {
-          setError(outcome.message);
-          setBusy(null);
-          return;
-        }
-
-        // outcome.status === "simulator" — fall through to the demo checkout,
-        // preferring the server's own route when it sent one.
-        if (outcome.url) mockRoute = outcome.url;
-      }
-
-      router.push(mockRoute as never);
+      setBusy(null);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Could not start this payment.");
       setBusy(null);

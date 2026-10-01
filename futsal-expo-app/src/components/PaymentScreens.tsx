@@ -1,12 +1,11 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { CheckCircle2, CreditCard, Loader2, PartyPopper, ShieldCheck, XCircle } from "lucide-react-native";
+import { CheckCircle2, CreditCard, Loader2, PartyPopper, XCircle } from "lucide-react-native";
 import React, { useEffect, useRef, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { ApiError } from "@/lib/api";
 import { formatNPR } from "@/lib/futsal";
-import { TextControl } from "@/components/ui";
-import { leaguePaymentsAction, verifyEsewa, verifyKhalti } from "@/api";
+import { verifyEsewa, verifyKhalti } from "@/api";
 import {
   appReturnLinks,
   esewaDataFromLocation,
@@ -18,6 +17,7 @@ import {
   canRetryCheckout,
   canSwitchCheckout,
   checkLastCheckout,
+  clearCheckout,
   pendingGateway,
   pendingRecord,
   retryLastCheckout,
@@ -53,305 +53,15 @@ function numberParam(value: string | string[] | undefined): number {
   return Number.isFinite(n) ? n : 0;
 }
 
-/** Native versions of the hosted gateway pages used by the web app. */
-export function EsewaMockScreen() {
-  const params = useLocalSearchParams() as Params;
-  const router = useRouter();
-  const leagueId = one(params.leagueId);
-  const requestId = one(params.paymentRequestId);
-  return <GatewayMock kind="esewa" params={params} onDone={(id) => router.replace(leagueId ? `/leagues/${leagueId}?paid=1` : `/payment/esewa/success?mock=1&bookingId=${id}${requestId ? `&paymentRequestId=${requestId}` : ""}`)} onCancel={(id) => router.replace(leagueId ? `/leagues/${leagueId}` : `/payment/esewa/failure?bookingId=${id}`)} />;
-}
-
-export function KhaltiMockScreen() {
-  const params = useLocalSearchParams() as Params;
-  const router = useRouter();
-  const leagueId = one(params.leagueId);
-  const requestId = one(params.paymentRequestId);
-  return <GatewayMock kind="khalti" params={params} onDone={(id) => router.replace(leagueId ? `/leagues/${leagueId}?paid=1` : `/payment/khalti/callback?mock=1&pidx=${encodeURIComponent(one(params.pidx))}&bookingId=${id}${requestId ? `&paymentRequestId=${requestId}` : ""}&status=Completed`)} onCancel={(id) => router.replace(leagueId ? `/leagues/${leagueId}` : `/payment/khalti/callback?bookingId=${id}&status=User%20canceled`)} />;
-}
-
 /**
- * The demo checkout — eSewa's and Khalti's pages, replicated.
+ * The demo checkout is a *page*, not a screen here.
  *
- * This is what a *demo* has to be: the same three steps the payer knows (sign
- * in, confirm with the MPIN, type the token), the same amount and merchant, the
- * same green tick at the end — but not dependent on eSewa's shared test wallets
- * holding money, on Khalti's sandbox answering, or on the demo venue's Wi-Fi
- * reaching either of them.
- *
- * It is a replica, not a fake: finishing it posts `mockApprove` to the *same*
- * verify endpoint a real payment uses, so the booking states, the ledger, the
- * amounts and the notifications are all the real code paths. Only the gateway
- * is pretend.
- *
- * The credentials are the published test logins — the same ones the real
- * servers accept, so a demo built on this looks and behaves like the real
- * thing, and a wrong value is refused with the value to use instead.
+ * It used to be two React screens that faked the gateways. They are gone: the
+ * replica now lives in `laravel/public/demo-esewa.html` and `demo-khalti.html`,
+ * and it opens in the in-app sheet exactly like the real gateway's page — so
+ * the interception, the return route and the verify call are the same code
+ * path for both, and the app carries no second checkout to keep in step.
  */
-const DEMO_LOGINS = {
-  esewa: {
-    ids: ["9711111111", "9711111112", "9711111113", "9711111114", "9806800001", "9806800002", "9806800003", "9806800004", "9806800005"],
-    id: "9711111111",
-    password: "Test@123",
-    pin: "1122",
-    token: "123456",
-    steps: [
-      { title: "Sign in to eSewa", sub: "Your eSewa ID and password.", cta: "Log in" },
-      { title: "Confirm with MPIN", sub: "The 4-digit MPIN of your eSewa wallet.", cta: "Continue" },
-      { title: "Verification token", sub: "The 6-digit token eSewa sent to your phone.", cta: "Pay" },
-    ],
-  },
-  khalti: {
-    ids: ["9800000000", "9800000001", "9800000002", "9800000003", "9800000004", "9800000005"],
-    id: "9800000001",
-    password: "",
-    pin: "1111",
-    token: "987654",
-    steps: [
-      { title: "Sign in to Khalti", sub: "Your Khalti mobile number.", cta: "Log in" },
-      { title: "Confirm with MPIN", sub: "The 4-digit MPIN of your Khalti account.", cta: "Continue" },
-      { title: "OTP verification", sub: "The 6-digit code Khalti sent you.", cta: "Pay" },
-    ],
-  },
-} as const;
-
-function GatewayMock({ kind, params, onDone, onCancel }: { kind: "esewa" | "khalti"; params: Params; onDone: (bookingId: string) => void; onCancel: (bookingId: string) => void }) {
-  const router = useRouter();
-  const retry = useCheckoutRetry();
-  const [busy, setBusy] = useState(false);
-  // One id per checkout, retained if verification is retried. A subsequent
-  // checkout (e.g. the balance after a deposit) must get a different id.
-  const [checkoutId] = useState(() => `mock-${Date.now()}-${Math.random().toString(36).slice(2)}`);
-  const [error, setError] = useState("");
-  const [step, setStep] = useState(0);
-  const [id, setId] = useState("");
-  const [password, setPassword] = useState("");
-  const [pin, setPin] = useState("");
-  const [token, setToken] = useState("");
-  const bookingId = one(params.bookingId);
-  const teamPaymentId = one(params.teamPaymentId);
-  const paymentRequestId = one(params.paymentRequestId);
-  const leagueId = one(params.leagueId);
-  const teamId = one(params.teamId);
-  const amount = numberParam(params.amount);
-  const isLeague = Boolean(leagueId && teamId);
-  const purple = kind === "khalti";
-  const accent = purple ? "#5C2D91" : "#087443";
-  const soft = purple ? "#FAF5FF" : colors.emerald50;
-  const label = purple ? "Khalti" : "eSewa";
-  const login = DEMO_LOGINS[kind];
-  const steps = login.steps;
-  // `demo=1` means the replica was chosen; without it the gateway was down and
-  // this is the fallback, which the header says out loud.
-  const chosen = one(params.demo) === "1";
-  const fallbackReason = one(params.fallback);
-
-  async function pay() {
-    setBusy(true);
-    setError("");
-    try {
-      if (isLeague) {
-        await leaguePaymentsAction(Number(leagueId), {
-          action: "verify",
-          mockApprove: true,
-          userId: numberParam(params.userId),
-          teamId: Number(teamId),
-          amount,
-          method: label,
-        });
-      } else if (kind === "esewa") {
-        await verifyEsewa({
-          bookingId: Number(bookingId),
-          mockApprove: true,
-          teamPaymentId: teamPaymentId ? Number(teamPaymentId) : undefined,
-          paymentRequestId: paymentRequestId ? Number(paymentRequestId) : undefined,
-          userId: numberParam(params.userId) || undefined,
-          uuid: one(params.uuid) || checkoutId,
-          paymentPurpose: one(params.paymentPurpose) === "advance" ? "advance" : undefined,
-          expectedAmount: amount,
-        });
-      } else {
-        await verifyKhalti({
-          bookingId: Number(bookingId),
-          pidx: one(params.pidx) && one(params.pidx) !== "mock-pidx" ? one(params.pidx) : checkoutId,
-          mockApprove: true,
-          teamPaymentId: teamPaymentId ? Number(teamPaymentId) : undefined,
-          paymentRequestId: paymentRequestId ? Number(paymentRequestId) : undefined,
-          userId: numberParam(params.userId) || undefined,
-          paymentPurpose: one(params.paymentPurpose) === "advance" ? "advance" : undefined,
-          expectedAmount: amount,
-        });
-      }
-      // League checkout returns to its detail page, just like the web mock.
-      onDone(bookingId);
-    } catch (e) {
-      setError(e instanceof ApiError ? e.message : "That demo payment could not be recorded. Nothing was charged.");
-      setBusy(false);
-    }
-  }
-
-  /** Fill every step at once — a demo should not need the host to type. */
-  function fillDemo() {
-    setId(login.id);
-    setPassword(login.password);
-    setPin(login.pin);
-    setToken(login.token);
-    setError("");
-  }
-
-  /**
-   * Move to the next step, or pay on the last one.
-   *
-   * Each step checks its own value against the published test credentials —
-   * the replica is a rehearsal for the real thing, so the values that work
-   * there are the values that work here.
-   */
-  function advance() {
-    const wrong =
-      step === 0
-        ? !(login.ids as readonly string[]).includes(id.trim())
-          ? `Use a demo ${label} ID — ${login.id} works, and the other test wallets do too.`
-          : kind === "esewa" && password !== login.password
-            ? `Wrong password. The eSewa demo password is ${login.password}.`
-            : ""
-        : step === 1
-          ? pin !== login.pin
-            ? `Wrong MPIN. The ${label} demo MPIN is ${login.pin}.`
-            : ""
-          : token !== login.token
-            ? `Wrong token. The ${label} demo ${purple ? "OTP" : "token"} is ${login.token}.`
-            : "";
-
-    if (wrong) {
-      setError(wrong);
-      return;
-    }
-
-    setError("");
-
-    if (step < steps.length - 1) {
-      setStep(step + 1);
-      return;
-    }
-
-    void pay();
-  }
-
-  const stepDef = steps[step];
-
-  return (
-    <SafeAreaView style={[styles.flex, { backgroundColor: accent }]} edges={["bottom"]}>
-      <ScrollView contentContainerStyle={styles.gatewayScroll} keyboardShouldPersistTaps="handled">
-        <View style={styles.gatewayCard}>
-          <View style={[styles.gatewayHead, { backgroundColor: accent }]}>
-            <Text style={styles.gatewayName}>{label}</Text>
-            <Text style={styles.fallbackChip}>
-              {chosen ? `Demo checkout • replica of ${label}` : `Fallback checkout • ${fallbackReason || "gateway unreachable"}`}
-            </Text>
-          </View>
-          <View style={styles.gatewayBody}>
-            <View style={[styles.amountCard, { backgroundColor: soft }]}>
-              <Text style={[styles.amountKicker, { color: accent }]}>Paying to FutsalNepal test store</Text>
-              <Text style={[styles.amount, { color: purple ? "#4C1D95" : "#064E3B" }]}>{formatNPR(amount)}</Text>
-              <Text style={[styles.reference, { color: accent }]}>
-                {isLeague ? `league #${leagueId} • squad #${teamId}` : `booking #${bookingId}`}
-              </Text>
-            </View>
-
-            <View style={styles.stepHead}>
-              <Text style={[styles.stepTitle, { color: accent }]}>{stepDef.title}</Text>
-              <Text style={styles.stepCount}>Step {step + 1} of {steps.length}</Text>
-            </View>
-            <Text style={styles.testText}>{stepDef.sub}</Text>
-
-            {step === 0 ? (
-              <>
-                <TextControl
-                  value={id}
-                  onChangeText={setId}
-                  placeholder={purple ? "98XXXXXXXX" : "9711111111"}
-                  keyboardType="number-pad"
-                  accessibilityLabel={`${label} ID`}
-                />
-                {!purple ? (
-                  <TextControl
-                    value={password}
-                    onChangeText={setPassword}
-                    placeholder="Password"
-                    secureTextEntry
-                    accessibilityLabel="eSewa password"
-                  />
-                ) : null}
-              </>
-            ) : null}
-
-            {step === 1 ? (
-              <TextControl
-                value={pin}
-                onChangeText={setPin}
-                placeholder="MPIN"
-                secureTextEntry
-                keyboardType="number-pad"
-                maxLength={4}
-                accessibilityLabel="MPIN"
-              />
-            ) : null}
-
-            {step === 2 ? (
-              <TextControl
-                value={token}
-                onChangeText={setToken}
-                placeholder={purple ? "OTP" : "Token"}
-                keyboardType="number-pad"
-                maxLength={6}
-                accessibilityLabel={purple ? "OTP" : "Token"}
-              />
-            ) : null}
-
-            <View style={styles.testInfo}>
-              <Text style={styles.testText}>Demo credentials: {login.id}{login.password ? ` / ${login.password}` : ""} · MPIN {login.pin} · {purple ? "OTP" : "token"} {login.token}</Text>
-              <Text style={styles.testText}>A replica of the real page, and the ledger is real — no money moves.</Text>
-            </View>
-
-            {error ? <Text style={styles.error}>{error}</Text> : null}
-
-            <Pressable onPress={advance} disabled={busy} style={[styles.payButton, { backgroundColor: accent }]}>
-              {busy ? <Loader2 size={18} color="#FFFFFF" /> : <ShieldCheck size={18} color="#FFFFFF" />}
-              <Text style={styles.payText}>
-                {busy ? "Processing…" : step === steps.length - 1 ? `${stepDef.cta} ${formatNPR(amount)}` : stepDef.cta}
-              </Text>
-            </Pressable>
-
-            <Pressable onPress={fillDemo} disabled={busy} style={[styles.cancelButton, { borderColor: accent }]}>
-              <Text style={[styles.cancelText, { color: accent }]}>Fill demo credentials</Text>
-            </Pressable>
-
-            {step > 0 ? (
-              <Pressable onPress={() => { setStep(step - 1); setError(""); }} disabled={busy}>
-                <Text style={styles.stepBack}>Back a step</Text>
-              </Pressable>
-            ) : null}
-
-            <Pressable onPress={() => onCancel(bookingId)} disabled={busy} style={styles.cancelButton}>
-              <XCircle size={17} color={colors.stone500} />
-              <Text style={styles.cancelText}>Cancel payment</Text>
-            </Pressable>
-
-            {chosen && retry.retryable ? (
-              <Pressable onPress={() => void retry.retryOn("real")} disabled={retry.busy}>
-                <Text style={[styles.stepBack, { color: accent }]}>
-                  {retry.busy ? "Opening…" : `Use the real ${label} test server instead`}
-                </Text>
-              </Pressable>
-            ) : null}
-
-            <Text style={styles.disclaimer}>You can return to My Bookings and try again whenever you&apos;re ready.</Text>
-          </View>
-        </View>
-      </ScrollView>
-    </SafeAreaView>
-  );
-}
 
 /**
  * The page eSewa sends the browser back to.
@@ -361,13 +71,22 @@ function GatewayMock({ kind, params, onDone, onCancel }: { kind: "esewa" | "khal
  *   • the real test server — the URL carries `data`, the base64 blob eSewa
  *     signed. It is posted to the server, which checks the HMAC, confirms the
  *     amount and asks eSewa's status API before anything is marked paid.
- *   • the local simulator — `mock=1` and the mock screen already verified, so
- *     there is nothing left to do but say so.
+ *   • the demo checkout — `mock=1`, and the replica page already posted to
+ *     `verify` on the way here, so there is nothing left to do but say so.
  */
 export function EsewaSuccessScreen() {
   const params = useLocalSearchParams() as Params;
   const router = useRouter();
   const mock = one(params.mock) === "1";
+
+  // Settled. The demo checkout (and the simulator before it) verified before it
+  // sent the payer here, so there is nothing left to chase — and leaving the
+  // record behind is what made a settled payment still show "Payment in
+  // progress" and then answer "eSewa has no completed payment" about a session
+  // eSewa was never part of.
+  useEffect(() => {
+    if (mock) clearCheckout();
+  }, [mock]);
   const [bookingId, setBookingId] = useState(one(params.bookingId));
   const [state, setState] = useState<"loading" | "success" | "failure">(mock ? "success" : "loading");
   const [message, setMessage] = useState("");
@@ -534,12 +253,24 @@ export function KhaltiCallbackScreen() {
   const teamPaymentId = one(params.teamPaymentId);
   const paymentRequestId = one(params.paymentRequestId);
   const status = one(params.status);
+  // A cancel is not a failed verification: Khalti's page (and the replica's)
+  // says so in the status, and asking for a session that never existed would
+  // only produce a confusing "missing session" line.
+  const cancelled = /cancel/i.test(one(params.status));
   const [state, setState] = useState<"loading" | "success" | "failure">(
-    one(params.mock) === "1" ? "success" : "loading",
+    one(params.mock) === "1" ? "success" : cancelled ? "failure" : "loading",
   );
-  const [message, setMessage] = useState("");
+  const [message, setMessage] = useState(
+    cancelled ? "You cancelled the Khalti checkout. No money moved." : "",
+  );
   const retry = useCheckoutRetry();
   const backToApp = useReturnToApp("/payment/khalti/callback", params);
+
+  // The demo checkout settled through this app's own verify call, so there is
+  // nothing left for the pending card to ask Khalti about.
+  useEffect(() => {
+    if (one(params.mock) === "1") clearCheckout();
+  }, [params.mock]);
 
   useEffect(() => {
     if (state !== "success" || !backToApp.available) return;
@@ -677,7 +408,7 @@ function useReturnToApp(path: string, params: Params) {
  *
  * The gateway hands the browser back to a route that knows nothing about the
  * checkout that started it, so this asks `src/lib/checkout.ts` for the last one
- * and follows wherever it leads: the gateway page again, the simulator route, or
+ * and follows wherever it leads: the gateway page, the replica page, or
  * straight to the page the fallback settled on.
  */
 function useCheckoutRetry() {
@@ -701,18 +432,10 @@ function useCheckoutRetry() {
 
     const outcome = await retryLastCheckout(mode);
 
+    // A checkout page is open (the gateway's, or the replica's) — the sheet is
+    // over this screen, and the app comes back through it when it is done.
     if (outcome.status === "gateway") {
-      router.replace("/bookings?refresh=1");
-      return;
-    }
-
-    if (outcome.status === "simulator") {
-      router.replace(outcome.mockPath as never);
-      return;
-    }
-
-    if (outcome.status === "settled") {
-      router.replace(outcome.donePath as never);
+      setBusy(false);
       return;
     }
 
@@ -754,15 +477,8 @@ function useCheckoutRetry() {
 
     const outcome = await switchLastCheckoutGateway(method);
 
-    if (outcome.status === "gateway") return;
-
-    if (outcome.status === "simulator") {
-      router.replace(outcome.mockPath as never);
-      return;
-    }
-
-    if (outcome.status === "settled") {
-      router.replace(outcome.donePath as never);
+    if (outcome.status === "gateway") {
+      setSwitching(false);
       return;
     }
 

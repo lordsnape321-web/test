@@ -14,6 +14,7 @@ import {
   subscribeInAppGateway,
   type InAppGatewaySession,
 } from "@/lib/inapp-gateway";
+import { paymentWebOrigin } from "@/lib/gateway";
 import { useTheme } from "@/context/ThemeContext";
 import { colors, fontSize, radius, space } from "@/theme";
 
@@ -73,32 +74,48 @@ export function GatewaySheet() {
 
   if (!session || !source || Platform.OS === "web") return null;
 
-  /** The checkout is over: leave the sheet and let the app verify the answer. */
+  /**
+   * The checkout is over: close the sheet and go where the page sent us.
+   *
+   * A real gateway returns to `/payment/esewa/success?data=…` or
+   * `/payment/khalti/callback?pidx=…`; the replica returns to whichever of the
+   * app's screens started it, so a page that is not one of those two is pushed
+   * as the app route it names (a league's own page, for instance).
+   */
   function finish(url: string) {
     if (handled.current) return;
     handled.current = true;
 
     const params = returnParams(url);
-    const isEsewa = url.includes("/payment/esewa");
     const query = Object.entries(params)
       .map(([key, value]) => `${key}=${encodeURIComponent(value)}`)
       .join("&");
+    const origin = paymentWebOrigin();
+    const path = origin && url.startsWith(origin) ? url.slice(origin.length) : "";
 
     closeInAppGateway();
 
-    if (isEsewa) {
-      // Everything eSewa appended is carried through. On success that is the
-      // signed `data` blob; on a failure it is whatever reason it chose to
-      // give, which is worth showing rather than swallowing.
+    if (path.startsWith("/payment/esewa")) {
+      // Everything eSewa appended is carried through. A real success is the
+      // signed `data` blob; the demo checkout says `mock=1`, having already
+      // posted to `verify`; and a failure carries whatever reason eSewa chose
+      // to give, which is worth showing rather than swallowing.
       router.push(
-        (params.data
-          ? `/payment/esewa/success?data=${encodeURIComponent(params.data)}`
-          : `/payment/esewa/failure${query ? `?${query}` : ""}`) as never,
+        (params.mock === "1"
+          ? `/payment/esewa/success${query ? `?${query}` : ""}`
+          : params.data
+            ? `/payment/esewa/success?data=${encodeURIComponent(params.data)}`
+            : `/payment/esewa/failure${query ? `?${query}` : ""}`) as never,
       );
       return;
     }
 
-    router.push(`/payment/khalti/callback?${query}` as never);
+    if (path.startsWith("/payment/khalti")) {
+      router.push(`/payment/khalti/callback?${query}` as never);
+      return;
+    }
+
+    if (path) router.push(path as never);
   }
 
   /**
@@ -121,7 +138,9 @@ export function GatewaySheet() {
           </Pressable>
           <View style={styles.headerText}>
             <Text style={[styles.title, { color: c.text }]}>
-              {session.method === "esewa" ? "eSewa test server" : "Khalti test server"}
+              {session.demo
+                ? session.method === "esewa" ? "eSewa — demo checkout" : "Khalti — demo checkout"
+                : session.method === "esewa" ? "eSewa test server" : "Khalti test server"}
             </Text>
             <View style={styles.subRow}>
               <Lock size={11} color={colors.emerald600} />

@@ -5,7 +5,6 @@ import {
   initiateEsewa,
   initiateKhalti,
   initiateLeaguePayment,
-  leaguePaymentsAction,
   verifyEsewa,
   verifyKhalti,
   type LeaguePaymentInput,
@@ -13,7 +12,7 @@ import {
 } from "@/api";
 import { ApiError } from "@/lib/api";
 import { formatNPR } from "@/lib/futsal";
-import { openCheckout, prepareGatewayTab, realGatewayEnabled, releaseGatewayTab } from "@/lib/gateway";
+import { demoPageUrl, openCheckout, prepareGatewayTab, realGatewayEnabled, releaseGatewayTab } from "@/lib/gateway";
 import { demoPayments } from "@/lib/payment-mode";
 import { planCheckout, type GatewayInitiate, type GatewayMethod } from "@/lib/gateway-plan";
 import { STORAGE_KEYS, storage } from "@/lib/storage";
@@ -23,7 +22,7 @@ import { STORAGE_KEYS, storage } from "@/lib/storage";
  *
  * Every payment button in the app runs this: ask the server to build a session
  * for this exact target, then act on its answer — open the gateway, hand back a
- * simulator route, or report why neither happened. The screens only own the
+ * page to open, or report why neither happened. The screens only own the
  * sentence they show and the route they fall back to.
  *
  * The checkout is also *remembered*, as a serializable record, because paying
@@ -31,19 +30,16 @@ import { STORAGE_KEYS, storage } from "@/lib/storage";
  * brings them back — the gateway's redirect, a deep link, a notification, or
  * their own thumb — lands on a screen that has no idea a payment was in flight.
  * From the record this module can rebuild everything the return screens need:
- * start it again, run the simulator if the gateway is down, ask the gateway
+ * start it again, run the replica if the gateway is down, ask the gateway
  * whether the money actually moved, and say what the payment was for.
  */
 
 export type CheckoutOutcome =
-  /** The gateway page is open (or the tab is navigating to it). */
-  | { status: "gateway" }
   /**
-   * Run the local demo checkout. `url` is the server's own route for this
-   * target (it knows the amount, the ids and the transaction reference), and is
-   * what a caller should use when the server sent one.
+   * A checkout page is open (or the tab is navigating to it) — the gateway's
+   * own, or the backend's replica of it. `demo` says which.
    */
-  | { status: "simulator"; url?: string }
+  | { status: "gateway"; demo?: boolean }
   /** Nothing was charged and nothing opened; `message` is worth showing. */
   | { status: "error"; message: string };
 
@@ -62,7 +58,7 @@ export type CheckoutMode = "real" | "demo";
 export function checkoutMode(force?: CheckoutMode): CheckoutMode {
   if (force) return force;
 
-  return demoPayments() || !realGatewayEnabled() ? "demo" : "real";
+  return demoPayments() ? "demo" : "real";
 }
 
 /**
@@ -77,12 +73,18 @@ export type PendingRecord =
       method: GatewayMethod;
       input: PaymentInitiateInput;
       label: string;
-      /** Where the simulator runs if the gateway cannot be reached. */
-      mockPath: string;
       /** Where to go once the payment is settled. */
       donePath: string;
       /** A real Khalti session id, once one exists — needed to ask about it. */
       pidx?: string;
+      /**
+       * The replica page this checkout opened, once it has one.
+       *
+       * A demo payment is finished on its own page — there is nothing at the
+       * gateway to ask about — so this is what the pending card offers to
+       * reopen, and why a demo record never gets a gateway check.
+       */
+      demoUrl?: string;
     }
   | {
       kind: "league";
@@ -91,6 +93,7 @@ export type PendingRecord =
       input: LeaguePaymentInput;
       label: string;
       donePath: string;
+      demoUrl?: string;
     };
 
 /** A record the return screens can act on. */
@@ -98,13 +101,8 @@ export type RememberedCheckout = {
   label: string;
   /** Ask the server for a session, and open it (or report the fallback). */
   run: (force?: CheckoutMode) => Promise<CheckoutOutcome>;
-  /** Where the simulator runs when the gateway cannot be reached. */
-  mockPath?: string;
-  /**
-   * For a league entry fee, whose simulator runs in place instead of on its own
-   * route: the settle call itself. Returns the sentence to show.
-   */
-  settle?: () => Promise<string>;
+  /** The replica page this checkout opened, when there is one to reopen. */
+  demoUrl?: string;
   /**
    * Ask the gateway whether this payment actually happened.
    *
@@ -112,9 +110,12 @@ export type RememberedCheckout = {
    * own status API is the tiebreaker, and it is the only way to tell a real
    * cancel from a failure their side forgot to record. Resolves with the
    * sentence to show once the payment is settled.
+   *
+   * Absent for a demo checkout: the replica settles through this app's own
+   * verify call, so there is nothing at a gateway to ask about.
    */
   check?: () => Promise<{ settled: boolean; message: string }>;
-  /** Where to go once the fallback has settled the payment. */
+  /** Where to go once the payment is settled. */
   donePath: string;
 };
 
@@ -202,11 +203,25 @@ async function persist(record: PendingRecord): Promise<void> {
 }
 
 /**
+ * Note the page a demo checkout opened, so the pending card can reopen it.
+ *
+ * Only the replica needs this: a real gateway is asked about through its own
+ * API (`check`), while a demo is finished on its page and nowhere else.
+ */
+function rememberDemoUrl(url: string): void {
+  if (!lastRecord) return;
+
+  lastRecord = { ...lastRecord, demoUrl: url };
+  void persist(lastRecord);
+  announce();
+}
+
+/**
  * Note the gateway's session id once `initiate` returns one.
  *
  * Only Khalti needs it: its return URL carries a `pidx`, but a player who never
- * makes it back to that URL can still be asked about — with this. The simulator's
- * `mock-…` id is not stored, because it is not a gateway session.
+ * makes it back to that URL can still be asked about — with this. A `mock-…`
+ * id is not stored, because it is not a gateway session.
  */
 function rememberPidx(pidx: string): void {
   if (!lastRecord || lastRecord.kind !== "booking" || lastRecord.method !== "khalti") return;
@@ -227,18 +242,7 @@ function attemptFor(record: PendingRecord): RememberedCheckout {
       label: record.label,
       run: (force) => startLeagueCheckout(record.leagueId, record.method, input, force),
       donePath: record.donePath,
-      settle: async () => {
-        const data = await leaguePaymentsAction(record.leagueId, {
-          action: "verify",
-          mockApprove: true,
-          userId: input.userId,
-          teamId: input.teamId,
-          amount: input.amount,
-          method: record.method,
-        });
-
-        return String(data.message ?? "Payment recorded ✅");
-      },
+      demoUrl: record.demoUrl,
     };
   }
 
@@ -247,9 +251,12 @@ function attemptFor(record: PendingRecord): RememberedCheckout {
   return {
     label: record.label,
     run: (force) => startGatewayCheckout(record.method, input, force),
-    mockPath: record.mockPath,
     donePath: record.donePath,
-    check: checkFor(record),
+    demoUrl: record.demoUrl,
+    // A demo checkout has no gateway session to ask about, so it offers no
+    // check at all rather than one that answers "no completed payment" about a
+    // payment the app itself settled.
+    check: record.demoUrl ? undefined : checkFor(record),
   };
 }
 
@@ -404,12 +411,32 @@ async function runCheckout(method: GatewayMethod, load: () => Promise<GatewayIni
     const plan = planCheckout(method, initiate);
 
     if (plan.kind === "gateway" || plan.kind === "form") {
-      if (openCheckout(plan)) return { status: "gateway" };
+      if (plan.demo && plan.kind === "gateway") rememberDemoUrl(plan.url);
+      if (openCheckout(plan)) return { status: "gateway", demo: plan.demo === true };
     }
 
-    // The server's own route for the replica carries the amount, the ids and
-    // the transaction reference; prefer it over the caller's locally built one.
-    if (plan.kind === "simulator") return { status: "simulator", url: plan.url };
+    /*
+     * The server answered the demo checkout without a page of its own — an
+     * older backend. Its mock URL names this app's own route, which is not what
+     * a page is opened from, but it carries every parameter the replica page
+     * needs; `demoPageUrl` moves them onto the page that does exist.
+     */
+    if (plan.kind === "simulator") {
+      const url = demoPageUrl(method, plan.url, initiate?.amount);
+
+      if (url !== "" && openCheckout({ kind: "gateway", url, demo: true, amount: initiate?.amount })) {
+        rememberDemoUrl(url);
+
+        return { status: "gateway", demo: true };
+      }
+
+      releaseGatewayTab();
+
+      return {
+        status: "error",
+        message: plan.message ?? "The checkout page could not be opened — check the connection and try again.",
+      };
+    }
 
     releaseGatewayTab();
 
@@ -417,14 +444,18 @@ async function runCheckout(method: GatewayMethod, load: () => Promise<GatewayIni
       status: "error",
       message: plan.kind === "error" ? plan.message : "Could not open the payment page.",
     };
-  } catch {
-    // Could not start a real session (the API refused, or the network blinked).
-    // The simulator re-runs the very same server-side checks, so a payment that
-    // must not happen still fails there — with the server's own wording — while
-    // a checkout that only failed to reach a gateway still completes.
+  } catch (e) {
+    // Could not start a checkout at all: the API refused (a played game, an
+    // already-paid share), or the network blinked. Say so — a silent fallback
+    // would hide a refusal that matters.
     releaseGatewayTab();
 
-    return { status: "simulator" };
+    return {
+      status: "error",
+      message: e instanceof Error && e.message
+        ? e.message
+        : "Could not start the payment — check the connection and try again.",
+    };
   }
 }
 
@@ -461,12 +492,8 @@ export async function checkLastCheckout(): Promise<CheckOutcome> {
 }
 
 export type RetryOutcome =
-  /** The gateway page is open again. */
-  | { status: "gateway" }
-  /** Run the demo checkout; `mockPath` is the route, when one is known. */
-  | { status: "simulator"; mockPath?: string }
-  /** The fallback settled it right here (a league entry fee). */
-  | { status: "settled"; donePath: string; message: string }
+  /** A checkout page is open again (the gateway's, or the replica). */
+  | { status: "gateway"; demo?: boolean }
   /** This session never ran a checkout. */
   | { status: "nothing" }
   | { status: "error"; message: string };
@@ -527,15 +554,11 @@ export async function switchLastCheckoutGateway(method: GatewayMethod): Promise<
     }
   }
 
+  // The old session's id and page belong to the other gateway — both are
+  // dropped, and the new checkout sets its own.
   const next: PendingRecord = record.kind === "booking"
-    ? {
-        ...record,
-        method,
-        pidx: undefined,
-        label: relabel(record.label, label),
-        mockPath: switchMockPath(record.mockPath, method),
-      }
-    : { ...record, method: label as "eSewa" | "Khalti" };
+    ? { ...record, method, pidx: undefined, demoUrl: undefined, label: relabel(record.label, label) }
+    : { ...record, method: label as "eSewa" | "Khalti", demoUrl: undefined };
 
   rememberCheckout(next);
   prepareGatewayTab();
@@ -552,52 +575,14 @@ function relabel(label: string, method: "eSewa" | "Khalti"): string {
     : `${method} · ${label}`;
 }
 
-/**
- * The simulator route for the other gateway.
- *
- * The two mock screens take the same parameters, but the session ids do not
- * cross over (`uuid` is eSewa's, `pidx` is Khalti's) — both are dropped so the
- * simulator issues a fresh one instead of verifying a stranger's transaction.
- */
-function switchMockPath(path: string, method: GatewayMethod): string {
-  const [base, query = ""] = path.split("?");
-  const swapped = base.replace(/\/(esewa|khalti)\/mock$/, `/${method}/mock`);
-  const params = new URLSearchParams(query);
-
-  params.delete("uuid");
-  params.delete("pidx");
-
-  const rest = params.toString();
-
-  return rest ? `${swapped}?${rest}` : swapped;
-}
-
 /** Turn a started checkout into the sentence (or route) a screen acts on. */
 async function finishAttempt(
   attempt: RememberedCheckout,
   outcome: CheckoutOutcome,
 ): Promise<RetryOutcome> {
-  if (outcome.status === "gateway") return { status: "gateway" };
+  void attempt;
 
-  if (outcome.status === "simulator") {
-    const mockPath = outcome.url ?? attempt.mockPath;
-
-    if (mockPath) return { status: "simulator", mockPath };
-
-    if (attempt.settle) {
-      try {
-        return { status: "settled", donePath: attempt.donePath, message: await attempt.settle() };
-      } catch (e) {
-        releaseGatewayTab();
-
-        return { status: "error", message: e instanceof Error ? e.message : "That payment could not be recorded." };
-      }
-    }
-
-    releaseGatewayTab();
-
-    return { status: "error", message: "Could not start that payment again." };
-  }
+  if (outcome.status === "gateway") return { status: "gateway", demo: outcome.demo };
 
   releaseGatewayTab();
 

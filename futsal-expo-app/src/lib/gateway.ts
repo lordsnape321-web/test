@@ -1,8 +1,10 @@
 import Constants from "expo-constants";
 import { Linking as RNLinking, Platform } from "react-native";
+import { apiUrl } from "@/lib/api";
 import { formatNPR } from "@/lib/futsal";
-import type { CheckoutPlan } from "@/lib/gateway-plan";
+import type { CheckoutPlan, GatewayMethod } from "@/lib/gateway-plan";
 import { openInAppGateway } from "@/lib/inapp-gateway";
+import { demoPayments } from "@/lib/payment-mode";
 
 /**
  * The platform half of the checkout bridge: opening tabs, navigating to a
@@ -12,8 +14,6 @@ import { openInAppGateway } from "@/lib/inapp-gateway";
 
 export type { CheckoutPlan, GatewayInitiate, GatewayMethod } from "@/lib/gateway-plan";
 export { esewaDataFromLocation, planCheckout } from "@/lib/gateway-plan";
-
-const configuredMode = (process.env.EXPO_PUBLIC_PAYMENT_MODE ?? "").trim().toLowerCase();
 
 /**
  * The Expo dev server this build was loaded from, as an http(s) origin.
@@ -132,15 +132,17 @@ export function isMobileBrowser(): boolean {
 }
 
 /**
- * True unless the build explicitly asks for the simulator.
+ * True when a checkout should talk to the providers' own test servers.
  *
- * The gateways' own test servers are the default on every platform — that is
- * the feature. `EXPO_PUBLIC_PAYMENT_MODE=simulator` is only for working with no
- * network at all; nothing in the app sets it, and the automatic fallback in
- * `startGatewayCheckout` already covers a gateway that cannot be reached.
+ * The replica is the default — a demo cannot depend on eSewa's shared wallets
+ * being funded or on Khalti's sandbox being willing to talk — so this is the
+ * opt-in side of the one setting, read at checkout time
+ * (`src/lib/payment-mode.ts`): *Settings → Use the real eSewa and Khalti test
+ * servers*, or `EXPO_PUBLIC_PAYMENT_MODE=real` for a build. Nothing here is
+ * platform-specific: a phone and a browser make the same choice.
  */
 export function realGatewayEnabled(): boolean {
-  return configuredMode !== "simulator";
+  return !demoPayments();
 }
 
 /** True when the app is running inside someone else's page (the Arena preview). */
@@ -234,6 +236,32 @@ export function openGatewayUrl(url: string): boolean {
 }
 
 /**
+ * Reopen a demo checkout that was left unfinished.
+ *
+ * The pending card's job: a payer who closed the sheet before finishing has a
+ * page to go back to, and on a phone that means the in-app sheet rather than a
+ * browser tab. Nothing is re-initiated — the page carries its own session.
+ */
+export function reopenDemoCheckout(url: string, label: string): boolean {
+  const method = url.includes("khalti") ? "khalti" : "esewa";
+
+  if (Platform.OS === "web") return openGatewayUrl(url);
+
+  const origin = paymentWebOrigin();
+
+  openInAppGateway({
+    method,
+    demo: true,
+    url,
+    returnPrefixes: origin === "" ? [] : [`${origin}/payment/`, `${origin}/leagues/`],
+    label,
+    note: `Replica of the ${method === "esewa" ? "eSewa" : "Khalti"} page — nothing leaves this app, and no real money moves.`,
+  });
+
+  return true;
+}
+
+/**
  * The label the last remembered checkout gave itself.
  *
  * Read from `src/lib/checkout.ts` lazily to keep this module free of a cycle —
@@ -283,6 +311,46 @@ function postEsewaForm(url: string, fields: Record<string, string>): boolean {
 }
 
 /**
+ * The replica page for a checkout, assembled here.
+ *
+ * A fallback for a backend that answers the demo checkout without a `demoUrl`
+ * of its own. The page is static (`/demo-esewa.html`, `/demo-khalti.html`) and
+ * the server's mock URL already carries every parameter it needs — the app
+ * route inside that URL is simply not what a page is opened from.
+ *
+ * The return URLs are what make it usable: on a phone the sheet intercepts
+ * them, and on the web they are this app's own screens. Both are built here
+ * because only the client knows which origin it is served from.
+ */
+export function demoPageUrl(method: GatewayMethod, mockUrl: string, amount?: number): string {
+  const [, query = ""] = mockUrl.split("?");
+  const params = new URLSearchParams(query);
+  const origin = paymentWebOrigin();
+
+  if (origin === "") return "";
+
+  // A league entry fee returns to its own page, exactly like the in-app
+  // simulator did; a booking returns to the screen that verifies it.
+  const leagueId = params.get("leagueId") ?? "";
+  const success = leagueId ? `${origin}/leagues/${leagueId}` : paymentReturnUrl(method === "esewa" ? "/payment/esewa/success" : "/payment/khalti/callback");
+  const failure = leagueId
+    ? success
+    : paymentReturnUrl(method === "esewa" ? "/payment/esewa/failure" : "/payment/khalti/callback");
+
+  params.set("success", success);
+  params.set("failure", failure);
+
+  if (amount && !params.has("amount")) params.set("amount", String(amount));
+
+  const url = apiUrl(`/demo-${method === "esewa" ? "esewa" : "khalti"}.html?${params.toString()}`);
+
+  // On the web build the API is same-origin (`/api`), so this is a path, not a
+  // page this app serves. There is nothing to open then — the server's own
+  // `demoUrl` is the only way to reach the replica from a browser.
+  return /^https?:/i.test(url) ? url : "";
+}
+
+/**
  * Run a plan. Returns false when the caller should fall back to the simulator.
  *
  * On a phone the gateway page opens *inside* the app (see `GatewaySheet`): the
@@ -297,24 +365,28 @@ export function openCheckout(plan: CheckoutPlan): boolean {
       const origin = paymentWebOrigin();
 
       const method = plan.url.includes("khalti") ? "khalti" : "esewa";
+      const demo = plan.demo === true;
 
       openInAppGateway({
         method,
+        demo,
         url: plan.url,
         fields: plan.kind === "form" ? plan.fields : undefined,
         // The return screens, at the origin this app's web build is served
-        // from. The first one the WebView tries to load ends the checkout.
-        returnPrefixes: origin === "" ? [] : [`${origin}/payment/`],
+        // from. The first one the WebView tries to load ends the checkout —
+        // `/payment/…` for a booking, the league's own page for an entry fee.
+        returnPrefixes: origin === "" ? [] : [`${origin}/payment/`, `${origin}/leagues/`],
         label: lastCheckoutLabel(),
         // The amount is on the header so the payer can compare it with what the
-        // gateway asks for *before* paying: a mismatch wearing a gateway's
-        // branding is exactly the thing nobody questions.
+        // page asks for *before* paying: a mismatch wearing a gateway's branding
+        // is exactly the thing nobody questions.
         detail: plan.amount ? formatNPR(plan.amount) : undefined,
-        // eSewa's UAT ends a login session that sits for about five minutes,
-        // and reports it as a plain failure. Say so while the payer can still
-        // act on it.
-        note:
-          method === "esewa"
+        // eSewa's UAT ends a login session that sits for about five minutes, and
+        // reports it as a plain failure. Say so while the payer can still act on
+        // it — the replica has no such clock.
+        note: demo
+          ? `Replica of the ${method === "esewa" ? "eSewa" : "Khalti"} page — nothing leaves this app, and no real money moves.`
+          : method === "esewa"
             ? "eSewa's test session ends about 5 minutes after login — finish in one go."
             : "Khalti test payer: 9800000001 · MPIN 1111 · OTP 987654.",
       });

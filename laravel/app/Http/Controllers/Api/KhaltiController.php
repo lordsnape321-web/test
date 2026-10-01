@@ -112,10 +112,27 @@ class KhaltiController extends ApiController
             ? "&teamPaymentId={$teamPayment->id}&userId={$teamPayment->user_id}"
             : ($paymentRequest ? "&paymentRequestId={$paymentRequest->id}&userId={$paymentRequest->payer_id}" : "&userId={$payerId}");
 
+        // The replica page for this checkout: the same steps as Khalti's, served
+        // by this backend (see Payments::demoGatewayUrl). Answered on both paths
+        // — a demo run opens it, and a real session offers it as the way out of
+        // a sandbox that will not cooperate.
+        $demoUrl = Payments::demoGatewayUrl($request, 'khalti', [
+            'bookingId' => $booking->id,
+            'amount' => $amountNpr,
+            'pidx' => 'mock-'.$orderId,
+            'label' => "booking #FN-{$booking->id}".($venueName ? " · {$venueName}" : ''),
+            'teamPaymentId' => $teamPayment->id ?? null,
+            'paymentRequestId' => $paymentRequest->id ?? null,
+            'userId' => $payerId,
+            'paymentPurpose' => ($paymentRequest?->purpose === 'advance') || (! $teamPayment && ! $paymentRequest && (bool) $booking->advance_payment_required) ? 'advance' : null,
+            'success' => $returnUrl,
+            'failure' => $returnUrl,
+        ]);
+
         // A demo run never calls Khalti: the replica is right here, and their
         // sandbox (test-pay.khalti.com) is not always willing to talk.
         if ($request->boolean('demo')) {
-            return $this->demoCheckout($booking, $teamPayment, $paymentRequest, $origin, $amountNpr, $venueName, $orderId, $mockTarget, '');
+            return $this->demoCheckout($booking, $teamPayment, $paymentRequest, $origin, $amountNpr, $venueName, $orderId, $mockTarget, $demoUrl, '');
         }
 
         try {
@@ -146,12 +163,13 @@ class KhaltiController extends ApiController
                 'isDeposit' => ! $teamPayment && ! $paymentRequest && (bool) $booking->deposit_required,
                 'isAdvance' => ($paymentRequest?->purpose === 'advance') || (! $teamPayment && (bool) $booking->advance_payment_required),
                 'returnOrigin' => $origin,
+                'demoUrl' => $demoUrl,
                 'testHint' => 'Khalti test server: pay with 9800000001, MPIN 1111, OTP 987654',
             ]);
         } catch (\Throwable $e) {
             // Sandbox unreachable or key rejected: fall back to the replica so
             // the checkout still finishes.
-            return $this->demoCheckout($booking, $teamPayment, $paymentRequest, $origin, $amountNpr, $venueName, $orderId, $mockTarget, $e->getMessage());
+            return $this->demoCheckout($booking, $teamPayment, $paymentRequest, $origin, $amountNpr, $venueName, $orderId, $mockTarget, $demoUrl, $e->getMessage());
         }
     }
 
@@ -174,6 +192,7 @@ class KhaltiController extends ApiController
         string $venueName,
         string $orderId,
         string $mockTarget,
+        string $demoUrl,
         string $fallbackError,
     ): JsonResponse {
         $demo = $fallbackError === '';
@@ -184,6 +203,12 @@ class KhaltiController extends ApiController
         $url = "{$origin}/payment/khalti/mock?pidx=".rawurlencode($mockPidx)."&bookingId={$booking->id}&amount={$amountNpr}".$mockTarget
             .($demo ? '&demo=1' : '&fallback='.rawurlencode($fallbackError));
 
+        // `demo=1` is how the page knows it was chosen rather than fallen back
+        // to; a fallback carries the sandbox's own complaint.
+        $pageUrl = $demo
+            ? $demoUrl.'&demo=1'
+            : $demoUrl.'&fallback='.rawurlencode($fallbackError);
+
         return $this->ok([
             'mock' => true,
             'demo' => $demo,
@@ -192,6 +217,7 @@ class KhaltiController extends ApiController
             'fallbackError' => $demo ? null : $fallbackError,
             'pidx' => $mockPidx,
             'mockUrl' => $url,
+            'demoUrl' => $pageUrl,
             'payment_url' => $url,
             'amount' => $amountNpr,
             'bookingId' => $booking->id,

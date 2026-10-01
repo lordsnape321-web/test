@@ -118,7 +118,7 @@ class TournamentPaymentController extends ApiController
      *
      * `initiate` builds a real eSewa/Khalti test-server session; the return
      * pages verify it (signature + status API, or Khalti's lookup) before any
-     * row is written. The simulator is only what runs when neither test server
+     * row is written. The replica page is only what runs when neither test server
      * can be reached — no card is ever charged on either path, but the ledger,
      * the dates and the attribution are real.
      */
@@ -417,6 +417,18 @@ class TournamentPaymentController extends ApiController
 
                 $mockUrl = "{$origin}/payment/esewa/mock?leagueId={$id}&teamId={$teamId}&userId={$userId}&amount={$amount}&uuid=".rawurlencode($transactionUuid);
 
+                // The replica page, served by this backend (see
+                // Payments::demoGatewayUrl). A league returns to its own page.
+                $demoUrl = Payments::demoGatewayUrl($request, 'esewa', [
+                    'leagueId' => $id,
+                    'teamId' => $teamId,
+                    'userId' => $userId,
+                    'amount' => $amount,
+                    'label' => "League entry · squad #{$teamId}",
+                    'success' => "{$origin}/leagues/{$id}",
+                    'failure' => "{$origin}/leagues/{$id}",
+                ]);
+
                 // Same rule as the booking flow: the demo checkout runs when
                 // the caller asks for it, or when the gateway is down (a dead
                 // end on eSewa's error page is worse than a replica).
@@ -429,6 +441,7 @@ class TournamentPaymentController extends ApiController
                         'fallback' => ! $demo,
                         'fallbackError' => $demo ? null : 'The eSewa test server is not answering',
                         'mockUrl' => $demo ? $mockUrl.'&demo=1' : $mockUrl,
+                        'demoUrl' => $demoUrl.($demo ? '&demo=1' : ''),
                         'amount' => $amount,
                         'transactionUuid' => $transactionUuid,
                         'returnOrigin' => $origin,
@@ -448,6 +461,7 @@ class TournamentPaymentController extends ApiController
                     'successUrl' => $successUrl,
                     'failureUrl' => $failureUrl,
                     'mockUrl' => $mockUrl,
+                    'demoUrl' => $demoUrl,
                     // A native app can only open GETs, so the signed form needs
                     // a page to POST it from — the same hand-off the booking
                     // flow uses, aimed at this league instead.
@@ -463,13 +477,24 @@ class TournamentPaymentController extends ApiController
             }
 
             // Khalti — with the same "no key, or the sandbox is unreachable, so
-            // use the simulator" fallback the booking route has.
+            // hand over the replica page" fallback the booking route has.
             $cfg = Payments::khaltiConfig();
             $orderId = Payments::makeLeagueKhaltiOrder((int) $id, $teamId);
 
             $row->forceFill(['pay_method' => $method, 'gateway_txn_id' => '', 'updated_at' => now()])->save();
 
             $mockUrl = "{$origin}/payment/khalti/mock?leagueId={$id}&teamId={$teamId}&userId={$userId}&amount={$amount}&pidx=".rawurlencode('mock-'.$orderId);
+
+            $demoUrl = Payments::demoGatewayUrl($request, 'khalti', [
+                'leagueId' => $id,
+                'teamId' => $teamId,
+                'userId' => $userId,
+                'amount' => $amount,
+                'pidx' => 'mock-'.$orderId,
+                'label' => "League entry · squad #{$teamId}",
+                'success' => "{$origin}/leagues/{$id}",
+                'failure' => "{$origin}/leagues/{$id}",
+            ]);
 
             // A demo run never calls Khalti; the replica is right here.
             if ($request->boolean('demo')) {
@@ -480,6 +505,7 @@ class TournamentPaymentController extends ApiController
                     'pidx' => 'mock-'.$orderId,
                     'payment_url' => $mockUrl.'&demo=1',
                     'mockUrl' => $mockUrl.'&demo=1',
+                    'demoUrl' => $demoUrl.'&demo=1',
                     'amount' => $amount,
                     'orderId' => $orderId,
                     'returnOrigin' => $origin,
@@ -507,6 +533,7 @@ class TournamentPaymentController extends ApiController
                     'mock' => false,
                     'pidx' => $init['pidx'] ?? null,
                     'payment_url' => $init['payment_url'] ?? null,
+                    'demoUrl' => $demoUrl,
                     'amount' => $amount,
                     'orderId' => $orderId,
                     'returnOrigin' => $origin,
@@ -519,6 +546,7 @@ class TournamentPaymentController extends ApiController
                     'pidx' => 'mock-'.$orderId,
                     'payment_url' => $mockUrl.'&fallback='.rawurlencode($e->getMessage()),
                     'mockUrl' => $mockUrl.'&fallback='.rawurlencode($e->getMessage()),
+                    'demoUrl' => $demoUrl.'&fallback='.rawurlencode($e->getMessage()),
                     'amount' => $amount,
                     'orderId' => $orderId,
                     'returnOrigin' => $origin,

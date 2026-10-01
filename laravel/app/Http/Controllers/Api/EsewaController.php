@@ -178,6 +178,21 @@ class EsewaController extends ApiController
         $mockUrl = "{$origin}/payment/esewa/mock?bookingId={$booking->id}&amount={$amount}&uuid=".rawurlencode($transactionUuid).$mockTarget
             .($requestedUserId && ! str_contains($mockTarget, 'userId=') ? "&userId={$requestedUserId}" : '');
 
+        // The replica, served by this backend. This is what a phone opens (in
+        // the in-app sheet), and it carries everything its verify call needs.
+        $demoParams = [
+            'bookingId' => $booking->id,
+            'amount' => $amount,
+            'uuid' => $transactionUuid,
+            'label' => "booking #FN-{$booking->id}".($venueName ? " · {$venueName}" : ''),
+            'teamPaymentId' => $teamPayment->id ?? null,
+            'paymentRequestId' => $paymentRequest->id ?? null,
+            'userId' => $requestedUserId,
+            'paymentPurpose' => $payingAdvance || $paymentRequest?->purpose === 'advance' ? 'advance' : null,
+            'success' => $successUrl,
+            'failure' => $failureUrl,
+        ];
+
         /*
          * Two reasons to answer with the demo checkout instead of eSewa's page:
          *
@@ -189,13 +204,18 @@ class EsewaController extends ApiController
          *     Sending a player there in that state is a dead end: their error
          *     page carries no signed response, so nothing can be verified.
          *
-         * Either way the app runs the local checkout, which moves the same money
-         * through the same server-side settlement path (`mockApprove`).
+         * Either way the app opens the replica page (`demoUrl`), which moves the
+         * same money through the same server-side settlement path
+         * (`mockApprove`) — see `laravel/public/demo-esewa.html`.
          */
         $demo = $request->boolean('demo');
+        $demoParams['demo'] = $demo ? '1' : null;
+        $demoParams['fallback'] = $demo ? null : 'The eSewa test server is not answering';
+        $demoUrl = Payments::demoGatewayUrl($request, 'esewa', $demoParams);
 
         if ($demo || ! Payments::reachable((string) $cfg['formUrl'])) {
             return $this->ok([
+                'demoUrl' => $demoUrl,
                 'mock' => true,
                 'demo' => $demo,
                 'fallback' => ! $demo,
@@ -231,6 +251,7 @@ class EsewaController extends ApiController
             'successUrl' => $successUrl,
             'failureUrl' => $failureUrl,
             'mockUrl' => $mockUrl,
+            'demoUrl' => $demoUrl,
             // A POST has to come from a page, and a native app cannot build
             // one — so the hand-off page does it. The path is returned instead
             // of a full URL because only the client knows which origin it can
@@ -250,10 +271,11 @@ class EsewaController extends ApiController
     /**
      * Verify the callback eSewa posted back.
      *
-     * `mockApprove` is the simulator fallback: it lets a player finish the flow
-     * when the real eSewa test site is unreachable. Its transaction id is
-     * deterministic on purpose, because that id is the ledger's idempotency key
-     * and a replayed verify must not turn one payment into two instalments.
+     * `mockApprove` is the demo checkout's door: the replica page posts it after
+     * its last step — also what lets a player finish when the real eSewa test
+     * site is unreachable. Its transaction id is deterministic on purpose,
+     * because that id is the ledger's idempotency key and a replayed verify must
+     * not turn one payment into two instalments.
      */
     public function verify(Request $request): JsonResponse
     {

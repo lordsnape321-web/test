@@ -325,6 +325,33 @@ class Payments
         return str_starts_with($host, '0.0.0.0') ? 'http://localhost:8000' : $request->getScheme().'://'.$host;
     }
 
+    /**
+     * The demo gateway page — the replica of eSewa's / Khalti's checkout, as a
+     * real web page this backend serves (`public/demo-{esewa,khalti}.html`).
+     *
+     * It is a page rather than a native screen on purpose: the app can then
+     * open it exactly the way it opens the real gateway (in the in-app WebView
+     * sheet, or a tab on the web), and the checkout runs the same route from
+     * the sheet's return-URL interception to the same verify endpoint. Only the
+     * gateway is a replica.
+     *
+     * The URL is built from the host *the client reached us on* — a phone talks
+     * to this API on a LAN address, which `APP_URL` knows nothing about.
+     *
+     * @param  array<string, mixed>  $params
+     */
+    public static function demoGatewayUrl(Request $request, string $gateway, array $params): string
+    {
+        $host = $request->getSchemeAndHttpHost();
+
+        $query = http_build_query(array_filter(
+            $params,
+            fn ($value) => $value !== null && $value !== '' && $value !== false
+        ));
+
+        return $host.'/demo-'.$gateway.'.html'.($query === '' ? '' : '?'.$query);
+    }
+
     public static function makeEsewaUuid(int $bookingId): string
     {
         return sprintf('FN-%d-%s-%s', $bookingId, base_convert((string) (int) (microtime(true) * 1000), 10, 36), Str::lower(Str::random(8)));

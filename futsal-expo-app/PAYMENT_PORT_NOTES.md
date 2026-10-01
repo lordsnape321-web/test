@@ -43,8 +43,8 @@ would fail on the import until this has run.
      POST; `Linking.openURL` cannot);
    - Khalti → `payment_url`, the test-pay page.
 3. Or the caller asked for the **demo checkout** (`demo: true`), in which case
-   the server answers with the replica's own route and no gateway is contacted
-   at all — see *The demo checkout* below.
+   no gateway is contacted at all and the answer points at the replica page
+   (`/demo-esewa.html`, `/demo-khalti.html`) — see *The demo checkout* below.
 4. The gateway returns the browser to `/payment/esewa/success` or
    `/payment/khalti/callback`, which calls `verify`. The server checks eSewa's
    HMAC plus its status API, or Khalti's lookup — the redirect itself never
@@ -73,8 +73,9 @@ one. The checkout that was started is kept as a small serializable record
 (`PendingRecord` in `src/lib/checkout.ts`) in AsyncStorage, so it survives a
 reload or a cold start, and the screens a player returns to show a **Payment in
 progress** card (`PaymentPendingBanner`): what the payment was for, a *Check
-payment* button that asks the gateway, and a *Finish on the simulator* button
-when the gateway could not be reached. Bringing the app to the foreground checks
+payment* button that asks the gateway — offered only for a real session, since a
+demo has no gateway to ask — and a *Finish on the demo checkout* button that
+reopens the replica page when one was started. Bringing the app to the foreground checks
 by itself (at most once every 20 seconds), so a payment that actually went
 through settles without the player doing anything. A record older than six hours
 is dropped — the gateway session is long gone by then.
@@ -105,7 +106,7 @@ Two different things can be going on, and they need different answers:
   "Service is currently unavailable"}` and shows "Service is currently
   unavailable. Please try again later." when their backend times out. Nothing
   can be verified from that page, so `initiate` checks the host first and the
-  simulator takes over instead (see below).
+  replica page takes over instead (see below).
 - **It keeps failing.** There is a replica for exactly this: *Use the demo
   checkout* on the failure screen, or the switch in settings. It runs the same
   three steps, settles through the same verify endpoint, and does not depend on
@@ -156,7 +157,7 @@ their second button, and `switchLastCheckoutGateway` in `src/lib/checkout.ts`
 carries it out: it saves the choice the way the booking cards do
 (`chooseBookingPayment`, `chooseBookingTeamPayment`, `chooseBookingPaymentRequest`
 — both gateways refuse a target marked for the other one), drops the old session
-id and simulator path, and starts the new checkout in place. The payer never has
+id and the other gateway's page, and starts the new checkout in place. The payer never has
 to go back and find the booking again.
 
 ## The demo checkout (the replica)
@@ -164,36 +165,48 @@ to go back and find the booking again.
 eSewa's test wallets are shared between every integrator ("adequate balance will
 be updated to test user account" is a promise, not a standing balance), Khalti's
 sandbox locks accounts, and neither is reachable from wherever a demo might
-happen. So the app carries a replica of both pages:
+happen. So the backend serves a replica of both gateway pages:
 
-- **`src/lib/payment-mode.ts`** owns the choice — the real test servers by
-  default, the replica when the switch in *Settings → Help and about → Use the
-  demo checkout* is on, or when a build sets `EXPO_PUBLIC_PAYMENT_MODE=demo`
-  (the older `simulator` value means the same thing). The choice is read at
-  checkout time, so the switch takes effect on the next payment.
-- The mode is sent **with the request** (`demo: true`), because the server builds
-  a different session for it: no gateway is contacted at all, and the answer is
-  the demo route with the amount, the ids and the transaction reference on it
-  (`$demo` in the two booking controllers and the league controller, and
-  `KhaltiController::demoCheckout()`).
-- The page (`/payment/{esewa,khalti}/mock`, `GatewayMock` in
-  `src/components/PaymentScreens.tsx`) is the gateway's own flow: sign in →
-  confirm with the MPIN → the token, validated against the published test
-  credentials, with a *Fill demo credentials* button and a header that says it is
-  a replica.
-- Finishing it posts `mockApprove` to **the same verify endpoint** a real payment
-  uses, so the booking states, ledger, amounts, notifications and league
-  settlement are the real code paths. Only the gateway is pretend.
-- The replica offers *Use the real eSewa test server instead* (and the real
-  failure screens offer *Use the demo checkout*), so a demo can switch sides
-  without leaving the checkout.
+- **`laravel/public/demo-esewa.html`** and **`demo-khalti.html`** are plain
+  pages: eSewa's green header, Khalti's purple one, the merchant row and the
+  amount, and the whole flow — sign in → confirm with the MPIN → the token
+  (eSewa) or the OTP (Khalti), with the published test credentials accepted and
+  a *Fill demo credentials* button. A wrong value at any step gets that step's
+  own message, a *Cancel payment* hands the payer back as a failure, and the
+  page says at the bottom that it is a replica and not affiliated with either
+  provider.
+- **The app opens it exactly like a real gateway page.** `Payments::demoGatewayUrl()`
+  builds the URL on the host the client reached the API on, and every initiate
+  answer carries it as `demoUrl` — the replica when the mode asked for it, and
+  also on a real answer, so a failure screen can still switch sides. It travels
+  in the same in-app sheet (`GatewaySheet`) a real checkout uses, so the header,
+  the amount, the reference and the return-URL interception are one
+  implementation.
+- **It settles through the same verify endpoint.** The page POSTs
+  `/api/payments/{esewa,khalti}/verify` (or `/api/tournaments/:id/payments` for
+  a league entry) with `mockApprove: true` and then hands the payer to the app's
+  own return URL, so the booking states, ledger, amounts, notifications and
+  league settlement are the real code paths. Only the gateway is pretend.
+- **It is the default.** `src/lib/payment-mode.ts` leads with the replica; the
+  switch in *Settings → Help and about → Use the real eSewa and Khalti test
+  servers* turns the providers on, and `EXPO_PUBLIC_PAYMENT_MODE=real` does the
+  same for a build (`demo` and the older `simulator` spell the default out). The
+  choice is read at checkout time, so it takes effect on the next payment.
+- **A demo is never checked against a gateway.** The pending card keeps the
+  demo's page so it can be reopened (the sheet again, not a browser tab), and it
+  offers no *Check payment* button: nothing at eSewa knows about a payment eSewa
+  never saw, and asking used to answer "eSewa has no completed payment for this
+  booking" about a booking that was already settled.
 
-`demo=1` on the route means the replica was chosen; without it the gateway was
-down and this is the fallback, which the page says out loud (`fallback=…` carries
-the gateway's own complaint).
+The mode is sent **with the request** (`demo: true`), and the server builds the
+page from the booking it priced — never from the client's own numbers. A refused
+session (a played game, a paid share, the wrong amount) stays an error: neither
+the replica nor the fallback turns it into a fake payment.
 
-A refused session (a played game, a paid share, the wrong amount) stays an error
-— neither the replica nor the fallback turns it into a fake payment.
+The old native mock screens (`app/payment/{esewa,khalti}/mock.tsx` and
+`GatewayMock` in `src/components/PaymentScreens.tsx`) are gone. A page cannot
+drift from the flow it copies the way a second implementation does, and there is
+now one checkout path in the app instead of two.
 
 ## When the test server is down
 
@@ -202,9 +215,10 @@ unavailable. Please try again later.", which is its own wording for a backend
 timeout, not a rejected payment. Two things keep that from being a dead end:
 
 - before it hands the browser over, `initiate` checks that the gateway's host is
-  answering (`Payments::reachable()`); if it is not, the server answers
-  `mock: true` and the app runs the simulator instead. Any HTTP answer counts as
-  up, so a real gateway that merely returns an error still gets the checkout;
+  answering (`Payments::reachable()`); if it is not, the server answers with the
+  replica page instead and the payment can still be made (`fallback=…` carries
+  the gateway's own complaint). Any HTTP answer counts as up, so a real gateway
+  that merely returns an error still gets the checkout;
 - the failure screens offer **Try again**, which re-runs the session's last
   checkout in one tap (`rememberCheckout` / `retryLastCheckout` in
   `src/lib/checkout.ts`) — the return screens are a different route and cannot
@@ -214,7 +228,7 @@ timeout, not a rejected payment. Two things keep that from being a dead end:
 
 | Variable | Meaning |
 |---|---|
-| `EXPO_PUBLIC_PAYMENT_MODE` | `simulator` forces the local mock everywhere — only for working offline, nothing sets it |
+| `EXPO_PUBLIC_PAYMENT_MODE` | `real` makes the providers' test servers the default; `demo` (or the older `simulator`) says the replica default out loud. Unset means the replica |
 | `EXPO_PUBLIC_APP_ORIGIN` | Overrides where a device is returned to, e.g. `http://192.168.1.20:8081`. Not needed while developing: the app derives it from the Expo dev server it was loaded from, and the server falls back to `APP_WEB_URL` |
 
 Nothing has to be configured for the test servers — the published sandbox
@@ -226,6 +240,6 @@ Captains pay entry fees through the same checkout: `startLeagueCheckout` in
 `src/lib/checkout.ts`, `initiateLeaguePayment` in `src/api/index.ts`, and the
 league hand-off page `GET /api/payments/esewa/handoff/league` for a browser that
 cannot POST eSewa's form. The reference (`LG-<league>-<team>-…`) is what the
-return pages verify against, and every path — gateway, simulator, or the host
+return pages verify against, and every path — gateway, replica, or the host
 recording cash — settles through `App\Services\LeagueEntry`, so a squad's totals
 and its invite acceptance are identical however the money arrived.

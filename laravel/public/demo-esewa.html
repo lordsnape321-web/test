@@ -1,0 +1,337 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>eSewa — Pay with eSewa</title>
+<style>
+  :root {
+    --brand: #60bb46;
+    --brand-dark: #3f9c35;
+    --brand-deep: #2c7a22;
+    --ink: #3c3c3c;
+    --muted: #8a8a8a;
+    --line: #e3e3e3;
+    --bg: #f2f4f6;
+    --danger: #d64545;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+  header {
+    background: var(--brand);
+    color: #fff;
+    padding: 14px 16px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    box-shadow: 0 2px 6px rgba(0,0,0,.14);
+  }
+  .mark { font-size: 26px; font-weight: 700; letter-spacing: -.5px; font-style: italic; }
+  .mark span { font-style: normal; font-weight: 400; opacity: .9; }
+  header .tag { margin-left: auto; font-size: 11px; opacity: .9; letter-spacing: .4px; text-transform: uppercase; }
+  main { flex: 1; padding: 14px; }
+  .card {
+    background: #fff;
+    border-radius: 6px;
+    box-shadow: 0 1px 3px rgba(0,0,0,.12);
+    overflow: hidden;
+    max-width: 480px;
+    margin: 0 auto;
+  }
+  .merchant { padding: 14px 16px; border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 12px; }
+  .merchant .who { flex: 1; min-width: 0; }
+  .merchant .who b { display: block; font-size: 15px; }
+  .merchant .who small { color: var(--muted); display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .merchant .amt { font-size: 17px; font-weight: 700; color: var(--brand-deep); white-space: nowrap; }
+  .steps { display: flex; gap: 6px; padding: 12px 16px 0; }
+  .steps i { height: 4px; flex: 1; border-radius: 3px; background: var(--line); }
+  .steps i.on { background: var(--brand); }
+  .body { padding: 14px 16px 18px; }
+  h1 { font-size: 17px; margin: 2px 0 2px; }
+  p.sub { color: var(--muted); margin: 0 0 14px; }
+  label { display: block; font-size: 12px; color: var(--muted); margin: 12px 0 5px; }
+  input {
+    width: 100%;
+    padding: 11px 12px;
+    font-size: 15px;
+    color: var(--ink);
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    background: #fff;
+    outline: none;
+  }
+  input:focus { border-color: var(--brand); }
+  .pin { letter-spacing: 10px; text-align: center; font-size: 20px; }
+  button {
+    width: 100%;
+    border: 0;
+    border-radius: 4px;
+    font-size: 15px;
+    font-weight: 600;
+    padding: 13px;
+    cursor: pointer;
+  }
+  .primary { background: var(--brand); color: #fff; margin-top: 18px; }
+  .primary:disabled { opacity: .6; }
+  .ghost { background: #fff; border: 1px solid var(--line); color: var(--muted); margin-top: 8px; font-weight: 500; }
+  .link { display: block; text-align: center; color: var(--brand-dark); text-decoration: none; margin-top: 14px; font-size: 13px; }
+  .error { display: none; margin-top: 12px; padding: 10px 12px; border-radius: 4px; background: #fdecec; color: var(--danger); font-size: 13px; }
+  .error.show { display: block; }
+  .note { margin-top: 14px; padding: 10px 12px; border: 1px dashed var(--line); border-radius: 4px; color: var(--muted); font-size: 11.5px; line-height: 1.6; }
+  .note b { color: var(--ink); }
+  .chip { display: inline-block; margin-left: 6px; padding: 2px 8px; border-radius: 99px; background: rgba(255,255,255,.22); font-size: 10px; text-transform: uppercase; letter-spacing: .6px; }
+  .spinner { display: none; align-items: center; justify-content: center; gap: 10px; padding: 26px 0 8px; color: var(--muted); }
+  .spinner.show { display: flex; }
+  .spinner i { width: 18px; height: 18px; border: 2px solid var(--line); border-top-color: var(--brand); border-radius: 50%; animation: spin .8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  footer { padding: 14px 16px 22px; text-align: center; color: #a6a6a6; font-size: 11px; }
+  footer b { color: #8a8a8a; }
+</style>
+</head>
+<body>
+<header>
+  <div class="mark">esewa<span>&nbsp;· epay</span></div>
+  <div class="tag" id="modeTag">Demo replica</div>
+</header>
+
+<main>
+  <div class="card">
+    <div class="merchant">
+      <div class="who">
+        <b>FutsalNepal</b>
+        <small id="what">Booking payment</small>
+      </div>
+      <div class="amt" id="amount">Rs. 0</div>
+    </div>
+
+    <div class="steps"><i class="on"></i><i></i><i></i></div>
+
+    <div class="body">
+      <div id="step0">
+        <h1>Log in to your eSewa account</h1>
+        <p class="sub">Enter your eSewa ID and password to continue.</p>
+        <label for="id">eSewa ID (mobile number or email)</label>
+        <input id="id" inputmode="numeric" autocomplete="off" placeholder="98XXXXXXXX">
+        <label for="password">Password</label>
+        <input id="password" type="password" autocomplete="off" placeholder="Password">
+        <button class="primary" id="next0">Log in</button>
+        <a class="link" href="#" id="forgot">Forgot password?</a>
+      </div>
+
+      <div id="step1" hidden>
+        <h1>Confirm your MPIN</h1>
+        <p class="sub">Enter the 4-digit MPIN of your eSewa wallet.</p>
+        <label for="pin">MPIN</label>
+        <input id="pin" class="pin" inputmode="numeric" maxlength="4" placeholder="••••">
+        <button class="primary" id="next1">Continue</button>
+        <button class="ghost" id="back1">Back</button>
+      </div>
+
+      <div id="step2" hidden>
+        <h1>Verification token</h1>
+        <p class="sub">Enter the 6-digit token sent to your registered mobile number.</p>
+        <label for="token">Token</label>
+        <input id="token" inputmode="numeric" maxlength="6" placeholder="------">
+        <button class="primary" id="pay">Pay <span id="payAmount">Rs. 0</span></button>
+        <button class="ghost" id="back2">Back</button>
+      </div>
+
+      <div class="error" id="error"></div>
+
+      <div class="spinner" id="spinner"><i></i><span>Processing your payment…</span></div>
+
+      <div class="note" id="note">
+        <b>Demo checkout.</b> This is a replica of the eSewa ePay page for product demos — nothing is sent to eSewa and no money moves. The booking and its ledger are real.
+        <button class="ghost" id="fill" style="margin-top:10px">Fill demo credentials</button>
+        <button class="ghost" id="cancel" style="margin-top:6px">Cancel payment</button>
+      </div>
+    </div>
+  </div>
+</main>
+
+<footer>eSewa ePay · <b>demo replica</b> · not affiliated with eSewa</footer>
+
+<script>
+(function () {
+  "use strict";
+
+  var q = new URLSearchParams(location.search);
+  var DEMO = { id: "9711111111", password: "Test@123", pin: "1122", token: "123456" };
+  var amount = Number(q.get("amount") || 0);
+
+  var el = function (id) { return document.getElementById(id); };
+  var money = function (n) { return "Rs. " + (Number(n) || 0).toLocaleString("en-IN"); };
+  var error = el("error");
+
+  el("amount").textContent = money(amount);
+  el("payAmount").textContent = money(amount);
+  if (q.get("label")) el("what").textContent = q.get("label");
+  if (q.get("demo") === "1") el("modeTag").textContent = "Demo replica";
+  else if (q.get("fallback")) el("modeTag").textContent = "Gateway unavailable";
+
+  function showError(message) {
+    error.textContent = message;
+    error.classList.add("show");
+  }
+  function clearError() {
+    error.textContent = "";
+    error.classList.remove("show");
+  }
+  function step(n) {
+    clearError();
+    [0, 1, 2].forEach(function (i) {
+      el("step" + i).hidden = i !== n;
+    });
+    var bars = document.querySelectorAll(".steps i");
+    for (var i = 0; i < bars.length; i++) bars[i].className = i <= n ? "on" : "";
+  }
+
+  function api(path, body) {
+    return fetch(path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Accept": "application/json" },
+      body: JSON.stringify(body),
+    }).then(function (r) {
+      return r.json().catch(function () { return {}; }).then(function (data) {
+        if (!r.ok) throw new Error(data.error || data.message || "The payment could not be recorded (" + r.status + ")");
+        return data;
+      });
+    });
+  }
+
+  /** Where the app's own screen is. The success/failure URLs are the app's. */
+  function go(url, params) {
+    var target = new URL(url, location.href);
+    Object.keys(params || {}).forEach(function (key) {
+      if (params[key] !== undefined && params[key] !== null && params[key] !== "") {
+        target.searchParams.set(key, String(params[key]));
+      }
+    });
+    location.replace(target.href);
+  }
+
+  function settle() {
+    var isLeague = q.get("leagueId") && q.get("teamId");
+    var shared = {
+      mockApprove: true,
+      userId: q.get("userId") || undefined,
+      expectedAmount: amount || undefined,
+    };
+
+    if (isLeague) {
+      return api("/api/tournaments/" + encodeURIComponent(q.get("leagueId")) + "/payments", {
+        action: "verify",
+        mockApprove: true,
+        userId: Number(q.get("userId")) || 0,
+        teamId: Number(q.get("teamId")),
+        amount: amount,
+        method: "eSewa",
+      });
+    }
+
+    return api("/api/payments/esewa/verify", {
+      mockApprove: true,
+      bookingId: Number(q.get("bookingId")) || undefined,
+      teamPaymentId: Number(q.get("teamPaymentId")) || undefined,
+      paymentRequestId: Number(q.get("paymentRequestId")) || undefined,
+      userId: Number(q.get("userId")) || undefined,
+      uuid: q.get("uuid") || undefined,
+      expectedAmount: shared.expectedAmount,
+      paymentPurpose: q.get("paymentPurpose") || undefined,
+    });
+  }
+
+  function finish() {
+    settle().then(function () {
+      var isLeague = q.get("leagueId") && q.get("teamId");
+      if (isLeague) return go(q.get("success"), { paid: "1" });
+
+      go(q.get("success"), {
+        mock: "1",
+        bookingId: q.get("bookingId"),
+        teamPaymentId: q.get("teamPaymentId"),
+        paymentRequestId: q.get("paymentRequestId"),
+      });
+    }).catch(function (e) {
+      el("spinner").classList.remove("show");
+      showError(e.message || "That payment could not be recorded.");
+      el("pay").disabled = false;
+      el("pay").textContent = "Try again";
+    });
+  }
+
+  el("next0").addEventListener("click", function () {
+    var id = el("id").value.trim();
+    if (!id) return showError("Enter your eSewa ID to continue.");
+    if (!/^\d{10}$/.test(id)) return showError("An eSewa ID is a 10-digit mobile number.");
+    if (!el("password").value) return showError("Enter your password to continue.");
+    if (id === DEMO.id && el("password").value !== DEMO.password) return showError("The password you entered is incorrect.");
+    step(1);
+  });
+
+  el("next1").addEventListener("click", function () {
+    var pin = el("pin").value.trim();
+    if (pin.length !== 4) return showError("Your MPIN is 4 digits.");
+    if (pin !== DEMO.pin) return showError("The MPIN you entered is incorrect.");
+    step(2);
+  });
+
+  el("pay").addEventListener("click", function () {
+    var token = el("token").value.trim();
+    if (token.length !== 6) return showError("The verification token is 6 digits.");
+    if (token !== DEMO.token) return showError("The token you entered is incorrect.");
+
+    clearError();
+    el("spinner").classList.add("show");
+    el("pay").disabled = true;
+    finish();
+  });
+
+  el("back1").addEventListener("click", function () { step(0); });
+  el("back2").addEventListener("click", function () { step(1); });
+
+  el("fill").addEventListener("click", function () {
+    el("id").value = DEMO.id;
+    el("password").value = DEMO.password;
+    el("pin").value = DEMO.pin;
+    el("token").value = DEMO.token;
+    clearError();
+    step(2);
+  });
+
+  el("cancel").addEventListener("click", function () {
+    go(q.get("failure"), { bookingId: q.get("bookingId") });
+  });
+
+  el("forgot").addEventListener("click", function (e) {
+    e.preventDefault();
+    showError("This is a demo replica — password reset is not part of it.");
+  });
+
+  /*
+   * The page is opened by the app (or a browser) with the checkout's own return
+   * URLs on it. Without them there is nowhere to hand the payer back to, so the
+   * page says so instead of pretending to pay.
+   */
+  if (!q.get("success") || !q.get("failure")) {
+    el("spinner").classList.remove("show");
+    showError("This checkout was opened without a return address. Start it from the app's Pay button.");
+    document.querySelectorAll("button.primary").forEach(function (b) { b.disabled = true; });
+    el("fill").disabled = true;
+    el("cancel").disabled = true;
+    return;
+  }
+
+  step(0);
+})();
+</script>
+</body>
+</html>

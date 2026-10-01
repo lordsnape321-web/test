@@ -148,7 +148,9 @@ class PaymentHandoffController extends ApiController
         $amount = isset($data['amount']) ? 'Rs '.number_format((float) $data['amount']) : 'your booking';
         $hint = e((string) ($data['testHint'] ?? ''));
         $cancel = e((string) ($data['failureUrl'] ?? ''));
-        $mock = e((string) ($data['mockUrl'] ?? ''));
+        // The replica page, not the app's own route: this page is served to a
+        // browser, which cannot open a route inside the app.
+        $demo = e((string) ($data['demoUrl'] ?? ''));
 
         return $this->shell('Opening eSewa…', <<<HTML
             <h1>Taking you to eSewa</h1>
@@ -164,7 +166,7 @@ class PaymentHandoffController extends ApiController
                 that is their server timing out, not a failed payment.
             </p>
             <p class="links">
-                <a href="{$mock}">Pay on the local simulator instead</a>
+                <a href="{$demo}">Pay on the demo checkout instead</a>
                 <a href="{$cancel}">Cancel and go back</a>
             </p>
             <script>document.getElementById("esewa").submit();</script>

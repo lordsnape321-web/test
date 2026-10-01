@@ -1,19 +1,24 @@
 import { STORAGE_KEYS, initStorage, storage } from "@/lib/storage";
 
 /**
- * Which checkout the app runs: the gateways' own test servers, or the built-in
- * demo replica.
+ * Which checkout the app runs: the replica of the gateway pages, or the
+ * gateways' own test servers.
  *
- * The real test servers are the default everywhere — they are the feature. But
- * a demo should not depend on eSewa's shared test wallets having money in them,
- * on Khalti's sandbox being up, or on the venue's Wi-Fi reaching either. This
- * module owns that choice:
+ * The replica is the default. eSewa's test wallets are shared between every
+ * integrator ("adequate balance will be updated to test user account" is a
+ * promise, not a standing balance), Khalti's sandbox locks accounts, and
+ * neither is reachable from wherever a demo might happen — none of which is
+ * something a checkout the app depends on can afford. The replica is the same
+ * three steps on the same page path, and it settles through the same verify
+ * endpoint, so the app behaves identically either way.
  *
- *   • `EXPO_PUBLIC_PAYMENT_MODE=demo` a build that leads with the replica;
- *   • `EXPO_PUBLIC_PAYMENT_MODE=simulator` the older no-network escape hatch,
- *     which is the same thing under a different name;
- *   • otherwise the default is the real test server, and the switch in
- *     Settings (persisted, see `setDemoPayments`) is what moves it.
+ * What this module owns:
+ *
+ *   • the default — the replica;
+ *   • `EXPO_PUBLIC_PAYMENT_MODE=real` for a build that leads with the real test
+ *     servers (and `demo`/`simulator` to say the default out loud);
+ *   • the switch in Settings (persisted, see `setDemoPayments`), which is the
+ *     same choice made at runtime.
  *
  * The choice is read *at checkout time* (`demoPayments()`), not at import time,
  * so flipping the switch takes effect on the next payment instead of the next
@@ -22,7 +27,7 @@ import { STORAGE_KEYS, initStorage, storage } from "@/lib/storage";
 
 const configured = (process.env.EXPO_PUBLIC_PAYMENT_MODE ?? "").trim().toLowerCase();
 
-let demo = configured === "demo" || configured === "simulator";
+let demo = configured !== "real";
 let hydrated = false;
 const listeners = new Set<() => void>();
 

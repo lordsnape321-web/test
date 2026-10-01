@@ -51,7 +51,7 @@ import {
   patchBooking,
   postReview,
 } from "@/api";
-import { prepareGatewayTab, realGatewayEnabled, rememberCheckout, startGatewayCheckout } from "@/lib/checkout";
+import { prepareGatewayTab, rememberCheckout, startGatewayCheckout } from "@/lib/checkout";
 import { BookingPaymentSummary } from "@/components/BookingPaymentSummary";
 import { PaymentPendingBanner } from "@/components/PaymentPendingBanner";
 import { BookingVenueName } from "@/components/BookingVenueName";
@@ -372,10 +372,11 @@ export default function BookingsScreen() {
   /**
    * Pay via a gateway.
    *
-   * The real test server first (eSewa UAT / Khalti sandbox): the server builds
-   * a session, the browser pays there, and the return screen verifies before
-   * anything is marked paid. If the gateway is unreachable the server says so
-   * and the app falls through to the local simulator, so nobody is stuck.
+   * The server builds the session and answers with the page to open — the
+   * replica of the gateway's own by default, the real test server when that is
+   * what the app is set to. Either way the return screen verifies before
+   * anything is marked paid, and if a gateway is unreachable the replica takes
+   * over, so nobody is stuck.
    */
   async function payNow(b: DiaryBooking, overrideMethod?: "eSewa" | "Khalti") {
     setPaying(b.id);
@@ -403,7 +404,6 @@ export default function BookingsScreen() {
         : b.depositRequired && b.depositStatus !== "paid"
           ? b.depositAmount ?? 0
           : payingMyShare ? shareOutstanding : moneyOf(b).balance);
-      const shareQuery = payingMyShare ? `&teamPaymentId=${myShare!.id}` : "";
       const gateway = method === "eSewa" ? ("esewa" as const) : ("khalti" as const);
       const input = {
         bookingId: b.id,
@@ -412,9 +412,6 @@ export default function BookingsScreen() {
         paymentPurpose:
           b.advancePaymentRequired && b.advancePaymentStatus !== "paid" ? ("advance" as const) : undefined,
       };
-      const path = method === "eSewa"
-        ? `/payment/esewa/mock?bookingId=${b.id}&amount=${encodeURIComponent(String(amount))}&userId=${user?.id ?? 0}${shareQuery}`
-        : `/payment/khalti/mock?bookingId=${b.id}&amount=${encodeURIComponent(String(amount))}&pidx=mock-pidx&userId=${user?.id ?? 0}${shareQuery}`;
 
       // Remembered so the return screens can offer "Try again" in one tap, and
       // so the pending card shows up wherever the player comes back to.
@@ -423,33 +420,20 @@ export default function BookingsScreen() {
         method: gateway,
         input,
         label: `${method} · booking #${b.id}`,
-        mockPath: path,
         donePath: "/bookings?refresh=1",
       });
 
-      // The server's own route for the demo checkout knows more than the local
-      // one (it carries the amount, the ids and the transaction reference), so
-      // it wins when the server sent one.
-      let target = path;
-
-      if (realGatewayEnabled() && user) {
-        const outcome = await startGatewayCheckout(gateway, input);
-
-        if (outcome.status === "gateway") {
-          setPaying(null);
-          return;
-        }
-
-        if (outcome.status === "error") {
-          setPayError(outcome.message);
-          setPaying(null);
-          return;
-        }
-
-        if (outcome.url) target = outcome.url;
+      if (!user) {
+        setPayError("Sign in to pay this booking.");
+        setPaying(null);
+        return;
       }
 
-      router.push(target as never);
+      const outcome = await startGatewayCheckout(gateway, input);
+
+      if (outcome.status === "error") setPayError(outcome.message);
+
+      setPaying(null);
     } catch (e) {
       setPayError(e instanceof Error ? e.message : "Could not start the payment");
       setPaying(null);
@@ -476,9 +460,6 @@ export default function BookingsScreen() {
     const gateway = share.paymentMethod === "eSewa" ? "esewa" : "khalti";
     prepareGatewayTab();
     const input = { bookingId: b.id, userId: user?.id, teamPaymentId: share.id };
-    const query = gateway === "esewa"
-      ? `/payment/esewa/mock?bookingId=${b.id}&amount=${encodeURIComponent(String(share.amountDue))}&teamPaymentId=${share.id}&userId=${user?.id ?? 0}`
-      : `/payment/khalti/mock?bookingId=${b.id}&amount=${encodeURIComponent(String(share.amountDue))}&teamPaymentId=${share.id}&userId=${user?.id ?? 0}&pidx=mock-team-${share.id}`;
 
     // Remembered so the return screens can offer "Try again" in one tap, and so
     // the pending card shows up wherever the player comes back to.
@@ -487,31 +468,20 @@ export default function BookingsScreen() {
       method: gateway,
       input,
       label: `${share.paymentMethod} · your share on booking #${b.id}`,
-      mockPath: query,
       donePath: "/bookings?refresh=1",
     });
 
-    let target = query;
-
-    if (realGatewayEnabled() && user) {
-      const outcome = await startGatewayCheckout(gateway, input);
-
-      if (outcome.status === "gateway") {
-        setPaying(null);
-        return;
-      }
-
-      if (outcome.status === "error") {
-        setPayError(outcome.message);
-        setPaying(null);
-        return;
-      }
-
-      if (outcome.url) target = outcome.url;
+    if (!user) {
+      setPayError("Sign in to pay this share.");
+      setPaying(null);
+      return;
     }
 
+    const outcome = await startGatewayCheckout(gateway, input);
+
+    if (outcome.status === "error") setPayError(outcome.message);
+
     setPaying(null);
-    router.push(target as never);
   }
 
   function needsOnlinePay(b: DiaryBooking) {

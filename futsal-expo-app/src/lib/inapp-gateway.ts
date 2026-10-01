@@ -25,6 +25,12 @@ export type InAppGatewaySession = {
   /** A human label for the sheet's header: "eSewa · booking #12". */
   label: string;
   /**
+   * True when the page is the backend's replica rather than the gateway. The
+   * sheet says so, and drops the gateway-specific cautions (a test session
+   * that dies after five minutes is not a thing a replica has).
+   */
+  demo?: boolean;
+  /**
    * What is being paid, in one line: "Rs. 1,200 · booking #12".
    *
    * On the sheet because the payer has to be able to see, before typing

@@ -76,11 +76,42 @@ import { esewaDataFromLocation, planCheckout } from "../src/lib/gateway-plan";
   if (plan.kind === "gateway") assert.equal(plan.url, "https://test-pay.khalti.com/?pidx=abc");
 }
 
-// Unreachable gateway → simulator, because a demo must never dead-end.
+// The demo checkout is the backend's own page, opened exactly like a gateway's.
+{
+  const plan = planCheckout("esewa", {
+    mock: true,
+    demo: true,
+    demoUrl: "http://192.168.1.20:8000/demo-esewa.html?bookingId=12&amount=1200",
+    mockUrl: "/payment/esewa/mock?bookingId=12",
+  });
+
+  assert.equal(plan.kind, "gateway", "the demo checkout opens as a page");
+  if (plan.kind === "gateway") {
+    assert.equal(plan.demo, true, "…and says it is the replica");
+    assert.equal(plan.url, "http://192.168.1.20:8000/demo-esewa.html?bookingId=12&amount=1200");
+  }
+}
+
+// Khalti answers a fallback with `payment_url` on its simulator route rather
+// than a `mockUrl`. Both name the same thing, and a page is a page.
+{
+  const plan = planCheckout("khalti", {
+    mock: true,
+    demoUrl: "http://192.168.1.20:8000/demo-khalti.html?pidx=mock-1",
+    payment_url: "/payment/khalti/mock?pidx=mock-1",
+  });
+
+  assert.equal(plan.kind, "gateway", "a Khalti fallback opens the replica page");
+  if (plan.kind === "gateway") assert.equal(plan.demo, true);
+}
+
+// A server that answers without a page (an older backend) still gets the
+// simulator route named, so `demoPageUrl` can move it onto the replica.
 {
   const plan = planCheckout("khalti", { mock: true, mockUrl: "/payment/khalti/mock?pidx=mock-1" });
 
-  assert.equal(plan.kind, "simulator", "mock:true falls back to the simulator");
+  assert.equal(plan.kind, "simulator", "mock:true without a page keeps the app route");
+  if (plan.kind === "simulator") assert.equal(plan.url, "/payment/khalti/mock?pidx=mock-1");
 }
 
 // mock:true with no fallback URL is an error worth showing, not a blank tab.
@@ -147,6 +178,17 @@ function repoFile(relative) {
 
 const php = (path) => readFileSync(repoFile(path), "utf8");
 const flat = (path) => php(path).replace(/\s+/g, " ");
+
+/**
+ * The probe is loaded twice before it runs: esbuild turns this file into a
+ * bundle (one module), then Node loads that bundle. Wrap the checks in a
+ * function that runs on the final load, or every assertion runs twice — and
+ * once with a path that resolves outside the repo.
+ */
+const IS_BUNDLE = !import.meta.url.endsWith("gateway.test.mjs");
+
+const run = () => {
+
 
 const payments = flat("laravel/app/Support/Payments.php");
 const esewa = flat("laravel/app/Http/Controllers/Api/EsewaController.php");
@@ -320,15 +362,18 @@ assert.ok(
   "the simulator route uses the same settle path instead of its own copy",
 );
 
-// The client: the captain's Pay button opens the gateway, not the simulator.
+// The client: the captain's Pay button opens a checkout page — the replica by
+// default, the real gateway when that is what the app is set to.
 const panel = php("futsal-expo-app/src/components/LeagueSquadPanel.tsx");
 assert.ok(
   panel.includes("prepareGatewayTab()") &&
     panel.includes("startLeagueCheckout(league.id, method as \"eSewa\" | \"Khalti\"") &&
-    panel.includes("if (outcome.status === \"gateway\")"),
-  "the league Pay button opens the real gateway first",
+    panel.includes("if (outcome.status === \"error\")") &&
+    !panel.includes("mockApprove: true"),
+  "the league Pay button opens the checkout page instead of settling in place",
 );
 const checkout = php("futsal-expo-app/src/lib/checkout.ts");
+const gatewayLib = php("futsal-expo-app/src/lib/gateway.ts");
 assert.ok(
   checkout.includes("export function startLeagueCheckout(") &&
     checkout.includes("initiateLeaguePayment(leagueId, { ...input, method, demo: checkoutMode(force) === \"demo\" })"),
@@ -362,8 +407,9 @@ assert.ok(
 );
 assert.ok(
   handoff.includes("Service is currently unavailable") &&
-    handoff.includes("Pay on the local simulator instead"),
-  "the hand-off page explains eSewa's error and offers the simulator",
+    handoff.includes("Pay on the demo checkout instead") &&
+    handoff.includes("$data['demoUrl']"),
+  "the hand-off page explains eSewa's error and offers the replica page",
 );
 
 // The checkout is remembered as plain data, so it survives a reload — the
@@ -425,7 +471,9 @@ assert.ok(
 for (const site of ["futsal-expo-app/app/booking/[id].tsx", "futsal-expo-app/app/(app)/bookings.tsx"]) {
   const file = php(site);
   assert.ok(
-    /rememberCheckout\(\{[\s\S]{0,300}?kind: "booking"/.test(file) && file.includes("mockPath:"),
+    /rememberCheckout\(\{[\s\S]{0,300}?kind: "booking"/.test(file) &&
+      file.includes("donePath:") &&
+      !file.includes("mockPath:"),
     `${site} remembers its checkout as a record`,
   );
 }
@@ -516,10 +564,9 @@ assert.ok(
   "the choice is saved before the other gateway is asked, and the old session id is dropped",
 );
 assert.ok(
-  checkout.includes("function switchMockPath(path: string, method: GatewayMethod): string") &&
-    checkout.includes('params.delete("uuid");') &&
-    checkout.includes('params.delete("pidx");'),
-  "a switched simulator run issues its own session instead of verifying a stranger's",
+  switched.includes("pidx: undefined, demoUrl: undefined") &&
+    switched.includes("method: label as \"eSewa\" | \"Khalti\", demoUrl: undefined"),
+  "a switched checkout drops the other gateway's session id and page",
 );
 assert.ok(
   screens.includes('"Pay with Khalti instead"') &&
@@ -542,108 +589,141 @@ assert.ok(
   "the sheet shows what is being paid and how long the test session lasts",
 );
 
-/* ── the demo checkout: a replica that always finishes ─────────────────── */
+/* ── the demo checkout: the gateway pages, as a website ─────────────────── */
+
+// The replica is a *page*, served by the backend, so the app opens it exactly
+// the way it opens a real gateway: the in-app sheet, the return URL
+// intercepted before it loads, the same verify endpoint behind it.
+const esewaPage = php("laravel/public/demo-esewa.html");
+const khaltiPage = php("laravel/public/demo-khalti.html");
+
+for (const [brand, page] of [["esewa", esewaPage], ["khalti", khaltiPage]]) {
+  assert.ok(page.includes("<!doctype html>") && page.includes("<title>"), `${brand}: the replica is a real page`);
+  assert.ok(
+    page.includes('api("/api/payments/' + brand + '/verify"') || page.includes('"/api/payments/' + brand + '/verify"'),
+    `${brand}: it settles through the same verify endpoint the app uses`,
+  );
+  assert.ok(
+    page.includes("mockApprove: true"),
+    `${brand}: as a demo settlement, which the server records like any other`,
+  );
+  assert.ok(
+    page.includes("new URL(url, location.href)") && page.includes("location.replace(target.href)"),
+    `${brand}: it hands the payer back to the app's own return URL`,
+  );
+  assert.ok(
+    page.includes("leagueId") && page.includes("/api/tournaments/"),
+    `${brand}: a league entry fee is settled the same way`,
+  );
+  assert.ok(
+    page.includes("This checkout was opened without a return address"),
+    `${brand}: opened without a return URL it says so instead of pretending to pay`,
+  );
+}
+
+// The three steps, with the credentials the real test servers publish — a
+// rehearsal for the real thing has to use the values that work there.
+assert.ok(
+  esewaPage.includes('{ title: false }') === false &&
+    esewaPage.includes("Log in to your eSewa account") &&
+    esewaPage.includes("Confirm your MPIN") &&
+    esewaPage.includes("Verification token") &&
+    esewaPage.includes('DEMO = { id: "9711111111", password: "Test@123", pin: "1122", token: "123456" }'),
+  "the eSewa replica runs the eSewa flow, with eSewa's published test login",
+);
+assert.ok(
+  khaltiPage.includes("Sign in to Khalti") &&
+    khaltiPage.includes("Enter your MPIN") &&
+    khaltiPage.includes("OTP verification") &&
+    khaltiPage.includes('DEMO = { id: "9800000001", pin: "1111", otp: "987654" }'),
+  "the Khalti replica runs the Khalti flow, with Khalti's published test payer",
+);
+for (const page of [esewaPage, khaltiPage]) {
+  assert.ok(
+    page.includes("Fill demo credentials") &&
+      page.includes("Cancel payment") &&
+      page.includes("not affiliated"),
+    "each replica offers a fill button, a cancel, and says what it is",
+  );
+}
+
+// The server points every checkout at the page, on the host the client used.
+assert.ok(
+  payments.includes("public static function demoGatewayUrl(Request $request, string $gateway, array $params): string") &&
+    payments.includes("$host = $request->getSchemeAndHttpHost();") &&
+    payments.includes("$host.'/demo-'.$gateway.'.html'.($query === '' ? '' : '?'.$query);"),
+  "Payments::demoGatewayUrl builds the page URL from the host the client reached",
+);
+
+assert.ok(
+  (esewa.match(/'demoUrl' => \$demoUrl/g) ?? []).length >= 2 &&
+    (khalti.match(/'demoUrl' => \$demoUrl/g) ?? []).length >= 1 &&
+    (league.match(/'demoUrl' => /g) ?? []).length >= 4,
+  "every checkout answer carries the replica page URL — booking and league, both gateways",
+);
+assert.ok(
+  khalti.includes("$demoUrl = Payments::demoGatewayUrl($request, 'khalti',") &&
+    (khalti.match(/\$this->demoCheckout\(/g) ?? []).length >= 2 &&
+    !khalti.includes("$this->demoCheckout($request,"),
+  "Khalti builds the page URL once, where the checkout is priced",
+);
+
+/* ── the replica is the default, and it never leaves a payment in flight ── */
 
 const mode = php("futsal-expo-app/src/lib/payment-mode.ts");
 assert.ok(
-  mode.includes("export function demoPayments(): boolean") &&
+  mode.includes("let demo = configured !== \"real\";") &&
+    mode.includes("export function demoPayments(): boolean") &&
     mode.includes("export function setDemoPayments(next: boolean): void") &&
-    mode.includes("export async function hydratePaymentMode(): Promise<void>") &&
-    mode.includes('configured === "demo" || configured === "simulator"'),
-  "the demo checkout is a persisted setting with an env override, not a constant",
+    mode.includes("export async function hydratePaymentMode(): Promise<void>"),
+  "the replica is the default, with EXPO_PUBLIC_PAYMENT_MODE=real and the switch to leave it",
 );
 assert.ok(
   php("futsal-expo-app/app/_layout.tsx").includes("void hydratePaymentMode();") &&
-    php("futsal-expo-app/app/(app)/settings.tsx").includes('label="Use the demo checkout"') &&
-    php("futsal-expo-app/app/(app)/settings.tsx").includes("<DemoCheckoutCard />"),
-  "it is read at start-up and switchable from Settings",
+    php("futsal-expo-app/app/(app)/settings.tsx").includes('label="Use the real eSewa and Khalti test servers"') &&
+    php("futsal-expo-app/app/(app)/settings.tsx").includes("onChange={(next) => setDemoPayments(!next)}"),
+  "it is read at start-up, and Settings turns the real servers on or off",
 );
 
-// The choice goes to the server with the request, because the server builds a
-// different session for it — no gateway is contacted at all.
+// A demo payment settles through this app's own verify call — there is no
+// gateway session behind it, so nothing may be left "in flight" and nothing may
+// ask eSewa about it afterwards. That was the bug: a settled demo showed a
+// pending card that answered "eSewa has no completed payment for this booking".
 assert.ok(
-  checkout.includes('const payload = { ...input, demo: checkoutMode(force) === "demo" };') &&
-    checkout.includes("export function checkoutMode(force?: CheckoutMode): CheckoutMode") &&
-    checkout.includes("export type CheckoutMode = \"real\" | \"demo\";"),
-  "a checkout sends its mode to the server instead of applying it to the answer",
-);
-const esewaController = php("laravel/app/Http/Controllers/Api/EsewaController.php");
-const khaltiController = php("laravel/app/Http/Controllers/Api/KhaltiController.php");
-const leagueController = php("laravel/app/Http/Controllers/Api/TournamentPaymentController.php");
-assert.ok(
-  esewaController.includes("$demo = $request->boolean('demo');") &&
-    esewaController.includes("if ($demo || ! Payments::reachable(") &&
-    esewaController.includes("'mock' => true,") &&
-    esewaController.includes("'demo' => $demo,") &&
-    esewaController.includes("$demo ? $mockUrl.'&demo=1' : $mockUrl"),
-  "eSewa answers a demo request with the replica, without calling eSewa",
+  screens.includes("useEffect(() => {\n    if (mock) clearCheckout();\n  }, [mock]);"),
+  "arriving at a settled demo clears the pending checkout",
 );
 assert.ok(
-  khaltiController.includes("if ($request->boolean('demo')) {") &&
-    khaltiController.includes("private function demoCheckout(") &&
-    khaltiController.includes("'mockUrl' => $url,") &&
-    khaltiController.includes("'payment_url' => $url,"),
-  "Khalti answers a demo request with the replica, without calling Khalti",
+  checkout.includes("function rememberDemoUrl(url: string): void") &&
+    checkout.includes("check: record.demoUrl ? undefined : checkFor(record),") &&
+    checkout.includes("if (plan.demo && plan.kind === \"gateway\") rememberDemoUrl(plan.url);"),
+  "a demo record keeps its page to reopen, and gets no gateway check",
 );
 assert.ok(
-  leagueController.includes("$demo = $request->boolean('demo');") &&
-    leagueController.includes("if ($demo || ! Payments::reachable(") &&
-    leagueController.includes("if ($request->boolean('demo')) {"),
-  "a league entry fee has the same demo checkout",
-);
-// A Khalti fallback answers with `payment_url` on the simulator route rather
-// than a `mockUrl`; both have to reach the simulator or the checkout never opens.
-assert.equal(
-  planCheckout("khalti", { mock: true, payment_url: "/payment/khalti/mock?pidx=mock-1", demo: true }).kind,
-  "simulator",
-  "a Khalti fallback reaches the simulator through payment_url",
-);
-assert.equal(
-  planCheckout("khalti", { mock: true, payment_url: "https://test-pay.khalti.com/?pidx=x" }).kind,
-  "simulator",
-  "…and a mock answer never opens the real gateway's page",
+  php("futsal-expo-app/src/components/PaymentPendingBanner.tsx").includes("reopenDemoCheckout(attempt.demoUrl, attempt.label)") &&
+    gatewayLib.includes("export function reopenDemoCheckout(url: string, label: string): boolean"),
+  "the pending card reopens the replica page in the sheet instead of pushing a route",
 );
 
-// The replica looks like the gateway: the same steps, and the published test
-// credentials — the ones the real servers accept.
-const screensMock = php("futsal-expo-app/src/components/PaymentScreens.tsx");
+// The three React screens that faked the gateways are gone: the replica is the
+// page above, and the app has one checkout path, not two.
 assert.ok(
-  screensMock.includes("const DEMO_LOGINS = {") &&
-    screensMock.includes('{ title: "Sign in to eSewa"') &&
-    screensMock.includes('{ title: "Confirm with MPIN"') &&
-    screensMock.includes('{ title: "Verification token"') &&
-    screensMock.includes('{ title: "OTP verification"') &&
-    screensMock.includes("Fill demo credentials"),
-  "the demo checkout runs the gateway's own steps, with a fill button for demos",
-);
-const phpLogins = php("laravel/app/Support/Payments.php");
-for (const value of ['9711111111', '1122', '123456', '9800000001', '1111', '987654']) {
-  assert.ok(
-    screensMock.includes(`"${value}"`) && phpLogins.includes(`'${value}'`),
-    `the demo credentials match the server's published test logins (${value})`,
-  );
-}
-assert.ok(
-  screensMock.includes('const mockPath = outcome.url ?? attempt.mockPath;') ||
-    checkout.includes('const mockPath = outcome.url ?? attempt.mockPath;'),
-  "a retried checkout prefers the server's own demo route",
+  !existsSync("futsal-expo-app/app/payment/esewa/mock.tsx") &&
+    !existsSync("futsal-expo-app/app/payment/khalti/mock.tsx") &&
+    !screens.includes("GatewayMock") &&
+    !screens.includes("EsewaMockScreen") &&
+    !screens.includes("KhaltiMockScreen"),
+  "the native mock screens are removed, leaving one checkout path",
 );
 assert.ok(
-  screensMock.includes('"Use the demo checkout"') &&
-    screensMock.includes('void retry.retryOn("demo")') &&
-    screensMock.includes('void retry.retryOn("real")'),
-  "a refused payment offers the replica, and the replica offers the real server back",
+  checkout.includes("export function checkoutMode(force?: CheckoutMode): CheckoutMode") &&
+    checkout.includes('const payload = { ...input, demo: checkoutMode(force) === "demo" };') &&
+    checkout.includes("export function demoPageUrl") === false &&
+    gatewayLib.includes("export function demoPageUrl(method: GatewayMethod, mockUrl: string, amount?: number): string"),
+  "the mode travels with the request, and the page URL lives with the other platform code",
 );
-for (const site of ["futsal-expo-app/app/(app)/bookings.tsx", "futsal-expo-app/app/booking/[id].tsx"]) {
-  assert.ok(
-    /if \(outcome\.url\) (target|mockRoute) = outcome\.url;/.test(php(site)),
-    `${site} opens the server's demo route when it sent one`,
-  );
-}
-
 /* ── the gateway returns the payer to the app, not to a website ─────────── */
 
-const gatewayLib = php("futsal-expo-app/src/lib/gateway.ts");
 assert.ok(
   gatewayLib.includes("export function paymentWebOrigin(): string") &&
     gatewayLib.includes("export function paymentReturnUrl(path: string): string") &&
@@ -731,6 +811,15 @@ assert.ok(
   "an intercepted return goes to the same verify routes a browser would reach",
 );
 assert.ok(
+  sheet.includes('params.mock === "1"') &&
+    sheet.includes("`/payment/esewa/success${query ? `?${query}` : \"\"}`"),
+  "the sheet reads a demo return as a success, not as eSewa's failure page",
+);
+assert.ok(
+  screens.includes("if (one(params.mock) === \"1\") clearCheckout();"),
+  "a settled demo clears the pending checkout on either gateway's return",
+);
+assert.ok(
   php("futsal-expo-app/app/_layout.tsx").includes("<GatewaySheet />") &&
     JSON.parse(php("futsal-expo-app/package.json")).dependencies["react-native-webview"] !== undefined,
   "the sheet is mounted once, and the WebView dependency is declared",
@@ -745,23 +834,25 @@ assert.ok(
 const gateway = php("futsal-expo-app/src/lib/gateway.ts");
 assert.ok(
   gateway.includes("Constants.expoConfig?.hostUri") &&
-    gateway.includes("return configuredMode !== \"simulator\";"),
-  "every platform tries the real server; a device derives its origin from the dev server",
+    gateway.includes("return demoPayments();") === false,
+  "a device derives its return origin from the dev server it was loaded from",
 );
 const enabledFn = gateway.slice(
   gateway.indexOf("export function realGatewayEnabled"),
-  gateway.indexOf("export function realGatewayEnabled") + 220,
+  gateway.indexOf("export function isFramed"),
 );
 assert.ok(
-  !enabledFn.includes("Platform.OS") && !enabledFn.includes("paymentReturnOrigin"),
-  "realGatewayEnabled has no platform gate: a phone is not sent to the simulator",
+  enabledFn.includes("return !demoPayments();") &&
+    !enabledFn.includes("Platform.OS") &&
+    !enabledFn.includes("paymentReturnOrigin"),
+  "the real servers are the opt-in side of the one setting, with no platform gate",
 );
 const bookingDetail = php("futsal-expo-app/app/booking/[id].tsx");
 assert.ok(
-  !screens.includes("Sandbox simulator") &&
-    screens.includes('chosen ? `Demo checkout • replica of ${label}` : `Fallback checkout • ${fallbackReason || "gateway unreachable"}`') &&
-    screens.includes("const [settled, setSettled] = useState(\"\");"),
-  "the demo checkout says which it is — a replica by choice, or a fallback — and shows the server's own sentence",
+  sheet.includes('session.method === "esewa" ? "eSewa — demo checkout" : "Khalti — demo checkout"') &&
+    gatewayLib.includes('Replica of the ${method === "esewa" ? "eSewa" : "Khalti"} page') &&
+    gatewayLib.includes("no real money moves"),
+  "the sheet labels the replica as the demo checkout, and says nothing leaves the app",
 );
 assert.ok(
   !bookingDetail.includes("Sandbox mode — no real money moves") &&
@@ -770,3 +861,6 @@ assert.ok(
 );
 
 console.log("gateway: all assertions passed");
+};
+
+if (IS_BUNDLE) run();

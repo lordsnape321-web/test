@@ -14,13 +14,16 @@ import { apiUrl } from "@/lib/api";
  * What the server says (POST /api/payments/{esewa,khalti}/initiate):
  *
  *   • eSewa — `handoffPath`, a page the app opens so the browser can POST the
- *     signed form (a browser can; `Linking.openURL` can only GET). `mockUrl`
- *     is the local simulator, and `fields`/`url` are the raw form if some other
- *     client wants to build it itself.
+ *     signed form (a browser can; `Linking.openURL` can only GET), and
+ *     `fields`/`url` are the raw form if some other client wants to build it.
  *   • Khalti — `payment_url`, the test-pay page, already carrying the session.
  *
- * Both carry `mock: true` when the gateway could not be reached; the checkout
- * then runs against the simulator instead of failing.
+ * Both also carry `demoUrl`, the replica of the gateway's page
+ * (`laravel/public/demo-*.html`): the checkout to run when the caller asked for
+ * the demo, and the way out when `mock: true` says the gateway could not be
+ * reached. An older backend answers `mock: true` with a URL for this app's own
+ * mock route instead; that is what the `simulator` plan below is — a page that
+ * has to be moved onto the replica before it can be opened.
  */
 
 export type GatewayMethod = "esewa" | "khalti";
@@ -40,18 +43,23 @@ export type GatewayInitiate = {
   /** Khalti */
   payment_url?: string;
   pidx?: string;
+  /** The replica page, when the server is answering with the demo checkout. */
+  demoUrl?: string;
   /** Both */
   mockUrl?: string;
   amount?: number;
 };
 
 export type CheckoutPlan =
-  /** `amount` is what the payer is about to be charged — carried so the sheet
-   *  can show it next to the gateway's own page. */
-  | { kind: "gateway"; url: string; amount?: number }
+  /**
+   * A page to open: the gateway's, or the backend's replica of it. `amount` is
+   * what the payer is about to be charged — carried so the sheet can show it
+   * next to the page. `demo` says which of the two this is.
+   */
+  | { kind: "gateway"; url: string; amount?: number; demo?: boolean }
   /** Legacy API shape: eSewa fields to POST from this browser. */
-  | { kind: "form"; url: string; fields: Record<string, string>; amount?: number }
-  | { kind: "simulator"; url: string }
+  | { kind: "form"; url: string; fields: Record<string, string>; amount?: number; demo?: boolean }
+  | { kind: "simulator"; url: string; message?: string }
   | { kind: "error"; message: string };
 
 /**
@@ -63,16 +71,25 @@ export type CheckoutPlan =
 export function planCheckout(method: GatewayMethod, init: GatewayInitiate): CheckoutPlan {
   if (init.mock === true) {
     /*
-     * Khalti answers a fallback with `payment_url` pointing at its simulator
-     * route rather than a separate `mockUrl` — both mean the same thing, so
-     * both have to reach the simulator. Without this, a Khalti fallback was
-     * reported as a plain error and the checkout never opened at all.
+     * The demo checkout is a *page*, served by the backend, and it opens in the
+     * in-app sheet exactly like a gateway page — same interception, same return
+     * route, same verify endpoint. That is the whole point of it being a
+     * website: nothing downstream needs to know the gateway was a replica.
+     *
+     * The one exception is a server that answers without `demoUrl` (an older
+     * backend, or the web app's own mock route): that is a route inside this
+     * app, so it keeps the old name and `openCheckout` below refuses it.
      */
-    const url = init.mockUrl ?? (method === "khalti" ? init.payment_url : undefined);
+    // Khalti answers a fallback with `payment_url` rather than a `mockUrl`;
+    // both name the same thing, so both are read here.
+    const mockPath = init.mockUrl ?? init.payment_url;
+    const demo = init.demoUrl ?? (/^https?:/i.test(mockPath ?? "") ? mockPath : "");
 
-    return url
-      ? { kind: "simulator", url }
-      : { kind: "error", message: init.testHint ?? "The gateway is unavailable right now." };
+    if (demo) return { kind: "gateway", url: demo, demo: true, amount: init.amount };
+
+    if (mockPath) return { kind: "simulator", url: mockPath, message: init.testHint };
+
+    return { kind: "error", message: init.testHint ?? "The gateway is unavailable right now." };
   }
 
   if (method === "esewa") {

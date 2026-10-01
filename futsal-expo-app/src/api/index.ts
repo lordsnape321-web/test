@@ -477,6 +477,12 @@ export type PaymentInitiate = {
   /** True when the demo checkout should run instead of a gateway page. */
   mock?: boolean;
   fallback?: boolean;
+  /**
+   * The replica page for this checkout, served by the backend
+   * (`/demo-esewa.html`, `/demo-khalti.html`) and opened in the in-app sheet
+   * exactly like a real gateway page.
+   */
+  demoUrl?: string;
   /** True when the replica was asked for, not fallen back to. */
   demo?: boolean;
   fallbackError?: string;
@@ -556,8 +562,8 @@ export type LeaguePaymentInput = {
  *
  * A league entry fee gets exactly the same answer as a booking payment — a real
  * eSewa form (with `handoffPath` for a native browser), a real Khalti
- * `payment_url`, or `mock: true` with a simulator URL — because it is the same
- * money and the same two test servers.
+ * `payment_url`, or the replica page's URL (`demoUrl`) — because it is the same
+ * money and the same checkout.
  */
 export function initiateLeaguePayment(
   leagueId: number,
@@ -798,9 +804,9 @@ export function leagueTeamsAction(
  * POST /api/tournaments/:id/payments — pay / record / initiate / verify /
  * receipt / prize.
  *
- * `initiate` goes through `initiateLeaguePayment` (the real test servers);
- * `verify` with `mockApprove: true` is the simulator's door — the same body the
- * mock screens post — used only when no gateway can be reached.
+ * `initiate` goes through `initiateLeaguePayment`; `verify` with
+ * `mockApprove: true` is the door the replica page posts to (`demo-khalti.html`
+ * / `demo-esewa.html`), which is where a demo entry fee is settled.
  */
 export function leaguePaymentsAction(
   id: number,

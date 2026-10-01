@@ -44,11 +44,10 @@ const LEAGUE_PAY_METHODS = ["eSewa", "Khalti", "Cash at Venue"];
  * same ones written here — the panel just says them before you press anything.
  *
  * Paying runs the same checkout as a booking (see `src/lib/checkout.ts`): the
- * captain is sent to eSewa's or Khalti's own test server, and the return page
- * verifies the payment before a row is written. `action: "verify"` with
- * `mockApprove: true` is only the fallback for a gateway that cannot be
- * reached — same server path from there on (ledger row + auto-approve once the
- * deposit is met).
+ * captain is sent to a checkout page — the replica of the gateway by default,
+ * the real test server when the app is set to it — and that page settles the
+ * fee through the same verify call a real gateway's return page would, so the
+ * ledger row and the auto-approval once the deposit is met are the real ones.
  */
 export function LeagueSquadPanel({
   league,
@@ -128,7 +127,7 @@ export function LeagueSquadPanel({
    * Cash at venue moves no money here: the host records it when they take it,
    * and the screenshot is what bridges the gap. Online methods open the real
    * test server first — eSewa's UAT page or Khalti's sandbox — and only fall
-   * back to the simulator when neither can be reached.
+   * back to the replica page when neither can be reached.
    */
   async function pay(teamId: number, amount: number) {
     const method = methodFor(teamId);
@@ -145,9 +144,7 @@ export function LeagueSquadPanel({
     const input = { teamId, userId: viewerId, amount };
 
     // Remembered so the return screens can offer "Try again" in one tap, and so
-    // the pending card shows up wherever the captain comes back to. A league
-    // entry fee has no simulator route of its own — its fallback is the settle
-    // call — and `attemptFor` in src/lib/checkout.ts knows that.
+    // the pending card shows up wherever the captain comes back to.
     rememberCheckout({
       kind: "league",
       leagueId: league.id,
@@ -160,34 +157,14 @@ export function LeagueSquadPanel({
     try {
       const outcome = await startLeagueCheckout(league.id, method as "eSewa" | "Khalti", input);
 
-      if (outcome.status === "gateway") {
-        setMsg("Finish the payment in the browser, then come back — the entry updates the moment the gateway confirms it.");
-        return;
-      }
-
       if (outcome.status === "error") {
         setErr(outcome.message);
         return;
       }
 
-      // The demo checkout has a page of its own — showing it is the point of
-      // the replica, and it settles through the same verify call either way.
-      if (outcome.url) {
-        router.push(outcome.url as never);
-        return;
-      }
-
-      // No page to show: the same server path the gateway's return page takes.
-      const data = await leaguePaymentsAction(league.id, {
-        action: "verify",
-        mockApprove: true,
-        userId: viewerId,
-        teamId,
-        amount,
-        method,
-      });
-      setMsg(String(data.message ?? "Payment recorded ✅"));
-      onChanged();
+      // A checkout page is open — the gateway's, or the replica's — and it
+      // settles the entry fee and returns to this league when it is done.
+      setMsg("Finish the payment in the checkout, then come back — the entry updates the moment it is verified.");
     } catch (e) {
       setErr(e instanceof Error ? e.message : "That didn't work 🙏");
     } finally {

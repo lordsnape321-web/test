@@ -921,9 +921,9 @@ function DeviceSections({
               when they do.
             </HelpPara>
             <HelpPara label="Paying." color={c.text}>
-              eSewa and Khalti run in test mode here, and cash at the counter is always
-              fine. If a test server refuses a payment, the drawer below can run the
-              demo checkout instead — the same steps, with nothing leaving the phone.
+              Checkout runs on a replica of the eSewa and Khalti pages — same steps, same
+              ledger, nothing leaving the app. Cash at the counter is always fine, and the
+              drawer below can point payments at the providers' real test servers instead.
             </HelpPara>
             <HelpPara label="Leagues." color={c.text}>
               A squad locks its place with at least a 25% deposit. Back out and 10% of what
@@ -965,15 +965,15 @@ function DemoCheckoutCard() {
   return (
     <View style={[styles.card, { backgroundColor: c.surface, borderColor: c.border }]}>
       <Toggle
-        label="Use the demo checkout"
-        sub="Checkouts run the built-in replica of the eSewa and Khalti pages instead of their test servers — for demos, and anywhere a sandbox is unreachable. The same steps, the same ledger; only the gateway is pretend."
-        value={on}
-        onChange={(next) => setDemoPayments(next)}
+        label="Use the real eSewa and Khalti test servers"
+        sub="Off by default: checkouts run the built-in replica of both gateway pages, which always works. Turn it on to try the providers' real test servers — their shared wallets and locked accounts are why the replica is the default."
+        value={!on}
+        onChange={(next) => setDemoPayments(!next)}
       />
       <Text style={{ color: c.textMuted, fontSize: fontSize.sm, lineHeight: 18, marginTop: space[2] }}>
         {on
-          ? "Payments will run the demo checkout 🎬 — eSewa 9711111111 / Test@123, MPIN 1122, token 123456; Khalti 9800000001, MPIN 1111, OTP 987654."
-          : "Payments will use the real eSewa and Khalti test servers 💳 — turn this on if a test wallet is empty or a sandbox is down."}
+          ? "Checkouts run the replica 🎬 — eSewa 9711111111 / Test@123, MPIN 1122, token 123456; Khalti 9800000001, MPIN 1111, OTP 987654."
+          : "Checkouts go to eSewa UAT and Khalti's sandbox 💳 — if a wallet is empty or an account is locked, the failure screen can move the payment to the replica."}
       </Text>
     </View>
   );
