@@ -102,8 +102,11 @@ node scripts/.tmp/gateway.mjs
 It covers the checkout decision (real gateway vs. form POST vs. simulator vs.
 error) and reads the Laravel side to pin the contract it depends on: the
 published test credentials, `returnOrigin`, the query-free return URLs, the
-eSewa hand-off pages (booking and league), and that the simulator settles
-through the same ledger path as a gateway payment. See `PAYMENT_PORT_NOTES.md` for how a checkout runs and how
+eSewa hand-off pages (booking and league), and that the demo checkout settles
+through the same ledger path as a gateway payment. The app pays on the providers'
+real test servers by default and carries a replica of both pages for demos
+(*Settings → Use the demo checkout*, or `EXPO_PUBLIC_PAYMENT_MODE=demo`). See
+`PAYMENT_PORT_NOTES.md` for how a checkout runs and how
 to point a native build at the gateways.
 
 Bundling for a device can be checked with:

@@ -170,7 +170,14 @@ export function LeagueSquadPanel({
         return;
       }
 
-      // Simulator: the same server path the gateway's return page takes.
+      // The demo checkout has a page of its own — showing it is the point of
+      // the replica, and it settles through the same verify call either way.
+      if (outcome.url) {
+        router.push(outcome.url as never);
+        return;
+      }
+
+      // No page to show: the same server path the gateway's return page takes.
       const data = await leaguePaymentsAction(league.id, {
         action: "verify",
         mockApprove: true,

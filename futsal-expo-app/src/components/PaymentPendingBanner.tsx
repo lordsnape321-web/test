@@ -127,8 +127,8 @@ export function PaymentPendingBanner({ onSettled }: { onSettled?: () => void }) 
       </View>
 
       <Text style={[styles.body, { color: c.textMuted }]}>
-        {attempt.label} was started in the browser. If you finished it, check now — if you did not, it is
-        still waiting.
+        {attempt.label} was started on the gateway&apos;s page. If you finished it, check now — if you did
+        not, it is still waiting.
       </Text>
 
       {message ? <Text style={[styles.body, { color: colors.red600 }]}>{message}</Text> : null}
@@ -170,7 +170,7 @@ export function PaymentPendingBanner({ onSettled }: { onSettled?: () => void }) 
             disabled={busy}
             style={[styles.action, { borderColor: c.border }]}
           >
-            <Text style={[styles.actionText, { color: c.text }]}>Finish on the simulator</Text>
+            <Text style={[styles.actionText, { color: c.text }]}>Finish on the demo checkout</Text>
           </Pressable>
         ) : null}
       </View>

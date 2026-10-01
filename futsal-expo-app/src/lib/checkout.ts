@@ -14,6 +14,7 @@ import {
 import { ApiError } from "@/lib/api";
 import { formatNPR } from "@/lib/futsal";
 import { openCheckout, prepareGatewayTab, realGatewayEnabled, releaseGatewayTab } from "@/lib/gateway";
+import { demoPayments } from "@/lib/payment-mode";
 import { planCheckout, type GatewayInitiate, type GatewayMethod } from "@/lib/gateway-plan";
 import { STORAGE_KEYS, storage } from "@/lib/storage";
 
@@ -37,10 +38,32 @@ import { STORAGE_KEYS, storage } from "@/lib/storage";
 export type CheckoutOutcome =
   /** The gateway page is open (or the tab is navigating to it). */
   | { status: "gateway" }
-  /** The server could not reach the gateway — run the local simulator route. */
-  | { status: "simulator" }
+  /**
+   * Run the local demo checkout. `url` is the server's own route for this
+   * target (it knows the amount, the ids and the transaction reference), and is
+   * what a caller should use when the server sent one.
+   */
+  | { status: "simulator"; url?: string }
   /** Nothing was charged and nothing opened; `message` is worth showing. */
   | { status: "error"; message: string };
+
+/**
+ * Which checkout to run: the gateway's test server, or the demo replica.
+ *
+ * `demo` is the built-in replica — a checkout that always works, because it
+ * does not depend on eSewa's shared wallets or Khalti's sandbox being up. It
+ * settles through the *same* server-side verification as a real payment
+ * (`mockApprove`), so the ledger, the booking states and the amounts are the
+ * real code paths, not a mock of them.
+ */
+export type CheckoutMode = "real" | "demo";
+
+/** The mode a checkout should use, given an explicit choice or the setting. */
+export function checkoutMode(force?: CheckoutMode): CheckoutMode {
+  if (force) return force;
+
+  return demoPayments() || !realGatewayEnabled() ? "demo" : "real";
+}
 
 /**
  * What is waiting on a gateway, in a form that survives a reload.
@@ -74,7 +97,7 @@ export type PendingRecord =
 export type RememberedCheckout = {
   label: string;
   /** Ask the server for a session, and open it (or report the fallback). */
-  run: () => Promise<CheckoutOutcome>;
+  run: (force?: CheckoutMode) => Promise<CheckoutOutcome>;
   /** Where the simulator runs when the gateway cannot be reached. */
   mockPath?: string;
   /**
@@ -202,7 +225,7 @@ function attemptFor(record: PendingRecord): RememberedCheckout {
 
     return {
       label: record.label,
-      run: () => startLeagueCheckout(record.leagueId, record.method, input),
+      run: (force) => startLeagueCheckout(record.leagueId, record.method, input, force),
       donePath: record.donePath,
       settle: async () => {
         const data = await leaguePaymentsAction(record.leagueId, {
@@ -223,7 +246,7 @@ function attemptFor(record: PendingRecord): RememberedCheckout {
 
   return {
     label: record.label,
-    run: () => startGatewayCheckout(record.method, input),
+    run: (force) => startGatewayCheckout(record.method, input, force),
     mockPath: record.mockPath,
     donePath: record.donePath,
     check: checkFor(record),
@@ -344,8 +367,14 @@ export function pendingGateway(): GatewayMethod | null {
 export function startGatewayCheckout(
   method: GatewayMethod,
   input: PaymentInitiateInput,
+  force?: CheckoutMode,
 ): Promise<CheckoutOutcome> {
-  return runCheckout(method, () => (method === "esewa" ? initiateEsewa(input) : initiateKhalti(input)));
+  // The server builds the session differently for the replica (it returns the
+  // demo route directly instead of calling the gateway), so the choice is sent
+  // with the request rather than applied to its answer.
+  const payload = { ...input, demo: checkoutMode(force) === "demo" };
+
+  return runCheckout(method, () => (method === "esewa" ? initiateEsewa(payload) : initiateKhalti(payload)));
 }
 
 /**
@@ -359,9 +388,10 @@ export function startLeagueCheckout(
   leagueId: number,
   method: "eSewa" | "Khalti",
   input: LeaguePaymentInput,
+  force?: CheckoutMode,
 ): Promise<CheckoutOutcome> {
   return runCheckout(method === "eSewa" ? "esewa" : "khalti", () =>
-    initiateLeaguePayment(leagueId, { ...input, method }),
+    initiateLeaguePayment(leagueId, { ...input, method, demo: checkoutMode(force) === "demo" }),
   );
 }
 
@@ -377,7 +407,9 @@ async function runCheckout(method: GatewayMethod, load: () => Promise<GatewayIni
       if (openCheckout(plan)) return { status: "gateway" };
     }
 
-    if (plan.kind === "simulator") return { status: "simulator" };
+    // The server's own route for the replica carries the amount, the ids and
+    // the transaction reference; prefer it over the caller's locally built one.
+    if (plan.kind === "simulator") return { status: "simulator", url: plan.url };
 
     releaseGatewayTab();
 
@@ -431,27 +463,29 @@ export async function checkLastCheckout(): Promise<CheckOutcome> {
 export type RetryOutcome =
   /** The gateway page is open again. */
   | { status: "gateway" }
-  /** The gateway could not be reached — run the simulator route. */
-  | { status: "simulator"; mockPath: string }
+  /** Run the demo checkout; `mockPath` is the route, when one is known. */
+  | { status: "simulator"; mockPath?: string }
   /** The fallback settled it right here (a league entry fee). */
   | { status: "settled"; donePath: string; message: string }
   /** This session never ran a checkout. */
   | { status: "nothing" }
   | { status: "error"; message: string };
 
-/** Re-run the session's last checkout, from a failure screen. */
-export async function retryLastCheckout(): Promise<RetryOutcome> {
+/**
+ * Re-run the session's last checkout, from a failure screen.
+ *
+ * `force` exists because a failure is often the moment to change your mind: the
+ * same payment can be retried on the real test server (`"real"`), or run on the
+ * built-in replica (`"demo"`) when the gateway is the thing that is broken.
+ */
+export async function retryLastCheckout(force?: CheckoutMode): Promise<RetryOutcome> {
   const attempt = lastCheckout;
 
   if (!attempt) return { status: "nothing" };
 
   prepareGatewayTab();
 
-  const outcome = realGatewayEnabled()
-    ? await attempt.run()
-    : ({ status: "simulator" } as CheckoutOutcome);
-
-  return finishAttempt(attempt, outcome);
+  return finishAttempt(attempt, await attempt.run(checkoutMode(force)));
 }
 
 /**
@@ -507,11 +541,8 @@ export async function switchLastCheckoutGateway(method: GatewayMethod): Promise<
   prepareGatewayTab();
 
   const attempt = attemptFor(next);
-  const outcome = realGatewayEnabled()
-    ? await attempt.run()
-    : ({ status: "simulator" } as CheckoutOutcome);
 
-  return finishAttempt(attempt, outcome);
+  return finishAttempt(attempt, await attempt.run(checkoutMode("real")));
 }
 
 /** "eSewa · booking #12" → "Khalti · booking #12" (and the other way round). */
@@ -549,7 +580,9 @@ async function finishAttempt(
   if (outcome.status === "gateway") return { status: "gateway" };
 
   if (outcome.status === "simulator") {
-    if (attempt.mockPath) return { status: "simulator", mockPath: attempt.mockPath };
+    const mockPath = outcome.url ?? attempt.mockPath;
+
+    if (mockPath) return { status: "simulator", mockPath };
 
     if (attempt.settle) {
       try {

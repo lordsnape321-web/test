@@ -42,7 +42,10 @@ would fail on the import until this has run.
    - eSewa → `handoffPath`, a page that POSTs the signed form (a browser can
      POST; `Linking.openURL` cannot);
    - Khalti → `payment_url`, the test-pay page.
-3. The gateway returns the browser to `/payment/esewa/success` or
+3. Or the caller asked for the **demo checkout** (`demo: true`), in which case
+   the server answers with the replica's own route and no gateway is contacted
+   at all — see *The demo checkout* below.
+4. The gateway returns the browser to `/payment/esewa/success` or
    `/payment/khalti/callback`, which calls `verify`. The server checks eSewa's
    HMAC plus its status API, or Khalti's lookup — the redirect itself never
    settles a payment.
@@ -103,6 +106,13 @@ Two different things can be going on, and they need different answers:
   unavailable. Please try again later." when their backend times out. Nothing
   can be verified from that page, so `initiate` checks the host first and the
   simulator takes over instead (see below).
+- **It keeps failing.** There is a replica for exactly this: *Use the demo
+  checkout* on the failure screen, or the switch in settings. It runs the same
+  three steps, settles through the same verify endpoint, and does not depend on
+  anybody's sandbox.
+
+### If it still fails
+
 - **The transaction failed after login.** If the token verifies and the confirm
   screen appears, the credentials were fine — the *debit* is what failed, and
   eSewa's status API says so in one word: `FAILED` (a session it never saw is
@@ -149,14 +159,41 @@ carries it out: it saves the choice the way the booking cards do
 id and simulator path, and starts the new checkout in place. The payer never has
 to go back and find the booking again.
 
-## Falling back, and the simulator
+## The demo checkout (the replica)
 
-`initiate` answers `mock: true` with a simulator URL when the test server cannot
-be reached; the app then opens the local `/payment/{esewa,khalti}/mock` screens,
-which verify with `mockApprove` on the identical server path. A refused session
-(a played game, a paid share, the wrong amount) stays an error — it never turns
-into a fake payment. The simulator is what happens *after* the real server
-refuses to answer, never a mode the app starts in.
+eSewa's test wallets are shared between every integrator ("adequate balance will
+be updated to test user account" is a promise, not a standing balance), Khalti's
+sandbox locks accounts, and neither is reachable from wherever a demo might
+happen. So the app carries a replica of both pages:
+
+- **`src/lib/payment-mode.ts`** owns the choice — the real test servers by
+  default, the replica when the switch in *Settings → Help and about → Use the
+  demo checkout* is on, or when a build sets `EXPO_PUBLIC_PAYMENT_MODE=demo`
+  (the older `simulator` value means the same thing). The choice is read at
+  checkout time, so the switch takes effect on the next payment.
+- The mode is sent **with the request** (`demo: true`), because the server builds
+  a different session for it: no gateway is contacted at all, and the answer is
+  the demo route with the amount, the ids and the transaction reference on it
+  (`$demo` in the two booking controllers and the league controller, and
+  `KhaltiController::demoCheckout()`).
+- The page (`/payment/{esewa,khalti}/mock`, `GatewayMock` in
+  `src/components/PaymentScreens.tsx`) is the gateway's own flow: sign in →
+  confirm with the MPIN → the token, validated against the published test
+  credentials, with a *Fill demo credentials* button and a header that says it is
+  a replica.
+- Finishing it posts `mockApprove` to **the same verify endpoint** a real payment
+  uses, so the booking states, ledger, amounts, notifications and league
+  settlement are the real code paths. Only the gateway is pretend.
+- The replica offers *Use the real eSewa test server instead* (and the real
+  failure screens offer *Use the demo checkout*), so a demo can switch sides
+  without leaving the checkout.
+
+`demo=1` on the route means the replica was chosen; without it the gateway was
+down and this is the fallback, which the page says out loud (`fallback=…` carries
+the gateway's own complaint).
+
+A refused session (a played game, a paid share, the wrong amount) stays an error
+— neither the replica nor the fallback turns it into a fake payment.
 
 ## When the test server is down
 

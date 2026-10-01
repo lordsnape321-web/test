@@ -106,9 +106,17 @@ class KhaltiController extends ApiController
 
         $amountPaisa = (int) round($amountNpr * 100);
 
+        $payerId = (int) ($paymentRequest->payer_id ?? $teamPayment->user_id ?? $booking->user_id);
+
         $mockTarget = $teamPayment
             ? "&teamPaymentId={$teamPayment->id}&userId={$teamPayment->user_id}"
-            : ($paymentRequest ? "&paymentRequestId={$paymentRequest->id}&userId={$paymentRequest->payer_id}" : '');
+            : ($paymentRequest ? "&paymentRequestId={$paymentRequest->id}&userId={$paymentRequest->payer_id}" : "&userId={$payerId}");
+
+        // A demo run never calls Khalti: the replica is right here, and their
+        // sandbox (test-pay.khalti.com) is not always willing to talk.
+        if ($request->boolean('demo')) {
+            return $this->demoCheckout($booking, $teamPayment, $paymentRequest, $origin, $amountNpr, $venueName, $orderId, $mockTarget, '');
+        }
 
         try {
             $init = Payments::khaltiInitiate([
@@ -141,30 +149,61 @@ class KhaltiController extends ApiController
                 'testHint' => 'Khalti test server: pay with 9800000001, MPIN 1111, OTP 987654',
             ]);
         } catch (\Throwable $e) {
-            // Sandbox unreachable or key rejected: fall back to the simulator so
-            // the demo keeps working.
-            $mockPidx = 'mock-'.$orderId;
-
-            $this->storePidx($booking, $teamPayment, $paymentRequest, $mockPidx);
-
-            return $this->ok([
-                'mock' => true,
-                'fallback' => true,
-                'returnOrigin' => $origin,
-                'fallbackError' => $e->getMessage(),
-                'pidx' => $mockPidx,
-                'payment_url' => "{$origin}/payment/khalti/mock?pidx=".rawurlencode($mockPidx)."&bookingId={$booking->id}&amount={$amountNpr}"
-                    .$mockTarget.'&fallback='.rawurlencode($e->getMessage()),
-                'amount' => $amountNpr,
-                'bookingId' => $booking->id,
-                'teamPaymentId' => $teamPayment->id ?? null,
-                'paymentRequestId' => $paymentRequest->id ?? null,
-                'venueName' => $venueName,
-                'isDeposit' => ! $teamPayment && ! $paymentRequest && (bool) $booking->deposit_required,
-                'isAdvance' => ($paymentRequest?->purpose === 'advance') || (! $teamPayment && (bool) $booking->advance_payment_required),
-                'testHint' => 'Khalti sandbox unreachable — using local simulator so you can still test.',
-            ]);
+            // Sandbox unreachable or key rejected: fall back to the replica so
+            // the checkout still finishes.
+            return $this->demoCheckout($booking, $teamPayment, $paymentRequest, $origin, $amountNpr, $venueName, $orderId, $mockTarget, $e->getMessage());
         }
+    }
+
+    /**
+     * The demo checkout for a booking payment: Khalti's own page, replicated
+     * locally, with a `mock-` session id the verify path already understands.
+     *
+     * `$fallbackError` is empty when the replica was asked for, and carries the
+     * sandbox's complaint when it is a fallback — the difference between "this
+     * is a demo" and "their server is down", which the checkout page shows.
+     *
+     * @return JsonResponse `{ mock: true, mockUrl, payment_url, pidx, … }`
+     */
+    private function demoCheckout(
+        Booking $booking,
+        ?BookingTeamPayment $teamPayment,
+        ?BookingPaymentRequest $paymentRequest,
+        string $origin,
+        int $amountNpr,
+        string $venueName,
+        string $orderId,
+        string $mockTarget,
+        string $fallbackError,
+    ): JsonResponse {
+        $demo = $fallbackError === '';
+        $mockPidx = 'mock-'.$orderId;
+
+        $this->storePidx($booking, $teamPayment, $paymentRequest, $mockPidx);
+
+        $url = "{$origin}/payment/khalti/mock?pidx=".rawurlencode($mockPidx)."&bookingId={$booking->id}&amount={$amountNpr}".$mockTarget
+            .($demo ? '&demo=1' : '&fallback='.rawurlencode($fallbackError));
+
+        return $this->ok([
+            'mock' => true,
+            'demo' => $demo,
+            'fallback' => ! $demo,
+            'returnOrigin' => $origin,
+            'fallbackError' => $demo ? null : $fallbackError,
+            'pidx' => $mockPidx,
+            'mockUrl' => $url,
+            'payment_url' => $url,
+            'amount' => $amountNpr,
+            'bookingId' => $booking->id,
+            'teamPaymentId' => $teamPayment->id ?? null,
+            'paymentRequestId' => $paymentRequest->id ?? null,
+            'venueName' => $venueName,
+            'isDeposit' => ! $teamPayment && ! $paymentRequest && (bool) $booking->deposit_required,
+            'isAdvance' => ($paymentRequest?->purpose === 'advance') || (! $teamPayment && (bool) $booking->advance_payment_required),
+            'testHint' => $demo
+                ? 'Demo checkout — a replica of the Khalti page. No real money, no real gateway.'
+                : 'Khalti sandbox unreachable — using the demo checkout so you can still test.',
+        ]);
     }
 
     /**

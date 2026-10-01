@@ -39,6 +39,11 @@ import {
 } from "@/api";
 import { ApiError } from "@/lib/api";
 import { CITY_OPTIONS } from "@/lib/futsal";
+import {
+  demoPayments,
+  setDemoPayments,
+  subscribePaymentMode,
+} from "@/lib/payment-mode";
 import { timeAgo } from "@/lib/time";
 import type { AppNotification } from "@/lib/types";
 import { colors, fontSize, radius, space } from "@/theme";
@@ -83,6 +88,7 @@ export default function SettingsScreen() {
   const router = useRouter();
 
   const [section, setSection] = useState<SectionId>(user ? "profile" : "appearance");
+
   const [notes, setNotes] = useState<AppNotification[]>([]);
   const [notesLoading, setNotesLoading] = useState(true);
   const [citySaving, setCitySaving] = useState(false);
@@ -916,7 +922,8 @@ function DeviceSections({
             </HelpPara>
             <HelpPara label="Paying." color={c.text}>
               eSewa and Khalti run in test mode here, and cash at the counter is always
-              fine.
+              fine. If a test server refuses a payment, the drawer below can run the
+              demo checkout instead — the same steps, with nothing leaving the phone.
             </HelpPara>
             <HelpPara label="Leagues." color={c.text}>
               A squad locks its place with at least a 25% deposit. Back out and 10% of what
@@ -927,6 +934,7 @@ function DeviceSections({
               Profile, theme and account are here.
             </HelpPara>
           </View>
+          <DemoCheckoutCard />
           <Row
             icon={Trophy}
             title="Back to the home page"
@@ -940,6 +948,36 @@ function DeviceSections({
 }
 
 /* ── pieces ──────────────────────────────────────────────────────────────── */
+
+/**
+ * The payment switch.
+ *
+ * A setting, not a checkout option: it is persisted by
+ * `src/lib/payment-mode.ts`, the next payment reads it from there, and the
+ * toggle below follows the store so a switch made elsewhere is reflected here.
+ */
+function DemoCheckoutCard() {
+  const { colors: c } = useTheme();
+  const [on, setOn] = useState(demoPayments());
+
+  useEffect(() => subscribePaymentMode(() => setOn(demoPayments())), []);
+
+  return (
+    <View style={[styles.card, { backgroundColor: c.surface, borderColor: c.border }]}>
+      <Toggle
+        label="Use the demo checkout"
+        sub="Checkouts run the built-in replica of the eSewa and Khalti pages instead of their test servers — for demos, and anywhere a sandbox is unreachable. The same steps, the same ledger; only the gateway is pretend."
+        value={on}
+        onChange={(next) => setDemoPayments(next)}
+      />
+      <Text style={{ color: c.textMuted, fontSize: fontSize.sm, lineHeight: 18, marginTop: space[2] }}>
+        {on
+          ? "Payments will run the demo checkout 🎬 — eSewa 9711111111 / Test@123, MPIN 1122, token 123456; Khalti 9800000001, MPIN 1111, OTP 987654."
+          : "Payments will use the real eSewa and Khalti test servers 💳 — turn this on if a test wallet is empty or a sandbox is down."}
+      </Text>
+    </View>
+  );
+}
 
 /** "2 hours" / "1 hour" — the reminder lead, in words. */
 function formatLead(minutes: number): string {

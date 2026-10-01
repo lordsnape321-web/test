@@ -172,30 +172,46 @@ class EsewaController extends ApiController
             ? "&teamPaymentId={$teamPayment->id}&userId={$teamPayment->user_id}"
             : ($paymentRequest ? "&paymentRequestId={$paymentRequest->id}&userId={$paymentRequest->payer_id}" : '');
 
-        $mockUrl = "{$origin}/payment/esewa/mock?bookingId={$booking->id}&amount={$amount}&uuid=".rawurlencode($transactionUuid).$mockTarget;
+        // The demo route carries everything the verify call needs: the target
+        // ids, and the payer (`userId`) when the target is not the one that
+        // already names them — a payment request's payer, for instance.
+        $mockUrl = "{$origin}/payment/esewa/mock?bookingId={$booking->id}&amount={$amount}&uuid=".rawurlencode($transactionUuid).$mockTarget
+            .($requestedUserId && ! str_contains($mockTarget, 'userId=') ? "&userId={$requestedUserId}" : '');
 
         /*
-         * eSewa's UAT server is regularly unavailable ("Service is currently
-         * unavailable. Please try again later." is its own wording for a server
-         * timeout). Sending a player there in that state is a dead end: their
-         * error page carries no signed response, so nothing can be verified.
-         * Answer `mock: true` instead — the documented fallback — and the app
-         * runs the local checkout, which moves the same money through the same
-         * server-side settlement path.
+         * Two reasons to answer with the demo checkout instead of eSewa's page:
+         *
+         *   • the caller asked for it (`demo: true`) — a demo should not depend
+         *     on eSewa's shared test wallets having money in them, or on the
+         *     demo's network reaching esewa.com.np at all;
+         *   • eSewa's UAT is unavailable ("Service is currently unavailable.
+         *     Please try again later." is its own wording for a server timeout).
+         *     Sending a player there in that state is a dead end: their error
+         *     page carries no signed response, so nothing can be verified.
+         *
+         * Either way the app runs the local checkout, which moves the same money
+         * through the same server-side settlement path (`mockApprove`).
          */
-        if (! Payments::reachable((string) $cfg['formUrl'])) {
+        $demo = $request->boolean('demo');
+
+        if ($demo || ! Payments::reachable((string) $cfg['formUrl'])) {
             return $this->ok([
                 'mock' => true,
-                'fallback' => true,
-                'fallbackError' => 'The eSewa test server is not answering',
-                'mockUrl' => $mockUrl,
+                'demo' => $demo,
+                'fallback' => ! $demo,
+                'fallbackError' => $demo ? null : 'The eSewa test server is not answering',
+                // `demo=1` is how the checkout page knows it was chosen rather
+                // than fallen back to — it says so, and offers the real server.
+                'mockUrl' => $demo ? $mockUrl.'&demo=1' : $mockUrl,
                 'amount' => $amount,
                 'bookingId' => $booking->id,
                 'teamPaymentId' => $teamPayment->id ?? null,
                 'paymentRequestId' => $paymentRequest->id ?? null,
                 'transactionUuid' => $transactionUuid,
                 'returnOrigin' => $origin,
-                'testHint' => 'The eSewa test server is not answering right now, so this runs the local simulator instead.',
+                'testHint' => $demo
+                    ? 'Demo checkout — a replica of the eSewa page. No real money, no real gateway.'
+                    : 'The eSewa test server is not answering right now, so this runs the demo checkout instead.',
             ]);
         }
 

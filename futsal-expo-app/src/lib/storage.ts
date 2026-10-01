@@ -32,6 +32,14 @@ export const STORAGE_KEYS = {
    * in flight left no trace and the screens looked untouched.
    */
   pendingCheckout: "futsal.pending-checkout",
+  /**
+   * Whether checkouts run the built-in demo replica instead of a gateway.
+   *
+   * The real test servers are still the default; this is for demonstrating the
+   * app (or working offline) without either of them being reachable from where
+   * the demo is happening.
+   */
+  demoPayments: "futsal.demo-payments",
 } as const;
 
 const HYDRATE = Object.values(STORAGE_KEYS);

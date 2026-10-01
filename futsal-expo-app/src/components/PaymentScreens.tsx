@@ -5,6 +5,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { ApiError } from "@/lib/api";
 import { formatNPR } from "@/lib/futsal";
+import { TextControl } from "@/components/ui";
 import { leaguePaymentsAction, verifyEsewa, verifyKhalti } from "@/api";
 import {
   appReturnLinks,
@@ -21,6 +22,7 @@ import {
   pendingRecord,
   retryLastCheckout,
   switchLastCheckoutGateway,
+  type CheckoutMode,
 } from "@/lib/checkout";
 import { useTheme } from "@/context/ThemeContext";
 import { colors, fontSize, radius, space } from "@/theme";
@@ -68,12 +70,64 @@ export function KhaltiMockScreen() {
   return <GatewayMock kind="khalti" params={params} onDone={(id) => router.replace(leagueId ? `/leagues/${leagueId}?paid=1` : `/payment/khalti/callback?mock=1&pidx=${encodeURIComponent(one(params.pidx))}&bookingId=${id}${requestId ? `&paymentRequestId=${requestId}` : ""}&status=Completed`)} onCancel={(id) => router.replace(leagueId ? `/leagues/${leagueId}` : `/payment/khalti/callback?bookingId=${id}&status=User%20canceled`)} />;
 }
 
+/**
+ * The demo checkout — eSewa's and Khalti's pages, replicated.
+ *
+ * This is what a *demo* has to be: the same three steps the payer knows (sign
+ * in, confirm with the MPIN, type the token), the same amount and merchant, the
+ * same green tick at the end — but not dependent on eSewa's shared test wallets
+ * holding money, on Khalti's sandbox answering, or on the demo venue's Wi-Fi
+ * reaching either of them.
+ *
+ * It is a replica, not a fake: finishing it posts `mockApprove` to the *same*
+ * verify endpoint a real payment uses, so the booking states, the ledger, the
+ * amounts and the notifications are all the real code paths. Only the gateway
+ * is pretend.
+ *
+ * The credentials are the published test logins — the same ones the real
+ * servers accept, so a demo built on this looks and behaves like the real
+ * thing, and a wrong value is refused with the value to use instead.
+ */
+const DEMO_LOGINS = {
+  esewa: {
+    ids: ["9711111111", "9711111112", "9711111113", "9711111114", "9806800001", "9806800002", "9806800003", "9806800004", "9806800005"],
+    id: "9711111111",
+    password: "Test@123",
+    pin: "1122",
+    token: "123456",
+    steps: [
+      { title: "Sign in to eSewa", sub: "Your eSewa ID and password.", cta: "Log in" },
+      { title: "Confirm with MPIN", sub: "The 4-digit MPIN of your eSewa wallet.", cta: "Continue" },
+      { title: "Verification token", sub: "The 6-digit token eSewa sent to your phone.", cta: "Pay" },
+    ],
+  },
+  khalti: {
+    ids: ["9800000000", "9800000001", "9800000002", "9800000003", "9800000004", "9800000005"],
+    id: "9800000001",
+    password: "",
+    pin: "1111",
+    token: "987654",
+    steps: [
+      { title: "Sign in to Khalti", sub: "Your Khalti mobile number.", cta: "Log in" },
+      { title: "Confirm with MPIN", sub: "The 4-digit MPIN of your Khalti account.", cta: "Continue" },
+      { title: "OTP verification", sub: "The 6-digit code Khalti sent you.", cta: "Pay" },
+    ],
+  },
+} as const;
+
 function GatewayMock({ kind, params, onDone, onCancel }: { kind: "esewa" | "khalti"; params: Params; onDone: (bookingId: string) => void; onCancel: (bookingId: string) => void }) {
+  const router = useRouter();
+  const retry = useCheckoutRetry();
   const [busy, setBusy] = useState(false);
   // One id per checkout, retained if verification is retried. A subsequent
   // checkout (e.g. the balance after a deposit) must get a different id.
   const [checkoutId] = useState(() => `mock-${Date.now()}-${Math.random().toString(36).slice(2)}`);
   const [error, setError] = useState("");
+  const [step, setStep] = useState(0);
+  const [id, setId] = useState("");
+  const [password, setPassword] = useState("");
+  const [pin, setPin] = useState("");
+  const [token, setToken] = useState("");
   const bookingId = one(params.bookingId);
   const teamPaymentId = one(params.teamPaymentId);
   const paymentRequestId = one(params.paymentRequestId);
@@ -85,6 +139,12 @@ function GatewayMock({ kind, params, onDone, onCancel }: { kind: "esewa" | "khal
   const accent = purple ? "#5C2D91" : "#087443";
   const soft = purple ? "#FAF5FF" : colors.emerald50;
   const label = purple ? "Khalti" : "eSewa";
+  const login = DEMO_LOGINS[kind];
+  const steps = login.steps;
+  // `demo=1` means the replica was chosen; without it the gateway was down and
+  // this is the fallback, which the header says out loud.
+  const chosen = one(params.demo) === "1";
+  const fallbackReason = one(params.fallback);
 
   async function pay() {
     setBusy(true);
@@ -122,39 +182,169 @@ function GatewayMock({ kind, params, onDone, onCancel }: { kind: "esewa" | "khal
           expectedAmount: amount,
         });
       }
-      if (isLeague) {
-        // League checkout returns to its detail page, just like the web mock.
-        onDone(bookingId);
-      } else {
-        onDone(bookingId);
-      }
+      // League checkout returns to its detail page, just like the web mock.
+      onDone(bookingId);
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Mock payment failed. Nothing was charged.");
+      setError(e instanceof ApiError ? e.message : "That demo payment could not be recorded. Nothing was charged.");
       setBusy(false);
     }
   }
 
+  /** Fill every step at once — a demo should not need the host to type. */
+  function fillDemo() {
+    setId(login.id);
+    setPassword(login.password);
+    setPin(login.pin);
+    setToken(login.token);
+    setError("");
+  }
+
+  /**
+   * Move to the next step, or pay on the last one.
+   *
+   * Each step checks its own value against the published test credentials —
+   * the replica is a rehearsal for the real thing, so the values that work
+   * there are the values that work here.
+   */
+  function advance() {
+    const wrong =
+      step === 0
+        ? !(login.ids as readonly string[]).includes(id.trim())
+          ? `Use a demo ${label} ID — ${login.id} works, and the other test wallets do too.`
+          : kind === "esewa" && password !== login.password
+            ? `Wrong password. The eSewa demo password is ${login.password}.`
+            : ""
+        : step === 1
+          ? pin !== login.pin
+            ? `Wrong MPIN. The ${label} demo MPIN is ${login.pin}.`
+            : ""
+          : token !== login.token
+            ? `Wrong token. The ${label} demo ${purple ? "OTP" : "token"} is ${login.token}.`
+            : "";
+
+    if (wrong) {
+      setError(wrong);
+      return;
+    }
+
+    setError("");
+
+    if (step < steps.length - 1) {
+      setStep(step + 1);
+      return;
+    }
+
+    void pay();
+  }
+
+  const stepDef = steps[step];
+
   return (
     <SafeAreaView style={[styles.flex, { backgroundColor: accent }]} edges={["bottom"]}>
-      <ScrollView contentContainerStyle={styles.gatewayScroll}>
+      <ScrollView contentContainerStyle={styles.gatewayScroll} keyboardShouldPersistTaps="handled">
         <View style={styles.gatewayCard}>
           <View style={[styles.gatewayHead, { backgroundColor: accent }]}>
             <Text style={styles.gatewayName}>{label}</Text>
-            <Text style={styles.fallbackChip}>Simulator • gateway unreachable</Text>
+            <Text style={styles.fallbackChip}>
+              {chosen ? `Demo checkout • replica of ${label}` : `Fallback checkout • ${fallbackReason || "gateway unreachable"}`}
+            </Text>
           </View>
           <View style={styles.gatewayBody}>
             <View style={[styles.amountCard, { backgroundColor: soft }]}>
               <Text style={[styles.amountKicker, { color: accent }]}>Paying to FutsalNepal test store</Text>
               <Text style={[styles.amount, { color: purple ? "#4C1D95" : "#064E3B" }]}>{formatNPR(amount)}</Text>
-              <Text style={[styles.reference, { color: accent }]}>{isLeague ? `league #${leagueId} • squad #${teamId}` : `booking #${bookingId}`}</Text>
+              <Text style={[styles.reference, { color: accent }]}>
+                {isLeague ? `league #${leagueId} • squad #${teamId}` : `booking #${bookingId}`}
+              </Text>
             </View>
-            <View style={styles.testInfo}><Text style={styles.testText}>This is a safe test checkout. No real money moves.</Text><Text style={styles.testText}>The server ledger and payment statuses use the same verified path as production.</Text></View>
+
+            <View style={styles.stepHead}>
+              <Text style={[styles.stepTitle, { color: accent }]}>{stepDef.title}</Text>
+              <Text style={styles.stepCount}>Step {step + 1} of {steps.length}</Text>
+            </View>
+            <Text style={styles.testText}>{stepDef.sub}</Text>
+
+            {step === 0 ? (
+              <>
+                <TextControl
+                  value={id}
+                  onChangeText={setId}
+                  placeholder={purple ? "98XXXXXXXX" : "9711111111"}
+                  keyboardType="number-pad"
+                  accessibilityLabel={`${label} ID`}
+                />
+                {!purple ? (
+                  <TextControl
+                    value={password}
+                    onChangeText={setPassword}
+                    placeholder="Password"
+                    secureTextEntry
+                    accessibilityLabel="eSewa password"
+                  />
+                ) : null}
+              </>
+            ) : null}
+
+            {step === 1 ? (
+              <TextControl
+                value={pin}
+                onChangeText={setPin}
+                placeholder="MPIN"
+                secureTextEntry
+                keyboardType="number-pad"
+                maxLength={4}
+                accessibilityLabel="MPIN"
+              />
+            ) : null}
+
+            {step === 2 ? (
+              <TextControl
+                value={token}
+                onChangeText={setToken}
+                placeholder={purple ? "OTP" : "Token"}
+                keyboardType="number-pad"
+                maxLength={6}
+                accessibilityLabel={purple ? "OTP" : "Token"}
+              />
+            ) : null}
+
+            <View style={styles.testInfo}>
+              <Text style={styles.testText}>Demo credentials: {login.id}{login.password ? ` / ${login.password}` : ""} · MPIN {login.pin} · {purple ? "OTP" : "token"} {login.token}</Text>
+              <Text style={styles.testText}>A replica of the real page, and the ledger is real — no money moves.</Text>
+            </View>
+
             {error ? <Text style={styles.error}>{error}</Text> : null}
-            <Pressable onPress={() => void pay()} disabled={busy} style={[styles.payButton, { backgroundColor: accent }]}>
+
+            <Pressable onPress={advance} disabled={busy} style={[styles.payButton, { backgroundColor: accent }]}>
               {busy ? <Loader2 size={18} color="#FFFFFF" /> : <ShieldCheck size={18} color="#FFFFFF" />}
-              <Text style={styles.payText}>{busy ? "Processing…" : `Pay ${formatNPR(amount)}`}</Text>
+              <Text style={styles.payText}>
+                {busy ? "Processing…" : step === steps.length - 1 ? `${stepDef.cta} ${formatNPR(amount)}` : stepDef.cta}
+              </Text>
             </Pressable>
-            <Pressable onPress={() => onCancel(bookingId)} disabled={busy} style={styles.cancelButton}><XCircle size={17} color={colors.stone500} /><Text style={styles.cancelText}>Cancel payment</Text></Pressable>
+
+            <Pressable onPress={fillDemo} disabled={busy} style={[styles.cancelButton, { borderColor: accent }]}>
+              <Text style={[styles.cancelText, { color: accent }]}>Fill demo credentials</Text>
+            </Pressable>
+
+            {step > 0 ? (
+              <Pressable onPress={() => { setStep(step - 1); setError(""); }} disabled={busy}>
+                <Text style={styles.stepBack}>Back a step</Text>
+              </Pressable>
+            ) : null}
+
+            <Pressable onPress={() => onCancel(bookingId)} disabled={busy} style={styles.cancelButton}>
+              <XCircle size={17} color={colors.stone500} />
+              <Text style={styles.cancelText}>Cancel payment</Text>
+            </Pressable>
+
+            {chosen && retry.retryable ? (
+              <Pressable onPress={() => void retry.retryOn("real")} disabled={retry.busy}>
+                <Text style={[styles.stepBack, { color: accent }]}>
+                  {retry.busy ? "Opening…" : `Use the real ${label} test server instead`}
+                </Text>
+              </Pressable>
+            ) : null}
+
             <Text style={styles.disclaimer}>You can return to My Bookings and try again whenever you&apos;re ready.</Text>
           </View>
         </View>
@@ -323,8 +513,16 @@ export function EsewaFailureScreen() {
             ? () => void check()
             : () => router.replace("/venues")
       }
-      linkLabel={canSwitch && retry.checkable ? (retry.checking ? "Asking eSewa…" : "Check with eSewa again") : undefined}
-      onLink={check}
+      links={[
+        ...(retry.checkable
+          ? [{ label: retry.checking ? "Asking eSewa…" : "Check with eSewa again", onPress: () => void check() }]
+          : []),
+        // The replica is the one checkout that always finishes, and it settles
+        // through the same server path — so a refusal here is never a dead end.
+        ...(retry.retryable
+          ? [{ label: "Use the demo checkout", onPress: () => void retry.retryOn("demo") }]
+          : []),
+      ]}
     />
   );
 }
@@ -424,6 +622,11 @@ export function KhaltiCallbackScreen() {
             ? backToApp.open
             : () => router.replace("/venues")
       }
+      links={
+        failed && retry.retryable
+          ? [{ label: "Use the demo checkout", onPress: () => void retry.retryOn("demo") }]
+          : []
+      }
     />
   );
 }
@@ -488,11 +691,15 @@ function useCheckoutRetry() {
   const switchable = canSwitchCheckout();
   const gateway = pendingGateway();
 
-  async function retry() {
+  /**
+   * Run the pending checkout again — on the real test server, or on the demo
+   * replica (`"demo"`), which is the one answer that always works.
+   */
+  async function retryOn(mode?: CheckoutMode) {
     setBusy(true);
     setMessage("");
 
-    const outcome = await retryLastCheckout();
+    const outcome = await retryLastCheckout(mode);
 
     if (outcome.status === "gateway") {
       router.replace("/bookings?refresh=1");
@@ -568,7 +775,8 @@ function useCheckoutRetry() {
   }
 
   return {
-    retry: () => void retry(),
+    retry: () => void retryOn(),
+    retryOn,
     check,
     switchTo,
     busy,
@@ -587,7 +795,7 @@ function LoadingResult({ label }: { label: string }) {
   return <SafeAreaView style={[styles.flex, { backgroundColor: c.bg }]} edges={["bottom"]}><View style={styles.loading}><Loader2 size={44} color={colors.emerald600} /><Text style={[styles.loadingText, { color: c.text }]}>{label}</Text></View></SafeAreaView>;
 }
 
-function ResultScreen({ kind, gateway, bookingId, message, hint, primaryLabel, primaryBusy, secondaryLabel, secondaryBusy, onPrimary, onSecondary, linkLabel, onLink }: { kind: "success" | "failure"; gateway: string; bookingId: string; message: string; hint?: string; primaryLabel?: string; primaryBusy?: boolean; secondaryLabel?: string; secondaryBusy?: boolean; onPrimary: () => void; onSecondary: () => void; linkLabel?: string; onLink?: () => void }) {
+function ResultScreen({ kind, gateway, bookingId, message, hint, primaryLabel, primaryBusy, secondaryLabel, secondaryBusy, onPrimary, onSecondary, links = [] }: { kind: "success" | "failure"; gateway: string; bookingId: string; message: string; hint?: string; primaryLabel?: string; primaryBusy?: boolean; secondaryLabel?: string; secondaryBusy?: boolean; onPrimary: () => void; onSecondary: () => void; links?: { label: string; onPress: () => void }[] }) {
   const { colors: c } = useTheme();
   const success = kind === "success";
   return (
@@ -615,11 +823,11 @@ function ResultScreen({ kind, gateway, bookingId, message, hint, primaryLabel, p
               <Text style={[styles.resultSecondaryText, { color: c.text }]}>{secondaryLabel ?? "Browse courts"}</Text>
             </Pressable>
           </View>
-          {linkLabel && onLink ? (
-            <Pressable onPress={onLink} hitSlop={8}>
-              <Text style={[styles.resultLink, { color: colors.emerald600 }]}>{linkLabel}</Text>
+          {links.map((link) => (
+            <Pressable key={link.label} onPress={link.onPress} hitSlop={8}>
+              <Text style={[styles.resultLink, { color: colors.emerald600 }]}>{link.label}</Text>
             </Pressable>
-          ) : null}
+          ))}
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -638,6 +846,10 @@ const styles = StyleSheet.create({
   amountKicker: { fontSize: 10, fontWeight: "900", textTransform: "uppercase", letterSpacing: 1, textAlign: "center" },
   amount: { fontSize: 30, fontWeight: "900", marginTop: 4 },
   reference: { fontSize: 11, fontWeight: "700", marginTop: 4 },
+  stepHead: { flexDirection: "row", alignItems: "baseline", justifyContent: "space-between", gap: space[2], marginTop: space[2] },
+  stepTitle: { fontSize: fontSize.base, fontWeight: "900" },
+  stepCount: { color: colors.stone400, fontSize: fontSize.xs, fontWeight: "800" },
+  stepBack: { color: colors.stone500, fontSize: fontSize.xs, fontWeight: "800", textAlign: "center", marginTop: space[1] },
   testInfo: { borderWidth: 1, borderStyle: "dashed", borderColor: "#E7E5E4", borderRadius: radius.xl, padding: space[3], gap: 3 },
   testText: { color: colors.stone500, fontSize: fontSize.xs, lineHeight: 17 },
   error: { color: colors.red600, backgroundColor: colors.red50, borderRadius: radius.xl, padding: space[3], fontSize: fontSize.xs, fontWeight: "800" },

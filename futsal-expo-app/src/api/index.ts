@@ -463,12 +463,22 @@ export type PaymentInitiateInput = {
   paymentRequestId?: number;
   userId?: number;
   paymentPurpose?: "advance";
+  /**
+   * Run the built-in demo checkout instead of calling the gateway.
+   *
+   * Sent with the request because the *server* builds a different session for
+   * it: the demo route, with the amount and the ids already on it, instead of a
+   * gateway session. See `src/lib/payment-mode.ts`.
+   */
+  demo?: boolean;
 };
 
 export type PaymentInitiate = {
-  /** True when the gateway could not be reached and the simulator should run. */
+  /** True when the demo checkout should run instead of a gateway page. */
   mock?: boolean;
   fallback?: boolean;
+  /** True when the replica was asked for, not fallen back to. */
+  demo?: boolean;
   fallbackError?: string;
   testHint?: string;
   returnOrigin?: string;
@@ -537,6 +547,8 @@ export type LeaguePaymentInput = {
   userId: number;
   /** Rupees. The server caps it at what the entry fee still owes. */
   amount: number;
+  /** Run the demo checkout for this entry fee (see `PaymentInitiateInput`). */
+  demo?: boolean;
 };
 
 /**

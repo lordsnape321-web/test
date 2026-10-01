@@ -331,7 +331,7 @@ assert.ok(
 const checkout = php("futsal-expo-app/src/lib/checkout.ts");
 assert.ok(
   checkout.includes("export function startLeagueCheckout(") &&
-    checkout.includes("initiateLeaguePayment(leagueId, { ...input, method })"),
+    checkout.includes("initiateLeaguePayment(leagueId, { ...input, method, demo: checkoutMode(force) === \"demo\" })"),
   "checkout.ts covers league entry fees",
 );
 assert.ok(
@@ -352,12 +352,12 @@ assert.ok(
   "Payments::reachable() catches a down gateway, and only a down one",
 );
 assert.ok(
-  esewa.includes("if (! Payments::reachable((string) $cfg['formUrl']))") &&
-    esewa.includes("'fallbackError' => 'The eSewa test server is not answering',"),
+  esewa.includes("if ($demo || ! Payments::reachable((string) $cfg['formUrl']))") &&
+    esewa.includes("'fallbackError' => $demo ? null : 'The eSewa test server is not answering',"),
   "a booking checkout falls back to the simulator instead of eSewa's error page",
 );
 assert.ok(
-  league.includes("if (! Payments::reachable((string) ($cfg['formUrl'] ?? '')))"),
+  league.includes("if ($demo || ! Payments::reachable((string) ($cfg['formUrl'] ?? '')))"),
   "a league checkout does the same",
 );
 assert.ok(
@@ -407,14 +407,14 @@ for (const site of ["futsal-expo-app/app/booking/[id].tsx", "futsal-expo-app/app
 // a different route, so the checkout that started one is remembered.
 assert.ok(
   checkout.includes("export function rememberCheckout(record: PendingRecord): void") &&
-    checkout.includes("export async function retryLastCheckout(): Promise<RetryOutcome>") &&
+    checkout.includes("export async function retryLastCheckout(force?: CheckoutMode): Promise<RetryOutcome>") &&
     checkout.includes("export function canRetryCheckout(): boolean"),
   "checkout.ts remembers the last attempt and can re-run it",
 );
 const screens = php("futsal-expo-app/src/components/PaymentScreens.tsx");
 assert.ok(
   screens.includes("function useCheckoutRetry()") &&
-    screens.includes("retryLastCheckout()") &&
+    screens.includes("retryLastCheckout(mode)") &&
     screens.includes('primaryLabel={retry.retryable ? (retry.busy ? "Opening…" : "Try again") : undefined}'),
   "the eSewa failure screen offers Try again",
 );
@@ -542,6 +542,105 @@ assert.ok(
   "the sheet shows what is being paid and how long the test session lasts",
 );
 
+/* ── the demo checkout: a replica that always finishes ─────────────────── */
+
+const mode = php("futsal-expo-app/src/lib/payment-mode.ts");
+assert.ok(
+  mode.includes("export function demoPayments(): boolean") &&
+    mode.includes("export function setDemoPayments(next: boolean): void") &&
+    mode.includes("export async function hydratePaymentMode(): Promise<void>") &&
+    mode.includes('configured === "demo" || configured === "simulator"'),
+  "the demo checkout is a persisted setting with an env override, not a constant",
+);
+assert.ok(
+  php("futsal-expo-app/app/_layout.tsx").includes("void hydratePaymentMode();") &&
+    php("futsal-expo-app/app/(app)/settings.tsx").includes('label="Use the demo checkout"') &&
+    php("futsal-expo-app/app/(app)/settings.tsx").includes("<DemoCheckoutCard />"),
+  "it is read at start-up and switchable from Settings",
+);
+
+// The choice goes to the server with the request, because the server builds a
+// different session for it — no gateway is contacted at all.
+assert.ok(
+  checkout.includes('const payload = { ...input, demo: checkoutMode(force) === "demo" };') &&
+    checkout.includes("export function checkoutMode(force?: CheckoutMode): CheckoutMode") &&
+    checkout.includes("export type CheckoutMode = \"real\" | \"demo\";"),
+  "a checkout sends its mode to the server instead of applying it to the answer",
+);
+const esewaController = php("laravel/app/Http/Controllers/Api/EsewaController.php");
+const khaltiController = php("laravel/app/Http/Controllers/Api/KhaltiController.php");
+const leagueController = php("laravel/app/Http/Controllers/Api/TournamentPaymentController.php");
+assert.ok(
+  esewaController.includes("$demo = $request->boolean('demo');") &&
+    esewaController.includes("if ($demo || ! Payments::reachable(") &&
+    esewaController.includes("'mock' => true,") &&
+    esewaController.includes("'demo' => $demo,") &&
+    esewaController.includes("$demo ? $mockUrl.'&demo=1' : $mockUrl"),
+  "eSewa answers a demo request with the replica, without calling eSewa",
+);
+assert.ok(
+  khaltiController.includes("if ($request->boolean('demo')) {") &&
+    khaltiController.includes("private function demoCheckout(") &&
+    khaltiController.includes("'mockUrl' => $url,") &&
+    khaltiController.includes("'payment_url' => $url,"),
+  "Khalti answers a demo request with the replica, without calling Khalti",
+);
+assert.ok(
+  leagueController.includes("$demo = $request->boolean('demo');") &&
+    leagueController.includes("if ($demo || ! Payments::reachable(") &&
+    leagueController.includes("if ($request->boolean('demo')) {"),
+  "a league entry fee has the same demo checkout",
+);
+// A Khalti fallback answers with `payment_url` on the simulator route rather
+// than a `mockUrl`; both have to reach the simulator or the checkout never opens.
+assert.equal(
+  planCheckout("khalti", { mock: true, payment_url: "/payment/khalti/mock?pidx=mock-1", demo: true }).kind,
+  "simulator",
+  "a Khalti fallback reaches the simulator through payment_url",
+);
+assert.equal(
+  planCheckout("khalti", { mock: true, payment_url: "https://test-pay.khalti.com/?pidx=x" }).kind,
+  "simulator",
+  "…and a mock answer never opens the real gateway's page",
+);
+
+// The replica looks like the gateway: the same steps, and the published test
+// credentials — the ones the real servers accept.
+const screensMock = php("futsal-expo-app/src/components/PaymentScreens.tsx");
+assert.ok(
+  screensMock.includes("const DEMO_LOGINS = {") &&
+    screensMock.includes('{ title: "Sign in to eSewa"') &&
+    screensMock.includes('{ title: "Confirm with MPIN"') &&
+    screensMock.includes('{ title: "Verification token"') &&
+    screensMock.includes('{ title: "OTP verification"') &&
+    screensMock.includes("Fill demo credentials"),
+  "the demo checkout runs the gateway's own steps, with a fill button for demos",
+);
+const phpLogins = php("laravel/app/Support/Payments.php");
+for (const value of ['9711111111', '1122', '123456', '9800000001', '1111', '987654']) {
+  assert.ok(
+    screensMock.includes(`"${value}"`) && phpLogins.includes(`'${value}'`),
+    `the demo credentials match the server's published test logins (${value})`,
+  );
+}
+assert.ok(
+  screensMock.includes('const mockPath = outcome.url ?? attempt.mockPath;') ||
+    checkout.includes('const mockPath = outcome.url ?? attempt.mockPath;'),
+  "a retried checkout prefers the server's own demo route",
+);
+assert.ok(
+  screensMock.includes('"Use the demo checkout"') &&
+    screensMock.includes('void retry.retryOn("demo")') &&
+    screensMock.includes('void retry.retryOn("real")'),
+  "a refused payment offers the replica, and the replica offers the real server back",
+);
+for (const site of ["futsal-expo-app/app/(app)/bookings.tsx", "futsal-expo-app/app/booking/[id].tsx"]) {
+  assert.ok(
+    /if \(outcome\.url\) (target|mockRoute) = outcome\.url;/.test(php(site)),
+    `${site} opens the server's demo route when it sent one`,
+  );
+}
+
 /* ── the gateway returns the payer to the app, not to a website ─────────── */
 
 const gatewayLib = php("futsal-expo-app/src/lib/gateway.ts");
@@ -660,9 +759,9 @@ assert.ok(
 const bookingDetail = php("futsal-expo-app/app/booking/[id].tsx");
 assert.ok(
   !screens.includes("Sandbox simulator") &&
-    screens.includes("Simulator • gateway unreachable") &&
+    screens.includes('chosen ? `Demo checkout • replica of ${label}` : `Fallback checkout • ${fallbackReason || "gateway unreachable"}`') &&
     screens.includes("const [settled, setSettled] = useState(\"\");"),
-  "the mock screen is labelled a fallback, and it shows the server's own sentence",
+  "the demo checkout says which it is — a replica by choice, or a fallback — and shows the server's own sentence",
 );
 assert.ok(
   !bookingDetail.includes("Sandbox mode — no real money moves") &&

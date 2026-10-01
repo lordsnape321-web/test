@@ -417,18 +417,24 @@ class TournamentPaymentController extends ApiController
 
                 $mockUrl = "{$origin}/payment/esewa/mock?leagueId={$id}&teamId={$teamId}&userId={$userId}&amount={$amount}&uuid=".rawurlencode($transactionUuid);
 
-                // Same preflight as the booking flow: a down gateway is the
-                // simulator's cue, not a dead end on eSewa's error page.
-                if (! Payments::reachable((string) ($cfg['formUrl'] ?? ''))) {
+                // Same rule as the booking flow: the demo checkout runs when
+                // the caller asks for it, or when the gateway is down (a dead
+                // end on eSewa's error page is worse than a replica).
+                $demo = $request->boolean('demo');
+
+                if ($demo || ! Payments::reachable((string) ($cfg['formUrl'] ?? ''))) {
                     return $this->ok([
                         'mock' => true,
-                        'fallback' => true,
-                        'fallbackError' => 'The eSewa test server is not answering',
-                        'mockUrl' => $mockUrl,
+                        'demo' => $demo,
+                        'fallback' => ! $demo,
+                        'fallbackError' => $demo ? null : 'The eSewa test server is not answering',
+                        'mockUrl' => $demo ? $mockUrl.'&demo=1' : $mockUrl,
                         'amount' => $amount,
                         'transactionUuid' => $transactionUuid,
                         'returnOrigin' => $origin,
-                        'testHint' => 'The eSewa test server is not answering right now, so this runs the local simulator instead.',
+                        'testHint' => $demo
+                            ? 'Demo checkout — a replica of the eSewa page. No real money, no real gateway.'
+                            : 'The eSewa test server is not answering right now, so this runs the demo checkout instead.',
                     ]);
                 }
 
@@ -465,6 +471,22 @@ class TournamentPaymentController extends ApiController
 
             $mockUrl = "{$origin}/payment/khalti/mock?leagueId={$id}&teamId={$teamId}&userId={$userId}&amount={$amount}&pidx=".rawurlencode('mock-'.$orderId);
 
+            // A demo run never calls Khalti; the replica is right here.
+            if ($request->boolean('demo')) {
+                return $this->ok([
+                    'mock' => true,
+                    'demo' => true,
+                    'fallback' => false,
+                    'pidx' => 'mock-'.$orderId,
+                    'payment_url' => $mockUrl.'&demo=1',
+                    'mockUrl' => $mockUrl.'&demo=1',
+                    'amount' => $amount,
+                    'orderId' => $orderId,
+                    'returnOrigin' => $origin,
+                    'testHint' => 'Demo checkout — a replica of the Khalti page. No real money, no real gateway.',
+                ]);
+            }
+
             try {
                 $init = Payments::khaltiInitiate([
                     'secretKey' => $cfg['secretKey'],
@@ -493,15 +515,16 @@ class TournamentPaymentController extends ApiController
             } catch (\Throwable $e) {
                 return $this->ok([
                     'mock' => true,
+                    'demo' => false,
                     'pidx' => 'mock-'.$orderId,
-                    'payment_url' => $mockUrl,
-                    'mockUrl' => $mockUrl,
+                    'payment_url' => $mockUrl.'&fallback='.rawurlencode($e->getMessage()),
+                    'mockUrl' => $mockUrl.'&fallback='.rawurlencode($e->getMessage()),
                     'amount' => $amount,
                     'orderId' => $orderId,
                     'returnOrigin' => $origin,
                     'fallback' => true,
                     'fallbackError' => $e->getMessage(),
-                    'testHint' => 'Khalti sandbox unreachable — falling back to the local simulator.',
+                    'testHint' => 'Khalti sandbox unreachable — falling back to the demo checkout.',
                 ]);
             }
         }

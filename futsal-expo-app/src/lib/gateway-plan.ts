@@ -29,6 +29,8 @@ export type GatewayMethod = "esewa" | "khalti";
 export type GatewayInitiate = {
   mock?: boolean;
   fallback?: boolean;
+  /** True when the replica was asked for, not fallen back to. */
+  demo?: boolean;
   fallbackError?: string;
   testHint?: string;
   /** eSewa */
@@ -60,8 +62,16 @@ export type CheckoutPlan =
  */
 export function planCheckout(method: GatewayMethod, init: GatewayInitiate): CheckoutPlan {
   if (init.mock === true) {
-    return init.mockUrl
-      ? { kind: "simulator", url: init.mockUrl }
+    /*
+     * Khalti answers a fallback with `payment_url` pointing at its simulator
+     * route rather than a separate `mockUrl` — both mean the same thing, so
+     * both have to reach the simulator. Without this, a Khalti fallback was
+     * reported as a plain error and the checkout never opened at all.
+     */
+    const url = init.mockUrl ?? (method === "khalti" ? init.payment_url : undefined);
+
+    return url
+      ? { kind: "simulator", url }
       : { kind: "error", message: init.testHint ?? "The gateway is unavailable right now." };
   }
 

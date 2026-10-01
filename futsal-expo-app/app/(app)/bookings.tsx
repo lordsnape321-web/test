@@ -427,6 +427,11 @@ export default function BookingsScreen() {
         donePath: "/bookings?refresh=1",
       });
 
+      // The server's own route for the demo checkout knows more than the local
+      // one (it carries the amount, the ids and the transaction reference), so
+      // it wins when the server sent one.
+      let target = path;
+
       if (realGatewayEnabled() && user) {
         const outcome = await startGatewayCheckout(gateway, input);
 
@@ -440,9 +445,11 @@ export default function BookingsScreen() {
           setPaying(null);
           return;
         }
+
+        if (outcome.url) target = outcome.url;
       }
 
-      router.push(path as never);
+      router.push(target as never);
     } catch (e) {
       setPayError(e instanceof Error ? e.message : "Could not start the payment");
       setPaying(null);
@@ -484,6 +491,8 @@ export default function BookingsScreen() {
       donePath: "/bookings?refresh=1",
     });
 
+    let target = query;
+
     if (realGatewayEnabled() && user) {
       const outcome = await startGatewayCheckout(gateway, input);
 
@@ -497,10 +506,12 @@ export default function BookingsScreen() {
         setPaying(null);
         return;
       }
+
+      if (outcome.url) target = outcome.url;
     }
 
     setPaying(null);
-    router.push(query as never);
+    router.push(target as never);
   }
 
   function needsOnlinePay(b: DiaryBooking) {

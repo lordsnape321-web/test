@@ -17,6 +17,7 @@ import { GatewaySheet } from "@/components/GatewaySheet";
 import { MobileNav } from "@/components/MobileNav";
 import { Navbar } from "@/components/Navbar";
 import { TurfBackdrop } from "@/components/TurfBackdrop";
+import { hydratePaymentMode } from "@/lib/payment-mode";
 import { announce, mark } from "@/lib/perf";
 import { useBreakpoints } from "@/lib/responsive";
 import {
@@ -31,6 +32,11 @@ import {
 // from here. See src/lib/perf.ts.
 announce();
 mark("bundle evaluated");
+
+// Which checkout the app runs (the gateways' test servers, or the built-in
+// demo replica) is a saved setting, so it is read back before the first screen
+// can offer to pay. Failure is harmless: the default is the real test server.
+void hydratePaymentMode();
 
 /**
  * Root layout: fonts + providers + the native stack.

@@ -233,6 +233,10 @@ export default function BookingDetail() {
         donePath: "/bookings?refresh=1",
       });
 
+      // Named apart from the `target` argument (which says *what* is being paid
+      // for): this one is where the demo checkout runs.
+      let mockRoute = path;
+
       if (realGatewayEnabled()) {
         const outcome = await startGatewayCheckout(method, input);
 
@@ -247,10 +251,12 @@ export default function BookingDetail() {
           return;
         }
 
-        // outcome.status === "simulator" — fall through to the mock screen.
+        // outcome.status === "simulator" — fall through to the demo checkout,
+        // preferring the server's own route when it sent one.
+        if (outcome.url) mockRoute = outcome.url;
       }
 
-      router.push(path as never);
+      router.push(mockRoute as never);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Could not start this payment.");
       setBusy(null);
