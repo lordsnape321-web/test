@@ -21,7 +21,7 @@ import {
   View,
 } from "react-native";
 import { fetchUserTeams, leaguePaymentsAction, leagueTeamsAction } from "@/api";
-import { prepareGatewayTab, startLeagueCheckout } from "@/lib/checkout";
+import { prepareGatewayTab, rememberCheckout, startLeagueCheckout } from "@/lib/checkout";
 import { PaymentLine } from "@/components/LeagueCard";
 import { ReceiptUploader, isOnlineMethod } from "@/components/ReceiptUploader";
 import { useTheme } from "@/context/ThemeContext";
@@ -141,12 +141,35 @@ export function LeagueSquadPanel({
     setErr("");
     // Reserve the browser tab while the tap that started this is still live.
     prepareGatewayTab();
-    try {
-      const outcome = await startLeagueCheckout(league.id, method as "eSewa" | "Khalti", {
-        teamId,
+    const input = { teamId, userId: viewerId, amount };
+
+    /** The simulator: the same server path the gateway's return page takes. */
+    async function settleOnSimulator() {
+      const data = await leaguePaymentsAction(league.id, {
+        action: "verify",
+        mockApprove: true,
         userId: viewerId,
+        teamId,
         amount,
+        method,
       });
+      setMsg(String(data.message ?? "Payment recorded ✅"));
+      onChanged();
+
+      return String(data.message ?? "Payment recorded ✅");
+    }
+
+    // Remembered so the return screens can offer "Try again" in one tap. A
+    // league entry fee has no simulator route of its own — its fallback is the
+    // settle call right here — so `settle` carries it instead.
+    rememberCheckout({
+      run: () => startLeagueCheckout(league.id, method as "eSewa" | "Khalti", input),
+      settle: settleOnSimulator,
+      donePath: `/leagues/${league.id}`,
+    });
+
+    try {
+      const outcome = await startLeagueCheckout(league.id, method as "eSewa" | "Khalti", input);
 
       if (outcome.status === "gateway") {
         setMsg("Finish the payment in the browser, then come back — the entry updates the moment the gateway confirms it.");
@@ -159,16 +182,7 @@ export function LeagueSquadPanel({
       }
 
       // Simulator: the same server path the gateway's return page takes.
-      const data = await leaguePaymentsAction(league.id, {
-        action: "verify",
-        mockApprove: true,
-        userId: viewerId,
-        teamId,
-        amount,
-        method,
-      });
-      setMsg(String(data.message ?? "Payment recorded ✅"));
-      onChanged();
+      await settleOnSimulator();
     } catch (e) {
       setErr(e instanceof Error ? e.message : "That didn't work 🙏");
     } finally {

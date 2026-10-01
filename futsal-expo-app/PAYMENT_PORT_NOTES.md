@@ -39,6 +39,21 @@ which verify with `mockApprove` on the identical server path. A refused session
 into a fake payment. The simulator is what happens *after* the real server
 refuses to answer, never a mode the app starts in.
 
+## When the test server is down
+
+eSewa's UAT is regularly unavailable — its page says "Service is currently
+unavailable. Please try again later.", which is its own wording for a backend
+timeout, not a rejected payment. Two things keep that from being a dead end:
+
+- before it hands the browser over, `initiate` checks that the gateway's host is
+  answering (`Payments::reachable()`); if it is not, the server answers
+  `mock: true` and the app runs the simulator instead. Any HTTP answer counts as
+  up, so a real gateway that merely returns an error still gets the checkout;
+- the failure screens offer **Try again**, which re-runs the session's last
+  checkout in one tap (`rememberCheckout` / `retryLastCheckout` in
+  `src/lib/checkout.ts`) — the return screens are a different route and cannot
+  know which booking started the payment.
+
 ## Environment
 
 | Variable | Meaning |

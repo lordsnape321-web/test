@@ -155,8 +155,12 @@ class PaymentHandoffController extends ApiController
                 <button type="submit">Continue to eSewa</button>
             </form>
             <noscript><p class="hint">JavaScript is off, so the form did not submit itself — press the button above.</p></noscript>
+            <p class="hint">
+                If eSewa answers &ldquo;Service is currently unavailable&rdquo;, nothing was charged —
+                that is their server timing out, not a failed payment.
+            </p>
             <p class="links">
-                <a href="{$mock}">Use the local simulator instead</a>
+                <a href="{$mock}">Pay on the local simulator instead</a>
                 <a href="{$cancel}">Cancel and go back</a>
             </p>
             <script>document.getElementById("esewa").submit();</script>

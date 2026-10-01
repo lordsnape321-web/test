@@ -326,6 +326,64 @@ assert.ok(
   "the league initiate sends its origin like the booking one",
 );
 
+/* ── a flaky test server must not strand the payer ──────────────────────── */
+
+// eSewa's own wording for a server timeout is "Service is currently
+// unavailable. Please try again later." Sending a browser there in that state
+// leaves nothing to verify, so the server checks first and answers `mock: true`.
+assert.ok(
+  payments.includes("public static function reachable(string $url): bool") &&
+    payments.includes("Http::connectTimeout(3)->timeout(6)->get($url)->status() > 0"),
+  "Payments::reachable() catches a down gateway, and only a down one",
+);
+assert.ok(
+  esewa.includes("if (! Payments::reachable((string) $cfg['formUrl']))") &&
+    esewa.includes("'fallbackError' => 'The eSewa test server is not answering',"),
+  "a booking checkout falls back to the simulator instead of eSewa's error page",
+);
+assert.ok(
+  league.includes("if (! Payments::reachable((string) ($cfg['formUrl'] ?? '')))"),
+  "a league checkout does the same",
+);
+assert.ok(
+  handoff.includes("Service is currently unavailable") &&
+    handoff.includes("Pay on the local simulator instead"),
+  "the hand-off page explains eSewa's error and offers the simulator",
+);
+
+// And a returned payment can be retried in one tap: the failure screens live on
+// a different route, so the checkout that started one is remembered.
+assert.ok(
+  checkout.includes("export function rememberCheckout(attempt: RememberedCheckout): void") &&
+    checkout.includes("export async function retryLastCheckout(): Promise<RetryOutcome>") &&
+    checkout.includes("export function canRetryCheckout(): boolean"),
+  "checkout.ts remembers the last attempt and can re-run it",
+);
+const screens = php("futsal-expo-app/src/components/PaymentScreens.tsx");
+assert.ok(
+  screens.includes("function useCheckoutRetry()") &&
+    screens.includes("retryLastCheckout()") &&
+    screens.includes('primaryLabel={retry.retryable ? (retry.busy ? "Opening…" : "Try again") : undefined}'),
+  "the eSewa failure screen offers Try again",
+);
+assert.ok(
+  screens.includes('primaryLabel={state === "failure" && retry.retryable ? (retry.busy ? "Opening…" : "Try again") : undefined}'),
+  "so does a failed Khalti session",
+);
+for (const site of ["futsal-expo-app/app/booking/[id].tsx", "futsal-expo-app/app/(app)/bookings.tsx"]) {
+  const file = php(site);
+  assert.ok(
+    file.includes("rememberCheckout({ run: () => startGatewayCheckout(gateway, input)") ||
+      file.includes("rememberCheckout({\n        run: () =>\n          startGatewayCheckout(method,"),
+    `${site} remembers its checkout`,
+  );
+}
+const panelSource = php("futsal-expo-app/src/components/LeagueSquadPanel.tsx");
+assert.ok(
+  panelSource.includes("settle: settleOnSimulator") && panelSource.includes("donePath: `/leagues/${league.id}`"),
+  "a league checkout remembers its in-place simulator settle",
+);
+
 /* ── the sandbox is no longer what a payer sees ─────────────────────────── */
 
 const gateway = php("futsal-expo-app/src/lib/gateway.ts");
@@ -342,7 +400,6 @@ assert.ok(
   !enabledFn.includes("Platform.OS") && !enabledFn.includes("paymentReturnOrigin"),
   "realGatewayEnabled has no platform gate: a phone is not sent to the simulator",
 );
-const screens = php("futsal-expo-app/src/components/PaymentScreens.tsx");
 const bookingDetail = php("futsal-expo-app/app/booking/[id].tsx");
 assert.ok(
   !screens.includes("Sandbox simulator") &&

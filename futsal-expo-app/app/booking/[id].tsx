@@ -20,7 +20,7 @@ import {
 import { useAuth } from "@/context/AuthContext";
 import { useTheme } from "@/context/ThemeContext";
 import { ApiError } from "@/lib/api";
-import { prepareGatewayTab, realGatewayEnabled, startGatewayCheckout } from "@/lib/checkout";
+import { prepareGatewayTab, realGatewayEnabled, rememberCheckout, startGatewayCheckout } from "@/lib/checkout";
 import { formatWindowLeft } from "@/lib/booking-ledger";
 import { formatNPR, formatTime12, prettyDate } from "@/lib/futsal";
 import { locationLabel } from "@/lib/location";
@@ -209,6 +209,25 @@ export default function BookingDetail() {
         : teamShare && teamShare.paymentStatus !== "paid"
           ? `&teamPaymentId=${teamShare.id}&userId=${user.id}`
           : `&userId=${user.id}`;
+      const path = method === "esewa"
+        ? `/payment/esewa/mock?bookingId=${bookingId}&amount=${encodeURIComponent(String(amount))}${targetQuery}`
+        : `/payment/khalti/mock?bookingId=${bookingId}&amount=${encodeURIComponent(String(amount))}${targetQuery}&pidx=mock-pidx`;
+
+      // Remembered so the return screens can offer "Try again" in one tap —
+      // they are a different route and know nothing about this booking.
+      rememberCheckout({
+        run: () =>
+          startGatewayCheckout(method, {
+            bookingId,
+            userId: user.id,
+            teamPaymentId: !payingAdvance && teamShare && teamShare.paymentStatus !== "paid" ? teamShare.id : undefined,
+            paymentRequestId: request?.id,
+            paymentPurpose: payingAdvance ? "advance" : undefined,
+          }),
+        mockPath: path,
+        donePath: "/bookings?refresh=1",
+      });
+
       if (realGatewayEnabled()) {
         const outcome = await startGatewayCheckout(method, {
           bookingId,
@@ -232,9 +251,6 @@ export default function BookingDetail() {
         // outcome.status === "simulator" — fall through to the mock screen.
       }
 
-      const path = method === "esewa"
-        ? `/payment/esewa/mock?bookingId=${bookingId}&amount=${encodeURIComponent(String(amount))}${targetQuery}`
-        : `/payment/khalti/mock?bookingId=${bookingId}&amount=${encodeURIComponent(String(amount))}${targetQuery}&pidx=mock-pidx`;
       router.push(path as never);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Could not start this payment.");

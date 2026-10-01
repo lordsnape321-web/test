@@ -5,7 +5,7 @@ import {
   type LeaguePaymentInput,
   type PaymentInitiateInput,
 } from "@/api";
-import { openCheckout, prepareGatewayTab, releaseGatewayTab } from "@/lib/gateway";
+import { openCheckout, prepareGatewayTab, realGatewayEnabled, releaseGatewayTab } from "@/lib/gateway";
 import { planCheckout, type GatewayInitiate, type GatewayMethod } from "@/lib/gateway-plan";
 
 /**
@@ -79,6 +79,93 @@ async function runCheckout(method: GatewayMethod, load: () => Promise<GatewayIni
 
     return { status: "simulator" };
   }
+}
+
+/* ------------------------------------------------------------------ retry */
+
+/**
+ * The checkout a "Try again" press should re-run.
+ *
+ * A test gateway can hand the browser back without a payment — eSewa's own
+ * wording for that is "Service is currently unavailable. Please try again
+ * later." — and a cancelled Khalti session lands on the same return screen. That
+ * screen is a different route from the booking that started it, so it cannot
+ * know what to restart. One module-level slot remembers the last checkout of the
+ * session: how to start it again, where the simulator lives if the gateway still
+ * cannot be reached, and where to go once the fallback has settled it.
+ */
+export type RememberedCheckout = {
+  /** Ask the server for a session, and open it (or report the fallback). */
+  run: () => Promise<CheckoutOutcome>;
+  /** Where the simulator runs when the gateway cannot be reached. */
+  mockPath?: string;
+  /**
+   * For a league entry fee, whose simulator runs in place instead of on its own
+   * route: the settle call itself. Returns the sentence to show.
+   */
+  settle?: () => Promise<string>;
+  /** Where to go once the fallback has settled the payment. */
+  donePath: string;
+};
+
+let lastCheckout: RememberedCheckout | null = null;
+
+/** Remember how to start this checkout again (see `RememberedCheckout`). */
+export function rememberCheckout(attempt: RememberedCheckout): void {
+  lastCheckout = attempt;
+}
+
+/** True when this session has a checkout a failure screen can offer to retry. */
+export function canRetryCheckout(): boolean {
+  return lastCheckout !== null;
+}
+
+export type RetryOutcome =
+  /** The gateway page is open again. */
+  | { status: "gateway" }
+  /** The gateway could not be reached — run the simulator route. */
+  | { status: "simulator"; mockPath: string }
+  /** The fallback settled it right here (a league entry fee). */
+  | { status: "settled"; donePath: string; message: string }
+  /** This session never ran a checkout. */
+  | { status: "nothing" }
+  | { status: "error"; message: string };
+
+/** Re-run the session's last checkout, from a failure screen. */
+export async function retryLastCheckout(): Promise<RetryOutcome> {
+  const attempt = lastCheckout;
+
+  if (!attempt) return { status: "nothing" };
+
+  prepareGatewayTab();
+
+  const outcome = realGatewayEnabled()
+    ? await attempt.run()
+    : ({ status: "simulator" } as CheckoutOutcome);
+
+  if (outcome.status === "gateway") return { status: "gateway" };
+
+  if (outcome.status === "simulator") {
+    if (attempt.mockPath) return { status: "simulator", mockPath: attempt.mockPath };
+
+    if (attempt.settle) {
+      try {
+        return { status: "settled", donePath: attempt.donePath, message: await attempt.settle() };
+      } catch (e) {
+        releaseGatewayTab();
+
+        return { status: "error", message: e instanceof Error ? e.message : "That payment could not be recorded." };
+      }
+    }
+
+    releaseGatewayTab();
+
+    return { status: "error", message: "Could not start that payment again." };
+  }
+
+  releaseGatewayTab();
+
+  return { status: "error", message: outcome.message };
 }
 
 export { prepareGatewayTab, realGatewayEnabled, releaseGatewayTab } from "@/lib/gateway";

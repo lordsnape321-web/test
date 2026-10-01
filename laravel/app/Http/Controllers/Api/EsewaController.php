@@ -171,6 +171,33 @@ class EsewaController extends ApiController
             ? "&teamPaymentId={$teamPayment->id}&userId={$teamPayment->user_id}"
             : ($paymentRequest ? "&paymentRequestId={$paymentRequest->id}&userId={$paymentRequest->payer_id}" : '');
 
+        $mockUrl = "{$origin}/payment/esewa/mock?bookingId={$booking->id}&amount={$amount}&uuid=".rawurlencode($transactionUuid).$mockTarget;
+
+        /*
+         * eSewa's UAT server is regularly unavailable ("Service is currently
+         * unavailable. Please try again later." is its own wording for a server
+         * timeout). Sending a player there in that state is a dead end: their
+         * error page carries no signed response, so nothing can be verified.
+         * Answer `mock: true` instead — the documented fallback — and the app
+         * runs the local checkout, which moves the same money through the same
+         * server-side settlement path.
+         */
+        if (! Payments::reachable((string) $cfg['formUrl'])) {
+            return $this->ok([
+                'mock' => true,
+                'fallback' => true,
+                'fallbackError' => 'The eSewa test server is not answering',
+                'mockUrl' => $mockUrl,
+                'amount' => $amount,
+                'bookingId' => $booking->id,
+                'teamPaymentId' => $teamPayment->id ?? null,
+                'paymentRequestId' => $paymentRequest->id ?? null,
+                'transactionUuid' => $transactionUuid,
+                'returnOrigin' => $origin,
+                'testHint' => 'The eSewa test server is not answering right now, so this runs the local simulator instead.',
+            ]);
+        }
+
         return $this->ok([
             'url' => $cfg['formUrl'],
             'fields' => $fields,
@@ -186,7 +213,7 @@ class EsewaController extends ApiController
             'returnOrigin' => $origin,
             'successUrl' => $successUrl,
             'failureUrl' => $failureUrl,
-            'mockUrl' => "{$origin}/payment/esewa/mock?bookingId={$booking->id}&amount={$amount}&uuid=".rawurlencode($transactionUuid).$mockTarget,
+            'mockUrl' => $mockUrl,
             // A POST has to come from a page, and a native app cannot build
             // one — so the hand-off page does it. The path is returned instead
             // of a full URL because only the client knows which origin it can

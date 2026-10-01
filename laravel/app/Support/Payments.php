@@ -62,6 +62,29 @@ class Payments
     }
 
     /**
+     * Is the gateway's own server answering at all?
+     *
+     * Not a health check of the *payment* — a wrong-method or auth rejection is
+     * still an answer and counts as reachable. The only thing this catches is a
+     * host that is down or unreachable, where sending a player there would
+     * strand them on the gateway's own error page ("Service is currently
+     * unavailable. Please try again later.") with no payment to verify.
+     *
+     * Kept to connection-level failure on purpose: a false "down" would run the
+     * simulator for a checkout the gateway could have taken.
+     */
+    public static function reachable(string $url): bool
+    {
+        try {
+            // Any HTTP status means something answered. Only a connection
+            // error or a timeout gets here as a failure.
+            return Http::connectTimeout(3)->timeout(6)->get($url)->status() > 0;
+        } catch (\Throwable) {
+            return false;
+        }
+    }
+
+    /**
      * @return array{productCode: string, secretKey: string, formUrl: string, statusUrl: string}
      */
     public static function esewaConfig(): array

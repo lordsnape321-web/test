@@ -7,6 +7,7 @@ import { ApiError } from "@/lib/api";
 import { formatNPR } from "@/lib/futsal";
 import { leaguePaymentsAction, verifyEsewa, verifyKhalti } from "@/api";
 import { esewaDataFromLocation } from "@/lib/gateway";
+import { canRetryCheckout, retryLastCheckout } from "@/lib/checkout";
 import { useTheme } from "@/context/ThemeContext";
 import { colors, fontSize, radius, space } from "@/theme";
 
@@ -210,7 +211,21 @@ export function EsewaSuccessScreen() {
 export function EsewaFailureScreen() {
   const params = useLocalSearchParams() as Params;
   const router = useRouter();
-  return <ResultScreen kind="failure" gateway="eSewa" bookingId={one(params.bookingId)} message="No money moved. Your booking is still waiting — pay from My Bookings whenever you are ready." onPrimary={() => router.replace("/bookings?refresh=1")} onSecondary={() => router.replace("/venues")} />;
+  const retry = useCheckoutRetry();
+  const base = "No money moved. Your booking is still waiting — pay from My Bookings whenever you are ready.";
+
+  return (
+    <ResultScreen
+      kind="failure"
+      gateway="eSewa"
+      bookingId={one(params.bookingId)}
+      message={retry.message || base}
+      primaryLabel={retry.retryable ? (retry.busy ? "Opening…" : "Try again") : undefined}
+      primaryBusy={retry.busy}
+      onPrimary={retry.retryable ? retry.retry : () => router.replace("/bookings?refresh=1")}
+      onSecondary={() => router.replace("/venues")}
+    />
+  );
 }
 
 export function KhaltiCallbackScreen() {
@@ -224,6 +239,7 @@ export function KhaltiCallbackScreen() {
     one(params.mock) === "1" ? "success" : "loading",
   );
   const [message, setMessage] = useState("");
+  const retry = useCheckoutRetry();
 
   useEffect(() => {
     if (state !== "loading") return;
@@ -255,7 +271,73 @@ export function KhaltiCallbackScreen() {
   }, [params, state]);
 
   if (state === "loading") return <LoadingResult label="Verifying Khalti payment… 💜" />;
-  return <ResultScreen kind={state === "success" ? "success" : "failure"} gateway="Khalti" bookingId={bookingId} message={state === "success" ? "Khalti test payment confirmed." : message || "Could not verify the payment."} onPrimary={() => router.replace("/bookings?refresh=1")} onSecondary={() => router.replace("/venues")} />;
+
+  return (
+    <ResultScreen
+      kind={state === "success" ? "success" : "failure"}
+      gateway="Khalti"
+      bookingId={bookingId}
+      message={
+        state === "success"
+          ? "Khalti test payment confirmed."
+          : retry.message || message || "Could not verify the payment."
+      }
+      primaryLabel={state === "failure" && retry.retryable ? (retry.busy ? "Opening…" : "Try again") : undefined}
+      primaryBusy={retry.busy}
+      onPrimary={
+        state === "failure" && retry.retryable
+          ? retry.retry
+          : () => router.replace("/bookings?refresh=1")
+      }
+      onSecondary={() => router.replace("/venues")}
+    />
+  );
+}
+
+/**
+ * "Try again" on a failure screen.
+ *
+ * The gateway hands the browser back to a route that knows nothing about the
+ * checkout that started it, so this asks `src/lib/checkout.ts` for the last one
+ * and follows wherever it leads: the gateway page again, the simulator route, or
+ * straight to the page the fallback settled on.
+ */
+function useCheckoutRetry() {
+  const router = useRouter();
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState("");
+  const retryable = canRetryCheckout();
+
+  async function retry() {
+    setBusy(true);
+    setMessage("");
+
+    const outcome = await retryLastCheckout();
+
+    if (outcome.status === "gateway") {
+      router.replace("/bookings?refresh=1");
+      return;
+    }
+
+    if (outcome.status === "simulator") {
+      router.replace(outcome.mockPath as never);
+      return;
+    }
+
+    if (outcome.status === "settled") {
+      router.replace(outcome.donePath as never);
+      return;
+    }
+
+    setBusy(false);
+    setMessage(
+      outcome.status === "error"
+        ? outcome.message
+        : "There is nothing to retry here — pay again from My Bookings.",
+    );
+  }
+
+  return { retry: () => void retry(), busy, message, retryable };
 }
 
 function LoadingResult({ label }: { label: string }) {
@@ -263,10 +345,10 @@ function LoadingResult({ label }: { label: string }) {
   return <SafeAreaView style={[styles.flex, { backgroundColor: c.bg }]} edges={["bottom"]}><View style={styles.loading}><Loader2 size={44} color={colors.emerald600} /><Text style={[styles.loadingText, { color: c.text }]}>{label}</Text></View></SafeAreaView>;
 }
 
-function ResultScreen({ kind, gateway, bookingId, message, primaryLabel, onPrimary, onSecondary }: { kind: "success" | "failure"; gateway: string; bookingId: string; message: string; primaryLabel?: string; onPrimary: () => void; onSecondary: () => void }) {
+function ResultScreen({ kind, gateway, bookingId, message, primaryLabel, primaryBusy, onPrimary, onSecondary }: { kind: "success" | "failure"; gateway: string; bookingId: string; message: string; primaryLabel?: string; primaryBusy?: boolean; onPrimary: () => void; onSecondary: () => void }) {
   const { colors: c } = useTheme();
   const success = kind === "success";
-  return <SafeAreaView style={[styles.flex, { backgroundColor: c.bg }]} edges={["bottom"]}><ScrollView contentContainerStyle={styles.resultScroll}><View style={[styles.resultCard, { backgroundColor: c.surface, borderColor: c.border }]}><View style={[styles.resultIcon, { backgroundColor: success ? colors.emerald600 : colors.red500 }]}>{success ? <PartyPopper size={32} color="#FFFFFF" /> : <XCircle size={32} color="#FFFFFF" />}</View><Text style={[styles.resultTitle, { color: c.text }]}>{success ? "Payment verified! 🎉" : `${gateway} payment cancelled 😌`}</Text><Text style={[styles.resultBody, { color: c.textMuted }]}>{message}{bookingId ? ` Booking #FN-${bookingId}.` : ""}</Text><View style={styles.resultActions}><Pressable onPress={onPrimary} style={[styles.resultPrimary, { backgroundColor: colors.emerald600 }]}><CheckCircle2 size={16} color="#FFFFFF" /><Text style={styles.resultPrimaryText}>{primaryLabel ?? (success ? "Track booking" : "Pay from bookings")}</Text></Pressable><Pressable onPress={onSecondary} style={[styles.resultSecondary, { borderColor: c.border }]}><CreditCard size={16} color={c.text} /><Text style={[styles.resultSecondaryText, { color: c.text }]}>Browse courts</Text></Pressable></View></View></ScrollView></SafeAreaView>;
+  return <SafeAreaView style={[styles.flex, { backgroundColor: c.bg }]} edges={["bottom"]}><ScrollView contentContainerStyle={styles.resultScroll}><View style={[styles.resultCard, { backgroundColor: c.surface, borderColor: c.border }]}><View style={[styles.resultIcon, { backgroundColor: success ? colors.emerald600 : colors.red500 }]}>{success ? <PartyPopper size={32} color="#FFFFFF" /> : <XCircle size={32} color="#FFFFFF" />}</View><Text style={[styles.resultTitle, { color: c.text }]}>{success ? "Payment verified! 🎉" : `${gateway} payment cancelled 😌`}</Text><Text style={[styles.resultBody, { color: c.textMuted }]}>{message}{bookingId ? ` Booking #FN-${bookingId}.` : ""}</Text><View style={styles.resultActions}><Pressable onPress={onPrimary} style={[styles.resultPrimary, { backgroundColor: colors.emerald600 }]}>{primaryBusy ? <Loader2 size={16} color="#FFFFFF" /> : <CheckCircle2 size={16} color="#FFFFFF" />}<Text style={styles.resultPrimaryText}>{primaryLabel ?? (success ? "Track booking" : "Pay from bookings")}</Text></Pressable><Pressable onPress={onSecondary} style={[styles.resultSecondary, { borderColor: c.border }]}><CreditCard size={16} color={c.text} /><Text style={[styles.resultSecondaryText, { color: c.text }]}>Browse courts</Text></Pressable></View></View></ScrollView></SafeAreaView>;
 }
 
 const styles = StyleSheet.create({

@@ -51,7 +51,7 @@ import {
   patchBooking,
   postReview,
 } from "@/api";
-import { prepareGatewayTab, realGatewayEnabled, startGatewayCheckout } from "@/lib/checkout";
+import { prepareGatewayTab, realGatewayEnabled, rememberCheckout, startGatewayCheckout } from "@/lib/checkout";
 import { BookingPaymentSummary } from "@/components/BookingPaymentSummary";
 import { BookingVenueName } from "@/components/BookingVenueName";
 import { PlayerRatingBadge } from "@/components/PlayerRating";
@@ -403,15 +403,23 @@ export default function BookingsScreen() {
           ? b.depositAmount ?? 0
           : payingMyShare ? shareOutstanding : moneyOf(b).balance);
       const shareQuery = payingMyShare ? `&teamPaymentId=${myShare!.id}` : "";
+      const gateway = method === "eSewa" ? ("esewa" as const) : ("khalti" as const);
+      const input = {
+        bookingId: b.id,
+        userId: user?.id,
+        teamPaymentId: payingMyShare ? myShare!.id : undefined,
+        paymentPurpose:
+          b.advancePaymentRequired && b.advancePaymentStatus !== "paid" ? ("advance" as const) : undefined,
+      };
+      const path = method === "eSewa"
+        ? `/payment/esewa/mock?bookingId=${b.id}&amount=${encodeURIComponent(String(amount))}&userId=${user?.id ?? 0}${shareQuery}`
+        : `/payment/khalti/mock?bookingId=${b.id}&amount=${encodeURIComponent(String(amount))}&pidx=mock-pidx&userId=${user?.id ?? 0}${shareQuery}`;
+
+      // Remembered so the return screens can offer "Try again" in one tap.
+      rememberCheckout({ run: () => startGatewayCheckout(gateway, input), mockPath: path, donePath: "/bookings?refresh=1" });
 
       if (realGatewayEnabled() && user) {
-        const outcome = await startGatewayCheckout(method === "eSewa" ? "esewa" : "khalti", {
-          bookingId: b.id,
-          userId: user.id,
-          teamPaymentId: payingMyShare ? myShare!.id : undefined,
-          paymentPurpose:
-            b.advancePaymentRequired && b.advancePaymentStatus !== "paid" ? "advance" : undefined,
-        });
+        const outcome = await startGatewayCheckout(gateway, input);
 
         if (outcome.status === "gateway") {
           setPaying(null);
@@ -425,9 +433,6 @@ export default function BookingsScreen() {
         }
       }
 
-      const path = method === "eSewa"
-        ? `/payment/esewa/mock?bookingId=${b.id}&amount=${encodeURIComponent(String(amount))}&userId=${user?.id ?? 0}${shareQuery}`
-        : `/payment/khalti/mock?bookingId=${b.id}&amount=${encodeURIComponent(String(amount))}&pidx=mock-pidx&userId=${user?.id ?? 0}${shareQuery}`;
       router.push(path as never);
     } catch (e) {
       setPayError(e instanceof Error ? e.message : "Could not start the payment");
@@ -454,13 +459,16 @@ export default function BookingsScreen() {
     setPaying(b.id);
     const gateway = share.paymentMethod === "eSewa" ? "esewa" : "khalti";
     prepareGatewayTab();
+    const input = { bookingId: b.id, userId: user?.id, teamPaymentId: share.id };
+    const query = gateway === "esewa"
+      ? `/payment/esewa/mock?bookingId=${b.id}&amount=${encodeURIComponent(String(share.amountDue))}&teamPaymentId=${share.id}&userId=${user?.id ?? 0}`
+      : `/payment/khalti/mock?bookingId=${b.id}&amount=${encodeURIComponent(String(share.amountDue))}&teamPaymentId=${share.id}&userId=${user?.id ?? 0}&pidx=mock-team-${share.id}`;
+
+    // Remembered so the return screens can offer "Try again" in one tap.
+    rememberCheckout({ run: () => startGatewayCheckout(gateway, input), mockPath: query, donePath: "/bookings?refresh=1" });
 
     if (realGatewayEnabled() && user) {
-      const outcome = await startGatewayCheckout(gateway, {
-        bookingId: b.id,
-        userId: user.id,
-        teamPaymentId: share.id,
-      });
+      const outcome = await startGatewayCheckout(gateway, input);
 
       if (outcome.status === "gateway") {
         setPaying(null);
@@ -474,9 +482,6 @@ export default function BookingsScreen() {
       }
     }
 
-    const query = gateway === "esewa"
-      ? `/payment/esewa/mock?bookingId=${b.id}&amount=${encodeURIComponent(String(share.amountDue))}&teamPaymentId=${share.id}&userId=${user?.id ?? 0}`
-      : `/payment/khalti/mock?bookingId=${b.id}&amount=${encodeURIComponent(String(share.amountDue))}&teamPaymentId=${share.id}&userId=${user?.id ?? 0}&pidx=mock-team-${share.id}`;
     setPaying(null);
     router.push(query as never);
   }

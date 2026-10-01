@@ -415,6 +415,23 @@ class TournamentPaymentController extends ApiController
                     'failureUrl' => $failureUrl,
                 ]);
 
+                $mockUrl = "{$origin}/payment/esewa/mock?leagueId={$id}&teamId={$teamId}&userId={$userId}&amount={$amount}&uuid=".rawurlencode($transactionUuid);
+
+                // Same preflight as the booking flow: a down gateway is the
+                // simulator's cue, not a dead end on eSewa's error page.
+                if (! Payments::reachable((string) ($cfg['formUrl'] ?? ''))) {
+                    return $this->ok([
+                        'mock' => true,
+                        'fallback' => true,
+                        'fallbackError' => 'The eSewa test server is not answering',
+                        'mockUrl' => $mockUrl,
+                        'amount' => $amount,
+                        'transactionUuid' => $transactionUuid,
+                        'returnOrigin' => $origin,
+                        'testHint' => 'The eSewa test server is not answering right now, so this runs the local simulator instead.',
+                    ]);
+                }
+
                 $login = Payments::esewaTestLogin();
 
                 return $this->ok([
@@ -426,7 +443,7 @@ class TournamentPaymentController extends ApiController
                     'returnOrigin' => $origin,
                     'successUrl' => $successUrl,
                     'failureUrl' => $failureUrl,
-                    'mockUrl' => "{$origin}/payment/esewa/mock?leagueId={$id}&teamId={$teamId}&userId={$userId}&amount={$amount}&uuid=".rawurlencode($transactionUuid),
+                    'mockUrl' => $mockUrl,
                     // A native app can only open GETs, so the signed form needs
                     // a page to POST it from — the same hand-off the booking
                     // flow uses, aimed at this league instead.

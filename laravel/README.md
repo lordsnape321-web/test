@@ -447,6 +447,18 @@ would get from cash.
    tries the real test server on every platform, and only a genuinely
    unreachable gateway sends it here.
 
+### When the test server is down
+
+eSewa's UAT answers `{"code":0,"error_message":"Service is currently unavailable"}`
+— and shows “Service is currently unavailable. Please try again later.” on its
+page — when its own backend times out. Nothing can be verified from that page, so
+`initiate` checks the gateway's host first (`Payments::reachable()`, a connection
+check where any HTTP answer counts as up) and answers `mock: true` with the
+simulator URL instead of sending the player there. Only a genuinely unreachable
+host triggers it; a gateway that answers with an error still gets the real
+checkout. The failure screens also offer **Try again**, because a gateway timeout
+usually clears within a minute.
+
 A league entry fee has no booking, so its `LG-…` reference is what names the
 squad: eSewa's signed blob carries it in `transaction_uuid`, Khalti's lookup
 returns it as `purchase_order_id`. Both verify routes hand it to
