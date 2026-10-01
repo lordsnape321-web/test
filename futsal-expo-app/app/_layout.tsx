@@ -13,6 +13,7 @@ import { ActivityIndicator, Text, TextInput, View } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { AuthProvider, useAuth } from "@/context/AuthContext";
 import { ThemeProvider, useTheme } from "@/context/ThemeContext";
+import { GatewaySheet } from "@/components/GatewaySheet";
 import { MobileNav } from "@/components/MobileNav";
 import { Navbar } from "@/components/Navbar";
 import { TurfBackdrop } from "@/components/TurfBackdrop";
@@ -87,6 +88,9 @@ export default function RootLayout() {
         <AuthProvider>
           <ThemedStatusBar />
           <Shell />
+          {/* One sheet for the whole app: on a phone a Pay opens the gateway's
+              page here instead of sending the player to a browser. */}
+          <GatewaySheet />
         </AuthProvider>
       </ThemeProvider>
     </SafeAreaProvider>

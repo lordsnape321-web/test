@@ -86,6 +86,11 @@ Against a backend with no SMTP credentials configured, the code is written to
 `../laravel/storage/logs/laravel.log` (the `log` mailer) — read it from there.
 Everything after signup runs on the account it created.
 
+Paying on a phone runs the gateway's page *inside the app* (a WebView sheet, so
+nothing has to hand the player back from a browser), which needs one library:
+`npm install` after pulling, for `react-native-webview` — Expo Go already bundles
+the native side.
+
 Paying on the test gateways can be checked without a database at all:
 
 ```bash

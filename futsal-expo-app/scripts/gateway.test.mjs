@@ -532,6 +532,50 @@ assert.ok(
   "the return screens offer, and try, a way back into the app",
 );
 
+/* ── the checkout runs inside the app on a phone ────────────────────────── */
+
+const sheet = php("futsal-expo-app/src/components/GatewaySheet.tsx");
+const inapp = php("futsal-expo-app/src/lib/inapp-gateway.ts");
+assert.ok(
+  gatewayLib.includes('import { openInAppGateway } from "@/lib/inapp-gateway";') &&
+    gatewayLib.includes("if (Platform.OS !== \"web\") {") &&
+    gatewayLib.includes("openInAppGateway({") &&
+    gatewayLib.indexOf("if (Platform.OS !== \"web\")") < gatewayLib.indexOf("if (plan.kind === \"gateway\") return openGatewayUrl(plan.url);"),
+  "a native checkout opens the sheet; only the web opens a tab",
+);
+assert.ok(
+  inapp.includes("export type InAppGatewaySession =") &&
+    inapp.includes("export function openInAppGateway(") &&
+    inapp.includes("export function isReturnUrl(url: string, prefixes: string[]): boolean") &&
+    inapp.includes("export function returnParams(url: string): Record<string, string>"),
+  "the sheet's session is plain data with the return prefixes and a query parser",
+);
+assert.ok(
+  sheet.includes('import { WebView } from "react-native-webview";') &&
+    sheet.includes('method: "POST" as const') &&
+    sheet.includes('"Content-Type": "application/x-www-form-urlencoded"') &&
+    sheet.includes("onShouldStartLoadWithRequest") &&
+    sheet.includes("if (isReturnUrl(request.url, session.returnPrefixes)) {") &&
+    sheet.includes("return false;"),
+  "the sheet POSTs eSewa's form and intercepts the return before it loads",
+);
+assert.ok(
+  sheet.includes('router.push(') &&
+    sheet.includes("/payment/esewa/success?data=") &&
+    sheet.includes("/payment/esewa/failure") &&
+    sheet.includes("/payment/khalti/callback?"),
+  "an intercepted return goes to the same verify routes a browser would reach",
+);
+assert.ok(
+  php("futsal-expo-app/app/_layout.tsx").includes("<GatewaySheet />") &&
+    JSON.parse(php("futsal-expo-app/package.json")).dependencies["react-native-webview"] !== undefined,
+  "the sheet is mounted once, and the WebView dependency is declared",
+);
+assert.ok(
+  /function cancel\(\) \{\n    closeInAppGateway\(\);\n  \}/.test(sheet) && !sheet.includes("clearCheckout"),
+  "cancelling the sheet does not forget a payment that may have gone through",
+);
+
 /* ── the sandbox is no longer what a payer sees ─────────────────────────── */
 
 const gateway = php("futsal-expo-app/src/lib/gateway.ts");

@@ -64,12 +64,18 @@ export function planCheckout(method: GatewayMethod, init: GatewayInitiate): Chec
   }
 
   if (method === "esewa") {
-    if (init.handoffPath) {
-      return { kind: "gateway", url: apiUrl(init.handoffPath) };
-    }
-
+    /*
+     * The signed fields come first, always: a WebView (and a browser page) can
+     * POST them directly. `handoffPath` exists for the one surface that cannot
+     * — a native app's system browser, which can only open GETs — so it is the
+     * fallback rather than the default.
+     */
     if (init.url && init.fields && Object.keys(init.fields).length > 0) {
       return { kind: "form", url: init.url, fields: init.fields };
+    }
+
+    if (init.handoffPath) {
+      return { kind: "gateway", url: apiUrl(init.handoffPath) };
     }
 
     return { kind: "error", message: "eSewa did not return a checkout form." };

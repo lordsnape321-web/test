@@ -1,6 +1,7 @@
 import Constants from "expo-constants";
 import { Linking as RNLinking, Platform } from "react-native";
 import type { CheckoutPlan } from "@/lib/gateway-plan";
+import { openInAppGateway } from "@/lib/inapp-gateway";
 
 /**
  * The platform half of the checkout bridge: opening tabs, navigating to a
@@ -231,6 +232,23 @@ export function openGatewayUrl(url: string): boolean {
   return true;
 }
 
+/**
+ * The label the last remembered checkout gave itself.
+ *
+ * Read from `src/lib/checkout.ts` lazily to keep this module free of a cycle —
+ * checkout imports gateway, so gateway cannot import checkout at module scope.
+ */
+function lastCheckoutLabel(): string {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const checkout = require("@/lib/checkout") as { pendingCheckout?: () => { label?: string } | null };
+
+    return checkout.pendingCheckout?.()?.label ?? "your payment";
+  } catch {
+    return "your payment";
+  }
+}
+
 /** Build and submit eSewa's signed form from the page itself (browser only). */
 function postEsewaForm(url: string, fields: Record<string, string>): boolean {
   if (Platform.OS !== "web" || typeof document === "undefined") return false;
@@ -263,8 +281,36 @@ function postEsewaForm(url: string, fields: Record<string, string>): boolean {
   }
 }
 
-/** Run a plan. Returns false when the caller should fall back to the simulator. */
+/**
+ * Run a plan. Returns false when the caller should fall back to the simulator.
+ *
+ * On a phone the gateway page opens *inside* the app (see `GatewaySheet`): the
+ * same signed form, posted in a WebView, with the return URL intercepted before
+ * it loads. Leaving the app for a browser would hide the app, and — in Expo Go —
+ * the deep link back is a prompt the player can dismiss, which is exactly how a
+ * finished payment gets lost.
+ */
 export function openCheckout(plan: CheckoutPlan): boolean {
+  if (Platform.OS !== "web") {
+    if (plan.kind === "gateway" || plan.kind === "form") {
+      const origin = paymentWebOrigin();
+
+      openInAppGateway({
+        method: plan.url.includes("khalti") ? "khalti" : "esewa",
+        url: plan.url,
+        fields: plan.kind === "form" ? plan.fields : undefined,
+        // The return screens, at the origin this app's web build is served
+        // from. The first one the WebView tries to load ends the checkout.
+        returnPrefixes: origin === "" ? [] : [`${origin}/payment/`],
+        label: lastCheckoutLabel(),
+      });
+
+      return true;
+    }
+
+    return false;
+  }
+
   if (plan.kind === "gateway") return openGatewayUrl(plan.url);
 
   if (plan.kind === "form") {

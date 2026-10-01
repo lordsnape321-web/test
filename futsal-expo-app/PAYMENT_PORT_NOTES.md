@@ -17,12 +17,25 @@ local copy of them:
 `src/lib/gateway.ts` opens the right surface (tab, form, or system browser), and
 `src/lib/checkout.ts` is the one call every payment button makes.
 
+## Setup note
+
+The in-app checkout needs one extra library: **`react-native-webview`** (it is
+in `package.json`, and Expo Go already bundles the native side). After pulling,
+run
+
+```bash
+cd futsal-expo-app && npm install
+```
+
+once. Metro cannot resolve a module that is not installed, so `npx expo start`
+would fail on the import until this has run.
+
 ## How a checkout runs
 
-1. The screen taps **Pay** and calls `prepareGatewayTab()` — synchronously, while
-   the tap is still live, because browsers only allow a scripted `window.open`
-   during the gesture. It only reserves a tab when the app is framed (the Arena
-   preview); a top-level page is simply replaced.
+1. The screen taps **Pay**. On the web `prepareGatewayTab()` runs first,
+   synchronously, because browsers only allow a scripted `window.open` during
+   the gesture (and only while the app is framed). On a phone there is no tab to
+   reserve: the gateway page opens inside the app, in `GatewaySheet`.
 2. `POST /api/payments/{esewa,khalti}/initiate` builds the session and says where
    the browser should go:
    - eSewa → `handoffPath`, a page that POSTs the signed form (a browser can
@@ -33,13 +46,21 @@ local copy of them:
    HMAC plus its status API, or Khalti's lookup — the redirect itself never
    settles a payment.
 
-   **Where it returns to** is the client's call (`paymentReturnUrl`): a browser
-   comes back to its own origin, and a device comes back *into the app* — a deep
-   link (`exp://host:8081/--/…` in Expo Go, `futsalnepal://…` in a built app),
-   because the Expo web build is not the app and a player sent there would be
-   stranded in a browser with no record of the checkout. The server validates
-   what it is given (`Payments::isUsableReturnUrl`: http/https or an app scheme,
-   never `javascript:`/`data:`/`file:`, and no query of its own).
+   **Where it returns to** is the client's call (`paymentReturnUrl`), and it is
+   always an http(s) URL — custom schemes are an unusual redirect target for a
+   gateway, and one that dislikes them fails the checkout before anything can be
+   paid. On a phone that URL is the *mobile web* origin (`paymentWebOrigin()`:
+   the Expo dev server the app was loaded from, `http://192.168.x.x:8081`), whose
+   Metro proxies `/api` back to Laravel, so the return screen can verify the
+   payment. The server validates what it is given
+   (`Payments::isUsableReturnUrl`: http/https, never `javascript:`/`data:`/
+   `file:`, and no query of its own).
+
+   On a phone the WebView intercepts that URL before it loads
+   (`isReturnUrl` in `src/lib/inapp-gateway.ts`), closes the sheet, and pushes
+   the *same* in-app route a browser would have reached — `/payment/esewa/success?data=…`,
+   `/payment/esewa/failure`, `/payment/khalti/callback?pidx=…`. Verification is
+   one implementation, reached two ways.
 
 ## If the player comes back without finishing
 
@@ -54,6 +75,18 @@ by itself (at most once every 20 seconds), so a payment that actually went
 through settles without the player doing anything. A record older than six hours
 is dropped — the gateway session is long gone by then.
 
+## Inside the app, and outside it
+
+| Surface | eSewa | Khalti |
+|---|---|---|
+| Web (browser) | the signed form is POSTed from the page, or the hand-off page opens in a tab | `payment_url` in a tab |
+| Phone (Expo Go, dev build, installed) | `GatewaySheet` POSTs the signed form in a WebView | the sheet loads `payment_url` |
+
+The hand-off page (`/api/payments/esewa/handoff`) is still there for the one
+surface that cannot POST a form — a system browser — but it is the fallback now,
+not the route a phone takes: `planCheckout` prefers the signed fields whenever
+the client can use them.
+
 ## If eSewa says the payment failed
 
 Two different things can be going on, and they need different answers:
@@ -63,10 +96,15 @@ Two different things can be going on, and they need different answers:
   unavailable. Please try again later." when their backend times out. Nothing
   can be verified from that page, so `initiate` checks the host first and the
   simulator takes over instead (see below).
-- **The transaction failed after login.** That is eSewa's own decision, and the
-  usual causes are a wrong MPIN/token, a spent test wallet, or an amount above
-  what the shared wallet holds. `Payments::esewaTestLoginHint()` prints the
-  current login and the alternates on the checkout page for exactly this.
+- **The transaction failed after login.** If the token verifies and the confirm
+  screen appears, the credentials were fine — the *debit* is what failed. That is
+  almost always the test wallet's balance against the amount (these wallets are
+  shared between every integrator, and the app pays a real booking amount, so a
+  large booking can exceed what the wallet holds), or eSewa's own UAT. Try
+  another wallet (`9711111111`–`9711111114`; `9806800001`–`9806800005` are older
+  but sometimes funded) and a smaller payment. `Payments::esewaTestLoginHint()`
+  prints the current login and the alternates on the checkout page for exactly
+  this.
 
 Because eSewa can also show a failure *after* taking the money, the failure
 screen offers **Check with eSewa**: the server looks up the transaction it
