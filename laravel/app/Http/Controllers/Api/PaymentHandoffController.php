@@ -132,6 +132,26 @@ class PaymentHandoffController extends ApiController
         ];
     }
 
+    /**
+     * GET /api/payments/{esewa|khalti}/demo — the replica of the gateway's page.
+     *
+     * A file in `public/`, served through the API so the web build (whose only
+     * proxy to this backend is `/api`) can open it, and a device can too. The
+     * page is self-contained: it reads its parameters from the query string —
+     * all of them put there by `Payments::demoGatewayUrl()` — and posts to the
+     * same verify endpoints a gateway's return page would.
+     */
+    public function demo(string $gateway)
+    {
+        $file = public_path("demo-{$gateway}.html");
+
+        if (! is_file($file)) {
+            return $this->html($this->errorPage('The demo checkout page is missing from this deployment.'), 404);
+        }
+
+        return $this->html((string) file_get_contents($file));
+    }
+
     /** @param array<string, mixed> $data */
     private function formPage(string $formUrl, array $fields, array $data): string
     {

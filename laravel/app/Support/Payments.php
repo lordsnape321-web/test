@@ -349,7 +349,17 @@ class Payments
             fn ($value) => $value !== null && $value !== '' && $value !== false
         ));
 
-        return $host.'/demo-'.$gateway.'.html'.($query === '' ? '' : '?'.$query);
+        /*
+         * Under `/api`, not at `/demo-…` next to it.
+         *
+         * On the web the app is served by the Expo dev server, and only `/api`
+         * is proxied through to this backend — a page at the site root would
+         * land on the app's own router and read "Unmatched Route". On a device
+         * the app calls this API directly, so the same path is served by this
+         * backend either way, and the page's own `/api/...` posts stay relative
+         * to whichever host it was opened from.
+         */
+        return $host.'/api/payments/'.$gateway.'/demo'.($query === '' ? '' : '?'.$query);
     }
 
     public static function makeEsewaUuid(int $bookingId): string

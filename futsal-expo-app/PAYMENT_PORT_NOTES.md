@@ -44,7 +44,7 @@ would fail on the import until this has run.
    - Khalti → `payment_url`, the test-pay page.
 3. Or the caller asked for the **demo checkout** (`demo: true`), in which case
    no gateway is contacted at all and the answer points at the replica page
-   (`/demo-esewa.html`, `/demo-khalti.html`) — see *The demo checkout* below.
+   (`/api/payments/{esewa,khalti}/demo`) — see *The demo checkout* below.
 4. The gateway returns the browser to `/payment/esewa/success` or
    `/payment/khalti/callback`, which calls `verify`. The server checks eSewa's
    HMAC plus its status API, or Khalti's lookup — the redirect itself never
@@ -175,6 +175,11 @@ happen. So the backend serves a replica of both gateway pages:
   own message, a *Cancel payment* hands the payer back as a failure, and the
   page says at the bottom that it is a replica and not affiliated with either
   provider.
+  They are served at **`GET /api/payments/{esewa,khalti}/demo`**, not beside the
+  app's own routes: the web build reaches this backend only through its `/api`
+  proxy, and a page at `/demo-esewa.html` lands on the app's router instead
+  ("Unmatched Route"). From the API path the page's own `/api/...` posts stay
+  relative to whichever host opened it, on a device and in a browser alike.
 - **The app opens it exactly like a real gateway page.** `Payments::demoGatewayUrl()`
   builds the URL on the host the client reached the API on, and every initiate
   answer carries it as `demoUrl` — the replica when the mode asked for it, and

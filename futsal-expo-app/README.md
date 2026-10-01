@@ -103,7 +103,8 @@ It covers the checkout decision (real gateway page vs. form POST vs. the replica
 page vs. an error) and reads the Laravel side to pin the contract it depends on:
 the published test credentials, `returnOrigin`, the query-free return URLs, the
 eSewa hand-off pages (booking and league), the two replica pages
-(`laravel/public/demo-*.html`) and that the demo checkout settles through the
+(`laravel/public/demo-*.html`, served at `/api/payments/{gateway}/demo`) and
+that the demo checkout settles through the
 same ledger path as a gateway payment. The app runs the replica by default —
 same steps, same ledger, nothing leaving the app — and *Settings → Use the real
 eSewa and Khalti test servers* points it at the providers instead

@@ -119,6 +119,11 @@ Route::patch('/bookings/{id}/payment-requests/{requestId}', [PaymentRequestContr
 // A page, not JSON: browsers that cannot POST a form (a native app's system
 // browser) open this to finish an eSewa checkout. See the controller.
 Route::get('/payments/esewa/handoff', [PaymentHandoffController::class, 'esewa']);
+// The demo checkout, served as a page at an API path: the web build reaches
+// this backend through its `/api` proxy, and a device calls it directly. See
+// `laravel/public/demo-{esewa,khalti}.html`.
+Route::get('/payments/{gateway}/demo', [PaymentHandoffController::class, 'demo'])
+    ->where('gateway', 'esewa|khalti');
 // The same page for a league entry fee, replaying the tournament endpoint.
 Route::get('/payments/esewa/handoff/league', [PaymentHandoffController::class, 'leagueEsewa']);
 Route::post('/payments/esewa/initiate', [EsewaController::class, 'initiate']);

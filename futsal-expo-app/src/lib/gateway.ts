@@ -342,12 +342,14 @@ export function demoPageUrl(method: GatewayMethod, mockUrl: string, amount?: num
 
   if (amount && !params.has("amount")) params.set("amount", String(amount));
 
-  const url = apiUrl(`/demo-${method === "esewa" ? "esewa" : "khalti"}.html?${params.toString()}`);
+  // The same path the server builds, for a backend that answered without one.
+  const url = apiUrl(`/api/payments/${method === "esewa" ? "esewa" : "khalti"}/demo?${params.toString()}`);
 
-  // On the web build the API is same-origin (`/api`), so this is a path, not a
-  // page this app serves. There is nothing to open then — the server's own
-  // `demoUrl` is the only way to reach the replica from a browser.
-  return /^https?:/i.test(url) ? url : "";
+  if (/^https?:/i.test(url)) return url;
+
+  // On the web build the API is same-origin (`/api`), so this is a path — and a
+  // path on the proxy that carries `/api` to the backend is exactly right.
+  return typeof window !== "undefined" ? new URL(url, window.location.href).href : "";
 }
 
 /**

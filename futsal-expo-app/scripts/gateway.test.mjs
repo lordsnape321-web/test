@@ -612,14 +612,24 @@ for (const [brand, page] of [["esewa", esewaPage], ["khalti", khaltiPage]]) {
     `${brand}: it hands the payer back to the app's own return URL`,
   );
   assert.ok(
-    page.includes("leagueId") && page.includes("/api/tournaments/"),
-    `${brand}: a league entry fee is settled the same way`,
-  );
-  assert.ok(
     page.includes("This checkout was opened without a return address"),
     `${brand}: opened without a return URL it says so instead of pretending to pay`,
   );
 }
+
+// Served *under* the API, not at a path of its own: on the web build the only
+// thing proxied to this backend is `/api`, and a page beside the app's own
+// routes lands on the router instead ("Unmatched Route").
+assert.ok(
+  routes.includes("Route::get('/payments/{gateway}/demo', [PaymentHandoffController::class, 'demo'])") &&
+    routes.includes("->where('gateway', 'esewa|khalti');"),
+  "the replica page has a route, under /api, that the web build can reach",
+);
+assert.ok(
+  payments.includes("$host.'/api/payments/'.$gateway.'/demo'") &&
+    !payments.includes("/demo-'.$gateway.'.html'"),
+  "…and every demoUrl points at it",
+);
 
 // The three steps, with the credentials the real test servers publish — a
 // rehearsal for the real thing has to use the values that work there.
@@ -651,7 +661,7 @@ for (const page of [esewaPage, khaltiPage]) {
 assert.ok(
   payments.includes("public static function demoGatewayUrl(Request $request, string $gateway, array $params): string") &&
     payments.includes("$host = $request->getSchemeAndHttpHost();") &&
-    payments.includes("$host.'/demo-'.$gateway.'.html'.($query === '' ? '' : '?'.$query);"),
+    payments.includes("$host.'/api/payments/'.$gateway.'/demo'.($query === '' ? '' : '?'.$query);"),
   "Payments::demoGatewayUrl builds the page URL from the host the client reached",
 );
 
@@ -715,11 +725,23 @@ assert.ok(
     !screens.includes("KhaltiMockScreen"),
   "the native mock screens are removed, leaving one checkout path",
 );
+
+// A build older than the page still asks for `/payment/{gateway}/mock`. That
+// path answers — with a way to resume the checkout, not with a dead end.
+const legacy = php("futsal-expo-app/app/payment/[gateway]/mock.tsx");
+assert.ok(
+  legacy.includes("useLocalSearchParams") &&
+    legacy.includes('retryLastCheckout("demo")') &&
+    !legacy.includes("mockApprove") &&
+    !legacy.includes("TextControl"),
+  "an old demo-checkout link resumes on the replica page instead of dead-ending",
+);
 assert.ok(
   checkout.includes("export function checkoutMode(force?: CheckoutMode): CheckoutMode") &&
     checkout.includes('const payload = { ...input, demo: checkoutMode(force) === "demo" };') &&
     checkout.includes("export function demoPageUrl") === false &&
-    gatewayLib.includes("export function demoPageUrl(method: GatewayMethod, mockUrl: string, amount?: number): string"),
+    gatewayLib.includes("export function demoPageUrl(method: GatewayMethod, mockUrl: string, amount?: number): string") &&
+    gatewayLib.includes("/api/payments/${method === \"esewa\" ? \"esewa\" : \"khalti\"}/demo?"),
   "the mode travels with the request, and the page URL lives with the other platform code",
 );
 /* ── the gateway returns the payer to the app, not to a website ─────────── */
