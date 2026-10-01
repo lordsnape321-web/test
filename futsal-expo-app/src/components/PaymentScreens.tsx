@@ -6,6 +6,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { ApiError } from "@/lib/api";
 import { formatNPR } from "@/lib/futsal";
 import { leaguePaymentsAction, verifyEsewa, verifyKhalti } from "@/api";
+import { esewaDataFromLocation } from "@/lib/gateway";
 import { useTheme } from "@/context/ThemeContext";
 import { colors, fontSize, radius, space } from "@/theme";
 
@@ -69,9 +70,27 @@ function GatewayMock({ kind, params, onDone, onCancel }: { kind: "esewa" | "khal
           method: label,
         });
       } else if (kind === "esewa") {
-        await verifyEsewa(Number(bookingId), true, teamPaymentId ? Number(teamPaymentId) : undefined, paymentRequestId ? Number(paymentRequestId) : undefined, numberParam(params.userId) || undefined, one(params.uuid) || checkoutId, one(params.paymentPurpose) === "advance" ? "advance" : undefined, amount);
+        await verifyEsewa({
+          bookingId: Number(bookingId),
+          mockApprove: true,
+          teamPaymentId: teamPaymentId ? Number(teamPaymentId) : undefined,
+          paymentRequestId: paymentRequestId ? Number(paymentRequestId) : undefined,
+          userId: numberParam(params.userId) || undefined,
+          uuid: one(params.uuid) || checkoutId,
+          paymentPurpose: one(params.paymentPurpose) === "advance" ? "advance" : undefined,
+          expectedAmount: amount,
+        });
       } else {
-        await verifyKhalti(Number(bookingId), one(params.pidx) && one(params.pidx) !== "mock-pidx" ? one(params.pidx) : checkoutId, true, teamPaymentId ? Number(teamPaymentId) : undefined, paymentRequestId ? Number(paymentRequestId) : undefined, numberParam(params.userId) || undefined, one(params.paymentPurpose) === "advance" ? "advance" : undefined, amount);
+        await verifyKhalti({
+          bookingId: Number(bookingId),
+          pidx: one(params.pidx) && one(params.pidx) !== "mock-pidx" ? one(params.pidx) : checkoutId,
+          mockApprove: true,
+          teamPaymentId: teamPaymentId ? Number(teamPaymentId) : undefined,
+          paymentRequestId: paymentRequestId ? Number(paymentRequestId) : undefined,
+          userId: numberParam(params.userId) || undefined,
+          paymentPurpose: one(params.paymentPurpose) === "advance" ? "advance" : undefined,
+          expectedAmount: amount,
+        });
       }
       if (isLeague) {
         // League checkout returns to its detail page, just like the web mock.
@@ -114,12 +133,74 @@ function GatewayMock({ kind, params, onDone, onCancel }: { kind: "esewa" | "khal
   );
 }
 
+/**
+ * The page eSewa sends the browser back to.
+ *
+ * Two arrivals, one screen:
+ *
+ *   • the real test server — the URL carries `data`, the base64 blob eSewa
+ *     signed. It is posted to the server, which checks the HMAC, confirms the
+ *     amount and asks eSewa's status API before anything is marked paid.
+ *   • the local simulator — `mock=1` and the mock screen already verified, so
+ *     there is nothing left to do but say so.
+ */
 export function EsewaSuccessScreen() {
   const params = useLocalSearchParams() as Params;
   const router = useRouter();
-  const bookingId = one(params.bookingId);
   const mock = one(params.mock) === "1";
-  return <ResultScreen kind="success" gateway="eSewa" bookingId={bookingId} message={mock ? "eSewa test payment confirmed." : "Your eSewa response has been received."} onPrimary={() => router.replace("/bookings?refresh=1")} onSecondary={() => router.replace("/venues")} />;
+  const [bookingId, setBookingId] = useState(one(params.bookingId));
+  const [state, setState] = useState<"loading" | "success" | "failure">(mock ? "success" : "loading");
+  const [message, setMessage] = useState("");
+
+  useEffect(() => {
+    if (state !== "loading") return;
+
+    const data =
+      one(params.data) ||
+      esewaDataFromLocation(typeof window !== "undefined" ? window.location.search : "");
+
+    if (!data) {
+      setState("failure");
+      setMessage("eSewa came back without a payment response. Check My Bookings for the status.");
+      return;
+    }
+
+    verifyEsewa({
+      data,
+      bookingId: numberParam(params.bookingId) || undefined,
+      teamPaymentId: numberParam(params.teamPaymentId) || undefined,
+      paymentRequestId: numberParam(params.paymentRequestId) || undefined,
+      userId: numberParam(params.userId) || undefined,
+    })
+      .then((result) => {
+        const booking = (result as { booking?: { id?: number } }).booking;
+        if (booking?.id) setBookingId(String(booking.id));
+        setState("success");
+      })
+      .catch((e) => {
+        setState("failure");
+        setMessage(e instanceof Error ? e.message : "eSewa could not verify that payment.");
+      });
+  }, [params, state]);
+
+  if (state === "loading") return <LoadingResult label="Confirming your eSewa payment… 💚" />;
+
+  return (
+    <ResultScreen
+      kind={state}
+      gateway="eSewa"
+      bookingId={bookingId}
+      message={
+        state === "success"
+          ? mock
+            ? "eSewa test payment confirmed."
+            : "eSewa confirmed the payment and your booking is settled. 🎉"
+          : message
+      }
+      onPrimary={() => router.replace("/bookings?refresh=1")}
+      onSecondary={() => router.replace("/venues")}
+    />
+  );
 }
 
 export function EsewaFailureScreen() {
@@ -134,24 +215,40 @@ export function KhaltiCallbackScreen() {
   const bookingId = one(params.bookingId);
   const teamPaymentId = one(params.teamPaymentId);
   const paymentRequestId = one(params.paymentRequestId);
-  const [state, setState] = useState<"loading" | "success" | "failure">(one(params.status) === "Completed" || one(params.mock) === "1" ? "success" : "loading");
+  const status = one(params.status);
+  const [state, setState] = useState<"loading" | "success" | "failure">(
+    one(params.mock) === "1" ? "success" : "loading",
+  );
   const [message, setMessage] = useState("");
 
   useEffect(() => {
     if (state !== "loading") return;
     const pidx = one(params.pidx);
-    if (!pidx || !bookingId) {
+    if (!pidx) {
       setState("failure");
       setMessage("Missing Khalti session. Check My Bookings for status.");
       return;
     }
-    verifyKhalti(Number(bookingId), pidx, false, teamPaymentId ? Number(teamPaymentId) : undefined, paymentRequestId ? Number(paymentRequestId) : undefined, numberParam(params.userId) || undefined)
+    verifyKhalti({
+      bookingId: Number(bookingId) || undefined,
+      pidx,
+      mockApprove: false,
+      // Khalti returns the order id it was given; it names the team share or
+      // player request this session belongs to.
+      orderId: one(params.purchase_order_id) || undefined,
+      teamPaymentId: teamPaymentId ? Number(teamPaymentId) : undefined,
+      paymentRequestId: paymentRequestId ? Number(paymentRequestId) : undefined,
+      userId: numberParam(params.userId) || undefined,
+    })
       .then(() => setState("success"))
       .catch((e) => {
         setState("failure");
         setMessage(e instanceof Error ? e.message : "Verification failed");
       });
-  }, [bookingId, params, state]);
+    // `status` is only a hint from Khalti's redirect; the lookup is the truth,
+    // so an early "Completed" still goes through verification.
+    void status;
+  }, [params, state]);
 
   if (state === "loading") return <LoadingResult label="Verifying Khalti payment… 💜" />;
   return <ResultScreen kind={state === "success" ? "success" : "failure"} gateway="Khalti" bookingId={bookingId} message={state === "success" ? "Khalti test payment confirmed." : message || "Could not verify the payment."} onPrimary={() => router.replace("/bookings?refresh=1")} onSecondary={() => router.replace("/venues")} />;

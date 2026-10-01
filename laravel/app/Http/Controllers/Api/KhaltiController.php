@@ -22,9 +22,13 @@ use Illuminate\Support\Facades\DB;
  * Khalti test gateway — `POST /api/payments/khalti/{initiate,verify}`.
  *
  * Same three payment targets as eSewa, but Khalti identifies a session by
- * `pidx` rather than by a signed callback, and quotes amounts in paisa. When no
- * test key is configured — or the sandbox is unreachable — the flow falls back
- * to a local simulator so the demo never breaks.
+ * `pidx` rather than by a signed callback, and quotes amounts in paisa.
+ *
+ * The real test server (`dev.khalti.com`) is the default: `Payments` carries
+ * Khalti's published sandbox key, and `KHALTI_SECRET_KEY` replaces it with your
+ * own merchant key. If the test server rejects the session or cannot be
+ * reached, the call answers with a local simulator URL instead of an error, so a
+ * checkout always has somewhere to go.
  */
 class KhaltiController extends ApiController
 {
@@ -76,43 +80,27 @@ class KhaltiController extends ApiController
         $customer = User::find((int) ($paymentRequest->payer_id ?? $teamPayment->user_id ?? $booking->user_id));
 
         $cfg = Payments::khaltiConfig();
-        $origin = Payments::appOrigin($request);
+        // The app tells us where it lives; see Payments::returnOrigin().
+        $origin = Payments::returnOrigin($request, $request->input('returnOrigin'));
 
         $orderId = Payments::makeKhaltiOrderId((int) $booking->id)
             .($teamPayment ? "-TP-{$teamPayment->id}" : ($paymentRequest ? "-PR-{$paymentRequest->id}" : ''));
 
-        $requestQuery = $paymentRequest ? "&paymentRequestId={$paymentRequest->id}&userId={$paymentRequest->payer_id}" : '';
-
-        $returnUrl = "{$origin}/payment/khalti/callback?bookingId={$booking->id}"
-            .($teamPayment ? "&teamPaymentId={$teamPayment->id}" : '').$requestQuery;
+        /*
+         * Clean return URL, like eSewa's: Khalti appends its own query
+         * (`pidx`, `status`, `purchase_order_id`, …) and a URL that already has
+         * one is a coin flip. Everything needed is in those params — the
+         * booking is found by `pidx` (stored on the row when the session was
+         * created) and the team share or player request by the order id — so
+         * the callback screen needs no hints of its own.
+         */
+        $returnUrl = "{$origin}/payment/khalti/callback";
 
         $amountPaisa = (int) round($amountNpr * 100);
 
         $mockTarget = $teamPayment
             ? "&teamPaymentId={$teamPayment->id}&userId={$teamPayment->user_id}"
             : ($paymentRequest ? "&paymentRequestId={$paymentRequest->id}&userId={$paymentRequest->payer_id}" : '');
-
-        // No key configured → the local test simulator, which is a fully
-        // functional demo on its own.
-        if ($cfg['secretKey'] === '') {
-            $mockPidx = 'mock-'.$orderId;
-
-            $this->storePidx($booking, $teamPayment, $paymentRequest, $mockPidx);
-
-            return $this->ok([
-                'mock' => true,
-                'pidx' => $mockPidx,
-                'payment_url' => "{$origin}/payment/khalti/mock?pidx=".rawurlencode($mockPidx)."&bookingId={$booking->id}&amount={$amountNpr}".$mockTarget,
-                'amount' => $amountNpr,
-                'bookingId' => $booking->id,
-                'teamPaymentId' => $teamPayment->id ?? null,
-                'paymentRequestId' => $paymentRequest->id ?? null,
-                'venueName' => $venueName,
-                'isDeposit' => ! $teamPayment && ! $paymentRequest && (bool) $booking->deposit_required,
-                'isAdvance' => ($paymentRequest?->purpose === 'advance') || (! $teamPayment && (bool) $booking->advance_payment_required),
-                'testHint' => 'Sandbox simulator — no KHALTI_SECRET_KEY set. Add your Khalti test key to hit the real test-pay page.',
-            ]);
-        }
 
         try {
             $init = Payments::khaltiInitiate([
@@ -141,7 +129,8 @@ class KhaltiController extends ApiController
                 'venueName' => $venueName,
                 'isDeposit' => ! $teamPayment && ! $paymentRequest && (bool) $booking->deposit_required,
                 'isAdvance' => ($paymentRequest?->purpose === 'advance') || (! $teamPayment && (bool) $booking->advance_payment_required),
-                'testHint' => 'Khalti sandbox: use test ID 9800000001 / MPIN 1111 / OTP 987654',
+                'returnOrigin' => $origin,
+                'testHint' => 'Khalti test server: pay with 9800000001, MPIN 1111, OTP 987654',
             ]);
         } catch (\Throwable $e) {
             // Sandbox unreachable or key rejected: fall back to the simulator so
@@ -153,6 +142,7 @@ class KhaltiController extends ApiController
             return $this->ok([
                 'mock' => true,
                 'fallback' => true,
+                'returnOrigin' => $origin,
                 'fallbackError' => $e->getMessage(),
                 'pidx' => $mockPidx,
                 'payment_url' => "{$origin}/payment/khalti/mock?pidx=".rawurlencode($mockPidx)."&bookingId={$booking->id}&amount={$amountNpr}"

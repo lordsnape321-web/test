@@ -396,8 +396,52 @@ For an Expo web preview, Metro forwards same-origin `/api` requests to this
 service. `CORS_ALLOWED_ORIGINS=*` is suitable for local development; list the
 real web origins before production.
 
-Payment return links are built from `APP_URL`, while app/deep-link return links
-use `APP_WEB_URL`. Set both to the deployed API and app origins when publishing.
+The return links a gateway sends the browser to come from the client, not from
+this server's own address: the app sends `returnOrigin` with every initiate and
+the server validates it (http/https, real host, no credentials, not `0.0.0.0`).
+That is what makes the web build work — the app is served by Expo, so
+`http://127.0.0.1:8000` would be the wrong answer for a browser on port 8081.
+`APP_URL` is the fallback when a client has no origin to offer (a native build
+without `EXPO_PUBLIC_APP_ORIGIN`).
+
+## The real test gateways
+
+Both gateways are the **actual test servers**, not local stubs — the same
+addresses their own documentation hands out:
+
+| | eSewa | Khalti |
+|---|---|---|
+| Server | `rc-epay.esewa.com.np` | `dev.khalti.com` |
+| Checkout | POST a signed form to `/api/epay/main/v2/form` | `POST /api/v2/epayment/initiate/` → `payment_url` |
+| Merchant | `EPAYTEST` + published sandbox secret | published sandbox `live_secret_key`, or yours |
+| Test payer | `9806800001` / `Nepal@123` / MPIN `1122` / token `123456` | `9800000001` / MPIN `1111` / OTP `987654` |
+| Verify | HMAC signature on the returned `data`, then the status API | `POST /api/v2/epayment/lookup/` |
+
+Nothing needs configuring to try them: the published sandbox values are the
+defaults, exactly like `EPAYTEST`. `KHALTI_SECRET_KEY` (from
+test-admin.khalti.com) and `ESEWA_MERCHANT_CODE` / `ESEWA_SECRET_KEY` replace
+them for a real merchant account.
+
+### What the flow looks like from here
+
+1. `POST /api/payments/{esewa,khalti}/initiate` resolves the target (booking
+   balance, one member's share, or one directed request), works out the amount,
+   remembers the transaction reference on that row, and signs the checkout. It
+   also returns a **`handoffPath`** for eSewa: a page that rebuilds the same
+   signed form and POSTs it, because a native app can only open GETs.
+2. The gateway returns the browser to a screen that calls `verify`. Nothing is
+   ever settled from the redirect: `verify` checks eSewa's HMAC, asks eSewa's
+   status API, and for Khalti asks the lookup API before it touches the ledger.
+   A replayed verify finds its ledger row and returns it instead of charging
+   twice.
+3. If the test server cannot be reached at all, `initiate` answers
+   `mock: true` with a simulator URL, and the app runs the local checkout
+   instead. A refused session — a played game, a paid share, the wrong amount —
+   is a normal 4xx, not a fallback.
+
+Return URLs carry no query string of their own, on purpose: both gateways
+append their own parameters and a URL that already has a query is a coin flip
+between `&` and a second `?`.
 
 ## Running the acceptance suite
 
@@ -448,7 +492,7 @@ request validation and authorization separate from the persistence models.
 | `APP_WEB_URL` | Expo/web origin used in app return links |
 | `CORS_ALLOWED_ORIGINS` | Comma-separated production web origins, or `*` locally |
 | `SETTLE_EDIT_WINDOW_MINUTES` | Settlement correction window, five minutes by default |
-| `ESEWA_*`, `KHALTI_*` | Gateway credentials; blank values enable local simulators |
+| `ESEWA_*`, `KHALTI_*` | Override the published test-gateway values with your own merchant credentials |
 | `MAIL_*` | Gmail/SMTP transport for confirmations, reminders and reset codes |
 | `MAIL_TIMEOUT` | Seconds before an SMTP attempt gives up, 8 by default |
 

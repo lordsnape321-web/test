@@ -28,6 +28,40 @@ class Payments
     public const KHALTI_LOOKUP_URL_DEFAULT = 'https://dev.khalti.com/api/v2/epayment/lookup/';
 
     /**
+     * Khalti's published sandbox merchant key.
+     *
+     * Khalti prints this key in its own Web Checkout documentation for the test
+     * environment, the same way eSewa publishes `EPAYTEST` and the sandbox
+     * secret — which is what makes the real test server reachable from a fresh
+     * clone with nothing to sign up for. `KHALTI_SECRET_KEY` overrides it with
+     * your own merchant key from test-admin.khalti.com (OTP 987654), and if
+     * Khalti ever retires this one the initiate call fails and the controller
+     * falls back to the local simulator with `fallback: true` rather than
+     * breaking the checkout.
+     */
+    public const KHALTI_TEST_SECRET = 'live_secret_key_68791341fdd94846a146f0457ff7b455';
+
+    /**
+     * eSewa's published test logins (developer.esewa.com.np).
+     *
+     * Not secrets — they are printed in the docs so a merchant can finish a UAT
+     * checkout. They are shown on the hand-off page so nobody has to go looking
+     * for them mid-payment.
+     *
+     * @return array{id: string, password: string, mpin: string, token: string}
+     */
+    public static function esewaTestLogin(): array
+    {
+        return ['id' => '9806800001', 'password' => 'Nepal@123', 'mpin' => '1122', 'token' => '123456'];
+    }
+
+    /** Khalti's published sandbox payer (docs.khalti.com). */
+    public static function khaltiTestLogin(): array
+    {
+        return ['id' => '9800000001', 'mpin' => '1111', 'otp' => '987654'];
+    }
+
+    /**
      * @return array{productCode: string, secretKey: string, formUrl: string, statusUrl: string}
      */
     public static function esewaConfig(): array
@@ -41,15 +75,64 @@ class Payments
     }
 
     /**
-     * @return array{secretKey: string, initiateUrl: string, lookupUrl: string}
+     * @return array{secretKey: string, usingPublishedTestKey: bool, initiateUrl: string, lookupUrl: string}
      */
     public static function khaltiConfig(): array
     {
         return [
-            'secretKey' => trim((string) env('KHALTI_SECRET_KEY', '')),
+            'secretKey' => trim((string) env('KHALTI_SECRET_KEY', '')) ?: self::KHALTI_TEST_SECRET,
+            'usingPublishedTestKey' => trim((string) env('KHALTI_SECRET_KEY', '')) === '',
             'initiateUrl' => trim((string) env('KHALTI_INITIATE_URL', '')) ?: self::KHALTI_INITIATE_URL_DEFAULT,
             'lookupUrl' => trim((string) env('KHALTI_LOOKUP_URL', '')) ?: self::KHALTI_LOOKUP_URL_DEFAULT,
         ];
+    }
+
+    /**
+     * Where the gateway should send the browser when it is done.
+     *
+     * The client is the authority on its own address: on the web the app is
+     * served by Expo (port 8081, or a preview host), not by this API, so the
+     * request host is the wrong answer. So the app sends its origin and this
+     * validates it; anything missing or unusable falls back to `appOrigin()`.
+     *
+     * This value only decides where a browser is sent. Money is settled by the
+     * signed eSewa response and Khalti's lookup, never by the redirect, so a
+     * caller that lies about its origin cannot fake a payment — it can only
+     * send its own browser somewhere odd.
+     */
+    public static function returnOrigin(Request $request, mixed $explicit = null): string
+    {
+        $candidate = rtrim(trim(is_string($explicit) ? $explicit : ''), '/');
+
+        if ($candidate !== '' && self::isUsableOrigin($candidate)) {
+            return $candidate;
+        }
+
+        return self::appOrigin($request);
+    }
+
+    /** http(s), a real host, no credentials, and not the meaningless 0.0.0.0. */
+    public static function isUsableOrigin(string $origin): bool
+    {
+        if (! filter_var($origin, FILTER_VALIDATE_URL)) {
+            return false;
+        }
+
+        $parts = parse_url($origin);
+
+        if (empty($parts['scheme']) || empty($parts['host'])) {
+            return false;
+        }
+
+        if (! in_array(strtolower((string) $parts['scheme']), ['http', 'https'], true)) {
+            return false;
+        }
+
+        if (isset($parts['user']) || isset($parts['pass'])) {
+            return false;
+        }
+
+        return ! str_contains((string) $parts['host'], '0.0.0.0');
     }
 
     /**

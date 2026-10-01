@@ -11,6 +11,7 @@ use App\Http\Controllers\Api\KhaltiController;
 use App\Http\Controllers\Api\LedgerController;
 use App\Http\Controllers\Api\MatchController;
 use App\Http\Controllers\Api\NotificationController;
+use App\Http\Controllers\Api\PaymentHandoffController;
 use App\Http\Controllers\Api\PaymentRequestController;
 use App\Http\Controllers\Api\PlayerController;
 use App\Http\Controllers\Api\PromoController;
@@ -115,6 +116,9 @@ Route::patch('/bookings/{id}/payment-requests/{requestId}', [PaymentRequestContr
     ->whereNumber('requestId');
 
 /* ── test gateways ─────────────────────────────────────────────────────── */
+// A page, not JSON: browsers that cannot POST a form (a native app's system
+// browser) open this to finish an eSewa checkout. See the controller.
+Route::get('/payments/esewa/handoff', [PaymentHandoffController::class, 'esewa']);
 Route::post('/payments/esewa/initiate', [EsewaController::class, 'initiate']);
 Route::post('/payments/esewa/verify', [EsewaController::class, 'verify']);
 Route::post('/payments/khalti/initiate', [KhaltiController::class, 'initiate']);

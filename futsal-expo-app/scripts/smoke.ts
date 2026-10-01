@@ -128,8 +128,10 @@ async function main() {
   check("ledger balance = owed before payment", before.totals.balance === before.totals.owed);
   check("ledger not settled yet", before.window.settled === false);
 
-  // 8. Pay via eSewa (sandbox mockApprove).
-  const payResult = await verifyEsewa(booking.id, true);
+  // 8. Pay via eSewa. The smoke test drives the server contract directly, so it
+  //    uses the simulator branch (mockApprove) rather than opening a browser at
+  //    the real test server — the signature path is covered by the gateway probe.
+  const payResult = await verifyEsewa({ bookingId: booking.id, mockApprove: true });
   check("eSewa verify succeeded", payResult?.ok !== false, JSON.stringify(payResult).slice(0, 80));
 
   // 9. Re-read booking + ledger; assert the money moved.

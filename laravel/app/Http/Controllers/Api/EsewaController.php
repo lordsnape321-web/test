@@ -129,7 +129,9 @@ class EsewaController extends ApiController
         $venueName = $venue->name ?? 'Futsal';
 
         $cfg = Payments::esewaConfig();
-        $origin = Payments::appOrigin($request);
+        // Where eSewa should return the browser. The app sends its own origin
+        // because the web build is served by Expo, not by this API.
+        $origin = Payments::returnOrigin($request, $request->input('returnOrigin'));
 
         $transactionUuid = Payments::makeEsewaUuid((int) $booking->id)
             .($teamPayment ? "-TP-{$teamPayment->id}" : ($paymentRequest ? "-PR-{$paymentRequest->id}" : ''));
@@ -142,11 +144,18 @@ class EsewaController extends ApiController
             $booking->forceFill(['esewa_uuid' => $transactionUuid, 'gateway_txn_id' => ''])->save();
         }
 
-        $requestQuery = $paymentRequest ? "&paymentRequestId={$paymentRequest->id}&userId={$paymentRequest->payer_id}" : '';
-        $target = $teamPayment ? "&teamPaymentId={$teamPayment->id}" : "";
-
-        $successUrl = "{$origin}/payment/esewa/success?bookingId={$booking->id}{$target}{$requestQuery}";
-        $failureUrl = "{$origin}/payment/esewa/failure?bookingId={$booking->id}{$target}{$requestQuery}";
+        /*
+         * No query string on the return URLs, deliberately.
+         *
+         * eSewa appends `?data=<base64>` to the success URL, and a URL that
+         * already carries a query is a coin flip: some gateways append with `&`,
+         * some with a second `?`. Everything the app needs to settle this
+         * payment is inside that signed `data` blob (the transaction uuid names
+         * the booking, the team share or the player request), so the return
+         * pages take no arguments of their own.
+         */
+        $successUrl = "{$origin}/payment/esewa/success";
+        $failureUrl = "{$origin}/payment/esewa/failure";
 
         $fields = Payments::buildEsewaFields([
             'amount' => $amount,
@@ -173,8 +182,23 @@ class EsewaController extends ApiController
             'isDeposit' => ! $teamPayment && ! $paymentRequest && (bool) $booking->deposit_required,
             'isAdvance' => ($paymentRequest?->purpose === 'advance') || (! $teamPayment && (bool) $booking->advance_payment_required),
             'testMode' => true,
+            'returnOrigin' => $origin,
+            'successUrl' => $successUrl,
+            'failureUrl' => $failureUrl,
             'mockUrl' => "{$origin}/payment/esewa/mock?bookingId={$booking->id}&amount={$amount}&uuid=".rawurlencode($transactionUuid).$mockTarget,
-            'testHint' => 'eSewa UAT: use ID 9806800001 / password 123456 / MPIN 1122 / token 123456',
+            // A POST has to come from a page, and a native app cannot build
+            // one — so the hand-off page does it. The path is returned instead
+            // of a full URL because only the client knows which origin it can
+            // reach this API on (same host on the web, the LAN address on a
+            // device).
+            'handoffPath' => '/api/payments/esewa/handoff?'.http_build_query([
+                'bookingId' => $booking->id,
+                'teamPaymentId' => $teamPayment->id ?? null,
+                'paymentRequestId' => $paymentRequest->id ?? null,
+                'userId' => $request->input('userId'),
+                'returnOrigin' => $origin,
+            ]),
+            'testHint' => 'eSewa test server: log in with 9806800001 / Nepal@123, MPIN 1122, token 123456',
         ]);
     }
 

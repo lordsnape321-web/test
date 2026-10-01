@@ -86,6 +86,20 @@ Against a backend with no SMTP credentials configured, the code is written to
 `../laravel/storage/logs/laravel.log` (the `log` mailer) — read it from there.
 Everything after signup runs on the account it created.
 
+Paying on the test gateways can be checked without a database at all:
+
+```bash
+npx esbuild scripts/gateway.test.mjs --bundle --platform=node --format=esm \
+  --tsconfig=tsconfig.json --outfile=scripts/.tmp/gateway.mjs
+node scripts/.tmp/gateway.mjs
+```
+
+It covers the checkout decision (real gateway vs. form POST vs. simulator vs.
+error) and reads the Laravel side to pin the contract it depends on: the
+published test credentials, `returnOrigin`, the query-free return URLs, and the
+eSewa hand-off page. See `PAYMENT_PORT_NOTES.md` for how a checkout runs and how
+to point a native build at the gateways.
+
 Bundling for a device can be checked with:
 
 ```bash

@@ -1,3 +1,4 @@
+import { paymentReturnOrigin } from "@/lib/gateway";
 import { ApiError, apiJson } from "@/lib/api";
 import type { PlayerStats } from "@/lib/loyalty";
 import type { Quota as TeamQuota } from "@/lib/teams";
@@ -450,53 +451,107 @@ export function fetchLedger(bookingId: number, refresh = false): Promise<Ledger>
 /* ── payments ────────────────────────────────────────────────────────────── */
 
 /**
- * POST /api/payments/esewa/initiate → { fields, ... }
+ * The two test gateways, as the app drives them.
  *
- * On the web this returns form fields that a hidden form submits to eSewa in a
- * popup. React Native has no popup, so the app posts straight back to verify
- * with mockApprove while the gateways are in sandbox mode — the ledger, the
- * statuses and the audit rows are identical either way.
+ * `initiate` asks the server to build a checkout (and tells it where to send
+ * the browser back to), `verify` settles it. The server owns every rule; see
+ * `src/lib/gateway.ts` for what the app does with the answer.
  */
-export function initiateEsewa(bookingId: number, teamPaymentId?: number, userId?: number, paymentRequestId?: number): Promise<Record<string, unknown>> {
-  return apiJson("/api/payments/esewa/initiate", { method: "POST", json: { bookingId, teamPaymentId, userId, paymentRequestId } });
-}
+export type PaymentInitiateInput = {
+  bookingId: number;
+  teamPaymentId?: number;
+  paymentRequestId?: number;
+  userId?: number;
+  paymentPurpose?: "advance";
+};
 
-/** POST /api/payments/esewa/verify → { ok, ... } */
-export function verifyEsewa(
-  bookingId: number,
-  mockApprove = true,
-  teamPaymentId?: number,
-  paymentRequestId?: number,
-  userId?: number,
-  uuid?: string,
-  paymentPurpose?: "advance",
-  expectedAmount?: number,
-): Promise<Record<string, unknown>> {
-  return apiJson("/api/payments/esewa/verify", {
+export type PaymentInitiate = {
+  /** True when the gateway could not be reached and the simulator should run. */
+  mock?: boolean;
+  fallback?: boolean;
+  fallbackError?: string;
+  testHint?: string;
+  returnOrigin?: string;
+  /** eSewa */
+  url?: string;
+  fields?: Record<string, string>;
+  handoffPath?: string;
+  transactionUuid?: string;
+  /** Khalti */
+  payment_url?: string;
+  pidx?: string;
+  /** Both */
+  mockUrl?: string;
+  amount?: number;
+  bookingId?: number;
+  teamPaymentId?: number | null;
+  paymentRequestId?: number | null;
+};
+
+/**
+ * POST /api/payments/esewa/initiate → the signed form (and a hand-off page).
+ *
+ * `returnOrigin` is how eSewa knows where to return the browser: on the web the
+ * app lives on Expo's origin, not the API's, and on a device only the app knows
+ * the address of the machine it is talking to.
+ */
+export function initiateEsewa(input: PaymentInitiateInput): Promise<PaymentInitiate> {
+  return apiJson<PaymentInitiate>("/api/payments/esewa/initiate", {
     method: "POST",
-    json: { bookingId, mockApprove, teamPaymentId, paymentRequestId, userId, uuid, paymentPurpose, expectedAmount },
+    json: { ...input, returnOrigin: paymentReturnOrigin() },
   });
 }
 
-/** POST /api/payments/khalti/initiate → { pidx, ... } */
-export function initiateKhalti(bookingId: number, teamPaymentId?: number, userId?: number, paymentRequestId?: number): Promise<Record<string, unknown>> {
-  return apiJson("/api/payments/khalti/initiate", { method: "POST", json: { bookingId, teamPaymentId, userId, paymentRequestId } });
+/**
+ * POST /api/payments/esewa/verify → { ok, booking, … }
+ *
+ * `data` is the base64 blob eSewa appends to the success URL. With it, the
+ * server checks the HMAC signature and the status API; without it and without
+ * `mockApprove`, there is nothing to verify.
+ */
+export function verifyEsewa(input: {
+  bookingId?: number;
+  data?: string;
+  mockApprove?: boolean;
+  teamPaymentId?: number;
+  paymentRequestId?: number;
+  userId?: number;
+  uuid?: string;
+  paymentPurpose?: "advance";
+  expectedAmount?: number;
+}): Promise<Record<string, unknown>> {
+  return apiJson("/api/payments/esewa/verify", { method: "POST", json: input });
 }
 
-/** POST /api/payments/khalti/verify → { ok, ... } */
-export function verifyKhalti(
-  bookingId: number,
-  pidx: string,
-  mockApprove = true,
-  teamPaymentId?: number,
-  paymentRequestId?: number,
-  userId?: number,
-  paymentPurpose?: "advance",
-  expectedAmount?: number,
-): Promise<Record<string, unknown>> {
+/** POST /api/payments/khalti/initiate → { pidx, payment_url } */
+export function initiateKhalti(input: PaymentInitiateInput): Promise<PaymentInitiate> {
+  return apiJson<PaymentInitiate>("/api/payments/khalti/initiate", {
+    method: "POST",
+    json: { ...input, returnOrigin: paymentReturnOrigin() },
+  });
+}
+
+/**
+ * POST /api/payments/khalti/verify → { ok, booking, … }
+ *
+ * Khalti returns `pidx` plus `purchase_order_id`; the order id names the target
+ * (a team share, a player request, or the booking itself) so the server can
+ * settle the right row without being told which one it was.
+ */
+export function verifyKhalti(input: {
+  bookingId?: number;
+  pidx: string;
+  mockApprove?: boolean;
+  orderId?: string;
+  teamPaymentId?: number;
+  paymentRequestId?: number;
+  userId?: number;
+  paymentPurpose?: "advance";
+  expectedAmount?: number;
+}): Promise<Record<string, unknown>> {
   return apiJson("/api/payments/khalti/verify", {
     method: "POST",
-    json: { bookingId, pidx, mockApprove, teamPaymentId, paymentRequestId, userId, paymentPurpose, expectedAmount },
+    json: { ...input, order_id: input.orderId },
   });
 }
 

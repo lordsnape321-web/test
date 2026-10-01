@@ -20,6 +20,7 @@ import {
 import { useAuth } from "@/context/AuthContext";
 import { useTheme } from "@/context/ThemeContext";
 import { ApiError } from "@/lib/api";
+import { prepareGatewayTab, realGatewayEnabled, startGatewayCheckout } from "@/lib/checkout";
 import { formatWindowLeft } from "@/lib/booking-ledger";
 import { formatNPR, formatTime12, prettyDate } from "@/lib/futsal";
 import { locationLabel } from "@/lib/location";
@@ -165,17 +166,20 @@ export default function BookingDetail() {
   /**
    * Pay via a gateway.
    *
-   * The web app opens the gateway in a popup and posts the signed callback back.
-   * React Native has no popup, so against the sandbox gateways the app calls
-   * verify with mockApprove — which runs the identical server path: signature
-   * check skipped, ledger row appended, statuses updated, audit trail written.
-   * Swapping in a real gateway SDK later changes only this function.
+   * The real test servers — eSewa UAT and Khalti's sandbox — are the default:
+   * the server builds a session for this exact target, the browser is sent to
+   * the gateway, and the gateway returns it to a screen that verifies the
+   * payment before anything is marked paid. When the server cannot reach the
+   * gateway it answers `mock: true` and the app falls through to the local
+   * simulator below, so a checkout always has somewhere to go.
    */
   async function pay(method: "esewa" | "khalti", target: "auto" | "advance" = "auto", requestId?: number) {
     if (!booking || !user) return;
     setBusy(method);
     setError(null);
     setSuccess(null);
+    // Reserve the browser tab while the tap that started this is still live.
+    prepareGatewayTab();
     try {
       // Keep the gateway step visible on native too. The mock screens call the
       // same verify endpoints, then return through the success/callback route.
@@ -205,6 +209,29 @@ export default function BookingDetail() {
         : teamShare && teamShare.paymentStatus !== "paid"
           ? `&teamPaymentId=${teamShare.id}&userId=${user.id}`
           : `&userId=${user.id}`;
+      if (realGatewayEnabled()) {
+        const outcome = await startGatewayCheckout(method, {
+          bookingId,
+          userId: user.id,
+          teamPaymentId: !payingAdvance && teamShare && teamShare.paymentStatus !== "paid" ? teamShare.id : undefined,
+          paymentRequestId: request?.id,
+          paymentPurpose: payingAdvance ? "advance" : undefined,
+        });
+
+        if (outcome.status === "gateway") {
+          setBusy(null);
+          return;
+        }
+
+        if (outcome.status === "error") {
+          setError(outcome.message);
+          setBusy(null);
+          return;
+        }
+
+        // outcome.status === "simulator" — fall through to the mock screen.
+      }
+
       const path = method === "esewa"
         ? `/payment/esewa/mock?bookingId=${bookingId}&amount=${encodeURIComponent(String(amount))}${targetQuery}`
         : `/payment/khalti/mock?bookingId=${bookingId}&amount=${encodeURIComponent(String(amount))}${targetQuery}&pidx=mock-pidx`;

@@ -51,6 +51,7 @@ import {
   patchBooking,
   postReview,
 } from "@/api";
+import { prepareGatewayTab, realGatewayEnabled, startGatewayCheckout } from "@/lib/checkout";
 import { BookingPaymentSummary } from "@/components/BookingPaymentSummary";
 import { BookingVenueName } from "@/components/BookingVenueName";
 import { PlayerRatingBadge } from "@/components/PlayerRating";
@@ -370,15 +371,17 @@ export default function BookingsScreen() {
   /**
    * Pay via a gateway.
    *
-   * The web app opens a hidden form / redirect into the eSewa or Khalti test
-   * page. React Native has no popup, so against the sandbox gateways the app
-   * posts verify with mockApprove — the identical server path (signature check
-   * skipped, ledger row appended, statuses updated).
+   * The real test server first (eSewa UAT / Khalti sandbox): the server builds
+   * a session, the browser pays there, and the return screen verifies before
+   * anything is marked paid. If the gateway is unreachable the server says so
+   * and the app falls through to the local simulator, so nobody is stuck.
    */
   async function payNow(b: DiaryBooking, overrideMethod?: "eSewa" | "Khalti") {
     setPaying(b.id);
     setPayError("");
     setCancelError("");
+    // Reserve the browser tab while the tap that started this is still live.
+    prepareGatewayTab();
     const method = overrideMethod ?? String(b.paymentMethod ?? "");
     if (method !== "eSewa" && method !== "Khalti") {
       setPaying(null);
@@ -400,6 +403,28 @@ export default function BookingsScreen() {
           ? b.depositAmount ?? 0
           : payingMyShare ? shareOutstanding : moneyOf(b).balance);
       const shareQuery = payingMyShare ? `&teamPaymentId=${myShare!.id}` : "";
+
+      if (realGatewayEnabled() && user) {
+        const outcome = await startGatewayCheckout(method === "eSewa" ? "esewa" : "khalti", {
+          bookingId: b.id,
+          userId: user.id,
+          teamPaymentId: payingMyShare ? myShare!.id : undefined,
+          paymentPurpose:
+            b.advancePaymentRequired && b.advancePaymentStatus !== "paid" ? "advance" : undefined,
+        });
+
+        if (outcome.status === "gateway") {
+          setPaying(null);
+          return;
+        }
+
+        if (outcome.status === "error") {
+          setPayError(outcome.message);
+          setPaying(null);
+          return;
+        }
+      }
+
       const path = method === "eSewa"
         ? `/payment/esewa/mock?bookingId=${b.id}&amount=${encodeURIComponent(String(amount))}&userId=${user?.id ?? 0}${shareQuery}`
         : `/payment/khalti/mock?bookingId=${b.id}&amount=${encodeURIComponent(String(amount))}&pidx=mock-pidx&userId=${user?.id ?? 0}${shareQuery}`;
@@ -424,10 +449,31 @@ export default function BookingsScreen() {
     }
   }
 
-  function payTeamShare(b: DiaryBooking, share: NonNullable<DiaryBooking["teamPayments"]>[number]) {
+  async function payTeamShare(b: DiaryBooking, share: NonNullable<DiaryBooking["teamPayments"]>[number]) {
     if (share.paymentStatus === "paid" || !["eSewa", "Khalti"].includes(share.paymentMethod)) return;
     setPaying(b.id);
     const gateway = share.paymentMethod === "eSewa" ? "esewa" : "khalti";
+    prepareGatewayTab();
+
+    if (realGatewayEnabled() && user) {
+      const outcome = await startGatewayCheckout(gateway, {
+        bookingId: b.id,
+        userId: user.id,
+        teamPaymentId: share.id,
+      });
+
+      if (outcome.status === "gateway") {
+        setPaying(null);
+        return;
+      }
+
+      if (outcome.status === "error") {
+        setPayError(outcome.message);
+        setPaying(null);
+        return;
+      }
+    }
+
     const query = gateway === "esewa"
       ? `/payment/esewa/mock?bookingId=${b.id}&amount=${encodeURIComponent(String(share.amountDue))}&teamPaymentId=${share.id}&userId=${user?.id ?? 0}`
       : `/payment/khalti/mock?bookingId=${b.id}&amount=${encodeURIComponent(String(share.amountDue))}&teamPaymentId=${share.id}&userId=${user?.id ?? 0}&pidx=mock-team-${share.id}`;
