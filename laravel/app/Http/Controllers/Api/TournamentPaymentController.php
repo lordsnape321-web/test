@@ -432,8 +432,6 @@ class TournamentPaymentController extends ApiController
                     ]);
                 }
 
-                $login = Payments::esewaTestLogin();
-
                 return $this->ok([
                     'url' => $cfg['formUrl'] ?? '',
                     'fields' => $fields,
@@ -454,7 +452,7 @@ class TournamentPaymentController extends ApiController
                         'amount' => $amount,
                         'returnOrigin' => $origin,
                     ]),
-                    'testHint' => "eSewa test server: log in with {$login['id']} / {$login['password']}, MPIN {$login['mpin']}, token {$login['token']}",
+                    'testHint' => Payments::esewaTestLoginHint(),
                 ]);
             }
 

@@ -48,11 +48,41 @@ class Payments
      * checkout. They are shown on the hand-off page so nobody has to go looking
      * for them mid-payment.
      *
-     * @return array{id: string, password: string, mpin: string, token: string}
+     * eSewa's documentation carries two sets and they disagree: the
+     * Test-credentials page lists `9711111111/2/3` with `Test@123`, while the
+     * ePay v2 walkthrough still shows `9806800001/2/3/4/5` with `Nepal@123`.
+     * The `971…` login is the one that works today, so it leads — and the
+     * alternatives are listed because these wallets are shared between every
+     * integrator, so a spent or locked one looks exactly like a broken
+     * integration.
+     *
+     * @return array{id: string, password: string, mpin: string, token: string, alternates: array<int, string>, legacyPassword: string}
      */
     public static function esewaTestLogin(): array
     {
-        return ['id' => '9806800001', 'password' => 'Nepal@123', 'mpin' => '1122', 'token' => '123456'];
+        return [
+            'id' => '9711111111',
+            'password' => 'Test@123',
+            'mpin' => '1122',
+            'token' => '123456',
+            'alternates' => ['9711111112', '9711111113', '9806800001', '9806800002', '9806800003'],
+            'legacyPassword' => 'Nepal@123',
+        ];
+    }
+
+    /**
+     * The test login as one sentence, for a hint or a page.
+     *
+     * Kept in one place so the app, the hand-off page and the docs cannot drift
+     * apart again — a wrong password there costs a developer an afternoon.
+     */
+    public static function esewaTestLoginHint(): string
+    {
+        $login = self::esewaTestLogin();
+
+        return "eSewa test server: log in with {$login['id']} / {$login['password']} (or another test ID — "
+            .implode(', ', $login['alternates'])
+            ." — the older ones use {$login['legacyPassword']}), MPIN {$login['mpin']}, token {$login['token']}";
     }
 
     /** Khalti's published sandbox payer (docs.khalti.com). */

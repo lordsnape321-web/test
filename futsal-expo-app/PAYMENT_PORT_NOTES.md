@@ -4,8 +4,11 @@ The app pays on the **actual test servers** both providers hand out, not on a
 local copy of them:
 
 - **eSewa** — `https://rc-epay.esewa.com.np/api/epay/main/v2/form`, merchant
-  `EPAYTEST`, and the published test login `9806800001` / `Nepal@123` / MPIN
-  `1122` / token `123456`.
+  `EPAYTEST`, and the test login its docs list today: `9711111111` (also
+  `9711111112`/`9711111113`) / password `Test@123` / MPIN `1122` / token
+  `123456`. The older `9806800001–5` / `Nepal@123` set still appears in eSewa's
+  ePay v2 walkthrough and may work — the wallets are shared, so a spent or
+  locked one looks exactly like a broken integration.
 - **Khalti** — `https://dev.khalti.com/api/v2/epayment/*`, Khalti's published
   sandbox key by default (`KHALTI_SECRET_KEY` overrides it with your own from
   test-admin.khalti.com), test payer `9800000001` / MPIN `1111` / OTP `987654`.
@@ -29,6 +32,27 @@ local copy of them:
    `/payment/khalti/callback`, which calls `verify`. The server checks eSewa's
    HMAC plus its status API, or Khalti's lookup — the redirect itself never
    settles a payment.
+
+## If eSewa says the payment failed
+
+Two different things can be going on, and they need different answers:
+
+- **Their server was unavailable.** eSewa answers `{"code":0,"error_message":
+  "Service is currently unavailable"}` and shows "Service is currently
+  unavailable. Please try again later." when their backend times out. Nothing
+  can be verified from that page, so `initiate` checks the host first and the
+  simulator takes over instead (see below).
+- **The transaction failed after login.** That is eSewa's own decision, and the
+  usual causes are a wrong MPIN/token, a spent test wallet, or an amount above
+  what the shared wallet holds. `Payments::esewaTestLoginHint()` prints the
+  current login and the alternates on the checkout page for exactly this.
+
+Because eSewa can also show a failure *after* taking the money, the failure
+screen offers **Check with eSewa**: the server looks up the transaction it
+started (`recoverSession`, using the stored uuid) and settles it through the
+normal path if eSewa's status API says COMPLETE. And a status that lags —
+PENDING, AMBIGUOUS, even NOT_FOUND moments after completion — no longer blocks a
+signed COMPLETE payment; only CANCELED and the refunds do.
 
 ## Falling back, and the simulator
 

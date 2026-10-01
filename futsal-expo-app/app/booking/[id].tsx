@@ -16,6 +16,7 @@ import {
   fetchLedger,
   fetchUserTeams,
   settleTeamShare,
+  verifyEsewa,
 } from "@/api";
 import { useAuth } from "@/context/AuthContext";
 import { useTheme } from "@/context/ThemeContext";
@@ -226,6 +227,25 @@ export default function BookingDetail() {
           }),
         mockPath: path,
         donePath: "/bookings?refresh=1",
+        // eSewa's page can say "failed" while the money moved; this asks their
+        // status API about the session this app started.
+        check: async () => {
+          try {
+            await verifyEsewa({
+              bookingId,
+              userId: user.id,
+              teamPaymentId: !payingAdvance && teamShare && teamShare.paymentStatus !== "paid" ? teamShare.id : undefined,
+              paymentRequestId: request?.id,
+            });
+
+            return { settled: true, message: "eSewa confirms this payment was completed. Your booking is settled. 🎉" };
+          } catch (e) {
+            return {
+              settled: false,
+              message: e instanceof ApiError ? e.message : "eSewa did not report a completed payment for this booking.",
+            };
+          }
+        },
       });
 
       if (realGatewayEnabled()) {

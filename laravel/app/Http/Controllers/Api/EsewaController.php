@@ -226,7 +226,7 @@ class EsewaController extends ApiController
                 'userId' => $request->input('userId'),
                 'returnOrigin' => $origin,
             ]),
-            'testHint' => 'eSewa test server: log in with 9806800001 / Nepal@123, MPIN 1122, token 123456',
+            'testHint' => Payments::esewaTestLoginHint(),
         ]);
     }
 
@@ -252,25 +252,40 @@ class EsewaController extends ApiController
         $dataB64 = trim((string) $request->input('data', ''));
         $hintBookingId = (int) $request->input('bookingId', 0) ?: null;
         $mockApprove = $request->boolean('mockApprove');
+        $cfg = Payments::esewaConfig();
+        $recovered = false;
 
         if ($mockApprove) {
             return $this->mockVerify($request, $hintBookingId);
         }
 
         if ($dataB64 === '') {
-            return $this->fail('Missing eSewa data', 400);
-        }
+            /*
+             * No signed blob. That happens when eSewa sends the browser to the
+             * failure URL, when a player cancels — and also when eSewa's own
+             * page said "payment failed" while the money actually moved, which
+             * is a thing that happens on their UAT. So instead of reporting a
+             * flat failure, ask eSewa's status API about the session we started:
+             * if it is COMPLETE, settle it exactly as a normal return would.
+             */
+            $recoveredSession = $this->recoverSession($request, $hintBookingId);
 
-        $payload = Payments::decodeEsewaData($dataB64);
+            if ($recoveredSession instanceof JsonResponse) {
+                return $recoveredSession;
+            }
 
-        if ($payload === null) {
-            return $this->fail('Invalid eSewa response — try again 🙏', 400);
-        }
+            $payload = $recoveredSession;
+            $recovered = true;
+        } else {
+            $payload = Payments::decodeEsewaData($dataB64);
 
-        $cfg = Payments::esewaConfig();
+            if ($payload === null) {
+                return $this->fail('Invalid eSewa response — try again 🙏', 400);
+            }
 
-        if (! Payments::verifyEsewaSignature($payload, $cfg['secretKey'])) {
-            return $this->fail('eSewa signature mismatch — possible tampering 🛡️', 400);
+            if (! Payments::verifyEsewaSignature($payload, $cfg['secretKey'])) {
+                return $this->fail('eSewa signature mismatch — possible tampering 🛡️', 400);
+            }
         }
 
         $uuid = (string) ($payload['transaction_uuid'] ?? '');
@@ -284,8 +299,10 @@ class EsewaController extends ApiController
         }
 
         $bookingId = $hintBookingId ?: Payments::parseBookingIdFromEsewaUuid($uuid);
-        $teamPaymentId = (int) $request->input('teamPaymentId', 0) ?: $this->teamPaymentIdFromUuid($uuid);
-        $paymentRequestId = (int) $request->input('paymentRequestId', 0) ?: ((int) ($this->matchId($uuid, '-PR-') ?? 0) ?: null);
+        $teamPaymentId = (int) $request->input('teamPaymentId', 0)
+            ?: ((int) ($payload['teamPaymentId'] ?? 0) ?: $this->teamPaymentIdFromUuid($uuid));
+        $paymentRequestId = (int) $request->input('paymentRequestId', 0)
+            ?: ((int) ($payload['paymentRequestId'] ?? 0) ?: ((int) ($this->matchId($uuid, '-PR-') ?? 0) ?: null));
 
         if (! $bookingId) {
             return $this->fail('Can’t link payment to booking', 400);
@@ -325,24 +342,32 @@ class EsewaController extends ApiController
             return $this->fail('eSewa payment not completed', 400, ['ok' => false, 'status' => $payload['status'] ?? null]);
         }
 
-        // Defence in depth: confirm with the eSewa status API. If it is
-        // unreachable in the sandbox, the verified signature plus COMPLETE is
-        // trusted rather than blocking a real payment.
-        try {
-            $status = Payments::esewaStatusCheck([
-                'statusUrl' => $cfg['statusUrl'],
-                'productCode' => $cfg['productCode'],
-                'transactionUuid' => $uuid,
-                'totalAmount' => $paidTotal,
-            ]);
+        /*
+         * Defence in depth: confirm with the eSewa status API — but only let a
+         * *definitive* negative stop the money. The signed blob we are holding
+         * was sent to our success URL by eSewa itself, and their UAT status API
+         * lags: a payment that has just completed can still read PENDING,
+         * AMBIGUOUS or even NOT_FOUND for a moment, and telling a player who
+         * paid that they did not is worse than trusting the signed response.
+         * A cancel or a refund, on the other hand, always wins.
+         */
+        if (! $recovered) {
+            try {
+                $status = Payments::esewaStatusCheck([
+                    'statusUrl' => $cfg['statusUrl'],
+                    'productCode' => $cfg['productCode'],
+                    'transactionUuid' => $uuid,
+                    'totalAmount' => $paidTotal,
+                ]);
 
-            $s = strtoupper((string) ($status['status'] ?? ''));
+                $s = strtoupper((string) ($status['status'] ?? ''));
 
-            if ($s !== '' && $s !== 'COMPLETE') {
-                return $this->fail("eSewa says: {$s}", 400, ['ok' => false, 'status' => $s]);
+                if (in_array($s, ['CANCELED', 'FULL_REFUND', 'PARTIAL_REFUND'], true)) {
+                    return $this->fail("eSewa says: {$s}", 400, ['ok' => false, 'status' => $s]);
+                }
+            } catch (\Throwable) {
+                // Status API unreachable — signature plus COMPLETE is enough here.
             }
-        } catch (\Throwable) {
-            // Status API unreachable — signature plus COMPLETE is enough here.
         }
 
         $txnCode = ((string) ($payload['transaction_code'] ?? '')) ?: $uuid;
@@ -370,6 +395,91 @@ class EsewaController extends ApiController
         }
 
         return $this->settleBookingPayment($booking, (int) round($paidTotal), $txnCode, 'eSewa', false);
+    }
+
+    /* ---------------------------------------------------------- recovery */
+
+    /**
+     * Ask eSewa about the session this app started, without a signed blob.
+     *
+     * Used when the browser comes back with nothing — a cancel, or eSewa's own
+     * "payment failed" page after money actually left the wallet, which their
+     * UAT does. The transaction the app stored when it built the checkout is
+     * the key: eSewa's status API is asked about exactly that session.
+     *
+     * @return array<string, mixed>|JsonResponse a payload for the normal settle
+     *                                           path, or the reason it cannot
+     */
+    private function recoverSession(Request $request, ?int $hintBookingId): array|JsonResponse
+    {
+        $teamPaymentId = (int) $request->input('teamPaymentId', 0) ?: null;
+        $paymentRequestId = (int) $request->input('paymentRequestId', 0) ?: null;
+        $booking = $hintBookingId ? Booking::find($hintBookingId) : null;
+        $teamPayment = null;
+        $paymentRequest = null;
+        $uuid = '';
+
+        if ($teamPaymentId) {
+            $teamPayment = BookingTeamPayment::find($teamPaymentId);
+            $booking ??= $teamPayment ? Booking::find((int) $teamPayment->booking_id) : null;
+            $uuid = (string) ($teamPayment->esewa_uuid ?? '');
+        } elseif ($paymentRequestId) {
+            $paymentRequest = BookingPaymentRequest::find($paymentRequestId);
+            $booking ??= $paymentRequest ? Booking::find((int) $paymentRequest->booking_id) : null;
+            $uuid = (string) ($paymentRequest->esewa_uuid ?? '');
+        } elseif ($booking) {
+            $uuid = (string) ($booking->esewa_uuid ?? '');
+        }
+
+        if (! $booking) {
+            return $this->fail('Booking not found', 404);
+        }
+
+        if ($uuid === '') {
+            return $this->fail('No eSewa payment was started for this booking yet 🔎', 400, ['ok' => false, 'status' => 'NONE']);
+        }
+
+        $cfg = Payments::esewaConfig();
+        // The same amount the checkout was built for, so eSewa recognises the
+        // session it is being asked about.
+        $expected = $this->expectedAmount($booking, $teamPayment, $paymentRequest);
+
+        try {
+            $status = Payments::esewaStatusCheck([
+                'statusUrl' => $cfg['statusUrl'],
+                'productCode' => $cfg['productCode'],
+                'transactionUuid' => $uuid,
+                'totalAmount' => $expected,
+            ]);
+        } catch (\Throwable $e) {
+            return $this->fail('Could not reach eSewa to check that payment: '.$e->getMessage(), 502, ['ok' => false, 'status' => 'UNREACHABLE']);
+        }
+
+        $s = strtoupper((string) ($status['status'] ?? ''));
+
+        if ($s !== 'COMPLETE') {
+            return $this->fail(
+                $s === 'NOT_FOUND'
+                    ? 'eSewa has no completed payment for this booking — nothing was charged 🔎'
+                    : 'eSewa says: '.($s ?: 'not completed').' — nothing has been settled yet',
+                409,
+                ['ok' => false, 'status' => $s ?: 'UNKNOWN']
+            );
+        }
+
+        $paid = (float) ($status['total_amount'] ?? $expected);
+
+        return [
+            'status' => 'COMPLETE',
+            'total_amount' => $paid > 0 ? $paid : $expected,
+            'transaction_uuid' => $uuid,
+            'transaction_code' => ((string) ($status['ref_id'] ?? '')) ?: $uuid,
+            'product_code' => $cfg['productCode'],
+            'signed_field_names' => 'total_amount,transaction_uuid,product_code',
+            'recovered' => true,
+            'teamPaymentId' => $teamPayment->id ?? null,
+            'paymentRequestId' => $paymentRequest->id ?? null,
+        ];
     }
 
     /* ------------------------------------------------------------ league */
@@ -407,7 +517,9 @@ class EsewaController extends ApiController
 
             $s = strtoupper((string) ($status['status'] ?? ''));
 
-            if ($s !== '' && $s !== 'COMPLETE') {
+            // Only a definitive negative stops a league entry: the status API
+            // lags a freshly completed payment (see verifyPayment).
+            if (in_array($s, ['CANCELED', 'FULL_REFUND', 'PARTIAL_REFUND'], true)) {
                 return $this->fail("eSewa says: {$s}", 400, ['ok' => false, 'status' => $s]);
             }
         } catch (\Throwable) {

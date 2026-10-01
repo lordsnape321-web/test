@@ -165,11 +165,22 @@ assert.ok(
 // And the real login, which the hand-off page shows — the old hint had the
 // password wrong, so this is pinned.
 assert.ok(
-  payments.includes("'password' => 'Nepal@123'") &&
-    payments.includes("'id' => '9806800001'") &&
+  payments.includes("'id' => '9711111111'") &&
+    payments.includes("'password' => 'Test@123'") &&
     payments.includes("'mpin' => '1122'") &&
     payments.includes("'token' => '123456'"),
-  "eSewa test login is the published one (9806800001 / Nepal@123 / 1122 / 123456)",
+  "eSewa test login is the one its docs list today (9711111111 / Test@123)",
+);
+assert.ok(
+  payments.includes("'alternates' => ['9711111112', '9711111113', '9806800001'") &&
+    payments.includes("'legacyPassword' => 'Nepal@123'") &&
+    payments.includes("public static function esewaTestLoginHint(): string"),
+  "the older shared wallets are offered as alternates, in one shared hint",
+);
+assert.ok(
+  !esewa.includes("9806800001 / Nepal@123") &&
+    !flat("laravel/app/Http/Controllers/Api/TournamentPaymentController.php").includes("9806800001"),
+  "no controller still prints the stale login",
 );
 
 // Khalti's sandbox key is what makes dev.khalti.com reachable with no setup,
@@ -373,8 +384,7 @@ assert.ok(
 for (const site of ["futsal-expo-app/app/booking/[id].tsx", "futsal-expo-app/app/(app)/bookings.tsx"]) {
   const file = php(site);
   assert.ok(
-    file.includes("rememberCheckout({ run: () => startGatewayCheckout(gateway, input)") ||
-      file.includes("rememberCheckout({\n        run: () =>\n          startGatewayCheckout(method,"),
+    /rememberCheckout\(\{[\s\S]{0,400}?startGatewayCheckout\(/.test(file),
     `${site} remembers its checkout`,
   );
 }
@@ -382,6 +392,45 @@ const panelSource = php("futsal-expo-app/src/components/LeagueSquadPanel.tsx");
 assert.ok(
   panelSource.includes("settle: settleOnSimulator") && panelSource.includes("donePath: `/leagues/${league.id}`"),
   "a league checkout remembers its in-place simulator settle",
+);
+
+/* ── a "failed" page must not hide money that moved ─────────────────────── */
+
+assert.ok(
+  esewa.includes("$recoveredSession = $this->recoverSession($request, $hintBookingId)") &&
+    esewa.includes("private function recoverSession(Request $request, ?int $hintBookingId): array|JsonResponse"),
+  "a return without a signed blob asks eSewa about the session instead of giving up",
+);
+assert.ok(
+  esewa.includes("'transactionUuid' => $uuid, 'totalAmount' => $expected,") &&
+    esewa.includes("if ($s !== 'COMPLETE')") &&
+    esewa.includes("'recovered' => true,"),
+  "recovery uses the stored reference, the same amount, and only settles a COMPLETE session",
+);
+assert.ok(
+  esewa.includes("if (in_array($s, ['CANCELED', 'FULL_REFUND', 'PARTIAL_REFUND'], true))"),
+  "only a definitive negative stops a signed COMPLETE payment",
+);
+assert.ok(
+  esewa.includes("if (! $recovered) {") && esewa.includes("$status = Payments::esewaStatusCheck(["),
+  "the normal path still double-checks with the status API",
+);
+
+// And the app can ask: the failure screen offers it.
+assert.ok(
+  checkout.includes("export async function checkLastCheckout(): Promise<CheckOutcome>") &&
+    checkout.includes("export function canCheckCheckout(): boolean"),
+  "checkout.ts can ask the gateway about the last attempt",
+);
+assert.ok(
+  screens.includes("secondaryLabel={retry.checkable ? (retry.checking ? \"Asking eSewa…\" : \"Check with eSewa\") : undefined}") &&
+    screens.includes('if (outcome.status === "settled") setSettled(outcome.message);'),
+  "the eSewa failure screen offers Check with eSewa and can flip to success",
+);
+const bookingFile = php("futsal-expo-app/app/booking/[id].tsx");
+assert.ok(
+  bookingFile.includes("check: async () => {") && bookingFile.includes("verifyEsewa({\n              bookingId,"),
+  "a booking checkout remembers how to check itself",
 );
 
 /* ── the sandbox is no longer what a payer sees ─────────────────────────── */

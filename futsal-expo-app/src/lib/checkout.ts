@@ -104,6 +104,15 @@ export type RememberedCheckout = {
    * route: the settle call itself. Returns the sentence to show.
    */
   settle?: () => Promise<string>;
+  /**
+   * Ask the gateway whether this payment actually happened.
+   *
+   * A test gateway can show "payment failed" while the money moved — eSewa's
+   * own status API is the tiebreaker, and it is the only way to tell a real
+   * cancel from a failure their side forgot to record. Resolves with the
+   * sentence to show once the payment is settled.
+   */
+  check?: () => Promise<{ settled: boolean; message: string }>;
   /** Where to go once the fallback has settled the payment. */
   donePath: string;
 };
@@ -120,6 +129,11 @@ export function canRetryCheckout(): boolean {
   return lastCheckout !== null;
 }
 
+/** True when the gateway itself can be asked about the last checkout. */
+export function canCheckCheckout(): boolean {
+  return lastCheckout?.check !== undefined;
+}
+
 export type RetryOutcome =
   /** The gateway page is open again. */
   | { status: "gateway" }
@@ -132,6 +146,31 @@ export type RetryOutcome =
   | { status: "error"; message: string };
 
 /** Re-run the session's last checkout, from a failure screen. */
+export type CheckOutcome =
+  | { status: "settled"; message: string; donePath: string }
+  | { status: "open"; message: string }
+  | { status: "unavailable" };
+
+/** Ask the gateway about the session's last checkout (see `check`). */
+export async function checkLastCheckout(): Promise<CheckOutcome> {
+  const attempt = lastCheckout;
+
+  if (!attempt?.check) return { status: "unavailable" };
+
+  try {
+    const result = await attempt.check();
+
+    return result.settled
+      ? { status: "settled", message: result.message, donePath: attempt.donePath }
+      : { status: "open", message: result.message };
+  } catch (e) {
+    return {
+      status: "open",
+      message: e instanceof Error ? e.message : "Could not check that payment with the gateway.",
+    };
+  }
+}
+
 export async function retryLastCheckout(): Promise<RetryOutcome> {
   const attempt = lastCheckout;
 

@@ -414,7 +414,7 @@ addresses their own documentation hands out:
 | Server | `rc-epay.esewa.com.np` | `dev.khalti.com` |
 | Checkout | POST a signed form to `/api/epay/main/v2/form` | `POST /api/v2/epayment/initiate/` → `payment_url` |
 | Merchant | `EPAYTEST` + published sandbox secret | published sandbox `live_secret_key`, or yours |
-| Test payer | `9806800001` / `Nepal@123` / MPIN `1122` / token `123456` | `9800000001` / MPIN `1111` / OTP `987654` |
+| Test payer | `9711111111` (2/3) / `Test@123` / MPIN `1122` / token `123456` | `9800000001` / MPIN `1111` / OTP `987654` |
 | Verify | HMAC signature on the returned `data`, then the status API | `POST /api/v2/epayment/lookup/` |
 
 Nothing needs configuring to try them: the published sandbox values are the
@@ -447,6 +447,11 @@ would get from cash.
    tries the real test server on every platform, and only a genuinely
    unreachable gateway sends it here.
 
+The eSewa row is what `developer.esewa.com.np/pages/Test-credentials` lists
+today; that page and the ePay v2 walkthrough disagree (`9806800001–5` with
+`Nepal@123`), and the shared wallets run out, so both are offered on the
+checkout page — `Payments::esewaTestLogin()` is the one place that knows them.
+
 ### When the test server is down
 
 eSewa's UAT answers `{"code":0,"error_message":"Service is currently unavailable"}`
@@ -456,8 +461,12 @@ page — when its own backend times out. Nothing can be verified from that page,
 check where any HTTP answer counts as up) and answers `mock: true` with the
 simulator URL instead of sending the player there. Only a genuinely unreachable
 host triggers it; a gateway that answers with an error still gets the real
-checkout. The failure screens also offer **Try again**, because a gateway timeout
-usually clears within a minute.
+checkout. The failure screens also offer **Try again**, because a gateway timeout usually
+clears within a minute, and **Check with eSewa** — a "payment failed" page can
+still mean the money moved, so the server asks eSewa's status API about the
+transaction it started and settles it if the answer is COMPLETE. A lagging
+status (PENDING, AMBIGUOUS, a momentary NOT_FOUND) no longer blocks a signed
+COMPLETE response; only CANCELED and the refund statuses do.
 
 A league entry fee has no booking, so its `LG-…` reference is what names the
 squad: eSewa's signed blob carries it in `transaction_uuid`, Khalti's lookup

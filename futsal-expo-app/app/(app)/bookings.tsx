@@ -50,6 +50,7 @@ import {
   fetchUserTeams,
   patchBooking,
   postReview,
+  verifyEsewa,
 } from "@/api";
 import { prepareGatewayTab, realGatewayEnabled, rememberCheckout, startGatewayCheckout } from "@/lib/checkout";
 import { BookingPaymentSummary } from "@/components/BookingPaymentSummary";
@@ -416,7 +417,24 @@ export default function BookingsScreen() {
         : `/payment/khalti/mock?bookingId=${b.id}&amount=${encodeURIComponent(String(amount))}&pidx=mock-pidx&userId=${user?.id ?? 0}${shareQuery}`;
 
       // Remembered so the return screens can offer "Try again" in one tap.
-      rememberCheckout({ run: () => startGatewayCheckout(gateway, input), mockPath: path, donePath: "/bookings?refresh=1" });
+      rememberCheckout({
+        run: () => startGatewayCheckout(gateway, input),
+        mockPath: path,
+        donePath: "/bookings?refresh=1",
+        // eSewa's page can say "failed" while the money moved; this asks their
+        // status API about the session this app started.
+        check:
+          method === "eSewa"
+            ? async () => {
+                try {
+                  await verifyEsewa({ bookingId: b.id, userId: user?.id, teamPaymentId: payingMyShare ? myShare!.id : undefined });
+                  return { settled: true, message: "eSewa confirms this payment was completed. Your booking is settled. 🎉" };
+                } catch (e) {
+                  return { settled: false, message: e instanceof Error ? e.message : "eSewa did not report a completed payment for this booking." };
+                }
+              }
+            : undefined,
+      });
 
       if (realGatewayEnabled() && user) {
         const outcome = await startGatewayCheckout(gateway, input);
@@ -465,7 +483,22 @@ export default function BookingsScreen() {
       : `/payment/khalti/mock?bookingId=${b.id}&amount=${encodeURIComponent(String(share.amountDue))}&teamPaymentId=${share.id}&userId=${user?.id ?? 0}&pidx=mock-team-${share.id}`;
 
     // Remembered so the return screens can offer "Try again" in one tap.
-    rememberCheckout({ run: () => startGatewayCheckout(gateway, input), mockPath: query, donePath: "/bookings?refresh=1" });
+    rememberCheckout({
+      run: () => startGatewayCheckout(gateway, input),
+      mockPath: query,
+      donePath: "/bookings?refresh=1",
+      check:
+        gateway === "esewa"
+          ? async () => {
+              try {
+                await verifyEsewa({ bookingId: b.id, userId: user?.id, teamPaymentId: share.id });
+                return { settled: true, message: "eSewa confirms this payment was completed. Your booking is settled. 🎉" };
+              } catch (e) {
+                return { settled: false, message: e instanceof Error ? e.message : "eSewa did not report a completed payment for this booking." };
+              }
+            }
+          : undefined,
+    });
 
     if (realGatewayEnabled() && user) {
       const outcome = await startGatewayCheckout(gateway, input);
