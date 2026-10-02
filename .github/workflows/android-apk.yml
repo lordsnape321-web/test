@@ -99,7 +99,10 @@ jobs:
 
       # Also hand it over as a release asset: an artifact needs a GitHub login
       # to download, a release asset does not — the phone can install it
-      # straight from the browser. Recreated per build so the link is stable.
+      # straight from the browser. The asset is named `futsal-mate-latest.apk`
+      # on purpose: the release is recreated per build, so the URL
+      # /releases/download/apk/futsal-mate-latest.apk always points at this
+      # branch's newest APK.
       - name: Publish a download link
         continue-on-error: true
         working-directory: futsal-expo-app
@@ -107,7 +110,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release delete apk --yes --cleanup-tag 2>/dev/null || true
-          gh release create apk "${{ steps.apk.outputs.path }}#Futsal Mate ${{ github.sha }}" \
-            --title "Futsal Mate — latest APK" \
-            --notes "Built from ${{ github.sha }} on ${{ github.ref_name }}. Signed with the debug keystore: install it directly (allow \"install unknown apps\" for your browser), or run adb install -r." \
+          gh release create apk "${{ steps.apk.outputs.path }}#futsal-mate-latest.apk" \
+            --title "Futsal Mate — latest APK (${{ steps.apk.outputs.name }})" \
+            --notes "Built from ${{ github.sha }} on ${{ github.ref_name }} (${{ steps.apk.outputs.name }}). Signed with the debug keystore: install it directly (allow \"install unknown apps\" for your browser), or run adb install -r." \
             --prerelease
