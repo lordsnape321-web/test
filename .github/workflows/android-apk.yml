@@ -64,6 +64,20 @@ jobs:
       - name: Generate the Android project
         run: npx expo prebuild --platform android --no-install
 
+      # Proof, in the run itself, that the generated manifest is the one the
+      # phone needs: without this attribute Android refuses every plain-http
+      # call to a LAN backend, which is indistinguishable from "server not
+      # found" on the device. Fail loudly if a future prebuild drops it.
+      - name: Check the manifest allows a plain-http LAN backend
+        run: |
+          manifest=android/app/src/main/AndroidManifest.xml
+          grep -q 'android:usesCleartextTraffic="true"' "$manifest" \
+            || { echo "::error::usesCleartextTraffic missing from $manifest"; exit 1; }
+          grep -q 'package="com.futsalmate.app"' android/app/build.gradle \
+            || grep -q 'com.futsalmate.app' android/app/build.gradle \
+            || { echo "::error::applicationId is not com.futsalmate.app"; exit 1; }
+          echo "manifest ok: cleartext allowed for LAN testing, package com.futsalmate.app"
+
       - name: Build the release APK
         working-directory: futsal-expo-app/android
         env:
