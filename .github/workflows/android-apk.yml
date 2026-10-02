@@ -31,6 +31,11 @@ concurrency:
   group: android-apk-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  # The APK is attached to a release so it can be downloaded without signing in
+  # to GitHub; the artifact upload above it needs no extra permission.
+  contents: write
+
 jobs:
   apk:
     runs-on: ubuntu-latest
@@ -40,15 +45,15 @@ jobs:
         working-directory: futsal-expo-app
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
           cache-dependency-path: futsal-expo-app/package-lock.json
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: 17
@@ -74,13 +79,35 @@ jobs:
             -PreactNativeArchitectures=arm64-v8a \
             -Dorg.gradle.jvmargs="-Xmx4096m -XX:MaxMetaspaceSize=1024m"
 
-      - name: Show what was built
-        working-directory: futsal-expo-app/android/app/build/outputs/apk/release
-        run: ls -lh
+      - name: Name the APK after the app and its version
+        id: apk
+        working-directory: futsal-expo-app
+        run: |
+          version=$(node -p "require('./app.json').expo.version")
+          name="futsal-mate-${version}-$(echo '${{ github.sha }}' | cut -c1-7).apk"
+          cp android/app/build/outputs/apk/release/*.apk "android/app/build/outputs/apk/release/$name"
+          ls -lh android/app/build/outputs/apk/release/
+          echo "path=android/app/build/outputs/apk/release/$name" >> "$GITHUB_OUTPUT"
+          echo "name=$name" >> "$GITHUB_OUTPUT"
 
       - uses: actions/upload-artifact@v4
         with:
           name: futsal-mate-apk
-          path: futsal-expo-app/android/app/build/outputs/apk/release/*.apk
+          path: futsal-expo-app/${{ steps.apk.outputs.path }}
           if-no-files-found: error
           retention-days: 30
+
+      # Also hand it over as a release asset: an artifact needs a GitHub login
+      # to download, a release asset does not — the phone can install it
+      # straight from the browser. Recreated per build so the link is stable.
+      - name: Publish a download link
+        continue-on-error: true
+        working-directory: futsal-expo-app
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete apk --yes --cleanup-tag 2>/dev/null || true
+          gh release create apk "${{ steps.apk.outputs.path }}#Futsal Mate ${{ github.sha }}" \
+            --title "Futsal Mate — latest APK" \
+            --notes "Built from ${{ github.sha }} on ${{ github.ref_name }}. Signed with the debug keystore: install it directly (allow \"install unknown apps\" for your browser), or run adb install -r." \
+            --prerelease
