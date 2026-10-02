@@ -138,7 +138,10 @@ and `ios/` are not in the tree. There are two ways to get an installable APK.
 builds one on every push to the session branch and to `main`: it installs the
 dependencies, runs `expo prebuild`, and runs `./gradlew assembleRelease`. The
 APK is attached to the run as the **futsal-mate-apk** artifact (Actions → the
-run → Artifacts). Release builds are signed with the debug keystore the
+run → Artifacts), and the same file is published as the rolling **apk**
+prerelease — <https://github.com/lordsnape321-web/test/releases/tag/apk> —
+because a release asset downloads without a GitHub login and an artifact does
+not. Release builds are signed with the debug keystore the
 generated project creates for itself, which is exactly what makes an APK
 installable — Android refuses an unsigned one. Publishing to the Play Store
 would mean a real keystore, kept out of git in a secret.
