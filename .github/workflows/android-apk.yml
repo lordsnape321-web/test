@@ -85,9 +85,16 @@ jobs:
         run: |
           version=$(node -p "require('./app.json').expo.version")
           name="futsal-mate-${version}-$(echo '${{ github.sha }}' | cut -c1-7).apk"
-          cp android/app/build/outputs/apk/release/*.apk "android/app/build/outputs/apk/release/$name"
-          ls -lh android/app/build/outputs/apk/release/
-          echo "path=android/app/build/outputs/apk/release/$name" >> "$GITHUB_OUTPUT"
+          dir=android/app/build/outputs/apk/release
+          cp "$dir"/*.apk "$dir/$name"
+          # A second copy under a name that never changes. gh names a release
+          # asset after the file it uploads, so this is what keeps
+          # /releases/download/apk/futsal-mate-latest.apk pointing at the newest
+          # build even though the release is recreated each time.
+          cp "$dir/$name" "$dir/futsal-mate-latest.apk"
+          ls -lh "$dir"
+          echo "path=$dir/$name" >> "$GITHUB_OUTPUT"
+          echo "latest=$dir/futsal-mate-latest.apk" >> "$GITHUB_OUTPUT"
           echo "name=$name" >> "$GITHUB_OUTPUT"
 
       - uses: actions/upload-artifact@v4
@@ -110,7 +117,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release delete apk --yes --cleanup-tag 2>/dev/null || true
-          gh release create apk "${{ steps.apk.outputs.path }}#futsal-mate-latest.apk" \
+          gh release create apk "${{ steps.apk.outputs.latest }}" \
             --title "Futsal Mate — latest APK (${{ steps.apk.outputs.name }})" \
             --notes "Built from ${{ github.sha }} on ${{ github.ref_name }} (${{ steps.apk.outputs.name }}). Signed with the debug keystore: install it directly (allow \"install unknown apps\" for your browser), or run adb install -r." \
             --prerelease
