@@ -241,6 +241,20 @@ check(
   /savedApiBase/.test(readFileSync(join(appRoot, "src", "lib", "api.ts"), "utf8")) &&
     /Server address/.test(login),
 );
+check(
+  "and the release build allows the plain-http LAN backend it points at",
+  JSON.stringify(appJson.plugins ?? []).includes("expo-build-properties") &&
+    (appJson.plugins ?? []).some(
+      (plugin) =>
+        Array.isArray(plugin) &&
+        plugin[0] === "expo-build-properties" &&
+        plugin[1]?.android?.usesCleartextTraffic === true,
+    ),
+);
+check(
+  "the cleartext wall is named in the error, not left as the platform's wording",
+  /cleartext|network security policy/i.test(readFileSync(join(appRoot, "src", "lib", "api.ts"), "utf8")),
+);
 
 console.log(
   failed === 0 ? "\nparity: all assertions passed\n" : `\nparity: ${failed} failed\n`,

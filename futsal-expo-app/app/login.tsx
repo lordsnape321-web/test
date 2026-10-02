@@ -188,7 +188,8 @@ export default function Login() {
             <Text style={[styles.serverHint, { color: c.textMuted }]}>
               The backend this app talks to. On a phone, `localhost` is the phone itself, so use
               the computer running Laravel and the same Wi-Fi — for example
-              http://192.168.1.20:8000.
+              http://192.168.1.20:8000. Start the backend so the network can reach it:
+              php artisan serve --host=0.0.0.0
             </Text>
             <TextInput
               value={serverDraft}

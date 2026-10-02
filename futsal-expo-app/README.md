@@ -182,6 +182,20 @@ installed APK has no Metro server, so its backend address comes from either:
 A phone's `localhost` is the phone, so the app says so when a request cannot
 connect, and points at that row.
 
+Two things have to line up for a LAN address to work:
+
+- **Laravel has to listen on the network.** `php artisan serve` binds
+  `127.0.0.1` by default, which the phone cannot reach; start it with
+  `php artisan serve --host=0.0.0.0 --port=8000` (and allow the port through the
+  computer's firewall).
+- **Android has to allow plain http.** Release builds block cleartext traffic by
+  default, which looks exactly like an unreachable API
+  ("CLEARTEXT communication to … not permitted by network security policy").
+  `app.json` sets `usesCleartextTraffic: true` through `expo-build-properties`,
+  so a current APK can talk to `http://<LAN IP>:8000`. A build made before that
+  setting existed cannot — reinstall the newest APK. An https backend needs no
+  exception, and its certificate has to be valid.
+
 ## Backend boundary
 
 All network calls go through `src/lib/api.ts` and `src/api/index.ts`. The Expo

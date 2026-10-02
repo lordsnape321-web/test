@@ -161,6 +161,17 @@ function networkMessage(url: string, e: unknown): string {
   } catch {
     // Unparseable URL — leave host blank and fall through to the generic text.
   }
+  // Android blocks plain http in a release build unless the app opts in
+  // (`usesCleartextTraffic`, set from app.json via expo-build-properties). The
+  // platform's own wording — "CLEARTEXT communication to … not permitted by
+  // network security policy" — says nothing about what to do, so this does.
+  if (/cleartext|network security policy/i.test(detail)) {
+    return (
+      `Android blocked the plain-http request to ${url}. This build allows LAN ` +
+      `http — install the newest APK if you are on an older one — or point the ` +
+      `Server row at an https:// address. (${detail})`
+    );
+  }
   if (host === "localhost" || host === "127.0.0.1") {
     return (
       `Cannot reach the API at ${url}. "${host}" means this device itself — on a ` +
