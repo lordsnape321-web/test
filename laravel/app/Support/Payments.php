@@ -181,7 +181,7 @@ class Payments
      *
      * The client is the only one who knows: a browser app returns to its own
      * origin, while a native app has to be handed back to itself — that is a
-     * deep link (`exp://host:8081/--/…` in Expo Go, `futsalnepal://…` in a built
+     * deep link (`exp://host:8081/--/…` in Expo Go, `futsalmate://…` in a built
      * app), and no origin can express it. So the client may send the full return
      * URL, and this accepts it when it is a real address rather than a script.
      *

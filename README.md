@@ -1,4 +1,4 @@
-# Futsal Nepal
+# Futsal Mate
 
 The project is now split into two active services:
 

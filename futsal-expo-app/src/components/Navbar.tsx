@@ -91,7 +91,7 @@ export function Navbar() {
           onPress={() => router.push("/")}
           style={styles.brand}
           accessibilityRole="button"
-          accessibilityLabel="FutsalNepal home"
+          accessibilityLabel="Futsal Mate home"
         >
           <LinearGradient
             colors={[brand.emerald500, brand.green700]}

@@ -5,7 +5,7 @@ namespace App\Support;
 use Carbon\CarbonInterface;
 
 /**
- * Formatting and time helpers shared by the Futsal Nepal API contract.
+ * Formatting and time helpers shared by the Futsal Mate API contract.
  *
  * Everything here is pure: no database, no request, nothing that can throw on
  * bad input. That is what lets the API, the notification bodies and the seeders

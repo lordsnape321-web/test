@@ -33,7 +33,7 @@ use Illuminate\Support\Facades\Route;
 
 /*
 |--------------------------------------------------------------------------
-| Futsal Nepal API
+| Futsal Mate API
 |--------------------------------------------------------------------------
 |
 | Every route the Expo app calls. The paths and response shapes are the

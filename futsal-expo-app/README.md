@@ -1,6 +1,6 @@
-# Futsal Nepal — Expo app
+# Futsal Mate — Expo app
 
-The React Native/Expo frontend for Futsal Nepal. This app is paired with the
+The React Native/Expo frontend for Futsal Mate. This app is paired with the
 standalone Laravel API in `../laravel`; it does not require the retired web
 application or any source code outside this directory at runtime.
 
@@ -128,6 +128,56 @@ Bundling for a device can be checked with:
 npx expo export --platform ios
 npx expo export --platform android
 ```
+
+## Building the APK
+
+The app is generated natively at build time (`npx expo prebuild`), so `android/`
+and `ios/` are not in the tree. There are two ways to get an installable APK.
+
+**On GitHub (nothing to install locally).** `.github/workflows/android-apk.yml`
+builds one on every push to the session branch and to `main`: it installs the
+dependencies, runs `expo prebuild`, and runs `./gradlew assembleRelease`. The
+APK is attached to the run as the **futsal-mate-apk** artifact (Actions → the
+run → Artifacts). Release builds are signed with the debug keystore the
+generated project creates for itself, which is exactly what makes an APK
+installable — Android refuses an unsigned one. Publishing to the Play Store
+would mean a real keystore, kept out of git in a secret.
+
+**On a machine with the Android SDK.** Install Android Studio (which brings the
+SDK, the NDK and a JDK), then:
+
+```bash
+npm ci
+npx expo prebuild --platform android
+cd android && ./gradlew assembleRelease
+# android/app/build/outputs/apk/release/app-release.apk
+adb install -r app/build/outputs/apk/release/app-release.apk
+```
+
+One ABI is enough for a phone and keeps the file small:
+
+```bash
+./gradlew assembleRelease -PreactNativeArchitectures=arm64-v8a
+```
+
+(Use `armeabi-v7a` for a pre-2016 device, `x86_64` for an emulator, or pass
+several comma-separated.)
+
+### Pointing the APK at a backend
+
+A dev build learns the API origin from the Metro server it was loaded from; an
+installed APK has no Metro server, so its backend address comes from either:
+
+- `EXPO_PUBLIC_API_BASE` at build time (the workflow reads the repository
+  variable `API_BASE`, *Settings → Secrets and variables → Actions → Variables*),
+  or
+- the sign-in screen's **⚙️ Server** row, which saves an address on the device
+  itself — `http://192.168.1.20:8000` for a Laravel on the same Wi-Fi. That is
+  the one to use when the backend is on your own machine and its address is not
+  known when the APK is built.
+
+A phone's `localhost` is the phone, so the app says so when a request cannot
+connect, and points at that row.
 
 ## Backend boundary
 

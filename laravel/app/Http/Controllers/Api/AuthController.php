@@ -367,7 +367,7 @@ class AuthController extends ApiController
     {
         $isOwner = $user->role === 'owner';
 
-        Mailer::queueForUser($user, $isOwner ? 'Welcome aboard 🏟️' : 'Welcome to the family ⚽', [
+        Mailer::queueForUser($user, $isOwner ? 'Your Futsal Mate owner account is ready 🏟️' : 'Your Futsal Mate account is ready ⚽', [
             'type' => 'welcome',
             'eyebrow' => $isOwner ? 'Owner account' : 'Player account',
             'heading' => $isOwner ? 'Your venue, your rules 🏟️' : 'You are in! ⚽',
@@ -400,7 +400,7 @@ class AuthController extends ApiController
         Mailer::queue([
             'to' => $email,
             'name' => $name,
-            'subject' => 'Your Futsal Nepal code: '.$code,
+            'subject' => 'Your Futsal Mate code: '.$code,
             'type' => 'signup',
             'payload' => [
                 'type' => 'signup',
@@ -409,8 +409,8 @@ class AuthController extends ApiController
                 'preheader' => 'Type this code in the app to create your account.',
                 'intro' => [
                     $name !== ''
-                        ? "Welcome, {$name}! One step left: type the code below into the app and your account is ready."
-                        : 'Welcome! One step left: type the code below into the app and your account is ready.',
+                        ? "Hi {$name} — one step left: type the code below into the app and your account is ready."
+                        : 'One step left: type the code below into the app and your account is ready.',
                 ],
                 'code' => $code,
                 'rows' => ['Valid for' => EmailCodes::CODE_TTL_MINUTES.' minutes'],

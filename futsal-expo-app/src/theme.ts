@@ -1,7 +1,7 @@
 /**
  * Design tokens for the native app.
  *
- * These values preserve the established Futsal Nepal design language. React
+ * These values preserve the established Futsal Mate design language. React
  * Native has no Tailwind, so the design system lives here as plain constants
  * that screens compose.
  *

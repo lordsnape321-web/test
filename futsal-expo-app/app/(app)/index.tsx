@@ -191,8 +191,8 @@ export default function HomeScreen() {
           <Sparkles size={14} color={orangeText} />
           <Text style={[styles.heroBadgeText, { color: isDark ? colors.slate200 : colors.stone700 }]} numberOfLines={2}>
             {user
-              ? `Welcome back, ${user.name.split(" ")[0]}! Your game misses you ⚽`
-              : "Nepal's friendliest futsal family ⚽"}
+              ? "Ready when you are — pick up where you left off ⚽"
+              : "Find a court, join a game, play tonight ⚽"}
           </Text>
         </View>
 

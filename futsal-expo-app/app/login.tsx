@@ -4,11 +4,13 @@ import { Crown, Eye, EyeOff, Lock, LogIn, Mail, Trophy, Zap } from "lucide-react
 import React, { useEffect, useState } from "react";
 import {
   KeyboardAvoidingView,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -16,7 +18,7 @@ import { ensureDemoSeed } from "@/lib/demo-seed";
 import { Button, Label, Notice, TextControl } from "@/components/ui";
 import { useAuth } from "@/context/AuthContext";
 import { useTheme } from "@/context/ThemeContext";
-import { ApiError } from "@/lib/api";
+import { ApiError, apiBase, defaultApiBase, savedApiBase, setSavedApiBase } from "@/lib/api";
 import { firstError, validateEmail } from "@/lib/validation";
 import { colors as tokens, fontSize, radius, space } from "@/theme";
 
@@ -32,6 +34,28 @@ export default function Login() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [touched, setTouched] = useState(false);
+
+  // Which backend this device talks to. A dev build derives it from the Metro
+  // server it was loaded from; an installed APK has no Metro server, so the
+  // address has to be settable here — once, from the machine running Laravel
+  // (`http://192.168.1.20:8000` on the same Wi-Fi).
+  const [serverOpen, setServerOpen] = useState(false);
+  const [serverDraft, setServerDraft] = useState("");
+  const [serverSaved, setServerSaved] = useState(false);
+  const activeBase = apiBase();
+  const shownBase = activeBase || `${defaultApiBase()} (same origin)`;
+
+  function openServer() {
+    setServerDraft(savedApiBase());
+    setServerSaved(false);
+    setServerOpen(true);
+  }
+
+  /** Save the typed origin (or clear it, when left empty) and say so. */
+  function saveServer() {
+    setSavedApiBase(serverDraft);
+    setServerSaved(true);
+  }
 
   useEffect(() => {
     // Demo data, once a session at most, and never blocking the screen. See
@@ -74,8 +98,8 @@ export default function Login() {
           <View style={[styles.card, { backgroundColor: c.surface, borderColor: c.border, shadowColor: c.shadow }]}>
             <LinearGradient colors={isDark ? ["#065F46", "#14532D"] : ["#047857", "#166534"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.hero}>
               <View style={styles.heroIcon}><Trophy size={28} color={tokens.emerald700} strokeWidth={2.5} /></View>
-              <Text style={styles.heroTitle}>Welcome back, friend! 👋</Text>
-              <Text style={styles.heroSub}>Your crew saved you a spot — let&apos;s get you back on court</Text>
+              <Text style={styles.heroTitle}>Sign in 👋</Text>
+              <Text style={styles.heroSub}>Your bookings, games and teams are waiting.</Text>
             </LinearGradient>
 
             <View style={styles.form}>
@@ -138,11 +162,85 @@ export default function Login() {
               </View>
 
               <Link href="/forgot-password" asChild><Text style={StyleSheet.flatten([styles.forgot, { color: c.accent }])}>Forgot your password? 🔑</Text></Link>
-              <View style={styles.footerRow}><Text style={{ color: c.textMuted, fontSize: fontSize.base }}>New to the family? </Text><Link href="/signup" asChild><Text style={StyleSheet.flatten([styles.link, { color: c.primary }])}>Join us — it&apos;s free</Text></Link></View>
+
+              <Pressable onPress={openServer} accessibilityRole="button" style={styles.serverRow}>
+                <Text style={[styles.serverText, { color: c.textFaint }]} numberOfLines={1}>
+                  ⚙️ Server: {shownBase}
+                </Text>
+                <Text style={[styles.serverChange, { color: c.primary }]}>Change</Text>
+              </Pressable>
+              <View style={styles.footerRow}><Text style={{ color: c.textMuted, fontSize: fontSize.base }}>New here? </Text><Link href="/signup" asChild><Text style={StyleSheet.flatten([styles.link, { color: c.primary }])}>Create an account — it&apos;s free</Text></Link></View>
             </View>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
+
+      {/* Server address — for an installed build with no dev server to ask. */}
+      <Modal
+        visible={serverOpen}
+        animationType="fade"
+        transparent
+        onRequestClose={() => setServerOpen(false)}
+      >
+        <View style={styles.serverBackdrop}>
+          <View style={[styles.serverCard, { backgroundColor: c.surface, borderColor: c.border }]}>
+            <Text style={[styles.serverTitle, { color: c.text }]}>Server address</Text>
+            <Text style={[styles.serverHint, { color: c.textMuted }]}>
+              The backend this app talks to. On a phone, `localhost` is the phone itself, so use
+              the computer running Laravel and the same Wi-Fi — for example
+              http://192.168.1.20:8000.
+            </Text>
+            <TextInput
+              value={serverDraft}
+              onChangeText={(t) => {
+                setServerDraft(t);
+                setServerSaved(false);
+              }}
+              placeholder={defaultApiBase() || "https://api.example.com"}
+              placeholderTextColor={c.textFaint}
+              autoCapitalize="none"
+              autoCorrect={false}
+              keyboardType="url"
+              style={[
+                styles.serverInput,
+                { borderColor: c.border, color: c.text, backgroundColor: c.inset },
+              ]}
+            />
+            {serverSaved ? (
+              <Text style={[styles.serverSaved, { color: c.successText }]}>
+                Saved — the next request uses it. {activeBase ? `Now: ${activeBase}` : ""}
+              </Text>
+            ) : null}
+            <View style={styles.serverActions}>
+              <Pressable
+                onPress={() => {
+                  setServerDraft("");
+                  setSavedApiBase("");
+                  setServerSaved(true);
+                }}
+                accessibilityRole="button"
+                style={[styles.serverAction, { borderColor: c.border }]}
+              >
+                <Text style={{ color: c.textMuted, fontWeight: "800", fontSize: fontSize.sm }}>
+                  Use default
+                </Text>
+              </Pressable>
+              <Pressable
+                onPress={saveServer}
+                accessibilityRole="button"
+                style={[styles.serverAction, { borderColor: c.primary, backgroundColor: c.primary }]}
+              >
+                <Text style={{ color: c.primaryText, fontWeight: "900", fontSize: fontSize.sm }}>
+                  Save
+                </Text>
+              </Pressable>
+            </View>
+            <Pressable onPress={() => setServerOpen(false)} accessibilityRole="button">
+              <Text style={[styles.serverClose, { color: c.textMuted }]}>Close</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -169,4 +267,16 @@ const styles = StyleSheet.create({
   forgot: { fontSize: fontSize.base, fontWeight: "800", textAlign: "center", marginTop: space[2] },
   footerRow: { flexDirection: "row", justifyContent: "center", marginTop: space[1] },
   link: { fontSize: fontSize.base, fontWeight: "900" },
+  serverRow: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: space[2], paddingVertical: space[1] },
+  serverText: { fontSize: fontSize.xs, fontWeight: "700", flexShrink: 1 },
+  serverChange: { fontSize: fontSize.xs, fontWeight: "900" },
+  serverBackdrop: { flex: 1, backgroundColor: "rgba(15,23,42,0.55)", justifyContent: "center", padding: space[4] },
+  serverCard: { width: "100%", maxWidth: 448, alignSelf: "center", borderWidth: 1, borderRadius: radius["2xl"], padding: space[5], gap: space[3] },
+  serverTitle: { fontSize: fontSize.base, fontWeight: "900" },
+  serverHint: { fontSize: fontSize.xs, lineHeight: 17 },
+  serverInput: { borderWidth: 1, borderRadius: radius.xl, paddingHorizontal: space[3], minHeight: 44, fontSize: fontSize.sm, fontWeight: "600" },
+  serverSaved: { fontSize: fontSize.xs, fontWeight: "800" },
+  serverActions: { flexDirection: "row", gap: space[2] },
+  serverAction: { flex: 1, minHeight: 44, borderWidth: 1, borderRadius: radius.xl, alignItems: "center", justifyContent: "center" },
+  serverClose: { fontSize: fontSize.sm, fontWeight: "800", textAlign: "center", paddingVertical: space[1] },
 });

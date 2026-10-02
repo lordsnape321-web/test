@@ -296,7 +296,7 @@ class UserController extends ApiController
             'heading' => 'Confirm account deletion',
             'preheader' => 'Type this code in the app to close your account.',
             'intro' => [
-                'Someone asked to close this Futsal Nepal account. Type the code below in the app to confirm.',
+                'Someone asked to close this Futsal Mate account. Type the code below in the app to confirm.',
                 'This cannot be undone: your profile, your team memberships and your pending bookings are removed, and you will not be able to log in again.',
             ],
             'code' => $code,

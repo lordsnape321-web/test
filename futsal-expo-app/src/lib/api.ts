@@ -1,4 +1,5 @@
 import { noteRequest } from "@/lib/perf";
+import { STORAGE_KEYS, storage } from "@/lib/storage";
 
 /**
  * The one place that knows where the backend lives.
@@ -23,6 +24,12 @@ import { noteRequest } from "@/lib/perf";
  * `localhost` on a device is the device itself, not your machine — that is the
  * most common reason a fresh Expo app cannot reach a local API. Set this value
  * to the Laravel host before creating a native build.
+ *
+ * An installed build has no Metro server to derive anything from, so it can
+ * also be pointed at a backend from the sign-in screen ("Server address"),
+ * which is saved with `setSavedApiBase()` and wins over the build default.
+ * Everything resolves through `apiBase()`, so a change takes effect on the very
+ * next request.
  */
 
 const NATIVE_DEFAULT_BASE = "http://localhost:8000";
@@ -39,8 +46,38 @@ const runningInBrowser = typeof window !== "undefined";
 const configuredIsLocal = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?\/?$/i.test(configuredBase);
 const resolvedBase = runningInBrowser && configuredIsLocal ? "" : configuredBase;
 
-/** Backend origin, without a trailing slash. Empty means same-origin `/api`. */
-export const API_BASE = (resolvedBase || (runningInBrowser ? "" : NATIVE_DEFAULT_BASE)).replace(/\/+$/, "");
+/**
+ * A backend address saved on this device, or "".
+ *
+ * This is what makes an installed APK usable: it was built without a dev
+ * server to derive an origin from, and the Laravel backend usually sits on the
+ * machine the person is developing on, on their own Wi-Fi (`http://192.168.1.20:8000`
+ * and the like). The login screen can save one, and it wins over the build
+ * default but never over an explicit same-origin web build.
+ */
+export function savedApiBase(): string {
+  return (storage.getCached(STORAGE_KEYS.apiBase) ?? "").trim().replace(/\/+$/, "");
+}
+
+/** Save (or clear, with "") the backend origin for this device. */
+export function setSavedApiBase(origin: string): void {
+  const clean = origin.trim().replace(/\/+$/, "");
+  if (clean) void storage.set(STORAGE_KEYS.apiBase, clean);
+  else void storage.remove(STORAGE_KEYS.apiBase);
+}
+
+/** What a request would use right now. Empty means same-origin `/api`. */
+export function apiBase(): string {
+  const saved = savedApiBase();
+  if (saved) return saved;
+  return (resolvedBase || (runningInBrowser ? "" : NATIVE_DEFAULT_BASE)).replace(/\/+$/, "");
+}
+
+/** The build's own default, shown in the UI when nothing is saved. */
+export function defaultApiBase(): string {
+  return (resolvedBase || (runningInBrowser ? "" : NATIVE_DEFAULT_BASE)).replace(/\/+$/, "");
+}
+
 
 /**
  * Resolve an API path to an absolute URL.
@@ -51,7 +88,7 @@ export const API_BASE = (resolvedBase || (runningInBrowser ? "" : NATIVE_DEFAULT
 export function apiUrl(path: string): string {
   if (/^https?:\/\//i.test(path)) return path;
   const normalized = path.startsWith("/") ? path : `/${path}`;
-  return `${API_BASE}${normalized}`;
+  return `${apiBase()}${normalized}`;
 }
 
 /**
@@ -127,9 +164,9 @@ function networkMessage(url: string, e: unknown): string {
   if (host === "localhost" || host === "127.0.0.1") {
     return (
       `Cannot reach the API at ${url}. "${host}" means this device itself — on a ` +
-      `phone or emulator that is not your computer. Set EXPO_PUBLIC_API_BASE to your ` +
-      `computer's LAN IP (physical device, same Wi-Fi) or 10.0.2.2 (Android emulator), ` +
-      `then restart Expo. (${detail})`
+      `phone or emulator that is not your computer. Sign in screen → Server address: ` +
+      `set it to your computer's LAN IP on the same Wi-Fi (e.g. http://192.168.1.20:8000), ` +
+      `or 10.0.2.2 for the Android emulator. (${detail})`
     );
   }
   return `Cannot reach the API at ${url}. Is the backend running and on the same network? (${detail})`;

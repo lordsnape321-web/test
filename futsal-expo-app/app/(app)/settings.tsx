@@ -702,7 +702,7 @@ export default function SettingsScreen() {
             >
               <LogOut size={16} color={c.dangerText} />
               <Text style={[styles.logoutText, { color: c.dangerText }]}>
-                Log out of FutsalNepal
+                Log out of Futsal Mate
               </Text>
             </Pressable>
 
@@ -938,7 +938,7 @@ function DeviceSections({
           <Row
             icon={Trophy}
             title="Back to the home page"
-            sub="FutsalNepal — made with 💚 for players, by players"
+            sub="Futsal Mate — made with 💚 for players, by players"
             onPress={() => router.push("/(app)")}
           />
         </>

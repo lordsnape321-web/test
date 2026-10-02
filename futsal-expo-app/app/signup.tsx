@@ -215,8 +215,8 @@ export default function Signup() {
               <View style={styles.heroIcon}>
                 <Trophy size={28} color={tokens.emerald700} strokeWidth={2.5} />
               </View>
-              <Text style={styles.heroTitle}>Come join the family ⚽</Text>
-              <Text style={styles.heroSub}>Free forever for players — tell us a little about yourself</Text>
+              <Text style={styles.heroTitle}>Create your account ⚽</Text>
+              <Text style={styles.heroSub}>One account for bookings, games and teams — free for players.</Text>
             </LinearGradient>
 
             <View style={styles.form}>

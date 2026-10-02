@@ -1,5 +1,6 @@
 /**
- * Web/mobile parity guards for the six fixes in this round.
+ * Web/mobile parity guards: the web-only bugs fixed in this round, plus the
+ * brand and the copy the app greets people with.
  *
  * Every one of these is a bug a phone could not show and a browser could: a
  * native-only `Alert` that silently does nothing on react-native-web (the
@@ -193,6 +194,52 @@ check(
   /backgroundColor: isDark \? colors\.slate700 : colors\.stone100/.test(swipe) &&
     /const danger = isDark \? colors\.red400 : colors\.red600;/.test(swipe) &&
     !/backgroundColor: c\.inset/.test(swipe),
+);
+
+/* ── 6. The name, and copy that fits everybody ─────────────────────────── */
+
+const appJson = JSON.parse(readFileSync(join(appRoot, "app.json"), "utf8")).expo;
+check(
+  "the app is called Futsal Mate, in the places a device reads",
+  appJson.name === "Futsal Mate" &&
+    appJson.slug === "futsal-mate" &&
+    appJson.scheme === "futsalmate" &&
+    appJson.android.package === "com.futsalmate.app" &&
+    appJson.ios.bundleIdentifier === "com.futsalmate.app",
+);
+
+// The old name must be gone from everything a person can see. The password and
+// email-code salts still spell it on purpose: they are credential material,
+// and renaming them would lock every existing account out. They live in
+// laravel/app, which this scan does not touch.
+const oldName = [];
+for (const dir of ["app", "src"]) {
+  for (const file of walk(join(appRoot, dir))) {
+    if (/Futsal ?Nepal/i.test(readFileSync(file, "utf8"))) oldName.push(file);
+  }
+}
+check("nothing user-facing still says the old name", oldName.length === 0, oldName.join(", "));
+
+const login = flat(join(appRoot, "app", "login.tsx"));
+const signup = flat(join(appRoot, "app", "signup.tsx"));
+const home = flat(join(appRoot, "app", "(app)", "index.tsx"));
+check(
+  "sign-in greets nobody in particular",
+  /Sign in 👋/.test(login) &&
+    !/Welcome back,/.test(login) &&
+    !/Welcome back,/.test(home) &&
+    !/user\.name\.split/.test(home),
+);
+check(
+  "and neither sign-in nor signup assumes who is holding the phone",
+  !/join the family|the family\?/i.test(login) &&
+    !/join the family/i.test(signup) &&
+    /Create your account ⚽/.test(signup),
+);
+check(
+  "an installed build can be pointed at a backend without being rebuilt",
+  /savedApiBase/.test(readFileSync(join(appRoot, "src", "lib", "api.ts"), "utf8")) &&
+    /Server address/.test(login),
 );
 
 console.log(

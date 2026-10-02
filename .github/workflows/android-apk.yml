@@ -1,0 +1,86 @@
+# Build an installable Android APK for the Expo app, on GitHub's runners.
+#
+# Why here: a release APK has to be built with the Android SDK, the NDK and a
+# JDK — none of which belong in a git checkout, and the Expo app is generated
+# natively (`npx expo prebuild`) rather than keeping `android/` in the tree. A
+# runner has all three, so the APK is produced from a clean checkout of this
+# branch, the same way every time, and lands as a downloadable artifact.
+#
+# What it does:
+#   npm ci → expo prebuild (Android) → gradlew assembleRelease → upload artifact
+#
+# The release build type is signed with the debug keystore that the generated
+# project creates for itself, which is what makes the APK installable (Android
+# refuses an unsigned one). That is fine for testing on a phone; a Play Store
+# upload would need a real keystore in a secret (see the README).
+#
+# The backend the app talks to is baked in at bundle time from the repository
+# variable API_BASE (Settings → Secrets and variables → Actions → Variables).
+# Leave it unset and the app falls back to its build default, and the sign-in
+# screen's "Server address" can point it at any reachable Laravel afterwards.
+name: Android APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - "arena/01a0effd-test"
+      - main
+
+concurrency:
+  group: android-apk-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    defaults:
+      run:
+        working-directory: futsal-expo-app
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: futsal-expo-app/package-lock.json
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate the Android project
+        run: npx expo prebuild --platform android --no-install
+
+      - name: Build the release APK
+        working-directory: futsal-expo-app/android
+        env:
+          EXPO_PUBLIC_API_BASE: ${{ vars.API_BASE }}
+          EXPO_NO_TELEMETRY: "1"
+          CI: "1"
+        run: |
+          # One ABI keeps the download small and the build inside the job
+          # timeout; every phone since ~2016 is arm64-v8a. Add
+          # "armeabi-v7a,x86_64" to the list below for older or emulated
+          # devices.
+          ./gradlew assembleRelease --no-daemon \
+            -PreactNativeArchitectures=arm64-v8a \
+            -Dorg.gradle.jvmargs="-Xmx4096m -XX:MaxMetaspaceSize=1024m"
+
+      - name: Show what was built
+        working-directory: futsal-expo-app/android/app/build/outputs/apk/release
+        run: ls -lh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: futsal-mate-apk
+          path: futsal-expo-app/android/app/build/outputs/apk/release/*.apk
+          if-no-files-found: error
+          retention-days: 30

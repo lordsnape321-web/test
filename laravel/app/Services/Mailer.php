@@ -261,7 +261,7 @@ class Mailer
      */
     private static function viewData(EmailOutbox $row, array $payload): array
     {
-        $appName = (string) (config('app.name') ?: 'Futsal Nepal');
+        $appName = (string) (config('app.name') ?: 'Futsal Mate');
 
         return [
             'appName' => $appName,

@@ -2,7 +2,7 @@
   "name": "futsal-laravel-api-tests",
   "private": true,
   "type": "module",
-  "description": "Live HTTP acceptance suites for the Futsal Nepal Laravel API.",
+  "description": "Live HTTP acceptance suites for the Futsal Mate Laravel API.",
   "scripts": {
     "test": "node run-all.mjs"
   },

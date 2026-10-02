@@ -1,6 +1,6 @@
-# Futsal Nepal — Laravel API
+# Futsal Mate — Laravel API
 
-The standalone Laravel 12 backend for the Futsal Nepal Expo app. This service is
+The standalone Laravel 12 backend for the Futsal Mate Expo app. This service is
 backend-only: there are no Blade pages, no Inertia frontend, and no dependency on
 the retired web application. Every client-facing operation is JSON under
 `/api`.
@@ -135,7 +135,7 @@ MAIL_USERNAME=youraddress@gmail.com
 MAIL_PASSWORD=abcdefghijklmnop
 MAIL_ENCRYPTION=tls
 MAIL_FROM_ADDRESS="${MAIL_USERNAME}"
-MAIL_FROM_NAME="Futsal Nepal"
+MAIL_FROM_NAME="Futsal Mate"
 ```
 
 Filling in `MAIL_USERNAME` is enough on its own: `config/mail.php` switches the
@@ -480,7 +480,7 @@ append their own parameters and a URL that already has a query is a coin flip
 between `&` and a second `?`. The client names them (`successUrl`, `failureUrl`,
 `returnUrl`) because only it knows where it can be reached: a browser returns to
 its own origin, while a phone returns *into the app* by deep link
-(`exp://…/--/payment/esewa/success`, `futsalnepal://…` in a built app). The
+(`exp://…/--/payment/esewa/success`, `futsalmate://…` in a built app). The
 server validates the scheme (`isUsableReturnUrl`) and falls back to `APP_URL` /
 `APP_WEB_URL` when it is missing or unusable.
 

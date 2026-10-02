@@ -308,7 +308,7 @@ function GatewayMock({
           </View>
           <View style={styles.gatewayBody}>
             <View style={[styles.amountCard, { backgroundColor: soft }]}>
-              <Text style={[styles.amountKicker, { color: accent }]}>Paying to FutsalNepal test store</Text>
+              <Text style={[styles.amountKicker, { color: accent }]}>Paying to Futsal Mate test store</Text>
               <Text style={[styles.amount, { color: purple ? "#4C1D95" : "#064E3B" }]}>{formatNPR(amount)}</Text>
               <Text style={[styles.reference, { color: accent }]}>
                 {isLeague ? `league #${leagueId} • squad #${teamId}` : `booking #${bookingId}`}
@@ -375,7 +375,7 @@ function GatewayMock({
               <View style={[styles.confirmCard, { borderColor: accent }]}>
                 <View style={styles.confirmRow}>
                   <Text style={styles.confirmKey}>Merchant</Text>
-                  <Text style={styles.confirmValue}>FutsalNepal test store</Text>
+                  <Text style={styles.confirmValue}>Futsal Mate test store</Text>
                 </View>
                 <View style={styles.confirmRow}>
                   <Text style={styles.confirmKey}>{label} balance (demo)</Text>

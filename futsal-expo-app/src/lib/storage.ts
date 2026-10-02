@@ -40,6 +40,15 @@ export const STORAGE_KEYS = {
    * the demo is happening.
    */
   demoPayments: "futsal.demo-payments",
+  /**
+   * Backend origin typed on the device, if any.
+   *
+   * A dev build derives the API from the Metro server it was loaded from, and a
+   * browser uses its own origin — but an installed APK has neither, so its
+   * backend address has to come from somewhere the person holding the phone can
+   * change without a rebuild. See `apiBase()` in `src/lib/api.ts`.
+   */
+  apiBase: "futsal.api-base",
 } as const;
 
 const HYDRATE = Object.values(STORAGE_KEYS);

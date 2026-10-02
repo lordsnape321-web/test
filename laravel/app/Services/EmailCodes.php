@@ -172,7 +172,12 @@ class EmailCodes
         return strtolower(trim($email));
     }
 
-    /** A digest of purpose + address + digits — never the code itself. */
+    /**
+     * A digest of purpose + address + digits — never the code itself.
+     *
+     * The salt prefix is the app's old name on purpose, like the password salt:
+     * codes already in flight were hashed with it, and it is not user-visible.
+     */
     private static function hash(string $email, string $purpose, string $code): string
     {
         return hash('sha256', 'futsal-nepal::'.$purpose.'::'.$email.'::'.$code);

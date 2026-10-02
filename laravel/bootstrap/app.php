@@ -12,7 +12,7 @@ use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
 
 /*
 |--------------------------------------------------------------------------
-| Futsal Nepal — API bootstrap
+| Futsal Mate — API bootstrap
 |--------------------------------------------------------------------------
 |
 | This backend is headless: it exists only to serve `/api/*` to the Expo app

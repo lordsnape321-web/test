@@ -2256,7 +2256,7 @@ class RealWorldSeeder extends Seeder
                         [
                             'kind' => 'link',
                             'caption' => 'Full-time team photo from the fixture',
-                            'credit' => $league->venue_id === null ? 'Futsal Nepal community album' : 'Venue desk',
+                            'credit' => $league->venue_id === null ? 'Futsal Mate community album' : 'Venue desk',
                             'uploaded_by' => $league->host_id,
                         ]
                     );

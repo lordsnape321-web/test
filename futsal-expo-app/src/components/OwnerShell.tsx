@@ -177,14 +177,14 @@ export function OwnerHeader() {
           onPress={() => router.push("/admin")}
           style={styles.brand}
           accessibilityRole="button"
-          accessibilityLabel="FutsalNepal Studio home"
+          accessibilityLabel="Futsal Mate Studio home"
         >
           <View style={styles.brandIcon}>
             <Trophy size={18} color={colors.amber400} strokeWidth={2.5} />
           </View>
           <View style={styles.brandCopy}>
             <Text style={[styles.brandTitle, { color: c.text }]} numberOfLines={1}>
-              FutsalNepal <Text style={{ color: colors.orange500 }}>Studio</Text>
+              Futsal Mate <Text style={{ color: colors.orange500 }}>Studio</Text>
             </Text>
             <Text style={[styles.brandSub, { color: c.textFaint }]} numberOfLines={1}>
               Owner Console
