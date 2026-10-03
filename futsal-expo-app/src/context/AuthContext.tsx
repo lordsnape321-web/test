@@ -27,6 +27,8 @@ type AuthState = {
     email: string;
     phone: string;
     password: string;
+    /** Six digits emailed by `requestSignupCode` — signup is two steps. */
+    code: string;
     role?: "player" | "owner";
     level?: string;
     position?: string;
@@ -124,6 +126,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       email: string;
       phone: string;
       password: string;
+      /** Six digits emailed by `requestSignupCode` — signup is two steps. */
+      code: string;
       role?: "player" | "owner";
       level?: string;
       position?: string;

@@ -1,6 +1,7 @@
 import { useFocusEffect, useLocalSearchParams } from "expo-router";
 import {
   CalendarCheck,
+  Banknote,
   Check,
   Gift,
   ReceiptText,
@@ -13,8 +14,8 @@ import {
 } from "lucide-react-native";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  AppState,
   ActivityIndicator,
-  Alert,
   Modal,
   Pressable,
   ScrollView,
@@ -30,6 +31,7 @@ import { ReceiptViewer } from "@/components/ReceiptUploader";
 import { SettleAmendButton } from "@/components/SettleAmendButton";
 import { useAuth } from "@/context/AuthContext";
 import { useTheme } from "@/context/ThemeContext";
+import { confirmAction, notify } from "@/lib/confirm";
 import { formatNPR, formatTime12, prettyDate } from "@/lib/futsal";
 import { SETTLE_EDIT_WINDOW_MS, formatWindowLeft, settleWindow } from "@/lib/booking-ledger";
 import { useBreakpoints } from "@/lib/responsive";
@@ -118,6 +120,22 @@ export default function OwnerBookings() {
     }, [load]),
   );
 
+  // Keep the owner's numbers live: payments and requests change while this
+  // screen sits open on the desk.
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+      const timer = setInterval(() => {
+        if (!active || AppState.currentState !== "active") return;
+        void Promise.resolve(load(true)).catch(() => undefined);
+      }, 5000);
+      return () => {
+        active = false;
+        clearInterval(timer);
+      };
+    }, [load]),
+  );
+
   useEffect(() => {
     if (shouldRefresh && user) {
       void load(true);
@@ -154,9 +172,33 @@ export default function OwnerBookings() {
     return mine.filter((b) => b.status === filter);
   }, [bookings, myVenueIds, filter]);
 
+  /** Decline and Cancel ask first — on every platform, not only where Alert works. */
+  function confirmStatus(b: Booking, status: "rejected" | "cancelled", label: string) {
+    confirmAction(
+      {
+        title: `${label} booking #FN-${b.id}?`,
+        message:
+          status === "rejected"
+            ? "The player will be told the request was declined."
+            : "The venue stops holding the slot, and the cancellation policy applies.",
+        confirmLabel: label,
+        cancelLabel: "Keep it",
+        destructive: true,
+      },
+      () => void setStatus(b.id, status),
+    );
+  }
+
   async function setStatus(id: number, status: string, actor: string = "owner") {
-    await patchBooking(id, { status, actor, actorId: user?.id });
-    await load();
+    // Was fire-and-forget: a refused update (or a dead network) looked exactly
+    // like a working button, because nothing was shown and the list did not
+    // move. Now the desk says why.
+    try {
+      await patchBooking(id, { status, actor, actorId: user?.id });
+      await load();
+    } catch (e) {
+      notify(`Could not mark #FN-${id} ${status}`, e instanceof Error ? e.message : "Try again");
+    }
   }
 
   async function submitCancellationMoney(b: Booking, decision: "refunded" | "retained") {
@@ -166,7 +208,7 @@ export default function OwnerBookings() {
       await patchBooking(b.id, { cancellationMoney: decision, actor: "owner", actorId: user.id });
       await load();
     } catch (e) {
-      Alert.alert("Could not update cancellation money", e instanceof Error ? e.message : "Try again");
+      notify("Could not update cancellation money", e instanceof Error ? e.message : "Try again");
     } finally {
       setResolvingCancellation(null);
     }
@@ -174,15 +216,17 @@ export default function OwnerBookings() {
 
   function resolveCancellation(b: Booking, decision: "refunded" | "retained") {
     const label = decision === "refunded" ? "Mark refunded" : "Keep payment";
-    Alert.alert(
-      label,
-      decision === "refunded"
-        ? "Only choose this after the money has actually been sent back."
-        : "Record that the received payment is being kept under the cancellation policy.",
-      [
-        { text: "Not now", style: "cancel" },
-        { text: label, onPress: () => void submitCancellationMoney(b, decision) },
-      ],
+    confirmAction(
+      {
+        title: label,
+        message:
+          decision === "refunded"
+            ? "Only choose this after the money has actually been sent back."
+            : "Record that the received payment is being kept under the cancellation policy.",
+        confirmLabel: label,
+        cancelLabel: "Not now",
+      },
+      () => void submitCancellationMoney(b, decision),
     );
   }
 
@@ -454,16 +498,18 @@ export default function OwnerBookings() {
                                 <Pressable
                                   onPress={() => resolveCancellation(b, "refunded")}
                                   disabled={resolvingCancellation === b.id}
-                                  style={[styles.cancelMoneyBtn, { backgroundColor: colors.emerald600, opacity: resolvingCancellation === b.id ? 0.5 : 1 }]}
+                                  style={[styles.actionBtn, styles.actionPrimary, { opacity: resolvingCancellation === b.id ? 0.5 : 1 }]}
+                                  accessibilityRole="button"
                                 >
-                                  <Text style={styles.cancelMoneyBtnText}>{resolvingCancellation === b.id ? "Saving…" : "Mark refunded"}</Text>
+                                  <Text style={[styles.actionText, { color: "#FFFFFF" }]}>{resolvingCancellation === b.id ? "Saving…" : "Mark refunded"}</Text>
                                 </Pressable>
                                 <Pressable
                                   onPress={() => resolveCancellation(b, "retained")}
                                   disabled={resolvingCancellation === b.id}
-                                  style={[styles.cancelMoneyBtn, { borderColor: c.border, borderWidth: 1, opacity: resolvingCancellation === b.id ? 0.5 : 1 }]}
+                                  style={[styles.actionBtn, { borderColor: c.border, opacity: resolvingCancellation === b.id ? 0.5 : 1 }]}
+                                  accessibilityRole="button"
                                 >
-                                  <Text style={[styles.cancelMoneyBtnText, { color: c.textMuted }]}>Keep payment</Text>
+                                  <Text style={[styles.actionText, { color: c.textMuted }]}>Keep payment</Text>
                                 </Pressable>
                               </View>
                             </>
@@ -486,10 +532,12 @@ export default function OwnerBookings() {
                   ) : (
                     <Pressable
                       onPress={() => setLedgerFor(b)}
-                      style={[styles.chip, { backgroundColor: "rgba(245,158,11,0.15)" }]}
-                      accessibilityLabel="Record payments and extra charges"
+                      style={[styles.actionBtn, styles.actionMoney]}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Record payments and extra charges for booking #FN-${b.id}`}
                     >
-                      <Text style={[styles.chipText, { color: "#B45309" }]}>💰 Record payment</Text>
+                      <Banknote size={13} color={isDark ? "#FCD34D" : "#B45309"} />
+                      <Text style={[styles.actionText, { color: isDark ? "#FCD34D" : "#B45309" }]}>Record payment</Text>
                     </Pressable>
                   )}
                   {b.depositRequired ? (
@@ -501,10 +549,12 @@ export default function OwnerBookings() {
                   {b.receiptUrl ? (
                     <Pressable
                       onPress={() => setViewReceipt(b.receiptUrl ?? "")}
-                      style={[styles.chip, { backgroundColor: "rgba(14,165,233,0.15)" }]}
+                      style={[styles.actionBtn, styles.actionReceipt]}
+                      accessibilityRole="button"
+                      accessibilityLabel={`View the uploaded receipt for booking #FN-${b.id}`}
                     >
-                      <ReceiptText size={9} color="#0369A1" />
-                      <Text style={[styles.chipText, { color: "#0369A1" }]}>Receipt</Text>
+                      <ReceiptText size={13} color={isDark ? "#7DD3FC" : "#0369A1"} />
+                      <Text style={[styles.actionText, { color: isDark ? "#7DD3FC" : "#0369A1" }]}>Receipt</Text>
                     </Pressable>
                   ) : null}
                 </View>
@@ -517,71 +567,79 @@ export default function OwnerBookings() {
                   </View>
                 </View>
 
-                <View style={[styles.colActions, !xl && styles.stackColumn]}>
+                <View style={[styles.colActions, !xl && styles.stackColumn, !xl && styles.colActionsNarrow]}>
+                  {/*
+                    Actions say what they do. Icon-only circles made the desk
+                    guess between three different checks, and a label is what
+                    tells "Accept" apart from "Mark played" at a glance. Each
+                    button is width-flexible and wraps, so a long row never
+                    bursts the card.
+                  */}
                   {b.status !== "cancelled" && b.status !== "rejected" ? (
-                    <SettleAmendButton settledAt={b.settledAt ?? null} onOpen={() => setLedgerFor(b)} />
+                    <SettleAmendButton
+                      settledAt={b.settledAt ?? null}
+                      onOpen={() => setLedgerFor(b)}
+                    />
                   ) : null}
                   {b.status === "pending" ? (
-                    <>
-                      <Pressable
-                        onPress={() => void setStatus(b.id, "confirmed")}
-                        style={[styles.iconAction, { backgroundColor: colors.emerald600 }]}
-                        accessibilityLabel="Accept"
-                      >
-                        <Check size={14} color="#FFFFFF" />
-                      </Pressable>
-                      <Pressable
-                        onPress={() => void setStatus(b.id, "rejected")}
-                        style={[
-                          styles.iconAction,
-                          { backgroundColor: isDark ? "rgba(239,68,68,0.15)" : "#FEE2E2" },
-                        ]}
-                        accessibilityLabel="Decline"
-                      >
-                        <X size={14} color="#DC2626" />
-                      </Pressable>
-                    </>
+                    <Pressable
+                      onPress={() => void setStatus(b.id, "confirmed")}
+                      style={[styles.actionBtn, styles.actionPrimary]}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Accept booking #FN-${b.id}`}
+                    >
+                      <Check size={14} color="#FFFFFF" strokeWidth={3} />
+                      <Text style={[styles.actionText, { color: "#FFFFFF" }]}>Accept</Text>
+                    </Pressable>
                   ) : null}
                   {b.competition ? (
                     <Pressable
                       onPress={() => openScore(b)}
-                      style={[
-                        styles.iconAction,
-                        {
-                          backgroundColor:
-                            b.competition.scoreStatus === "recorded"
-                              ? colors.emerald600
-                              : "#4F46E5",
-                        },
-                      ]}
+                      style={[styles.actionBtn, styles.actionInfo]}
+                      accessibilityRole="button"
                       accessibilityLabel={
                         b.competition.scoreStatus === "recorded"
-                          ? "Fix the recorded score"
-                          : "Record the final score"
+                          ? `Fix the recorded score for booking #FN-${b.id}`
+                          : `Record the final score for booking #FN-${b.id}`
                       }
                     >
                       <Swords size={14} color="#FFFFFF" />
+                      <Text style={[styles.actionText, { color: "#FFFFFF" }]}>
+                        {b.competition.scoreStatus === "recorded" ? "Fix score" : "Record score"}
+                      </Text>
                     </Pressable>
                   ) : null}
                   {b.status === "confirmed" ? (
                     <Pressable
                       onPress={() => void setStatus(b.id, "completed")}
-                      style={[styles.iconAction, { backgroundColor: isDark ? "#FFFFFF" : "#0F172A" }]}
-                      accessibilityLabel="Complete"
+                      style={[styles.actionBtn, { backgroundColor: isDark ? "#FFFFFF" : "#0F172A", borderColor: isDark ? "#FFFFFF" : "#0F172A" }]}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Mark booking #FN-${b.id} as played`}
                     >
-                      <Check size={14} color={isDark ? "#0F172A" : "#FFFFFF"} />
+                      <Check size={14} color={isDark ? "#0F172A" : "#FFFFFF"} strokeWidth={3} />
+                      <Text style={[styles.actionText, { color: isDark ? "#0F172A" : "#FFFFFF" }]}>Mark played</Text>
                     </Pressable>
                   ) : null}
-                  {b.status === "confirmed" || b.status === "pending" ? (
+                  {b.status === "pending" ? (
                     <Pressable
-                      onPress={() => void setStatus(b.id, "cancelled")}
-                      style={[
-                        styles.iconAction,
-                        { backgroundColor: isDark ? "rgba(239,68,68,0.15)" : "#FEE2E2" },
-                      ]}
-                      accessibilityLabel="Cancel"
+                      onPress={() => confirmStatus(b, "rejected", "Decline")}
+                      style={[styles.actionBtn, styles.actionDanger]}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Decline booking #FN-${b.id}`}
                     >
-                      <X size={14} color="#DC2626" />
+                      <X size={14} color={isDark ? "#FCA5A5" : "#DC2626"} strokeWidth={3} />
+                      <Text style={[styles.actionText, { color: isDark ? "#FCA5A5" : "#DC2626" }]}>Decline</Text>
+                    </Pressable>
+                  ) : null}
+                  {b.status === "confirmed" ? (
+                    <Pressable
+                      onPress={() => confirmStatus(b, "cancelled", "Cancel")}
+                      style={[styles.actionBtn, styles.actionDanger]}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Cancel booking #FN-${b.id}`}
+                    >
+                      <X size={14} color={isDark ? "#FCA5A5" : "#DC2626"} strokeWidth={3} />
+                      <Text style={[styles.actionText, { color: isDark ? "#FCA5A5" : "#DC2626" }]}>Cancel</Text>
                     </Pressable>
                   ) : null}
                 </View>
@@ -597,7 +655,7 @@ export default function OwnerBookings() {
 
       {/* Score desk — competition games only, venue owner only. */}
       <Modal visible={!!scoreFor?.competition} transparent animationType="fade" onRequestClose={() => setScoreFor(null)}>
-        <View style={styles.modalBackdrop}>
+        <View style={[styles.modalBackdrop, { backgroundColor: c.scrim }]}>
           <View style={[styles.scoreCard, { backgroundColor: c.surface, borderColor: c.border }]}>
             <View style={styles.titleRow}>
               <Swords size={18} color="#6366F1" />
@@ -612,9 +670,18 @@ export default function OwnerBookings() {
                     ? ` • 🏆 ${scoreFor.competition.leagueName}`
                     : ""}
                 </Text>
-                <View style={[styles.scoreLockNotice, { backgroundColor: scoreLocked ? c.inset : "rgba(245,158,11,0.12)" }]}>
-                  <Lock size={14} color={scoreLocked ? c.textMuted : "#B45309"} />
-                  <Text style={[styles.scoreLockText, { color: scoreLocked ? c.textMuted : "#B45309" }]}>                    {scoreWindow?.settled
+                <View
+                  style={[
+                    styles.scoreLockNotice,
+                    {
+                      backgroundColor: scoreLocked ? c.inset : c.warningBg,
+                      borderColor: scoreLocked ? c.border : c.warningBorder,
+                    },
+                  ]}
+                >
+                  <Lock size={14} color={scoreLocked ? c.textMuted : c.warningText} />
+                  <Text style={[styles.scoreLockText, { color: scoreLocked ? c.textMuted : c.warningText }]}>
+                    {scoreWindow?.settled
                       ? scoreLocked
                         ? "Score locked — the 5-minute correction window has closed."
                         : `Score correction window open for ${formatWindowLeft(scoreWindow.msLeft)}.`
@@ -623,7 +690,11 @@ export default function OwnerBookings() {
                 </View>
                 <View style={styles.scoreRow}>
                   <View style={styles.scoreField}>
-                    <Text style={[styles.scoreLabel, { color: c.textFaint }]}>
+                    <Text
+                      style={[styles.scoreLabel, { color: c.textFaint }]}
+                      numberOfLines={1}
+                      ellipsizeMode="tail"
+                    >
                       🏠 {scoreFor.teamName || "Home"}
                     </Text>
                     <TextInput
@@ -633,11 +704,16 @@ export default function OwnerBookings() {
                       keyboardType="numeric"
                       placeholder="—"
                       placeholderTextColor={c.textFaint}
-                      style={[styles.scoreInput, { backgroundColor: isDark ? "#0F172A" : "#F8FAFC", color: c.text, borderColor: c.border }]}
+                      style={[styles.scoreInput, { backgroundColor: c.inset, color: c.text, borderColor: c.border }]}
                     />
                   </View>
+                  <Text style={[styles.scoreVersus, { color: c.textFaint }]}>–</Text>
                   <View style={styles.scoreField}>
-                    <Text style={[styles.scoreLabel, { color: c.textFaint }]}>
+                    <Text
+                      style={[styles.scoreLabel, { color: c.textFaint }]}
+                      numberOfLines={1}
+                      ellipsizeMode="tail"
+                    >
                       🚩 {scoreFor.competition.opponentName || "Away"}
                     </Text>
                     <TextInput
@@ -647,12 +723,12 @@ export default function OwnerBookings() {
                       keyboardType="numeric"
                       placeholder="—"
                       placeholderTextColor={c.textFaint}
-                      style={[styles.scoreInput, { backgroundColor: isDark ? "#0F172A" : "#F8FAFC", color: c.text, borderColor: c.border }]}
+                      style={[styles.scoreInput, { backgroundColor: c.inset, color: c.text, borderColor: c.border }]}
                     />
                   </View>
                 </View>
-                <View style={[styles.scoreHint, { backgroundColor: "rgba(99,102,241,0.10)" }]}>
-                  <Text style={styles.scoreHintText}>
+                <View style={[styles.scoreHint, { backgroundColor: c.infoBg, borderColor: c.infoBorder }]}>
+                  <Text style={[styles.scoreHintText, { color: c.infoText }]}>
                     Both squads&apos; profiles update the moment you save
                     {scoreFor.competition.leagueName ? ", and the league table follows" : ""}.
                     Wrong score? Reopen this and fix it — clearing both boxes puts it back to
@@ -660,8 +736,13 @@ export default function OwnerBookings() {
                   </Text>
                 </View>
                 {scoreError ? (
-                  <View style={[styles.scoreHint, { backgroundColor: "rgba(239,68,68,0.10)" }]}>
-                    <Text style={[styles.scoreHintText, { color: "#DC2626" }]}>{scoreError}</Text>
+                  <View
+                    style={[
+                      styles.scoreHint,
+                      { backgroundColor: c.dangerBg, borderColor: c.dangerBorder },
+                    ]}
+                  >
+                    <Text style={[styles.scoreHintText, { color: c.dangerText }]}>{scoreError}</Text>
                   </View>
                 ) : null}
                 <View style={styles.modalActions}>
@@ -676,7 +757,8 @@ export default function OwnerBookings() {
                     disabled={savingScore || scoreLocked}
                     style={[styles.modalBtn, styles.modalBtnPrimary, { opacity: savingScore || scoreLocked ? 0.5 : 1 }]}
                   >
-                    <Text style={[styles.modalBtnText, { color: "#FFFFFF" }]}>                      {savingScore ? "Saving…" : scoreLocked ? "Score locked" : "Save result"}
+                    <Text style={[styles.modalBtnText, { color: "#FFFFFF" }]}>
+                      {savingScore ? "Saving…" : scoreLocked ? "Score locked" : "Save result"}
                     </Text>
                   </Pressable>
                 </View>
@@ -753,8 +835,6 @@ const styles = StyleSheet.create({
   colSlot: { flexBasis: 110, minWidth: 100, gap: 2 },
   colAmount: { flexBasis: 90, minWidth: 80, gap: 2 },
   cancellationActions: { flexDirection: "row", flexWrap: "wrap", gap: space[1.5] },
-  cancelMoneyBtn: { borderRadius: radius.full, paddingHorizontal: space[2], paddingVertical: space[1.5] },
-  cancelMoneyBtnText: { color: "#FFFFFF", fontSize: 10, fontWeight: "900" },
   colPay: { flexBasis: 110, minWidth: 100, gap: 4, alignItems: "flex-start" },
   colStatus: { minWidth: 80 },
   colActions: {
@@ -765,6 +845,31 @@ const styles = StyleSheet.create({
     minWidth: 140,
     justifyContent: "flex-end",
   },
+  /* Stacked on a phone, the buttons read as a left-aligned list under the card. */
+  colActionsNarrow: { justifyContent: "flex-start" },
+  /* One shape for every desk action: label first, colour for meaning only. */
+  actionBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 5,
+    borderRadius: radius.full,
+    borderWidth: 1,
+    paddingHorizontal: space[3],
+    paddingVertical: space[1.5],
+    minHeight: 34,
+    flexShrink: 1,
+    maxWidth: "100%",
+  },
+  actionPrimary: { backgroundColor: colors.emerald600, borderColor: colors.emerald600 },
+  actionInfo: { backgroundColor: "#4F46E5", borderColor: "#4F46E5" },
+  actionDanger: {
+    backgroundColor: "transparent",
+    borderColor: "rgba(220,38,38,0.45)",
+  },
+  actionMoney: { backgroundColor: "rgba(245,158,11,0.15)", borderColor: "rgba(245,158,11,0.35)" },
+  actionReceipt: { backgroundColor: "rgba(14,165,233,0.12)", borderColor: "rgba(14,165,233,0.3)" },
+  actionText: { fontSize: 11, fontWeight: "900", flexShrink: 1 },
   mono: { fontFamily: "monospace", fontSize: fontSize.xs, fontWeight: "700" },
   bold: { fontSize: fontSize.sm, fontWeight: "800" },
   meta: { fontSize: fontSize.xs, fontWeight: "600" },
@@ -781,13 +886,7 @@ const styles = StyleSheet.create({
   chipText: { fontSize: 10, fontWeight: "900" },
   strike: { fontSize: 10, textDecorationLine: "line-through", fontWeight: "700" },
   amount: { fontSize: fontSize.base, fontWeight: "900" },
-  iconAction: {
-    width: 32,
-    height: 32,
-    borderRadius: radius.full,
-    alignItems: "center",
-    justifyContent: "center",
-  },
+
   modalBackdrop: {
     flex: 1,
     backgroundColor: "rgba(15,23,42,0.55)",
@@ -797,17 +896,26 @@ const styles = StyleSheet.create({
   },
   scoreCard: {
     width: "100%",
-    maxWidth: 380,
+    maxWidth: 420,
     borderRadius: radius["2xl"],
     borderWidth: 1,
-    padding: space[6],
+    padding: space[5],
     gap: space[3],
   },
   modalTitle: { fontSize: fontSize.lg, fontWeight: "900", flex: 1 },
   modalSub: { fontSize: fontSize.xs, fontWeight: "600", lineHeight: 17 },
-  scoreRow: { flexDirection: "row", gap: space[3], marginTop: space[1] },
-  scoreField: { flex: 1 },
-  scoreLabel: { fontSize: 10, fontWeight: "900", textTransform: "uppercase", letterSpacing: 0.8, marginBottom: space[1.5] },
+  /* Both halves are the same width whatever the squad names are, with the dash
+     centred between them — the columns used to drift apart on longer names. */
+  scoreRow: { flexDirection: "row", alignItems: "flex-end", gap: space[2], marginTop: space[1] },
+  scoreField: { flex: 1, flexBasis: 0, minWidth: 0 },
+  scoreLabel: {
+    fontSize: 10,
+    fontWeight: "900",
+    textTransform: "uppercase",
+    letterSpacing: 0.8,
+    marginBottom: space[1.5],
+  },
+  scoreVersus: { fontSize: fontSize.lg, fontWeight: "900", paddingBottom: space[4] },
   scoreInput: {
     borderWidth: 1,
     borderRadius: radius.xl,
@@ -823,12 +931,13 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: space[2],
     borderRadius: radius.xl,
+    borderWidth: 1,
     paddingHorizontal: space[3],
     paddingVertical: space[2.5],
   },
   scoreLockText: { flex: 1, fontSize: 11, fontWeight: "800", lineHeight: 16 },
-  scoreHint: { borderRadius: radius.xl, padding: space[3] },
-  scoreHintText: { fontSize: 11, fontWeight: "600", lineHeight: 16, color: "#4338CA" },
+  scoreHint: { borderRadius: radius.xl, borderWidth: 1, padding: space[3] },
+  scoreHintText: { fontSize: 11, fontWeight: "600", lineHeight: 16 },
   modalActions: { flexDirection: "row", gap: space[2], marginTop: space[1] },
   modalBtn: {
     flex: 1,

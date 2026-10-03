@@ -18,6 +18,10 @@ import { space } from "@/theme";
 export default function AdminLayout() {
   const { colors: c, setStudio } = useTheme();
   const { lg } = useBreakpoints();
+  // Below `lg` the rail collapses into a tab bar and each screen keeps the phone
+  // padding it was designed with; from `lg` up the workspace becomes a centred
+  // card column, aligned with the brand bar's own gutter.
+  const gutter = space[6];
 
   useEffect(() => {
     setStudio(true);
@@ -28,7 +32,14 @@ export default function AdminLayout() {
     <OwnerGuard>
       <View style={[styles.flex, { backgroundColor: c.bg }]}>
         <OwnerHeader />
-        <View style={[styles.body, lg ? styles.bodyWide : null]}>
+        <View
+          style={[
+            styles.body,
+            lg
+              ? [styles.bodyWide, { paddingHorizontal: gutter, gap: gutter }]
+              : null,
+          ]}
+        >
           {lg ? <OwnerSidebar /> : null}
           <View style={[styles.content, { backgroundColor: c.bg }]}>
             <Tabs
@@ -78,8 +89,8 @@ const styles = StyleSheet.create({
   body: { flex: 1 },
   bodyWide: {
     flexDirection: "row",
-    gap: space[6],
-    paddingHorizontal: space[6],
+    alignSelf: "center",
+    width: "100%",
     paddingVertical: space[6],
   },
   content: { flex: 1, minWidth: 0 },

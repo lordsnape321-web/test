@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Models\Notification;
+use App\Services\Notifier;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -22,6 +23,8 @@ class NotificationController extends ApiController
         'match_join',
         'free_play',
         'review',
+        // Written by App\Support\GameReminders when a game is about to start.
+        'game_reminder',
     ];
 
     /** GET /api/notifications?userId= — the last hundred, newest first. */
@@ -45,7 +48,15 @@ class NotificationController extends ApiController
             ->header('Cache-Control', 'no-store, no-cache, must-revalidate');
     }
 
-    /** POST /api/notifications — push one in (used by the client for local alerts). */
+    /**
+     * POST /api/notifications — push one in (used by tests and by any client that
+     * needs to raise an alert on someone's behalf).
+     *
+     * Goes through `Notifier` rather than writing the row here, so a booking type
+     * posted through this route behaves exactly like one raised by the booking
+     * code: the bell gets the row and the account's inbox gets the email (subject
+     * to their settings).
+     */
     public function store(Request $request): JsonResponse
     {
         $userId = (int) $request->input('userId', 0);
@@ -65,16 +76,15 @@ class NotificationController extends ApiController
             return $this->fail('Invalid notification type 🔔', 400);
         }
 
-        $row = Notification::create([
-            'user_id' => $userId,
+        $row = Notifier::send([
+            'userId' => $userId,
             'type' => $type,
-            'title' => mb_substr($title, 0, 200),
+            'title' => $title,
             'message' => mb_substr((string) $request->input('message', ''), 0, 1000),
             'link' => mb_substr((string) $request->input('link', ''), 0, 300),
-            'is_read' => false,
         ]);
 
-        return $this->ok(['notification' => $row->toArray()], 201);
+        return $this->ok(['notification' => $row?->toArray()], 201);
     }
 
     /** PATCH /api/notifications/{id} — mark read (or unread). */

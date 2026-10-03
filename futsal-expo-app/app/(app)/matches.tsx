@@ -257,12 +257,7 @@ export default function MatchesScreen() {
         ref={scrollRef}
         contentContainerStyle={[
           styles.content,
-          {
-            paddingHorizontal: bp.gutter,
-            maxWidth: bp.contentMax,
-            width: "100%",
-            alignSelf: "center",
-          },
+          { paddingHorizontal: bp.gutter, width: "100%" },
         ]}
       >
         {/* Header */}
@@ -653,7 +648,7 @@ function OpenMatchCard({
           {queue.map((r) => (
             <View key={r.id} style={[styles.queueRow, { borderColor: c.border }]}>
               <Avatar
-                user={{ name: r.name, avatarColor: r.avatarColor, avatarUrl: r.avatarUrl }}
+                user={{ name: r.name ?? "", avatarColor: r.avatarColor, avatarUrl: r.avatarUrl }}
                 size={32}
               />
               <View style={styles.grow}>
@@ -1785,7 +1780,7 @@ const styles = StyleSheet.create({
   tick: { width: 24, height: 24, borderRadius: 12, borderWidth: 2, alignItems: "center", justifyContent: "center" },
 
   /* modal */
-  modalBackdrop: { flex: 1, backgroundColor: "rgba(28,25,23,0.5)", justifyContent: "flex-end" },
+  modalBackdrop: { flex: 1, justifyContent: "flex-end" },
   modalSheet: {
     borderTopLeftRadius: 32,
     borderTopRightRadius: 32,

@@ -30,6 +30,7 @@ export function ImagePicker({
 }: {
   value: string;
   onChange: (url: string) => void;
+  /** The heading above the picker. Pass "" when the form prints its own. */
   label?: string;
 }) {
   const { colors: c } = useTheme();
@@ -72,7 +73,9 @@ export function ImagePicker({
 
   return (
     <View>
-      <Text style={[styles.label, { color: c.textFaint }]}>{label}</Text>
+      {/* A form that already has a FieldLabel for this passes an empty one, so
+          the heading is printed once instead of twice. */}
+      {label ? <Text style={[styles.label, { color: c.textFaint }]}>{label}</Text> : null}
       {value ? (
         <View style={[styles.previewWrap, { borderColor: c.border }]}>
           <Image source={{ uri: value }} style={styles.preview} resizeMode="cover" />

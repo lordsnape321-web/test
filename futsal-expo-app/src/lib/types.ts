@@ -31,6 +31,20 @@ export type Court = {
   imageUrl?: string | null;
   isActive?: boolean;
   deletedAt?: string | null;
+  /** "HH:MM" 24-hour. Null/absent means the court follows the venue's hours. */
+  opensAt?: string | null;
+  closesAt?: string | null;
+  /** Weekday overrides; a weekday with no row uses the court's usual hours. */
+  dayHours?: CourtDayHours[] | null;
+};
+
+/** One weekday's hours for one court (0 = Sunday … 6 = Saturday). */
+export type CourtDayHours = {
+  id?: number;
+  courtId?: number;
+  dayOfWeek: number;
+  opensAt: string;
+  closesAt: string;
 };
 
 export type Venue = {
@@ -43,6 +57,8 @@ export type Venue = {
   imageUrl?: string | null;
   openingHour: number;
   closingHour: number;
+  /** Google Maps link the owner pasted; empty falls back to a search on the address. */
+  locationUrl?: string | null;
   rating: number;
   totalReviews: number;
   isFeatured?: boolean;
@@ -80,6 +96,13 @@ export type User = {
   matchesPlayed?: number;
   rating?: number;
   trustScore?: number;
+  /** Email switches (Settings → Alerts → Email). */
+  emailNotifications?: boolean;
+  emailReminders?: boolean;
+  /** …and a buzz on the phones this account is signed in on. */
+  pushNotifications?: boolean;
+  /** Minutes before kick-off the reminder lands. */
+  reminderMinutes?: number;
 };
 
 export type BookingStatus = "pending" | "confirmed" | "cancelled" | "completed" | "rejected";
@@ -202,7 +225,7 @@ export type Booking = {
   competition?: BookingCompetition | null;
   playerStats?: import("./loyalty").PlayerStats;
   /** Nested by the API so a booking list can render without extra requests. */
-  venue?: Pick<Venue, "id" | "name" | "address" | "city" | "imageUrl" | "phone"> | null;
+  venue?: Pick<Venue, "id" | "name" | "address" | "city" | "imageUrl" | "phone" | "locationUrl"> | null;
   court?: Pick<Court, "id" | "name" | "pricePerHour" | "surface" | "format"> | null;
   user?: Pick<User, "id" | "name" | "email" | "phone"> | null;
 };
@@ -360,6 +383,9 @@ export type LedgerTeamPayment = {
  */
 export type TeamLedgerEntry = {
   id: number;
+  source?: "captain" | "venue" | "share" | "open_spot";
+  canVoid?: boolean;
+  voidedAt?: string | null;
   userId: number;
   userName: string;
   amount: number;
@@ -375,6 +401,8 @@ export type TeamLedgerEntry = {
  */
 export type TeamLedgerMember = {
   shareId: number;
+  shareOutstanding?: number;
+  openSpots?: { matchId: number; joinId: number; status: string; position: string }[];
   userId: number;
   userName: string;
   userAvatarColor: string;
@@ -392,6 +420,12 @@ export type TeamLedgerMember = {
    */
   status: "none" | "pending" | "partial" | "paid" | string;
   declaredMethod: string;
+  /** Money this player sent to the venue themselves. */
+  venuePaid?: number;
+  /** Money this player handed to the organizer. */
+  reimbursed?: number;
+  /** Still to reimburse the organizer, however the venue bill was settled. */
+  reimbursementOutstanding?: number;
   entries: TeamLedgerEntry[];
 };
 
@@ -403,7 +437,9 @@ export type TeamLedger = {
   isCaptain: boolean;
   actorId: number;
   members: TeamLedgerMember[];
-  totals: { due: number; collected: number; outstanding: number };
+  organizer?: { outOfPocket: number; reimbursed: number; reimbursable: number } | null;
+  guests?: { id: number; playerName: string; amount: number; method: string; note: string; voidedAt: string | null; recordedByName: string; createdAt: string | null }[];
+  totals: { due: number; collected: number; outstanding: number; guestCollected?: number };
 };
 
 export type Ledger = {

@@ -13,6 +13,10 @@ namespace App\Support;
  *
  * New passwords are written with the same function for the same reason — the
  * column holds one format, and login only has to try one.
+ *
+ * The salt below still spells the app's old name on purpose. It is credential
+ * material, not branding: every stored hash was derived with it, so renaming
+ * the app must leave it exactly where it is or every player is locked out.
  */
 class LegacyPassword
 {

@@ -19,7 +19,9 @@ use App\Models\Voucher;
 use App\Services\BookingPresenter;
 use App\Services\Notifier;
 use App\Support\AdvancePayment;
+use App\Support\BookingLedger;
 use App\Support\Futsal;
+use App\Support\League;
 use App\Support\Loyalty;
 use App\Support\OpenGames;
 use App\Support\PromoStore;
@@ -36,6 +38,9 @@ use Illuminate\Support\Facades\DB;
 class BookingController extends ApiController
 {
     private const PAY_METHODS = ['eSewa', 'Khalti', 'Cash at Venue', 'Free Play 🎁'];
+
+    /** For hour messages: court_day_hours is 0 = Sunday, like JavaScript. */
+    private const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
     private const LEVELS = ['All Levels', 'Beginner', 'Intermediate', 'Advanced'];
 
@@ -176,7 +181,7 @@ class BookingController extends ApiController
 
         $booker = User::find($userId);
         $bookerTrust = (int) ($booker->trust_score ?? Loyalty::TRUST_START);
-        $myHistory = Booking::where('user_id', $userId)->get(['status', 'created_at'])->toArray();
+        $myHistory = Booking::where('user_id', $userId)->get(Loyalty::HISTORY_COLUMNS)->toArray();
         $stats = Loyalty::playerRating($myHistory, now(), $bookerTrust);
 
         if ($stats['blocked']) {
@@ -301,6 +306,13 @@ class BookingController extends ApiController
         }
 
         $hourNum = (int) explode(':', $startTime)[0];
+        // A pitch can keep its own window (defaults to the venue's). Booking a
+        // slot the court is shut for used to be accepted and then cancelled by
+        // the owner; refusing it here is kinder than a rejected request.
+        if ($hoursError = $this->courtHoursError($court, $date, $startTime, $endTime)) {
+            return $this->fail($hoursError, 400);
+        }
+
         $rate = $hourNum < 12 ? (int) $court->price_morning : (int) $court->price_per_hour;
 
         $venue = Venue::find($court->venue_id);
@@ -911,6 +923,10 @@ class BookingController extends ApiController
 
         $cancellationReceived = $closing ? $this->receivedForBooking((int) $id, (int) $prev['total_price']) : 0;
 
+        if ($team = $this->handleTeamSelection($booking, $prev, $request)) {
+            return $team;
+        }
+
         $changes = [];
 
         if ($request->filled('status')) {
@@ -975,15 +991,27 @@ class BookingController extends ApiController
                 $this->checkLoyalty((int) $next->user_id, (int) $venue->id, (string) $venue->name);
             }
 
-            $trust = $this->adjustTrust((int) $next->user_id, 'complete');
+            // Paid-up play is worth the full boost; play with the bill still
+            // open earns part of it now and the rest when the bill settles
+            // (Booking::booted), so the message says which one happened.
+            $settled = Loyalty::bookingSettled($next->toArray());
+            $trust = $this->adjustTrust((int) $next->user_id, 'complete', $settled);
             $label = $trust ? Loyalty::trustLabel($trust['after']) : null;
+
+            $trustLine = '';
+
+            if ($trust) {
+                $gain = (int) $trust['after'] - (int) $trust['before'];
+                $trustLine = " Trust {$trust['before']} → {$trust['after']} (+{$gain}) {$label['emoji']} — ".
+                    ($settled ? 'keep showing up! 💪' : 'settle the balance and the rest lands automatically 💸');
+            }
 
             Notifier::notify(
                 (int) $next->user_id,
                 'info',
                 "🎉 Hope you had a blast at {$where}!",
                 'How was your game? Drop a quick review with stars + a message — it helps the venue and other players! ⭐'
-                .($trust ? " Trust {$trust['before']} → {$trust['after']} (+".Loyalty::TRUST_COMPLETE_BOOST.") {$label['emoji']} — keep showing up! 💪" : ''),
+                .$trustLine,
                 '/bookings?focus=' . $booking->id
             );
         }
@@ -1272,9 +1300,13 @@ class BookingController extends ApiController
     /**
      * Move a player's trust score after they complete or cancel a game.
      *
+     * `$paidUp` only matters for a completion: showing up is worth less when the
+     * venue is still out of pocket, and the difference is handed back by the
+     * Booking model the moment that bill is settled.
+     *
      * @return array{before: int, after: int}|null
      */
-    private function adjustTrust(int $userId, string $kind): ?array
+    private function adjustTrust(int $userId, string $kind, bool $paidUp = true): ?array
     {
         $user = User::find($userId);
 
@@ -1283,7 +1315,11 @@ class BookingController extends ApiController
         }
 
         $before = (int) ($user->trust_score ?? Loyalty::TRUST_START);
-        $after = $kind === 'complete' ? Loyalty::trustAfterComplete($before) : Loyalty::trustAfterCancel($before);
+        $after = match ($kind) {
+            'paid' => Loyalty::trustAfterPaid($before),
+            'cancel' => Loyalty::trustAfterCancel($before),
+            default => Loyalty::trustAfterComplete($before, $paidUp),
+        };
 
         $user->forceFill(['trust_score' => $after])->save();
 
@@ -1485,6 +1521,177 @@ class BookingController extends ApiController
      * recorded as an audit trail. It does not call a gateway refund: "mark
      * refunded" means the owner has actually sent the money back.
      */
+    /**
+     * Add or change the squad on an existing booking.
+     *
+     * Forgetting to pick a team at checkout used to be final: the booking stayed
+     * "just us" for good, so the squad split, the ledger and every teammate
+     * request were unavailable. The player can now attach one of their teams
+     * from the Upcoming list (or the booking's own detail screen), and the cost
+     * is split across the roster exactly as it would have been at checkout.
+     *
+     * Refused once money is on the shares: re-splitting after collections would
+     * silently rewrite who owes what.
+     */
+    /**
+     * Is this block inside the court's opening hours?
+     *
+     * The window is the one that applies to the day being booked: a weekday
+     * override if the owner set one for that court, otherwise the court's own
+     * hours, otherwise the venue's. A venue that never set any court hours keeps
+     * exactly the behaviour it had before.
+     */
+    private function courtHoursError(Court $court, string $date, string $startTime, string $endTime): ?string
+    {
+        $venue = Venue::find($court->venue_id);
+        $day = self::weekdayOf($date);
+        $override = $court->dayHours()->where('day_of_week', $day)->first();
+
+        $opensAt = $override?->opens_at ?: ($court->opens_at ?: sprintf('%02d:00', (int) ($venue->opening_hour ?? 6)));
+        $closesAt = $override?->closes_at ?: ($court->closes_at ?: sprintf('%02d:00', (int) ($venue->closing_hour ?? 22)));
+
+        $open = Validation::toMinutes($opensAt);
+        $close = Validation::toMinutes($closesAt);
+        $start = Validation::toMinutes($startTime);
+        $end = Validation::toMinutes($endTime);
+
+        // A block ending at or before it starts crosses midnight: futsal slots
+        // do not run past closing, so treat it as outside.
+        if ($end <= $start || $start < $open || $end > $close) {
+            $when = $override ? ' on '.self::DAY_NAMES[$day].'s' : '';
+
+            return 'This court is open '.$opensAt.'–'.$closesAt.$when.' — pick a slot inside those hours ⏰';
+        }
+
+        return null;
+    }
+
+    /** 0 = Sunday … 6 = Saturday, the convention the app and court_day_hours use. */
+    private static function weekdayOf(string $date): int
+    {
+        $ts = strtotime($date);
+
+        return $ts === false ? (int) date('w') : (int) date('w', $ts);
+    }
+
+    private function handleTeamSelection(Booking $booking, array $prev, Request $request): ?JsonResponse
+    {
+        if (! $request->has('teamId')) {
+            return null;
+        }
+
+        $actorId = (int) $request->input('actorId', 0);
+
+        if ($request->input('actor') !== 'player' || $actorId !== (int) $prev['user_id']) {
+            return $this->fail('Only the player who made this booking can choose its team 🔒', 403);
+        }
+
+        if (in_array((string) $prev['status'], ['cancelled', 'rejected', 'completed'], true)) {
+            return $this->fail('This booking is closed, so its team cannot change 🔒', 409);
+        }
+
+        $wanted = (int) $request->input('teamId', 0);
+
+        if ($wanted <= 0) {
+            return $this->fail('Pick one of your teams 👥', 400);
+        }
+
+        $team = TeamStore::findTeamForUser($wanted, $actorId);
+
+        if (! $team) {
+            return $this->fail('That isn’t one of your teams — pick another 🛡️', 400);
+        }
+
+        if ((int) $prev['team_id'] === (int) $team['id']) {
+            return null;
+        }
+
+        $collected = (int) BookingTeamPayment::where('booking_id', $booking->id)->sum('paid_amount');
+
+        if ((int) $prev['team_id'] > 0 && $collected > 0) {
+            return $this->fail('Squad payments have already been recorded here, so the team can’t be swapped 💰', 409);
+        }
+
+        $rows = $this->splitTeamCost($booking, (int) $team['id'], $actorId, (string) ($prev['payment_method'] ?? ''));
+        $booking->forceFill(['team_id' => (int) $team['id'], 'team_name' => (string) $team['name']])->save();
+
+        $when = Futsal::prettyDate($booking->date).' at '.Futsal::formatTime12($booking->start_time);
+        $actor = User::find($actorId);
+
+        foreach ($rows as $row) {
+            if ((int) $row->user_id === $actorId) {
+                continue;
+            }
+
+            Notifier::notify(
+                (int) $row->user_id,
+                'payment',
+                '👥 Added to a booking — '.$team['name'],
+                ($actor->name ?? 'Your captain').' added you to '.$team['name'].' for '.$when
+                    .'. Your share is '.Futsal::formatNPR((int) $row->amount_due)
+                    .' — choose eSewa, Khalti, or cash from My Bookings. Their own contribution is added to this booking’s ledger.',
+                '/bookings?focus=' . $booking->id
+            );
+        }
+
+        return null;
+    }
+
+    /**
+     * Split a booking's price across a squad, preserving already-paid receipts.
+     *
+     * The money a player has already sent the venue is attributed to their new
+     * share rather than being shown as unpaid, and anyone dropped from the
+     * roster keeps their history: only rows without payments are removed.
+     *
+     * @return list<BookingTeamPayment>
+     */
+    private function splitTeamCost(Booking $booking, int $teamId, int $payerId, string $payMethod): array
+    {
+        $memberIds = array_values(array_unique(array_merge(
+            array_map('intval', TeamMember::where('team_id', $teamId)->pluck('user_id')->all()),
+            [$payerId]
+        )));
+
+        $existing = BookingTeamPayment::where('booking_id', $booking->id)->get()->keyBy('user_id');
+
+        BookingTeamPayment::where('booking_id', $booking->id)
+            ->whereNotIn('user_id', $memberIds)
+            ->where('paid_amount', 0)
+            ->delete();
+
+        $total = max(0, (int) $booking->total_price);
+        $count = count($memberIds);
+        $base = $count > 0 ? intdiv($total, $count) : $total;
+        $remainder = max(0, $total - $base * $count);
+        $rows = [];
+
+        foreach ($memberIds as $memberId) {
+            $due = $base + ($remainder-- > 0 ? 1 : 0);
+            $receipts = (int) BookingPayment::where('booking_id', $booking->id)
+                ->where('recorded_by', $memberId)->whereNull('voided_at')->sum('amount');
+            $paid = min($due, $receipts);
+            $row = $existing->get($memberId);
+
+            $rows[] = BookingTeamPayment::updateOrCreate(
+                ['booking_id' => $booking->id, 'user_id' => $memberId],
+                [
+                    'team_id' => $teamId,
+                    'amount_due' => $due,
+                    'payment_method' => $memberId === $payerId
+                        ? ($payMethod !== '' ? $payMethod : ($row->payment_method ?? ''))
+                        : ($row->payment_method ?? ''),
+                    'paid_amount' => $paid,
+                    'payment_status' => $due === 0 || $paid >= $due ? 'paid' : ($paid > 0 ? 'partial' : 'pending'),
+                ]
+            );
+        }
+
+        BookingLedger::syncCachedState($booking);
+
+        return $rows;
+    }
+
     private function handleCancellationMoney(Booking $booking, array $prev, Request $request, string $actor): ?JsonResponse
     {
         if (! $request->has('cancellationMoney')) {

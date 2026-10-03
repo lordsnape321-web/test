@@ -24,6 +24,38 @@ export const STORAGE_KEYS = {
   session: "futsal.session.userId",
   // Keep the theme key stable across native and Expo web builds.
   theme: "futsal-theme",
+  /**
+   * The payment checkout waiting on a gateway, if any.
+   *
+   * Outlives the app on purpose: a player leaves for eSewa or Khalti, and the
+   * return may reload the app or open it from scratch. Without this, a payment
+   * in flight left no trace and the screens looked untouched.
+   */
+  pendingCheckout: "futsal.pending-checkout",
+  /**
+   * Whether checkouts run the built-in demo replica instead of a gateway.
+   *
+   * The real test servers are still the default; this is for demonstrating the
+   * app (or working offline) without either of them being reachable from where
+   * the demo is happening.
+   */
+  demoPayments: "futsal.demo-payments",
+  /**
+   * Backend origin typed on the device, if any.
+   *
+   * A dev build derives the API from the Metro server it was loaded from, and a
+   * browser uses its own origin — but an installed APK has neither, so its
+   * backend address has to come from somewhere the person holding the phone can
+   * change without a rebuild. See `apiBase()` in `src/lib/api.ts`.
+   */
+  apiBase: "futsal.api-base",
+  /**
+   * This phone's Expo push token, once it has one.
+   *
+   * Kept so signing out can tell the server which handset to forget — the app
+   * cannot ask Expo for the token again after the account is gone.
+   */
+  pushToken: "futsal.push-token",
 } as const;
 
 const HYDRATE = Object.values(STORAGE_KEYS);

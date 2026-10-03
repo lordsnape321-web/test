@@ -43,7 +43,7 @@ class PlayerController extends ApiController
         // Reliability is derived the same way the player's own profile computes
         // it, so a captain and an applicant are never looking at different
         // numbers.
-        $history = Booking::where('user_id', $userId)->get(['status', 'created_at'])->toArray();
+        $history = Booking::where('user_id', $userId)->get(Loyalty::HISTORY_COLUMNS)->toArray();
         $stats = Loyalty::playerRating($history, now(), (int) ($found->trust_score ?? Loyalty::TRUST_START));
 
         $teams = TeamStore::teamsForUser($userId);

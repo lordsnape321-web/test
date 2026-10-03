@@ -20,6 +20,7 @@ import { useAuth } from "@/context/AuthContext";
 import { useTheme } from "@/context/ThemeContext";
 import { useBreakpoints } from "@/lib/responsive";
 import { fetchBookings, fetchNotifications, fetchVenues } from "@/api";
+import { announceNewNotifications } from "@/lib/push";
 import { colors, fontSize, radius, space } from "@/theme";
 
 /**
@@ -104,6 +105,9 @@ function useOwnerBadges(userId: number | undefined) {
         list.filter((b) => b.status === "pending" && b.venue && mine.has(b.venue.id)).length,
       );
       setUnread(notes.filter((n) => !n.isRead).length);
+      // Owners are the people most likely to be waiting on a booking request;
+      // a new one earns a real banner while the app is open.
+      void announceNewNotifications(notes);
     } catch {
       /* badges are best-effort */
     }
@@ -151,11 +155,18 @@ export function OwnerHeader() {
           {
             backgroundColor: c.header,
             borderColor: c.border,
-            paddingHorizontal: sm ? space[6] : space[4],
             paddingTop: insets.top + space[2.5],
           },
         ]}
       >
+        {/* Capped like the workspace below it, so the brand lines up with the
+            cards on a wide screen instead of hugging the window edge. */}
+        <View
+          style={[
+            styles.headerInner,
+            { paddingHorizontal: sm ? space[6] : space[4] },
+          ]}
+        >
         {!lg ? (
           <Pressable
             onPress={() => setDrawerOpen(true)}
@@ -170,14 +181,14 @@ export function OwnerHeader() {
           onPress={() => router.push("/admin")}
           style={styles.brand}
           accessibilityRole="button"
-          accessibilityLabel="FutsalNepal Studio home"
+          accessibilityLabel="Futsal Mate Studio home"
         >
           <View style={styles.brandIcon}>
             <Trophy size={18} color={colors.amber400} strokeWidth={2.5} />
           </View>
           <View style={styles.brandCopy}>
             <Text style={[styles.brandTitle, { color: c.text }]} numberOfLines={1}>
-              FutsalNepal <Text style={{ color: colors.orange500 }}>Studio</Text>
+              Futsal Mate <Text style={{ color: colors.orange500 }}>Studio</Text>
             </Text>
             <Text style={[styles.brandSub, { color: c.textFaint }]} numberOfLines={1}>
               Owner Console
@@ -235,6 +246,7 @@ export function OwnerHeader() {
               <LogOut size={16} color={c.textMuted} />
             </Pressable>
           ) : null}
+          </View>
         </View>
       </View>
 
@@ -560,13 +572,14 @@ export function OwnerTabBar({
 
 const styles = StyleSheet.create({
   header: {
+    borderBottomWidth: 1,
+  },
+  headerInner: {
     flexDirection: "row",
     alignItems: "center",
     gap: space[3],
-    paddingHorizontal: space[4],
     paddingVertical: space[2.5],
-    borderBottomWidth: 1,
-    paddingTop: space[6],
+    width: "100%",
   },
   brand: { flexDirection: "row", alignItems: "center", gap: space[2.5], minWidth: 0, flexShrink: 1 },
   brandCopy: { minWidth: 0, flexShrink: 1 },

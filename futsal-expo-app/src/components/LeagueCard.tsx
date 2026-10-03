@@ -12,6 +12,7 @@ import {
 } from "lucide-react-native";
 import React from "react";
 import { Image, Pressable, StyleSheet, Text, View } from "react-native";
+import { CARD_IMAGE_WIDTH, sizedImage } from "@/lib/images";
 import { LinearGradient } from "expo-linear-gradient";
 import { useTheme } from "@/context/ThemeContext";
 import {
@@ -75,7 +76,7 @@ export function LeagueCard({
     >
       <View style={styles.banner}>
         {league.bannerUrl ? (
-          <Image source={{ uri: league.bannerUrl }} style={styles.bannerImg} resizeMode="cover" />
+          <Image source={{ uri: sizedImage(league.bannerUrl, CARD_IMAGE_WIDTH) }} style={styles.bannerImg} resizeMode="cover" />
         ) : (
           <LinearGradient
             colors={["#059669", "#047857", "#0C0A09"]}

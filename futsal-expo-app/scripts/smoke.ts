@@ -19,6 +19,7 @@ import {
   fetchCourts,
   fetchLedger,
   fetchVenues,
+  requestSignupCode,
   signup,
   verifyEsewa,
 } from "@/api";
@@ -45,12 +46,26 @@ async function main() {
 
   console.log("\n=== Expo booking/payment smoke test ===\n");
 
-  // 1. Sign up a fresh player.
+  // 1. Sign up a fresh player. Signup is two steps now: ask for the code, then
+  //    create the account with it. The code is emailed, so this only works
+  //    against a backend that can send mail — with the `log` driver the code is
+  //    written to storage/logs/laravel.log and has to be read from there.
+  const asked = await requestSignupCode({ email, name: "Smoke Tester" });
+  check("signup code requested", asked?.ok === true, `expiresIn=${asked?.expiresIn}`);
+
+  const code = process.env.SIGNUP_CODE ?? "";
+  check(
+    "SIGNUP_CODE is set (the emailed code)",
+    /^\d{6}$/.test(code),
+    code ? "ok" : "set SIGNUP_CODE=123456 when running npm run smoke",
+  );
+
   const { user } = await signup({
     name: "Smoke Tester",
     email,
     phone,
     password: "password123",
+    code,
     level: "Intermediate",
     position: "All-rounder",
   });
@@ -113,8 +128,10 @@ async function main() {
   check("ledger balance = owed before payment", before.totals.balance === before.totals.owed);
   check("ledger not settled yet", before.window.settled === false);
 
-  // 8. Pay via eSewa (sandbox mockApprove).
-  const payResult = await verifyEsewa(booking.id, true);
+  // 8. Pay via eSewa. The smoke test drives the server contract directly, so it
+  //    uses the simulator branch (mockApprove) rather than opening a browser at
+  //    the real test server — the signature path is covered by the gateway probe.
+  const payResult = await verifyEsewa({ bookingId: booking.id, mockApprove: true });
   check("eSewa verify succeeded", payResult?.ok !== false, JSON.stringify(payResult).slice(0, 80));
 
   // 9. Re-read booking + ledger; assert the money moved.

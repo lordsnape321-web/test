@@ -3,17 +3,21 @@
 namespace App\Http\Controllers\Api;
 
 use App\Models\Booking;
+use App\Models\BookingPayment;
 use App\Models\BookingPaymentRequest;
 use App\Models\BookingTeamPayment;
 use App\Models\Court;
 use App\Models\Venue;
+use App\Services\LeagueEntry;
 use App\Services\Notifier;
 use App\Support\AdvancePayment;
+use App\Support\BookingLedger;
 use App\Support\Futsal;
 use App\Support\LedgerRecord;
 use App\Support\Payments;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 /**
  * eSewa test gateway — `POST /api/payments/esewa/{initiate,verify}`.
@@ -105,14 +109,14 @@ class EsewaController extends ApiController
         $payingDeposit = ! $teamPayment && ! $paymentRequest && ! $payingAdvance
             && (bool) $booking->deposit_required && $booking->deposit_status !== 'paid';
 
-        if (! $teamPayment && ! $paymentRequest && $booking->payment_status === 'paid') {
+        if (! $teamPayment && ! $paymentRequest && $booking->payment_status === 'paid' && ! $payingAdvance) {
             return $this->fail('Already paid ✅', 400, ['booking' => $booking->toArray()]);
         }
 
         $amount = match (true) {
-            (bool) $paymentRequest => (int) ($paymentRequest->amount_due ?? 0),
-            (bool) $teamPayment => (int) ($teamPayment->amount_due ?? 0),
-            $payingAdvance => (int) ($booking->advance_payment_amount ?? 0),
+            (bool) $paymentRequest => AdvancePayment::requestAmount($booking, $paymentRequest),
+            (bool) $teamPayment => max(0, (int) $teamPayment->amount_due - (int) $teamPayment->paid_amount),
+            $payingAdvance => AdvancePayment::remaining($booking),
             $payingDeposit => (int) ($booking->deposit_amount ?? 0),
             default => max(0, (int) $booking->total_price - (int) $booking->paid_amount),
         };
@@ -126,7 +130,9 @@ class EsewaController extends ApiController
         $venueName = $venue->name ?? 'Futsal';
 
         $cfg = Payments::esewaConfig();
-        $origin = Payments::appOrigin($request);
+        // Where eSewa should return the browser. The app sends its own origin
+        // because the web build is served by Expo, not by this API.
+        $origin = Payments::returnOrigin($request, $request->input('returnOrigin'));
 
         $transactionUuid = Payments::makeEsewaUuid((int) $booking->id)
             .($teamPayment ? "-TP-{$teamPayment->id}" : ($paymentRequest ? "-PR-{$paymentRequest->id}" : ''));
@@ -139,11 +145,19 @@ class EsewaController extends ApiController
             $booking->forceFill(['esewa_uuid' => $transactionUuid, 'gateway_txn_id' => ''])->save();
         }
 
-        $requestQuery = $paymentRequest ? "&paymentRequestId={$paymentRequest->id}&userId={$paymentRequest->payer_id}" : '';
-        $target = $teamPayment ? "&teamPaymentId={$teamPayment->id}" : "";
-
-        $successUrl = "{$origin}/payment/esewa/success?bookingId={$booking->id}{$target}{$requestQuery}";
-        $failureUrl = "{$origin}/payment/esewa/failure?bookingId={$booking->id}{$target}{$requestQuery}";
+        /*
+         * No query string on the return URLs, deliberately.
+         *
+         * eSewa appends `?data=<base64>` to the success URL, and a URL that
+         * already carries a query is a coin flip: some gateways append with `&`,
+         * some with a second `?`. Everything the app needs to settle this
+         * payment is inside that signed `data` blob (the transaction uuid names
+         * the booking, the team share or the player request), so the return
+         * pages take no arguments of their own.
+         */
+        // A device sends its own deep link here; a browser sends its origin.
+        $successUrl = Payments::returnUrl($request, $request->input('successUrl'), '/payment/esewa/success');
+        $failureUrl = Payments::returnUrl($request, $request->input('failureUrl'), '/payment/esewa/failure');
 
         $fields = Payments::buildEsewaFields([
             'amount' => $amount,
@@ -158,6 +172,69 @@ class EsewaController extends ApiController
             ? "&teamPaymentId={$teamPayment->id}&userId={$teamPayment->user_id}"
             : ($paymentRequest ? "&paymentRequestId={$paymentRequest->id}&userId={$paymentRequest->payer_id}" : '');
 
+        // The demo route carries everything the verify call needs: the target
+        // ids, and the payer (`userId`) when the target is not the one that
+        // already names them — a payment request's payer, for instance.
+        $mockUrl = "{$origin}/payment/esewa/mock?bookingId={$booking->id}&amount={$amount}&uuid=".rawurlencode($transactionUuid).$mockTarget
+            .($requestedUserId && ! str_contains($mockTarget, 'userId=') ? "&userId={$requestedUserId}" : '');
+
+        // The replica, served by this backend. This is what a phone opens (in
+        // the in-app sheet), and it carries everything its verify call needs.
+        $demoParams = [
+            'bookingId' => $booking->id,
+            'amount' => $amount,
+            'uuid' => $transactionUuid,
+            'label' => "booking #FN-{$booking->id}".($venueName ? " · {$venueName}" : ''),
+            'teamPaymentId' => $teamPayment->id ?? null,
+            'paymentRequestId' => $paymentRequest->id ?? null,
+            'userId' => $requestedUserId,
+            'paymentPurpose' => $payingAdvance || $paymentRequest?->purpose === 'advance' ? 'advance' : null,
+            'success' => $successUrl,
+            'failure' => $failureUrl,
+        ];
+
+        /*
+         * Two reasons to answer with the demo checkout instead of eSewa's page:
+         *
+         *   • the caller asked for it (`demo: true`) — a demo should not depend
+         *     on eSewa's shared test wallets having money in them, or on the
+         *     demo's network reaching esewa.com.np at all;
+         *   • eSewa's UAT is unavailable ("Service is currently unavailable.
+         *     Please try again later." is its own wording for a server timeout).
+         *     Sending a player there in that state is a dead end: their error
+         *     page carries no signed response, so nothing can be verified.
+         *
+         * Either way the app opens the replica page (`demoUrl`), which moves the
+         * same money through the same server-side settlement path
+         * (`mockApprove`) — see `laravel/public/demo-esewa.html`.
+         */
+        $demo = $request->boolean('demo');
+        $demoParams['demo'] = $demo ? '1' : null;
+        $demoParams['fallback'] = $demo ? null : 'The eSewa test server is not answering';
+        $demoUrl = Payments::demoGatewayUrl($request, 'esewa', $demoParams);
+
+        if ($demo || ! Payments::reachable((string) $cfg['formUrl'])) {
+            return $this->ok([
+                'demoUrl' => $demoUrl,
+                'mock' => true,
+                'demo' => $demo,
+                'fallback' => ! $demo,
+                'fallbackError' => $demo ? null : 'The eSewa test server is not answering',
+                // `demo=1` is how the checkout page knows it was chosen rather
+                // than fallen back to — it says so, and offers the real server.
+                'mockUrl' => $demo ? $mockUrl.'&demo=1' : $mockUrl,
+                'amount' => $amount,
+                'bookingId' => $booking->id,
+                'teamPaymentId' => $teamPayment->id ?? null,
+                'paymentRequestId' => $paymentRequest->id ?? null,
+                'transactionUuid' => $transactionUuid,
+                'returnOrigin' => $origin,
+                'testHint' => $demo
+                    ? 'Demo checkout — a replica of the eSewa page. No real money, no real gateway.'
+                    : 'The eSewa test server is not answering right now, so this runs the demo checkout instead.',
+            ]);
+        }
+
         return $this->ok([
             'url' => $cfg['formUrl'],
             'fields' => $fields,
@@ -170,60 +247,115 @@ class EsewaController extends ApiController
             'isDeposit' => ! $teamPayment && ! $paymentRequest && (bool) $booking->deposit_required,
             'isAdvance' => ($paymentRequest?->purpose === 'advance') || (! $teamPayment && (bool) $booking->advance_payment_required),
             'testMode' => true,
-            'mockUrl' => "{$origin}/payment/esewa/mock?bookingId={$booking->id}&amount={$amount}&uuid=".rawurlencode($transactionUuid).$mockTarget,
-            'testHint' => 'eSewa UAT: use ID 9806800001 / password 123456 / MPIN 1122 / token 123456',
+            'returnOrigin' => $origin,
+            'successUrl' => $successUrl,
+            'failureUrl' => $failureUrl,
+            'mockUrl' => $mockUrl,
+            'demoUrl' => $demoUrl,
+            // A POST has to come from a page, and a native app cannot build
+            // one — so the hand-off page does it. The path is returned instead
+            // of a full URL because only the client knows which origin it can
+            // reach this API on (same host on the web, the LAN address on a
+            // device).
+            'handoffPath' => '/api/payments/esewa/handoff?'.http_build_query([
+                'bookingId' => $booking->id,
+                'teamPaymentId' => $teamPayment->id ?? null,
+                'paymentRequestId' => $paymentRequest->id ?? null,
+                'userId' => $request->input('userId'),
+                'returnOrigin' => $origin,
+            ]),
+            'testHint' => Payments::esewaTestLoginHint(),
         ]);
     }
 
     /**
      * Verify the callback eSewa posted back.
      *
-     * `mockApprove` is the simulator fallback: it lets a player finish the flow
-     * when the real eSewa test site is unreachable. Its transaction id is
-     * deterministic on purpose, because that id is the ledger's idempotency key
-     * and a replayed verify must not turn one payment into two instalments.
+     * `mockApprove` is the demo checkout's door: the replica page posts it after
+     * its last step — also what lets a player finish when the real eSewa test
+     * site is unreachable. Its transaction id is deterministic on purpose,
+     * because that id is the ledger's idempotency key and a replayed verify must
+     * not turn one payment into two instalments.
      */
     public function verify(Request $request): JsonResponse
     {
         AdvancePayment::expireOverdueAdvanceRequests();
 
+        // Serialize verification for a booking. A ledger insert, share update
+        // and cached status must either all commit or all roll back.
+        return DB::transaction(fn () => $this->verifyPayment($request));
+    }
+
+    private function verifyPayment(Request $request): JsonResponse
+    {
         $dataB64 = trim((string) $request->input('data', ''));
         $hintBookingId = (int) $request->input('bookingId', 0) ?: null;
         $mockApprove = $request->boolean('mockApprove');
+        $cfg = Payments::esewaConfig();
+        $recovered = false;
 
         if ($mockApprove) {
             return $this->mockVerify($request, $hintBookingId);
         }
 
         if ($dataB64 === '') {
-            return $this->fail('Missing eSewa data', 400);
-        }
+            /*
+             * No signed blob. That happens when eSewa sends the browser to the
+             * failure URL, when a player cancels — and also when eSewa's own
+             * page said "payment failed" while the money actually moved, which
+             * is a thing that happens on their UAT. So instead of reporting a
+             * flat failure, ask eSewa's status API about the session we started:
+             * if it is COMPLETE, settle it exactly as a normal return would.
+             */
+            $recoveredSession = $this->recoverSession($request, $hintBookingId);
 
-        $payload = Payments::decodeEsewaData($dataB64);
+            if ($recoveredSession instanceof JsonResponse) {
+                return $recoveredSession;
+            }
 
-        if ($payload === null) {
-            return $this->fail('Invalid eSewa response — try again 🙏', 400);
-        }
+            $payload = $recoveredSession;
+            $recovered = true;
+        } else {
+            $payload = Payments::decodeEsewaData($dataB64);
 
-        $cfg = Payments::esewaConfig();
+            if ($payload === null) {
+                return $this->fail('Invalid eSewa response — try again 🙏', 400);
+            }
 
-        if (! Payments::verifyEsewaSignature($payload, $cfg['secretKey'])) {
-            return $this->fail('eSewa signature mismatch — possible tampering 🛡️', 400);
+            if (! Payments::verifyEsewaSignature($payload, $cfg['secretKey'])) {
+                return $this->fail('eSewa signature mismatch — possible tampering 🛡️', 400);
+            }
         }
 
         $uuid = (string) ($payload['transaction_uuid'] ?? '');
+
+        // A league entry fee rides the same rails. Its uuid names the league and
+        // squad (`LG-…`) instead of a booking, so it settles through the league
+        // ledger — same rows, same totals, same auto-approval a simulator or
+        // cash payment would produce.
+        if ($league = Payments::parseLeagueRef($uuid)) {
+            return $this->settleLeagueEntry($payload, $uuid, $cfg, $league);
+        }
+
         $bookingId = $hintBookingId ?: Payments::parseBookingIdFromEsewaUuid($uuid);
-        $teamPaymentId = (int) $request->input('teamPaymentId', 0) ?: $this->teamPaymentIdFromUuid($uuid);
-        $paymentRequestId = (int) $request->input('paymentRequestId', 0) ?: ((int) ($this->matchId($uuid, '-PR-') ?? 0) ?: null);
+        $teamPaymentId = (int) $request->input('teamPaymentId', 0)
+            ?: ((int) ($payload['teamPaymentId'] ?? 0) ?: $this->teamPaymentIdFromUuid($uuid));
+        $paymentRequestId = (int) $request->input('paymentRequestId', 0)
+            ?: ((int) ($payload['paymentRequestId'] ?? 0) ?: ((int) ($this->matchId($uuid, '-PR-') ?? 0) ?: null));
 
         if (! $bookingId) {
             return $this->fail('Can’t link payment to booking', 400);
         }
 
-        $booking = Booking::find($bookingId);
+        $booking = Booking::lockForUpdate()->find($bookingId);
 
         if (! $booking) {
             return $this->fail('Booking not found', 404);
+        }
+
+        $txnCode = ((string) ($payload['transaction_code'] ?? '')) ?: $uuid;
+        if ($replay = LedgerRecord::replay($booking, 'eSewa', $txnCode)) {
+            return $this->ok($replay);
         }
 
         $gate = $this->gate($booking, $teamPaymentId, $paymentRequestId, (int) $request->input('userId', 0));
@@ -249,24 +381,32 @@ class EsewaController extends ApiController
             return $this->fail('eSewa payment not completed', 400, ['ok' => false, 'status' => $payload['status'] ?? null]);
         }
 
-        // Defence in depth: confirm with the eSewa status API. If it is
-        // unreachable in the sandbox, the verified signature plus COMPLETE is
-        // trusted rather than blocking a real payment.
-        try {
-            $status = Payments::esewaStatusCheck([
-                'statusUrl' => $cfg['statusUrl'],
-                'productCode' => $cfg['productCode'],
-                'transactionUuid' => $uuid,
-                'totalAmount' => $paidTotal,
-            ]);
+        /*
+         * Defence in depth: confirm with the eSewa status API — but only let a
+         * *definitive* negative stop the money. The signed blob we are holding
+         * was sent to our success URL by eSewa itself, and their UAT status API
+         * lags: a payment that has just completed can still read PENDING,
+         * AMBIGUOUS or even NOT_FOUND for a moment, and telling a player who
+         * paid that they did not is worse than trusting the signed response.
+         * A cancel or a refund, on the other hand, always wins.
+         */
+        if (! $recovered) {
+            try {
+                $status = Payments::esewaStatusCheck([
+                    'statusUrl' => $cfg['statusUrl'],
+                    'productCode' => $cfg['productCode'],
+                    'transactionUuid' => $uuid,
+                    'totalAmount' => $paidTotal,
+                ]);
 
-            $s = strtoupper((string) ($status['status'] ?? ''));
+                $s = strtoupper((string) ($status['status'] ?? ''));
 
-            if ($s !== '' && $s !== 'COMPLETE') {
-                return $this->fail("eSewa says: {$s}", 400, ['ok' => false, 'status' => $s]);
+                if (in_array($s, ['CANCELED', 'FULL_REFUND', 'PARTIAL_REFUND'], true)) {
+                    return $this->fail("eSewa says: {$s}", 400, ['ok' => false, 'status' => $s]);
+                }
+            } catch (\Throwable) {
+                // Status API unreachable — signature plus COMPLETE is enough here.
             }
-        } catch (\Throwable) {
-            // Status API unreachable — signature plus COMPLETE is enough here.
         }
 
         $txnCode = ((string) ($payload['transaction_code'] ?? '')) ?: $uuid;
@@ -296,6 +436,164 @@ class EsewaController extends ApiController
         return $this->settleBookingPayment($booking, (int) round($paidTotal), $txnCode, 'eSewa', false);
     }
 
+    /* ---------------------------------------------------------- recovery */
+
+    /**
+     * Ask eSewa about the session this app started, without a signed blob.
+     *
+     * Used when the browser comes back with nothing — a cancel, or eSewa's own
+     * "payment failed" page after money actually left the wallet, which their
+     * UAT does. The transaction the app stored when it built the checkout is
+     * the key: eSewa's status API is asked about exactly that session.
+     *
+     * @return array<string, mixed>|JsonResponse a payload for the normal settle
+     *                                           path, or the reason it cannot
+     */
+    private function recoverSession(Request $request, ?int $hintBookingId): array|JsonResponse
+    {
+        $teamPaymentId = (int) $request->input('teamPaymentId', 0) ?: null;
+        $paymentRequestId = (int) $request->input('paymentRequestId', 0) ?: null;
+        $booking = $hintBookingId ? Booking::find($hintBookingId) : null;
+        $teamPayment = null;
+        $paymentRequest = null;
+        $uuid = '';
+
+        if ($teamPaymentId) {
+            $teamPayment = BookingTeamPayment::find($teamPaymentId);
+            $booking ??= $teamPayment ? Booking::find((int) $teamPayment->booking_id) : null;
+            $uuid = (string) ($teamPayment->esewa_uuid ?? '');
+        } elseif ($paymentRequestId) {
+            $paymentRequest = BookingPaymentRequest::find($paymentRequestId);
+            $booking ??= $paymentRequest ? Booking::find((int) $paymentRequest->booking_id) : null;
+            $uuid = (string) ($paymentRequest->esewa_uuid ?? '');
+        } elseif ($booking) {
+            $uuid = (string) ($booking->esewa_uuid ?? '');
+        }
+
+        if (! $booking) {
+            return $this->fail('Booking not found', 404);
+        }
+
+        if ($uuid === '') {
+            return $this->fail('No eSewa payment was started for this booking yet 🔎', 400, ['ok' => false, 'status' => 'NONE']);
+        }
+
+        $cfg = Payments::esewaConfig();
+        // The same amount the checkout was built for, so eSewa recognises the
+        // session it is being asked about.
+        $expected = $this->expectedAmount($booking, $teamPayment, $paymentRequest);
+
+        try {
+            $status = Payments::esewaStatusCheck([
+                'statusUrl' => $cfg['statusUrl'],
+                'productCode' => $cfg['productCode'],
+                'transactionUuid' => $uuid,
+                'totalAmount' => $expected,
+            ]);
+        } catch (\Throwable $e) {
+            return $this->fail('Could not reach eSewa to check that payment: '.$e->getMessage(), 502, ['ok' => false, 'status' => 'UNREACHABLE']);
+        }
+
+        $s = strtoupper((string) ($status['status'] ?? ''));
+
+        if ($s !== 'COMPLETE') {
+            /*
+             * The status API is the only witness to what eSewa did with the
+             * session, so hand its own answer back whole. "FAILED" is eSewa
+             * refusing the debit — their shared test wallet no longer covers
+             * the amount, or the login session sat past its limit — and the
+             * screen can only say something useful if it has the amount, the
+             * uuid and the status eSewa reported.
+             */
+            return $this->fail(
+                $s === 'NOT_FOUND'
+                    ? 'eSewa has no completed payment for this booking — nothing was charged 🔎'
+                    : 'eSewa says: '.($s ?: 'not completed').' — nothing has been settled yet',
+                409,
+                [
+                    'ok' => false,
+                    'status' => $s ?: 'UNKNOWN',
+                    'esewa' => [
+                        'status' => $s ?: 'UNKNOWN',
+                        'transaction_uuid' => $uuid,
+                        'product_code' => $cfg['productCode'],
+                        'amount_asked' => $expected,
+                        'total_amount' => $status['total_amount'] ?? null,
+                        'ref_id' => $status['ref_id'] ?? null,
+                    ],
+                ]
+            );
+        }
+
+        $paid = (float) ($status['total_amount'] ?? $expected);
+
+        return [
+            'status' => 'COMPLETE',
+            'total_amount' => $paid > 0 ? $paid : $expected,
+            'transaction_uuid' => $uuid,
+            'transaction_code' => ((string) ($status['ref_id'] ?? '')) ?: $uuid,
+            'product_code' => $cfg['productCode'],
+            'signed_field_names' => 'total_amount,transaction_uuid,product_code',
+            'recovered' => true,
+            'teamPaymentId' => $teamPayment->id ?? null,
+            'paymentRequestId' => $paymentRequest->id ?? null,
+        ];
+    }
+
+    /* ------------------------------------------------------------ league */
+
+    /**
+     * A league captain paid their entry fee on the real eSewa test server.
+     *
+     * The signature is already verified above; this adds the same defence in
+     * depth the booking flow uses (ask eSewa's own status API) and then hands
+     * the money to the shared league ledger. Replays are safe: the ledger keys
+     * on the gateway's transaction code.
+     *
+     * @param  array<string, mixed>  $payload
+     * @param  array{leagueId: int, teamId: int}  $league
+     */
+    private function settleLeagueEntry(array $payload, string $uuid, array $cfg, array $league): JsonResponse
+    {
+        if (strtoupper((string) ($payload['status'] ?? '')) !== 'COMPLETE') {
+            return $this->fail('eSewa payment not completed', 400, ['ok' => false, 'status' => $payload['status'] ?? null]);
+        }
+
+        $paid = (float) str_replace(',', '', (string) ($payload['total_amount'] ?? '0'));
+
+        if (! is_finite($paid) || $paid <= 0) {
+            return $this->fail('eSewa did not report an amount 🛡️', 400);
+        }
+
+        try {
+            $status = Payments::esewaStatusCheck([
+                'statusUrl' => $cfg['statusUrl'],
+                'productCode' => $cfg['productCode'],
+                'transactionUuid' => $uuid,
+                'totalAmount' => $paid,
+            ]);
+
+            $s = strtoupper((string) ($status['status'] ?? ''));
+
+            // Only a definitive negative stops a league entry: the status API
+            // lags a freshly completed payment (see verifyPayment).
+            if (in_array($s, ['CANCELED', 'FULL_REFUND', 'PARTIAL_REFUND'], true)) {
+                return $this->fail("eSewa says: {$s}", 400, ['ok' => false, 'status' => $s]);
+            }
+        } catch (\Throwable) {
+            // Status API unreachable — the verified signature plus COMPLETE stands.
+        }
+
+        $reference = ((string) ($payload['transaction_code'] ?? '')) ?: $uuid;
+        $result = LeagueEntry::settle($league['leagueId'], $league['teamId'], (int) round($paid), 'eSewa', $reference);
+
+        if (! ($result['ok'] ?? false)) {
+            return $this->fail((string) ($result['error'] ?? 'Could not record that payment'), (int) ($result['status'] ?? 400));
+        }
+
+        return $this->ok($result);
+    }
+
     /* -------------------------------------------------------------- mock */
 
     private function mockVerify(Request $request, ?int $hintBookingId): JsonResponse
@@ -304,7 +602,7 @@ class EsewaController extends ApiController
             return $this->fail('Missing booking', 400);
         }
 
-        $booking = Booking::find($hintBookingId);
+        $booking = Booking::lockForUpdate()->find($hintBookingId);
 
         if (! $booking) {
             return $this->fail('Booking not found', 404);
@@ -333,6 +631,25 @@ class EsewaController extends ApiController
             return $this->fail('Payment request not found', 404);
         }
 
+        // A checkout token survives retries; it must not depend on the
+        // booking's changing paid amount. Old callers without a token get
+        // one stable legacy checkout, never an accidental second charge.
+        $token = trim((string) $request->input('uuid', ''));
+        if ($token === '' && ! $teamPayment && ! $paymentRequest) {
+            $legacy = BookingPayment::where('booking_id', $booking->id)
+                ->where('method', 'eSewa')->where('source', 'gateway')
+                ->where('reference', 'like', 'MOCK-ESEWA-'.$booking->id.'-%')->first();
+            if ($legacy && ($replay = LedgerRecord::replay($booking, 'eSewa', $legacy->reference))) {
+                return $this->ok($replay + ['mock' => true]);
+            }
+        }
+        $mockTxn = 'MOCK-ESEWA-'.$booking->id.'-'.substr(hash('sha256',
+            $token !== '' ? $token : "legacy:{$teamPaymentId}:{$paymentRequestId}"
+        ), 0, 40);
+        if ($replay = LedgerRecord::replay($booking, 'eSewa', $mockTxn)) {
+            return $this->ok($replay + ['mock' => true]);
+        }
+
         $payerId = (int) $request->input('userId', 0) ?: null;
 
         if ($paymentRequest && (! $payerId || (int) $paymentRequest->payer_id !== $payerId)) {
@@ -355,19 +672,9 @@ class EsewaController extends ApiController
             return $this->fail('Payment opens after the opposition captain accepts this competition request 🆚', 409);
         }
 
-        $payingAdvance = ! $teamPayment && ! $paymentRequest
-            && (bool) $booking->advance_payment_required && $booking->advance_payment_status !== 'paid';
-        $payingDeposit = ! $teamPayment && ! $paymentRequest && ! $payingAdvance
-            && (bool) $booking->deposit_required && $booking->deposit_status !== 'paid';
+        AdvancePayment::validateCheckout($booking, $request);
 
         $amount = $this->expectedAmount($booking, $teamPayment, $paymentRequest);
-
-        $mockTxn = mb_substr(
-            'MOCK-ESEWA-'.$booking->id
-            .($teamPayment ? "-TP-{$teamPayment->id}" : ($paymentRequest ? "-PR-{$paymentRequest->id}" : ($payingAdvance ? '-ADV' : ($payingDeposit ? '-DEP' : "-BAL-{$booking->paid_amount}")))),
-            0,
-            100
-        );
 
         if ($paymentRequest) {
             $paidRequest = $this->recordRequestedPayment($booking, $paymentRequest, $amount, $mockTxn);
@@ -457,9 +764,9 @@ class EsewaController extends ApiController
             && (bool) $booking->deposit_required && $booking->deposit_status !== 'paid';
 
         return match (true) {
-            (bool) $paymentRequest => (int) $paymentRequest->amount_due,
-            (bool) $teamPayment => (int) $teamPayment->amount_due,
-            $payingAdvance => (int) $booking->advance_payment_amount,
+            (bool) $paymentRequest => AdvancePayment::requestAmount($booking, $paymentRequest),
+            (bool) $teamPayment => max(0, (int) $teamPayment->amount_due - (int) $teamPayment->paid_amount),
+            $payingAdvance => AdvancePayment::remaining($booking),
             $payingDeposit => (int) $booking->deposit_amount,
             default => max(0, (int) $booking->total_price - (int) $booking->paid_amount),
         };
@@ -479,7 +786,7 @@ class EsewaController extends ApiController
         $teamPayment->forceFill([
             'payment_status' => 'paid',
             'payment_method' => 'eSewa',
-            'paid_amount' => $amount,
+            'paid_amount' => min((int) $teamPayment->amount_due, (int) $teamPayment->paid_amount + $amount),
             'gateway_txn_id' => mb_substr($reference, 0, 100),
         ])->save();
 
@@ -510,6 +817,8 @@ class EsewaController extends ApiController
                 : 'none',
             'gateway_txn_id' => mb_substr($reference, 0, 100),
         ])->save();
+
+        AdvancePayment::syncVenueAdvance($booking);
 
         $venue = $this->venueOf($booking);
 
@@ -573,7 +882,8 @@ class EsewaController extends ApiController
             'note' => "eSewa teammate {$request->purpose} payment",
         ]);
 
-        AdvancePayment::recordDirectedTeamSharePayment((int) $booking->id, (int) $request->payer_id, $amount, $reference);
+        AdvancePayment::recordDirectedTeamSharePayment((int) $booking->id, (int) $request->payer_id, $amount, $reference, 'eSewa');
+        AdvancePayment::syncVenueAdvance($booking);
 
         $venue = $this->venueOf($booking);
 
@@ -602,6 +912,22 @@ class EsewaController extends ApiController
     /** The booking's own money: advance first, then deposit, then the balance. */
     private function settleBookingPayment(Booking $booking, int $amount, string $reference, string $note, bool $mock): JsonResponse
     {
+        if ($amount <= 0) {
+            return $this->ok(['ok' => true, 'alreadyPaid' => true, 'booking' => $booking->toArray()]);
+        }
+
+        $record = LedgerRecord::recordGatewayPayment([
+            'bookingId' => $booking->id,
+            'amount' => $amount,
+            'method' => 'eSewa',
+            'reference' => $reference,
+            'userId' => $booking->user_id,
+            'note' => $note,
+        ]);
+        if (! $record['recorded']) {
+            return $this->ok(['ok' => true, 'duplicate' => $record['duplicate'], 'booking' => $booking->toArray()]);
+        }
+
         $payingAdvance = (bool) $booking->advance_payment_required && $booking->advance_payment_status !== 'paid';
         $payingDeposit = ! $payingAdvance && (bool) $booking->deposit_required && $booking->deposit_status !== 'paid';
 
@@ -625,14 +951,13 @@ class EsewaController extends ApiController
 
         $booking->forceFill($patch)->save();
 
-        LedgerRecord::recordGatewayPayment([
-            'bookingId' => $booking->id,
-            'amount' => $amount,
-            'method' => 'eSewa',
-            'reference' => $reference,
-            'userId' => $booking->user_id,
-            'note' => $note,
-        ]);
+        if ($payingAdvance) {
+            AdvancePayment::recordDirectedTeamSharePayment((int) $booking->id, (int) $booking->user_id, $amount, $reference, 'eSewa');
+        }
+        if (! $booking->teamPayments()->exists()) {
+            BookingLedger::syncCachedState($booking);
+        }
+        AdvancePayment::syncVenueAdvance($booking);
 
         $venue = $this->venueOf($booking);
 

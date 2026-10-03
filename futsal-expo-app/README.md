@@ -1,6 +1,6 @@
-# Futsal Nepal — Expo app
+# Futsal Mate — Expo app
 
-The React Native/Expo frontend for Futsal Nepal. This app is paired with the
+The React Native/Expo frontend for Futsal Mate. This app is paired with the
 standalone Laravel API in `../laravel`; it does not require the retired web
 application or any source code outside this directory at runtime.
 
@@ -69,12 +69,58 @@ values are inlined into the bundle at build time. Before opening the app, check
 ```bash
 npm run typecheck   # tsc --noEmit
 npm run smoke       # live Laravel API booking/payment smoke test
+node scripts/parity.test.mjs   # web/mobile parity guards (no backend needed)
 ```
+
+`scripts/armband.test.mjs`, `scripts/batch.test.mjs` and
+`scripts/parity.test.mjs` are source-level regression guards and run plain.
+`scripts/parity.test.mjs` is the web/mobile parity one — it pins that every
+confirmation goes through `src/lib/confirm.ts` (the browser's own dialog on web,
+`Alert` on a phone) instead of `Alert.alert`, which react-native-web implements
+as a no-op, and it holds the shapes of this round's other five fixes: a single
+label per field, a swatch row that wraps, a delete cue on the side the swipe
+uncovers, and the owner's delete-account flow.
 
 `npm run smoke` bundles `scripts/smoke.ts` with esbuild and drives the same
 `src/lib/api.ts` and `src/api/index.ts` modules the app ships through signup →
 venues → courts → availability → booking → ledger → eSewa payment → settled.
 The Laravel acceptance suites live in `../laravel/tests/api`.
+
+Signup is two steps, so the smoke test needs the emailed code to finish it:
+
+```bash
+SIGNUP_CODE=123456 npm run smoke
+```
+
+Against a backend with no SMTP credentials configured, the code is written to
+`../laravel/storage/logs/laravel.log` (the `log` mailer) — read it from there.
+Everything after signup runs on the account it created.
+
+Paying on a phone runs the gateway's page *inside the app* (a WebView sheet, so
+nothing has to hand the player back from a browser), which needs one library:
+`npm install` after pulling, for `react-native-webview` — Expo Go already bundles
+the native side.
+
+Paying on the test gateways can be checked without a database at all:
+
+```bash
+npx esbuild scripts/gateway.test.mjs --bundle --platform=node --format=esm \
+  --tsconfig=tsconfig.json --outfile=scripts/.tmp/gateway.mjs
+node scripts/.tmp/gateway.mjs
+```
+
+It covers the checkout decision (real gateway page vs. form POST vs. the replica
+screen vs. an error) and reads the Laravel side to pin the contract it depends
+on: the published test credentials, `returnOrigin`, the query-free return URLs,
+the eSewa hand-off pages (booking and league), the two replica pages
+(`laravel/public/demo-*.html`, served at `/api/payments/{gateway}/demo`) and that
+the demo checkout settles through the same ledger path as a gateway payment.
+The demo checkout is the app's own screens — `/payment/{esewa,khalti}/mock`,
+with sign in → MPIN → token → the wallet's balance and the Pay button — and it
+is the default; *Settings → Use the real eSewa and Khalti test servers* points
+the checkout at the providers instead (`EXPO_PUBLIC_PAYMENT_MODE=real` for a
+build). See `PAYMENT_PORT_NOTES.md` for how a checkout runs and how to point a
+native build at the gateways.
 
 Bundling for a device can be checked with:
 
@@ -82,6 +128,165 @@ Bundling for a device can be checked with:
 npx expo export --platform ios
 npx expo export --platform android
 ```
+
+## Building the APK
+
+The app is generated natively at build time (`npx expo prebuild`), so `android/`
+and `ios/` are not in the tree. There are two ways to get an installable APK.
+
+**On GitHub (nothing to install locally).** `.github/workflows/android-apk.yml`
+builds one on every push to the session branch and to `main`: it installs the
+dependencies, runs `expo prebuild`, and runs `./gradlew assembleRelease`. The
+APK is attached to the run as the **futsal-mate-apk** artifact (Actions → the
+run → Artifacts), and the same file is published as the rolling **apk**
+prerelease — <https://github.com/lordsnape321-web/test/releases/tag/apk> —
+because a release asset downloads without a GitHub login and an artifact does
+not. Release builds are signed with the debug keystore the
+generated project creates for itself, which is exactly what makes an APK
+installable — Android refuses an unsigned one. Publishing to the Play Store
+would mean a real keystore, kept out of git in a secret.
+
+**On a machine with the Android SDK.** Install Android Studio (which brings the
+SDK, the NDK and a JDK), then:
+
+```bash
+npm ci
+npx expo prebuild --platform android
+cd android && ./gradlew assembleRelease
+# android/app/build/outputs/apk/release/app-release.apk
+adb install -r app/build/outputs/apk/release/app-release.apk
+```
+
+One ABI is enough for a phone and keeps the file small:
+
+```bash
+./gradlew assembleRelease -PreactNativeArchitectures=arm64-v8a
+```
+
+(Use `armeabi-v7a` for a pre-2016 device, `x86_64` for an emulator, or pass
+several comma-separated.)
+
+### Pointing the APK at a backend
+
+A dev build learns the API origin from the Metro server it was loaded from; an
+installed APK has no Metro server, so its backend address comes from either:
+
+- `EXPO_PUBLIC_API_BASE` at build time (the workflow reads the repository
+  variable `API_BASE`, *Settings → Secrets and variables → Actions → Variables*),
+  or
+- the sign-in screen's **⚙️ Server** row, which saves an address on the device
+  itself — `http://192.168.1.20:8000` for a Laravel on the same Wi-Fi. That is
+  the one to use when the backend is on your own machine and its address is not
+  known when the APK is built.
+
+A phone's `localhost` is the phone, so the app says so when a request cannot
+connect, and points at that row.
+
+Two things have to line up for a LAN address to work:
+
+- **Laravel has to listen on the network.** `php artisan serve` binds
+  `127.0.0.1` by default, which the phone cannot reach; start it with
+  `php artisan serve --host=0.0.0.0 --port=8000` (and allow the port through the
+  computer's firewall).
+- **Android has to allow plain http.** Release builds block cleartext traffic by
+  default, which looks exactly like an unreachable API
+  ("CLEARTEXT communication to … not permitted by network security policy").
+  `app.json` sets `usesCleartextTraffic: true` through `expo-build-properties`,
+  so a current APK can talk to `http://<LAN IP>:8000`. A build made before that
+  setting existed cannot — reinstall the newest APK. An https backend needs no
+  exception, and its certificate has to be valid.
+
+## Push notifications
+
+Notifications already work without any of this: every event writes a row,
+the bell polls and `/notifications` lists them. Push adds the part that
+matters — finding out while the app is closed.
+
+Three legs, in the order they start working:
+
+1. **The in-app bell.** Always on, no setup. `laravel/app/Services/Notifier.php`
+   is the single funnel; every controller calls it.
+2. **Foreground banners.** With the notification permission granted, a message
+   that lands while the app is open is presented as a real device banner instead
+   of only moving the badge — `announceNewNotifications()` in `src/lib/push.ts`,
+   driven by the bell's existing 15-second poll. This works in Expo Go and in an
+   APK with no accounts or keys.
+3. **Remote push (app closed).** The server forwards every push-worthy
+   notification to Expo's push service (`App\Services\PushSender`), which fans
+   out to FCM/APNs. This is the only leg that needs something from you: Expo has
+   to know which project the tokens belong to.
+
+   ```bash
+   EXPO_PUBLIC_EAS_PROJECT_ID=<uuid>     # at build time, or extra.eas.projectId in app.json
+   ```
+
+   The UUID comes from `eas init` (or `eas project:info`) once the project is
+   linked to an Expo account. Set it as the repository **variable**
+   `EAS_PROJECT_ID` and the APK workflow bakes it in; leave it unset and the app
+   logs one line, keeps the bell and the banners, and shows "This build has no
+   Expo project id yet" under Settings → Phone notifications. Nothing else has
+   to change to switch it on: phones register themselves on the next launch.
+
+   The APK run also asserts that the generated manifest carries
+   `POST_NOTIFICATIONS` and Expo's Firebase messaging service, so a build that
+   could never receive push fails the check instead of shipping quietly broken.
+
+The phone side lives in `src/lib/push.ts` (permission, token, tap routing) and
+`src/components/PushBridge.tsx` (registers on sign-in, forgets the handset on
+sign-out). Settings → Phone notifications is the switch, saved on the account
+(`push_notifications`) *and* mirrored in the phone's own token registration, so
+turning it off stops the buzz immediately without losing the permission.
+
+Which messages get pushed is decided in one place — the `PUSH_TYPES` list in
+`Notifier` — and is deliberately the same list as the emails: bookings,
+payments, squads, leagues and kick-off reminders. Reviews and promo chatter stay
+in the bell, where they can wait.
+
+### Is the server running the newest code?
+
+A fix in the checkout is only a fix once the process serving the API has it. Round
+7 lost a cycle to exactly that: `BookingController` was missing one `use`
+statement, the fix was committed, and the phone kept showing the old fatal because
+`php artisan serve` was still running the code it had loaded.
+
+`/api/health` answers the question directly:
+
+```bash
+curl -s http://192.168.1.20:8000/api/health | python3 -m json.tool
+```
+
+```json
+{
+  "ok": true,
+  "build": "b33ce2b",
+  "buildSource": "git",
+  "code": {
+    "leagueScoreFix": true,
+    "paymentAwareRatingFix": true,
+    "pushNotifications": true
+  }
+}
+```
+
+- **`build`** is the commit the running code is on, read from the checkout's
+  `.git` on every request. A checkout with no git metadata — a ZIP download, a
+  container that copied files in — reports `"build": null` and
+  `"buildSource": "unknown"` instead of naming a commit that is not the one
+  running.
+- **`code`** names the fixes that have shipped as *behaviour*, not as a version
+  number, so `false` on any of them means that copy of the backend predates it.
+
+After changing backend code, restart the server (`Ctrl-C` on `php artisan serve`,
+then start it again), and clear Laravel's caches if anything still looks stale:
+
+```bash
+php artisan optimize:clear
+```
+
+The app now recognises the failure mode from the other side too: a PHP
+`Class … not found` in a response is shown as "The server is running older code
+than this app", with the class name, instead of dumping a stack trace into a
+toast.
 
 ## Backend boundary
 

@@ -31,6 +31,7 @@ const TYPE_STYLE: Record<string, { bg: string; fg: string }> = {
   free_play: { bg: "rgba(139,92,246,0.15)", fg: "#6D28D9" },
   review: { bg: "rgba(245,158,11,0.15)", fg: "#B45309" },
   info: { bg: "#F1F5F9", fg: "#475569" },
+  game_reminder: { bg: "rgba(16,185,129,0.15)", fg: "#047857" },
 };
 
 const DARK_TYPE_TEXT: Record<string, string> = {
@@ -43,6 +44,7 @@ const DARK_TYPE_TEXT: Record<string, string> = {
   free_play: "#C4B5FD",
   review: "#FCD34D",
   info: "#CBD5E1",
+  game_reminder: "#6EE7B7",
 };
 
 /** Owner Studio notifications — same markup/copy as the player page. */

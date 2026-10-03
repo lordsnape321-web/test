@@ -13,9 +13,13 @@ import { ActivityIndicator, Text, TextInput, View } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { AuthProvider, useAuth } from "@/context/AuthContext";
 import { ThemeProvider, useTheme } from "@/context/ThemeContext";
+import { GatewaySheet } from "@/components/GatewaySheet";
 import { MobileNav } from "@/components/MobileNav";
 import { Navbar } from "@/components/Navbar";
+import { PushBridge } from "@/components/PushBridge";
 import { TurfBackdrop } from "@/components/TurfBackdrop";
+import { hydratePaymentMode } from "@/lib/payment-mode";
+import { announce, mark } from "@/lib/perf";
 import { useBreakpoints } from "@/lib/responsive";
 import {
   APP_FONT_FAMILY,
@@ -24,6 +28,16 @@ import {
   ownerDarkPalette,
   ownerPalette,
 } from "@/theme";
+
+// The earliest code of ours the bundle runs: everything after this is measured
+// from here. See src/lib/perf.ts.
+announce();
+mark("bundle evaluated");
+
+// Which checkout the app runs (the gateways' test servers, or the built-in
+// demo replica) is a saved setting, so it is read back before the first screen
+// can offer to pay. Failure is harmless: the default is the real test server.
+void hydratePaymentMode();
 
 /**
  * Root layout: fonts + providers + the native stack.
@@ -61,6 +75,12 @@ export default function RootLayout() {
   });
   useAppFontDefaults(fontsLoaded);
 
+  // The whole app is gated on five font faces; knowing how long that takes is
+  // the difference between blaming the fonts and blaming the bundle.
+  React.useEffect(() => {
+    if (fontsLoaded) mark("fonts ready");
+  }, [fontsLoaded]);
+
   if (!fontsLoaded) {
     return (
       <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: lightPalette.bg }}>
@@ -74,7 +94,13 @@ export default function RootLayout() {
       <ThemeProvider>
         <AuthProvider>
           <ThemedStatusBar />
+          {/* Registers this phone for push once someone is signed in, and routes
+              a tapped notification to the screen it is about. Invisible. */}
+          <PushBridge />
           <Shell />
+          {/* One sheet for the whole app: on a phone a Pay opens the gateway's
+              page here instead of sending the player to a browser. */}
+          <GatewaySheet />
         </AuthProvider>
       </ThemeProvider>
     </SafeAreaProvider>
@@ -122,6 +148,12 @@ function Shell() {
     if (ownerOutsideStudio) router.replace("/admin");
   }, [ownerOutsideStudio, router]);
 
+  // First paint of the shell — bundle parsed, fonts in, providers mounted. This
+  // is the number to compare against the request timings in the same log.
+  React.useEffect(() => {
+    mark("app ready");
+  }, []);
+
   // Do not mount a player route while the persisted session is being restored.
   // An owner opening a saved player URL must never see the player shell, even
   // for the short hydration window before `user.role` is available.
@@ -145,6 +177,9 @@ function Shell() {
       {/* `.turf-pattern` — warm peach / night blobs behind every player route. */}
       <TurfBackdrop style={{ backgroundColor: shellBackground }} />
       {showPlayerChrome ? <Navbar /> : null}
+      {/* Full-bleed: the app fills the browser window at every size. The
+          wide-screen breathing room comes from the responsive gutters and the
+          extra grid columns, not from a fixed-width column with empty margins. */}
       <View style={{ flex: 1 }}>
         <Stack
           screenOptions={{

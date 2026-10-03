@@ -12,8 +12,7 @@ export function TurfBackdrop({ style }: { style?: StyleProp<ViewStyle> }) {
 
   return (
     <View
-      pointerEvents="none"
-      style={[StyleSheet.absoluteFill, { backgroundColor: c.bg }, style]}
+      style={[StyleSheet.absoluteFill, { backgroundColor: c.bg, pointerEvents: "none" }, style]}
     />
   );
 }

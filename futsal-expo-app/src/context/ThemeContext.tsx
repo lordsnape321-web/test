@@ -84,6 +84,10 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     if (Platform.OS !== "web" || typeof document === "undefined") return;
     document.documentElement.classList.toggle("dark", isDark);
     document.documentElement.style.colorScheme = isDark ? "dark" : "light";
+    // The document canvas in public/index.html follows this (plus the `dark`
+    // class above), so the area around the app always matches the palette the
+    // app is using rather than the OS preference.
+    document.documentElement.dataset.theme = isDark ? "dark" : "light";
   }, [isDark]);
 
   const value = useMemo(

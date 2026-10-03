@@ -14,7 +14,7 @@ return [
     | backend at all.
     |
     | Set CORS_ALLOWED_ORIGINS to a comma-separated list to lock this down in
-    | production, e.g. "https://app.futsalnepal.com".
+    | production, e.g. "https://app.futsalmate.com".
     |
     */
 

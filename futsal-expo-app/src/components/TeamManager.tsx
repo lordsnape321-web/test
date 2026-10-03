@@ -31,6 +31,7 @@ import {
   View,
 } from "react-native";
 import { Picker } from "@/components/ThemedPicker";
+import { useBreakpoints } from "@/lib/responsive";
 import * as Clipboard from "expo-clipboard";
 import {
   fetchPlayerDirectory,
@@ -103,6 +104,7 @@ export function TeamManager({
   onChanged: () => void;
 }) {
   const { colors: c, isDark } = useTheme();
+  const { sm } = useBreakpoints();
   const router = useRouter();
   const inputFill = isDark ? "rgba(255,255,255,0.05)" : tokens.insetCream;
 
@@ -313,6 +315,10 @@ export function TeamManager({
   }, [people, memberIds, invitedIds, find]);
   const noInvitesLeft = inviteQuota.left <= 0;
   const transferTargets = roster.filter((m) => !m.isCaptain);
+  // Amber and clickable only once there is somebody to hand it to. A faded
+  // amber pill with white text read as "no button here at all", so the resting
+  // state is a plain outlined pill instead: visible, obviously not armed yet.
+  const canTransfer = newCaptainId !== "" && busy !== "transfer";
   const squadFull = roster.length >= maxPlayers;
 
   const goPlayer = (id: number) => router.push(`/players/${id}`);
@@ -673,8 +679,14 @@ export function TeamManager({
                         No other members yet — add someone before you can hand over 👥
                       </Text>
                     ) : (
-                      <View style={styles.transferRow}>
-                        <View style={[styles.pickerWrap, { backgroundColor: inputFill, borderColor: c.border }]}>
+                      <View style={[styles.transferRow, sm ? null : styles.transferRowStack]}>
+                        <View
+                          style={[
+                            styles.pickerWrap,
+                            sm ? styles.pickerWrapFluid : styles.pickerWrapFull,
+                            { backgroundColor: inputFill, borderColor: c.border },
+                          ]}
+                        >
                           <Picker
                             selectedValue={newCaptainId}
                             onValueChange={(v) => setNewCaptainId(String(v))}
@@ -697,14 +709,34 @@ export function TeamManager({
                             );
                             if (target) void handOver(target.userId, target.name);
                           }}
-                          disabled={!newCaptainId || busy === "transfer"}
+                          disabled={!canTransfer}
+                          accessibilityRole="button"
+                          accessibilityState={{ disabled: !canTransfer }}
+                          accessibilityLabel={
+                            canTransfer
+                              ? "Hand the armband to the chosen member"
+                              : "Choose the next captain first"
+                          }
                           style={[
                             styles.transferBtn,
-                            !newCaptainId || busy === "transfer" ? styles.dim : null,
+                            canTransfer
+                              ? null
+                              : {
+                                  backgroundColor: c.inset,
+                                  borderWidth: 1,
+                                  borderColor: c.border,
+                                },
                           ]}
                         >
-                          <Crown size={16} color="#FFFFFF" />
-                          <Text style={styles.transferText}>Transfer</Text>
+                          <Crown size={16} color={canTransfer ? "#FFFFFF" : c.textFaint} />
+                          <Text
+                            style={[
+                              styles.transferText,
+                              canTransfer ? null : { color: c.textMuted },
+                            ]}
+                          >
+                            {busy === "transfer" ? "Transferring…" : "Transfer"}
+                          </Text>
                         </Pressable>
                       </View>
                     )}
@@ -1197,10 +1229,24 @@ const styles = StyleSheet.create({
   },
 
   transferRow: { flexDirection: "row", gap: space[2], marginTop: space[2], alignItems: "center" },
+  /**
+   * A phone cannot hold the picker and the button on one line. The picker's
+   * label is a whole name plus level and position, RN's `flexShrink` defaults
+   * to 0, and the control inside is `width: "100%"` — so the row ran past the
+   * card's edge and the button sat outside it, invisible. Below `sm` the two
+   * stack: the picker gets the full width and the button sits under it, which
+   * is also the easier tap target.
+   */
+  transferRowStack: { flexDirection: "column", alignItems: "stretch" },
   pickerWrap: { borderWidth: 1, borderRadius: radius.xl, overflow: "hidden", minHeight: 44 },
+  /** Side by side: the picker takes whatever the button leaves, and truncates. */
+  pickerWrapFluid: { flex: 1, minWidth: 0 },
+  pickerWrapFull: { width: "100%" },
   transferBtn: {
     flexDirection: "row",
     alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
     gap: 6,
     backgroundColor: tokens.amber400,
     borderRadius: radius.xl,

@@ -243,7 +243,7 @@ export default function PlayerDossierScreen() {
                   {stats.trustEmoji} {stats.trustScore} trust — {stats.trustLabel}
                 </Text>
                 <Text style={[styles.since, { color: c.textFaint }]}>
-                  on FutsalNepal since{" "}
+                  on Futsal Mate since{" "}
                   {player.memberSince ? new Date(player.memberSince).toLocaleDateString() : "—"}
                 </Text>
               </View>

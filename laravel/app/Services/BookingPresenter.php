@@ -62,11 +62,17 @@ class BookingPresenter
         $histories = $userIds === []
             ? []
             : Booking::whereIn('user_id', $userIds)
-                ->get(['user_id', 'status', 'created_at'])
+                ->get(['user_id', ...Loyalty::HISTORY_COLUMNS])
                 ->groupBy('user_id')
                 ->map(fn ($group) => $group->map(fn ($b) => [
                     'status' => $b->status,
                     'created_at' => $b->created_at,
+                    // Payment is half of reliability: played-and-unpaid has to
+                    // reach `playerRating` or the number would never move.
+                    'payment_status' => $b->payment_status,
+                    'paid_amount' => $b->paid_amount,
+                    'settled_at' => $b->settled_at,
+                    'total_price' => $b->total_price,
                 ])->all())
                 ->all();
 
@@ -175,12 +181,12 @@ class BookingPresenter
         );
 
         // An advance counts as received only up to what has actually landed in
-        // the ledger — a partial advance is not a paid one.
+        // the ledger. Show partial receipts without marking the advance paid.
         $advanceRequested = (bool) $booking->advance_payment_required
             ? max(0, (int) $booking->advance_payment_amount)
             : 0;
 
-        $advanceReceived = ((bool) $booking->advance_payment_required && $booking->advance_payment_status === 'paid')
+        $advanceReceived = (bool) $booking->advance_payment_required
             ? min($advanceRequested, $totals['paid'])
             : 0;
 
@@ -189,7 +195,7 @@ class BookingPresenter
         $advanceReceivable = (! $closed
             && (bool) $booking->advance_payment_required
             && ! in_array($booking->advance_payment_status, ['paid', 'expired'], true))
-            ? $advanceRequested
+            ? max(0, $advanceRequested - $advanceReceived)
             : 0;
 
         $paymentSummary = [

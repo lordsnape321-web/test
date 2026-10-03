@@ -1,0 +1,384 @@
+/**
+ * Web/mobile parity guards: the web-only bugs fixed in this round, plus the
+ * brand and the copy the app greets people with.
+ *
+ * Every one of these is a bug a phone could not show and a browser could: a
+ * native-only `Alert` that silently does nothing on react-native-web (the
+ * booking desk's **Decline**), a label drawn twice, a row of swatches one dot
+ * wider than the screen, a delete cue parked on the side of the row that hides
+ * it, a white-on-white cue in light mode, and an owner with no way to close an
+ * account. None of it is measurable here, so what is pinned is the shape of the
+ * source that made each one impossible, straight from the files.
+ *
+ * Run: node scripts/parity.test.mjs
+ */
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const here = dirname(fileURLToPath(import.meta.url));
+const appRoot = join(here, "..");
+const repoRoot = join(appRoot, "..");
+
+/** Whitespace-insensitive: the assertions are about what is written, not wrapping. */
+function flat(path) {
+  return readFileSync(path, "utf8").replace(/\s+/g, " ");
+}
+
+function walk(dir, files = []) {
+  let entries;
+  try {
+    entries = readdirSync(dir);
+  } catch {
+    return files;
+  }
+  for (const name of entries) {
+    if (name === "node_modules" || name === ".expo" || name === "dist" || name === ".tmp") continue;
+    const full = join(dir, name);
+    if (statSync(full).isDirectory()) walk(full, files);
+    else if (/\.tsx?$/.test(name)) files.push(full);
+  }
+  return files;
+}
+
+let failed = 0;
+
+function check(label, condition, detail = "") {
+  if (condition) {
+    console.log(`  PASS  ${label}`);
+  } else {
+    failed++;
+    console.log(`  FAIL  ${label}${detail ? ` — ${detail}` : ""}`);
+  }
+}
+
+console.log("\n=== web / mobile parity (this round's six) ===\n");
+
+/* ── 1. Alerts that work on the web ─────────────────────────────────────── */
+
+const confirmPath = join(appRoot, "src", "lib", "confirm.ts");
+check("the cross-platform confirm helper exists", existsSync(confirmPath));
+
+const helper = flat(confirmPath);
+check(
+  "the helper uses the browser's own dialog on web",
+  /Platform\.OS === "web"/.test(helper) && /window\.confirm\(/.test(helper),
+);
+check("and a real Alert on the native platforms", /Alert\.alert\(/.test(helper));
+
+// The whole class of bug: a screen asking through `Alert.alert`, which is a
+// no-op on react-native-web (`static alert() {}`), so the answer never arrives.
+const offenders = [];
+for (const dir of ["app", "src"]) {
+  for (const file of walk(join(appRoot, dir))) {
+    if (file.endsWith(join("src", "lib", "confirm.ts"))) continue;
+    if (/Alert\.alert\(/.test(readFileSync(file, "utf8"))) offenders.push(file);
+  }
+}
+check(
+  "no screen calls Alert.alert directly any more",
+  offenders.length === 0,
+  offenders.join(", "),
+);
+
+const requests = flat(join(appRoot, "app", "admin", "requests.tsx"));
+check(
+  "owner-console Decline confirms through the helper",
+  /confirmAction\(/.test(requests) && /void runDecide\(id, false\)/.test(requests),
+);
+check(
+  "owner-console Decline still keeps its confirm copy",
+  /Decline this booking request\?/.test(requests) && /Keep pending/.test(requests),
+);
+
+const desk = flat(join(appRoot, "app", "admin", "bookings.tsx"));
+check(
+  "the booking desk asks before Decline and Cancel on both platforms",
+  /confirmStatus\(b, "rejected", "Decline"\)/.test(desk) &&
+    /confirmStatus\(b, "cancelled", "Cancel"\)/.test(desk) &&
+    /confirmAction\(/.test(desk),
+);
+check(
+  "and a refused status change is surfaced, not swallowed",
+  /Could not mark #FN-\$\{id\}/.test(desk),
+);
+
+/* ── 2. Labels that are printed once ───────────────────────────────────── */
+
+const picker = flat(join(appRoot, "src", "components", "ImagePicker.tsx"));
+check(
+  "the image picker only draws its heading when it has one",
+  /\{label \? <Text style=\{\[styles\.label, \{ color: c\.textFaint \}\]\}>\{label\}<\/Text> : null\}/.test(
+    picker,
+  ),
+);
+
+const venues = flat(join(appRoot, "app", "admin", "venues.tsx"));
+check(
+  "no double 'Cover photo' label on either venue form",
+  (venues.match(/Cover photo 📸/g) ?? []).length === 2 &&
+    (venues.match(/ImagePicker value=\{(e|f)Image\} onChange=\{set[EF]Image\} label="" \//g) ?? [])
+      .length === 2,
+);
+check(
+  "nor a double 'Court photo' label",
+  /<FieldLabel>Court photo 📸<\/FieldLabel> <ImagePicker value=\{cImage\} onChange=\{setCImage\} label="" \/>/.test(
+    venues,
+  ),
+);
+check(
+  "'What it's for' is a full-width field on both venue forms",
+  (venues.match(/Full width on purpose: this is a sentence, not a number\./g) ?? []).length === 2 &&
+    (venues.match(/<FieldLabel>What it&apos;s for<\/FieldLabel>/g) ?? []).length === 2 &&
+    /<FieldLabel>What it&apos;s for<\/FieldLabel> <TextInput value=\{eExtraNote\}/.test(venues) &&
+    /<FieldLabel>What it&apos;s for<\/FieldLabel> <TextInput value=\{fExtraNote\}/.test(venues),
+);
+
+const leagueForm = flat(join(appRoot, "src", "components", "LeagueForm.tsx"));
+check(
+  "the league banner label is not doubled either",
+  /<ImagePicker value=\{bannerUrl\} onChange=\{setBannerUrl\} label="" \/>/.test(leagueForm),
+);
+
+/* ── 3. The colour swatches fit ─────────────────────────────────────────── */
+
+const profile = flat(join(appRoot, "app", "profile.tsx"));
+check(
+  "the swatch row wraps instead of overflowing",
+  /swatches: \{ flexDirection: "row", flexWrap: "wrap", gap: space\[2\] \}/.test(profile),
+);
+
+/* ── 4. Owners can close their account ──────────────────────────────────── */
+
+const ownerProfile = flat(join(appRoot, "app", "admin", "profile.tsx"));
+check(
+  "Owner Studio → My profile offers the same emailed-code delete flow",
+  /requestAccountDeleteCode\(user\.id\)/.test(ownerProfile) &&
+    /deleteAccount\(user\.id, deleteCode\.trim\(\)\)/.test(ownerProfile) &&
+    /await signOut\(\)/.test(ownerProfile) &&
+    /router\.replace\("\/login"\)/.test(ownerProfile),
+);
+check(
+  "and the copy says what happens to the venues",
+  /venues you run are retired/.test(ownerProfile),
+);
+
+const deletion = flat(join(repoRoot, "laravel", "app", "Services", "AccountDeletion.php"));
+check(
+  "closing an owner's account retires their venues server-side",
+  /private static function retireVenues\(int \$userId\): void/.test(deletion) &&
+    /Venue::where\('owner_id', \$userId\)/.test(deletion),
+);
+check(
+  "their courts go dark and waiting requests are withdrawn",
+  /Court::whereIn\('id', \$courtIds\)->update\(\['is_active' => false\]\)/.test(deletion) &&
+    /where\('status', 'pending'\) ->update\(\['status' => 'cancelled'/.test(deletion),
+);
+
+/* ── 5. The swipe cue follows the finger, and stays visible ─────────────── */
+
+const swipe = flat(join(appRoot, "src", "components", "SwipeNotificationRow.tsx"));
+check(
+  "one cue is drawn, on the side the swipe uncovers",
+  /const revealed = offset > 8 \? "left" : offset < -8 \? "right" : null;/.test(swipe) &&
+    /revealed === "left" && !n\.isRead/.test(swipe) &&
+    /revealed === "right" \?/.test(swipe),
+);
+check(
+  "the delete cue is pinned to the revealed edge, not spread apart",
+  /cueRight: \{ marginLeft: "auto" \}/.test(swipe) &&
+    !/justifyContent: "space-between"/.test(swipe),
+);
+check(
+  "the underlay is a solid colour in both themes, and the cue contrast follows it",
+  /backgroundColor: isDark \? colors\.slate700 : colors\.stone100/.test(swipe) &&
+    /const danger = isDark \? colors\.red400 : colors\.red600;/.test(swipe) &&
+    !/backgroundColor: c\.inset/.test(swipe),
+);
+
+/* ── 6. The name, and copy that fits everybody ─────────────────────────── */
+
+const appJson = JSON.parse(readFileSync(join(appRoot, "app.json"), "utf8")).expo;
+check(
+  "the app is called Futsal Mate, in the places a device reads",
+  appJson.name === "Futsal Mate" &&
+    appJson.slug === "futsal-mate" &&
+    appJson.scheme === "futsalmate" &&
+    appJson.android.package === "com.futsalmate.app" &&
+    appJson.ios.bundleIdentifier === "com.futsalmate.app",
+);
+
+// The old name must be gone from everything a person can see. The password and
+// email-code salts still spell it on purpose: they are credential material,
+// and renaming them would lock every existing account out. They live in
+// laravel/app, which this scan does not touch.
+const oldName = [];
+for (const dir of ["app", "src"]) {
+  for (const file of walk(join(appRoot, dir))) {
+    if (/Futsal ?Nepal/i.test(readFileSync(file, "utf8"))) oldName.push(file);
+  }
+}
+check("nothing user-facing still says the old name", oldName.length === 0, oldName.join(", "));
+
+const login = flat(join(appRoot, "app", "login.tsx"));
+const signup = flat(join(appRoot, "app", "signup.tsx"));
+const home = flat(join(appRoot, "app", "(app)", "index.tsx"));
+check(
+  "sign-in greets nobody in particular",
+  /Sign in 👋/.test(login) &&
+    !/Welcome back,/.test(login) &&
+    !/Welcome back,/.test(home) &&
+    !/user\.name\.split/.test(home),
+);
+check(
+  "and neither sign-in nor signup assumes who is holding the phone",
+  !/join the family|the family\?/i.test(login) &&
+    !/join the family/i.test(signup) &&
+    /Create your account ⚽/.test(signup),
+);
+check(
+  "an installed build can be pointed at a backend without being rebuilt",
+  /savedApiBase/.test(readFileSync(join(appRoot, "src", "lib", "api.ts"), "utf8")) &&
+    /Server address/.test(login),
+);
+check(
+  "and the release build allows the plain-http LAN backend it points at",
+  JSON.stringify(appJson.plugins ?? []).includes("expo-build-properties") &&
+    (appJson.plugins ?? []).some(
+      (plugin) =>
+        Array.isArray(plugin) &&
+        plugin[0] === "expo-build-properties" &&
+        plugin[1]?.android?.usesCleartextTraffic === true,
+    ),
+);
+check(
+  "the cleartext wall is named in the error, not left as the platform's wording",
+  /cleartext|network security policy/i.test(readFileSync(join(appRoot, "src", "lib", "api.ts"), "utf8")),
+);
+
+/* ── 7. scores, payment-aware ratings, and push ──────────────────────────── */
+
+// Scoring a competition game 500'd with "class .../League not found" because
+// BookingController called `League::recordFor` with no import. PHP resolves a
+// bare name against the file's own namespace first, so the missing `use` was a
+// fatal nobody would notice until an owner typed a score. The static checker is
+// the real guard (`node laravel/tests/static/class-refs.mjs`); this is the pin.
+const bookingController = flat(join(repoRoot, "laravel", "app", "Http", "Controllers", "Api", "BookingController.php"));
+check(
+  "scoring a game resolves League, not App\\Http\\Controllers\\Api\\League",
+  /use App\\Support\\League;/.test(bookingController) && /League::recordFor/.test(bookingController),
+);
+
+// The rating only ever moved on attendance because the history query fetched
+// `status` and nothing else. Every rating caller must select the payment
+// columns, and they must come from one list so a new caller cannot forget.
+const loyalty = flat(join(repoRoot, "laravel", "app", "Support", "Loyalty.php"));
+check(
+  "one list decides which booking columns the rating reads",
+  /HISTORY_COLUMNS = \['status', 'created_at', 'payment_status', 'paid_amount', 'settled_at', 'total_price'\]/.test(loyalty),
+);
+check(
+  "and payment is what the rating is built from",
+  /paidGames/.test(loyalty) && /TRUST_COMPLETE_OWED_BOOST/.test(loyalty) && /trustAfterPaid/.test(loyalty),
+);
+
+const ratingCallers = [
+  ["BookingController.php", join(repoRoot, "laravel", "app", "Http", "Controllers", "Api", "BookingController.php")],
+  ["PlayerController.php", join(repoRoot, "laravel", "app", "Http", "Controllers", "Api", "PlayerController.php")],
+  ["UserController.php", join(repoRoot, "laravel", "app", "Http", "Controllers", "Api", "UserController.php")],
+  ["BookingPresenter.php", join(repoRoot, "laravel", "app", "Services", "BookingPresenter.php")],
+];
+const withoutPayment = ratingCallers.filter(([, path]) => !/Loyalty::HISTORY_COLUMNS/.test(flat(path)));
+check(
+  "every rating caller selects the payment columns",
+  withoutPayment.length === 0,
+  withoutPayment.map(([name]) => name).join(", "),
+);
+
+// Push is a transport on the existing funnel, not a second notification system:
+// if it is ever written outside Notifier, some messages would silently never
+// reach a phone.
+const notifier = flat(join(repoRoot, "laravel", "app", "Services", "Notifier.php"));
+check(
+  "push hangs off the one funnel every message already goes through",
+  /PUSH_TYPES/.test(notifier) && /PushSender::send\(/.test(notifier),
+);
+check(
+  "and stays silent for an install with no phones registered",
+  /if \(\$tokens === \[\]\)/.test(flat(join(repoRoot, "laravel", "app", "Services", "PushSender.php"))),
+);
+check(
+  "the notifications plugin is in the build, so Android 13 can grant permission",
+  (appJson.plugins ?? []).some((plugin) => (Array.isArray(plugin) ? plugin[0] : plugin) === "expo-notifications"),
+);
+check(
+  "the CI build proves the manifest can receive push at all",
+  /POST_NOTIFICATIONS/.test(readFileSync(join(repoRoot, ".github", "workflows", "android-apk.yml"), "utf8")),
+);
+check(
+  "the phone asks for a token, and survives having none",
+  existsSync(join(appRoot, "src", "lib", "push.ts")) &&
+    /EXPO_PUBLIC_EAS_PROJECT_ID/.test(readFileSync(join(appRoot, "src", "lib", "push.ts"), "utf8")),
+);
+check(
+  "the bridge is mounted once, inside the auth provider",
+  /<PushBridge \/>/.test(flat(join(appRoot, "app", "_layout.tsx"))),
+);
+
+/* ── 8. a server that admits which code it is running ────────────────────── */
+
+// Round 7 was lost to a `php artisan serve` process running pre-fix code: the
+// fix was in the repo, the phone still saw the old fatal, and there was no way
+// to tell from the outside. /api/health now answers that question directly, and
+// the app names the cause instead of dumping a stack trace into a toast.
+const health = flat(join(repoRoot, "laravel", "app", "Http", "Controllers", "Api", "HealthController.php"));
+check(
+  "the build id is read from the checkout, not typed in by hand",
+  /private static function buildId\(\)/.test(health) && /function gitDir\(\)/.test(health),
+);
+check(
+  "and a checkout with no git metadata admits the id is unknown rather than guessing",
+  /'buildSource' => \$build \? 'git' : 'unknown'/.test(health) && ! /self::BUILD/.test(health),
+);
+check(
+  "health reports whether the score fix is in this code",
+  /'leagueScoreFix' =>/.test(health) && /class_exists\(League::class\)/.test(health),
+);
+check(
+  "health reports the payment-aware rating and push too",
+  /'paymentAwareRatingFix' =>/.test(health) && /'pushNotifications' =>/.test(health),
+);
+
+const api = flat(join(appRoot, "src", "lib", "api.ts"));
+check(
+  "the app turns a PHP fatal into a sentence naming the cause",
+  /function staleServerHint\(message: string\)/.test(api) &&
+    /The server is running older code than this app/.test(api),
+);
+check(
+  "and both error paths go through it",
+  (api.match(/staleServerHint\(payload\./g) ?? []).length === 2,
+);
+
+// The static checker is what proves the score bug cannot come back. It has to
+// cover the whole tree, and it has to know the real PSR-4 map rather than
+// assuming everything lives under App\.
+const refs = flat(join(repoRoot, "laravel", "tests", "static", "class-refs.mjs"));
+check(
+  "the class-reference guard reads composer's PSR-4 map",
+  /psr4Map\(\)/.test(refs) && /composer\.json/.test(refs),
+);
+check(
+  "and checks every root a class can be referenced from",
+  /\[\"app\", \"routes\", \"database\", \"config\", \"public\", \"tests\"\]/.test(refs),
+);
+check(
+  "including imports that point at nothing",
+  /brokenImports/.test(refs),
+);
+
+console.log(
+  failed === 0 ? "\nparity: all assertions passed\n" : `\nparity: ${failed} failed\n`,
+);
+
+process.exit(failed === 0 ? 0 : 1);

@@ -9,7 +9,12 @@ export const DEPOSIT_TRUST_THRESHOLD = 70;
 export const DEPOSIT_MIN_PERCENT = 10;
 export const DEPOSIT_MAX_PERCENT = 100;
 export const TRUST_START = 100;
+/** Played, and the venue has its money. */
 export const TRUST_COMPLETE_BOOST = 8;
+/** Played, but the bill is still open — the court was used, so it counts. */
+export const TRUST_COMPLETE_OWED_BOOST = 3;
+/** Settling a played game's bill afterwards: the other half of the 8. */
+export const TRUST_PAID_LATE_BOOST = 5;
 export const TRUST_CANCEL_PENALTY = 15;
 
 export const PAYMENT_OPTIONS = ["eSewa", "Khalti", "Cash at Venue"];
@@ -40,12 +45,69 @@ export function monthLabel(key: string) {
   }
 }
 
+/**
+ * The booking fields the rating reads. The server selects exactly these
+ * (`App\Support\Loyalty::HISTORY_COLUMNS`) — kept in step with it because a
+ * history without payment columns can only ever produce an attendance rating.
+ */
+export type RatingHistoryRow = {
+  status: string;
+  createdAt?: Date | string | null;
+  created_at?: string | null;
+  paymentStatus?: string | null;
+  payment_status?: string | null;
+  paidAmount?: number | null;
+  paid_amount?: number | null;
+  settledAt?: string | null;
+  settled_at?: string | null;
+  totalPrice?: number | null;
+  total_price?: number | null;
+  /** A caller that already decided. */
+  paid?: boolean;
+};
+
+/**
+ * Has this booking's money landed?
+ *
+ * Three equivalent signals: the owner marked the ledger settled, a gateway
+ * payment covered the price, or the desk recorded cash against it. A free game
+ * owes nothing. A row with no payment fields at all is treated as settled, so
+ * a caller that only fetched statuses does not punish everybody.
+ */
+export function bookingSettled(row: RatingHistoryRow): boolean {
+  if (row.paid !== undefined) return Boolean(row.paid);
+
+  const hasColumns =
+    row.paymentStatus !== undefined ||
+    row.payment_status !== undefined ||
+    row.paidAmount !== undefined ||
+    row.paid_amount !== undefined ||
+    row.settledAt !== undefined ||
+    row.settled_at !== undefined ||
+    row.totalPrice !== undefined ||
+    row.total_price !== undefined;
+
+  if (!hasColumns) return true;
+
+  if (row.settledAt || row.settled_at) return true;
+  if (String(row.paymentStatus ?? row.payment_status ?? "") === "paid") return true;
+
+  const owed = Number(row.totalPrice ?? row.total_price ?? 0);
+  const paid = Number(row.paidAmount ?? row.paid_amount ?? 0);
+
+  return owed <= 0 || paid >= owed;
+}
+
 export type PlayerStats = {
   completed: number;
   cancelled: number;
   pending: number;
   confirmed: number;
   total: number;
+  /** Completed games the venue has been paid for. */
+  paidGames: number;
+  /** Completed games with the bill still open. */
+  unpaidGames: number;
   rating: number;
   label: string;
   emoji: string;
@@ -65,8 +127,19 @@ export function trustLabel(score: number): { label: string; emoji: string } {
   return { label: "Low trust", emoji: "🚨" };
 }
 
-export function trustAfterComplete(score: number): number {
-  return Math.min(100, Math.max(0, Math.round(score + TRUST_COMPLETE_BOOST)));
+/**
+ * A game was played. `paidUp` is whether the venue actually has its money:
+ * paid-up play earns the full boost, play with a balance owing earns the
+ * smaller one until the bill is settled.
+ */
+export function trustAfterComplete(score: number, paidUp = true): number {
+  const boost = paidUp ? TRUST_COMPLETE_BOOST : TRUST_COMPLETE_OWED_BOOST;
+  return Math.min(100, Math.max(0, Math.round(score + boost)));
+}
+
+/** The bill on an already-played game was settled. */
+export function trustAfterPaid(score: number): number {
+  return Math.min(100, Math.max(0, Math.round(score + TRUST_PAID_LATE_BOOST)));
 }
 
 export function trustAfterCancel(score: number): number {
@@ -114,7 +187,7 @@ export function depositAmountFor(totalPrice: number, percent: number): number {
 
 /** Reliability rating out of 5 from booking history. */
 export function playerRating(
-  bookings: Array<{ status: string; createdAt?: Date | string | null }>,
+  bookings: RatingHistoryRow[],
   now = new Date(),
   trustScore: number = TRUST_START
 ): PlayerStats {
@@ -134,11 +207,26 @@ export function playerRating(
     }
   }).length;
 
-  // 5 stars, minus for cancels. Completed games heal the score.
+  /*
+   * 5 stars, earned per game:
+   *
+   *   played and paid up   → a whole credit
+   *   played, money owing  → half a credit
+   *   cancelled            → nothing, and it still counts against you
+   *
+   * Paying is worth as much as showing up, so the number moves on payment as
+   * well as on attendance — and because it is derived, not stored, settling a
+   * bill heals it on the next read.
+   */
+  const played = bookings.filter((b) => b.status === "completed");
+  const paidGames = played.filter((b) => bookingSettled(b)).length;
+  const unpaidGames = played.length - paidGames;
+
+  const credits = paidGames + unpaidGames * 0.5;
   const decisive = completed + cancelled;
   let rating = 5;
   if (decisive > 0) {
-    rating = Math.round(((completed / decisive) * 5 + Number.EPSILON) * 10) / 10;
+    rating = Math.round(((credits / decisive) * 5 + Number.EPSILON) * 10) / 10;
     if (completed === 0 && cancelled > 0) rating = Math.max(1, 5 - cancelled * 0.8);
   }
 
@@ -147,6 +235,10 @@ export function playerRating(
   if (total === 0) {
     label = "New player";
     emoji = "🌱";
+  } else if (unpaidGames > 0 && rating < 4.5) {
+    // A name for the specific problem, not just a lower number.
+    label = "Owes on a played game";
+    emoji = "💸";
   } else if (rating >= 4.5) {
     label = "Super reliable";
     emoji = "🌟";
@@ -171,6 +263,8 @@ export function playerRating(
     pending,
     confirmed,
     total,
+    paidGames,
+    unpaidGames,
     rating,
     label,
     emoji,

@@ -5,6 +5,7 @@ import { useRouter } from "expo-router";
 import { fetchNotifications, markAllNotificationsRead, markNotificationRead } from "@/api";
 import { useAuth } from "@/context/AuthContext";
 import { useTheme } from "@/context/ThemeContext";
+import { announceNewNotifications } from "@/lib/push";
 import { timeAgo } from "@/lib/time";
 import { colors as brand, fontSize, radius, space } from "@/theme";
 
@@ -28,6 +29,9 @@ export function NotificationBell({ variant }: { variant?: "dark" | "light" }) {
       const items = await fetchNotifications(user.id);
       setUnread(items.filter((n) => !n.isRead).length);
       setLatest(items.slice(0, 5));
+      // A note that lands while the app is open becomes a real banner, not just
+      // a number going up. No-op on web, and no-op without permission.
+      void announceNewNotifications(items);
     } catch {
       /* best-effort badge */
     }

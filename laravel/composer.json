@@ -1,8 +1,8 @@
 {
     "$schema": "https://getcomposer.org/schema.json",
-    "name": "futsalnepal/api",
+    "name": "futsalmate/api",
     "type": "project",
-    "description": "Futsal Nepal API — the Laravel backend for the Expo app (venues, bookings, payments, leagues, teams).",
+    "description": "Futsal Mate API — the Laravel backend for the Expo app (venues, bookings, payments, leagues, teams).",
     "keywords": ["laravel", "futsal", "api", "expo"],
     "license": "MIT",
     "require": {

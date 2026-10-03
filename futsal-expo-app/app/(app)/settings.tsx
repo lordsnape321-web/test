@@ -2,6 +2,7 @@ import { Picker } from "@/components/ThemedPicker";
 import { useRouter } from "expo-router";
 import {
   Activity,
+  AlertTriangle,
   Bell,
   CalendarCheck,
   CheckCheck,
@@ -12,6 +13,7 @@ import {
   Lock,
   LogIn,
   LogOut,
+  Mail,
   MapPin,
   Moon,
   ShieldCheck,
@@ -19,16 +21,30 @@ import {
   Trophy,
   User as UserIcon,
   Users,
+  X,
   Zap,
 } from "lucide-react-native";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Avatar } from "@/components/Avatar";
+import { registerForPush, remotePushConfigured, unregisterPush } from "@/lib/push";
+import { Button, Label, Notice, TextControl, Toggle } from "@/components/ui";
 import { useAuth } from "@/context/AuthContext";
 import { useTheme } from "@/context/ThemeContext";
-import { fetchNotifications, markAllNotificationsRead } from "@/api";
+import {
+  deleteAccount,
+  fetchNotifications,
+  markAllNotificationsRead,
+  requestAccountDeleteCode,
+} from "@/api";
+import { ApiError } from "@/lib/api";
 import { CITY_OPTIONS } from "@/lib/futsal";
+import {
+  demoPayments,
+  setDemoPayments,
+  subscribePaymentMode,
+} from "@/lib/payment-mode";
 import { timeAgo } from "@/lib/time";
 import type { AppNotification } from "@/lib/types";
 import { colors, fontSize, radius, space } from "@/theme";
@@ -73,10 +89,25 @@ export default function SettingsScreen() {
   const router = useRouter();
 
   const [section, setSection] = useState<SectionId>(user ? "profile" : "appearance");
+
   const [notes, setNotes] = useState<AppNotification[]>([]);
   const [notesLoading, setNotesLoading] = useState(true);
   const [citySaving, setCitySaving] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [emailSaving, setEmailSaving] = useState(false);
+  const [emailMsg, setEmailMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [pushSaving, setPushSaving] = useState(false);
+  const [pushMsg, setPushMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  // Closing an account. Two deliberate taps stand between the button and the
+  // irreversible thing: opening the panel, then asking for the code. Nothing
+  // here runs on a stray tap, and the code is what proves the person holding
+  // the phone also reads the inbox on the account.
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [deleteKey, setDeleteKey] = useState<string | null>(null); // masked inbox the code went to
+  const [deleteCode, setDeleteCode] = useState("");
+  const [deleteErr, setDeleteErr] = useState<string | null>(null);
 
   const loadNotes = useCallback(async () => {
     if (!user) return;
@@ -111,6 +142,67 @@ export default function SettingsScreen() {
     await loadNotes();
   }
 
+  /**
+   * Save one email preference.
+   *
+   * Optimistic by design: a switch that waits for a round trip feels broken, so
+   * the UI moves first and snaps back with a message if the server disagrees.
+   */
+  async function saveEmailPref(patch: {
+    emailNotifications?: boolean;
+    emailReminders?: boolean;
+    pushNotifications?: boolean;
+    reminderMinutes?: number;
+  }, message: string) {
+    if (!user) return;
+    setEmailSaving(true);
+    setEmailMsg(null);
+    try {
+      await updateProfile(patch);
+      setEmailMsg({ ok: true, text: message });
+    } catch {
+      setEmailMsg({ ok: false, text: "Could not save that — try again 🙏" });
+    } finally {
+      setEmailSaving(false);
+    }
+  }
+
+  /**
+   * The push switch, which is two things at once: the account preference, and
+   * whether this phone currently has a token on the server.
+   *
+   * Turning it on asks for permission and registers (so the phone starts
+   * buzzing immediately); turning it off hands the token back. The preference
+   * is saved either way — a phone that cannot register (no project id, blocked
+   * permission) still gets to keep its answer.
+   */
+  async function savePushPref(next: boolean) {
+    if (!user) return;
+
+    setPushSaving(true);
+    setPushMsg(null);
+
+    try {
+      await updateProfile({ pushNotifications: next });
+
+      if (next) {
+        const result = await registerForPush(user.id);
+        setPushMsg(
+          result.ok
+            ? { ok: true, text: "Push is on — we will buzz this phone 🔔" }
+            : { ok: false, text: result.reason },
+        );
+      } else {
+        await unregisterPush();
+        setPushMsg({ ok: true, text: "Push is off for this phone — the bell still updates 🔕" });
+      }
+    } catch {
+      setPushMsg({ ok: false, text: "Could not save that — try again 🙏" });
+    } finally {
+      setPushSaving(false);
+    }
+  }
+
   async function saveCity(defaultCity: string) {
     if (!user) return;
     setCitySaving(true);
@@ -122,6 +214,43 @@ export default function SettingsScreen() {
       setMsg({ ok: false, text: "Could not save your home city — try again 🙏" });
     } finally {
       setCitySaving(false);
+    }
+  }
+
+  /** Email the delete code to the address on the account (never one typed here). */
+  async function askDeleteCode() {
+    if (!user) return;
+    setDeleteBusy(true);
+    setDeleteErr(null);
+    try {
+      const { email } = await requestAccountDeleteCode(user.id);
+      setDeleteKey(email);
+    } catch (e) {
+      setDeleteErr(e instanceof ApiError ? e.message : "Could not send the code. Try again shortly.");
+    } finally {
+      setDeleteBusy(false);
+    }
+  }
+
+  /** Verify the code, close the account, then sign this device out for good. */
+  async function confirmDelete() {
+    if (!user) return;
+    if (!/^\d{6}$/.test(deleteCode.trim())) {
+      setDeleteErr("Enter the 6-digit code from your email ✉️");
+      return;
+    }
+
+    setDeleteBusy(true);
+    setDeleteErr(null);
+    try {
+      await deleteAccount(user.id, deleteCode.trim());
+      // The account is closed server-side; clearing the session here is what
+      // stops the app from flashing restored screens it should not show again.
+      await signOut();
+      router.replace("/login");
+    } catch (e) {
+      setDeleteErr(e instanceof ApiError ? e.message : "Could not close the account. Try again shortly.");
+      setDeleteBusy(false);
     }
   }
 
@@ -140,7 +269,7 @@ export default function SettingsScreen() {
         <ScrollView
           contentContainerStyle={[
             styles.content,
-            { paddingHorizontal: space[4], maxWidth: 1280, width: "100%", alignSelf: "center" },
+            { paddingHorizontal: space[4], width: "100%" },
           ]}
         >
           <View style={styles.heading}>
@@ -247,12 +376,7 @@ export default function SettingsScreen() {
       <ScrollView
         contentContainerStyle={[
           styles.content,
-          {
-            paddingHorizontal: space[4],
-            maxWidth: 1280,
-            width: "100%",
-            alignSelf: "center",
-          },
+          { paddingHorizontal: space[4], width: "100%" },
         ]}
       >
         {/* Heading */}
@@ -425,6 +549,84 @@ export default function SettingsScreen() {
               </View>
             </View>
 
+            {/* ---------- EMAIL ---------- */}
+            <View style={[styles.card, { backgroundColor: c.surface, borderColor: c.border }]}>
+              <View style={styles.emailHead}>
+                <Mail size={16} color={c.activeText} />
+                <Text style={[styles.emailTitle, { color: c.text }]}>Email</Text>
+                {emailSaving ? <Text style={[styles.emailHint, { color: c.textFaint }]}>Saving…</Text> : null}
+              </View>
+              <Toggle
+                label="Booking emails"
+                sub="Confirmations, declines, payments and squad invitations"
+                value={user?.emailNotifications ?? true}
+                onChange={(next) =>
+                  void saveEmailPref(
+                    { emailNotifications: next },
+                    next ? "Booking emails are on 📬" : "Booking emails are off — the in-app bell still works 🔔",
+                  )
+                }
+              />
+              <Toggle
+                label="Game reminders"
+                sub={`A nudge ${formatLead(user?.reminderMinutes ?? 120)} before kick-off`}
+                value={user?.emailReminders ?? true}
+                onChange={(next) =>
+                  void saveEmailPref(
+                    { emailReminders: next },
+                    next ? "Reminders are on ⏰" : "Reminders are off — no more kick-off emails 🔕",
+                  )
+                }
+              />
+              <View style={styles.leadBlock}>
+                <Text style={[styles.leadLabel, { color: c.textMuted }]}>Remind me before kick-off</Text>
+                <View style={styles.leadRow}>
+                  {[60, 120, 240, 720].map((minutes) => {
+                    const active = (user?.reminderMinutes ?? 120) === minutes;
+                    return (
+                      <Pressable
+                        key={minutes}
+                        onPress={() => void saveEmailPref({ reminderMinutes: minutes }, `We will remind you ${formatLead(minutes)} before kick-off ⏰`)}
+                        accessibilityRole="button"
+                        accessibilityState={{ selected: active }}
+                        style={[
+                          styles.leadChip,
+                          active
+                            ? { backgroundColor: c.primary, borderColor: c.primary }
+                            : { backgroundColor: c.inset, borderColor: c.border },
+                        ]}
+                      >
+                        <Text style={[styles.leadChipText, { color: active ? c.primaryText : c.textMuted }]}>
+                          {formatLead(minutes)}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              </View>
+              {emailMsg ? <Notice message={emailMsg.text} tone={emailMsg.ok ? "success" : "error"} /> : null}
+            </View>
+
+            {/* ---------- PUSH ---------- */}
+            <View style={[styles.card, { backgroundColor: c.surface, borderColor: c.border }]}>
+              <View style={styles.emailHead}>
+                <Bell size={16} color={c.activeText} />
+                <Text style={[styles.emailTitle, { color: c.text }]}>Phone notifications</Text>
+                {pushSaving ? <Text style={[styles.emailHint, { color: c.textFaint }]}>Saving…</Text> : null}
+              </View>
+              <Toggle
+                label="Push notifications"
+                sub={
+                  remotePushConfigured()
+                    ? "A buzz on your phone for bookings, payments and kick-off reminders"
+                    : "This build has no Expo project id yet, so only the in-app bell works"
+                }
+                value={user?.pushNotifications ?? true}
+                onChange={(next) => void savePushPref(next)}
+              />
+              {pushMsg ? <Notice message={pushMsg.text} tone={pushMsg.ok ? "success" : "error"} /> : null}
+            </View>
+
             {notesLoading ? null : notes.length === 0 ? (
               <View style={[styles.empty, { backgroundColor: c.surface, borderColor: c.border }]}>
                 <Text style={[styles.emptyText, { color: c.textFaint }]}>
@@ -560,9 +762,129 @@ export default function SettingsScreen() {
             >
               <LogOut size={16} color={c.dangerText} />
               <Text style={[styles.logoutText, { color: c.dangerText }]}>
-                Log out of FutsalNepal
+                Log out of Futsal Mate
               </Text>
             </Pressable>
+
+            {/* ---------- CLOSE THE ACCOUNT ---------- */}
+            {!deleteOpen ? (
+              <Pressable
+                onPress={() => {
+                  setDeleteOpen(true);
+                  setDeleteErr(null);
+                  setDeleteCode("");
+                  setDeleteKey(null);
+                }}
+                accessibilityRole="button"
+                style={[styles.deleteRow, { borderColor: c.border }]}
+              >
+                <AlertTriangle size={16} color={c.dangerText} />
+                <View style={styles.grow}>
+                  <Text style={[styles.rowTitle, { color: c.dangerText }]}>Delete my account</Text>
+                  <Text style={[styles.rowSub, { color: c.textMuted }]} numberOfLines={2}>
+                    Closes the account for good, after a code we email you.
+                  </Text>
+                </View>
+                <ChevronRight size={16} color={c.textFaint} />
+              </Pressable>
+            ) : (
+              <View
+                style={[
+                  styles.deleteCard,
+                  { borderColor: c.dangerBorder, backgroundColor: c.dangerBg },
+                ]}
+              >
+                <View style={styles.deleteHead}>
+                  <AlertTriangle size={18} color={c.dangerText} />
+                  <Text style={[styles.deleteTitle, { color: c.dangerText }]}>
+                    Close this account?
+                  </Text>
+                  <Pressable
+                    onPress={() => setDeleteOpen(false)}
+                    accessibilityRole="button"
+                    accessibilityLabel="Cancel deleting my account"
+                    hitSlop={8}
+                  >
+                    <X size={18} color={c.dangerText} />
+                  </Pressable>
+                </View>
+
+                <Text style={[styles.deleteBody, { color: c.text }]}>
+                  This can&apos;t be undone. Pending bookings and open requests are cancelled, your
+                  name and photo come off everything you played in, and the account can never be
+                  signed into again. Past bookings and payments stay on record with no name attached.
+                </Text>
+
+                {deleteKey ? (
+                  <>
+                    <Text style={[styles.deleteBody, { color: c.text }]}>
+                      We emailed a 6-digit code to {deleteKey}. It expires in 15 minutes.
+                    </Text>
+                    <View style={styles.deleteField}>
+                      <Label style={styles.labelFlush}>Code from your email</Label>
+                      <TextControl
+                        value={deleteCode}
+                        onChangeText={(t) => {
+                          setDeleteCode(t.replace(/\D/g, "").slice(0, 6));
+                          setDeleteErr(null);
+                        }}
+                        placeholder="000000"
+                        icon={<Mail size={16} color={c.textFaint} />}
+                        keyboardType="number-pad"
+                        autoComplete="one-time-code"
+                        textContentType="oneTimeCode"
+                        maxLength={6}
+                        error={Boolean(deleteErr)}
+                        accessibilityLabel="Account deletion code"
+                      />
+                    </View>
+                    {deleteErr ? <Notice message={deleteErr} /> : null}
+                    <Button
+                      label={deleteBusy ? "Closing your account…" : "Delete my account permanently"}
+                      onPress={() => void confirmDelete()}
+                      loading={deleteBusy}
+                    />
+                    <Pressable
+                      onPress={() => void askDeleteCode()}
+                      disabled={deleteBusy}
+                      accessibilityRole="button"
+                      style={styles.deleteResend}
+                    >
+                      <Text style={[styles.deleteResendText, { color: c.dangerText }]}>
+                        Send a new code
+                      </Text>
+                    </Pressable>
+                  </>
+                ) : (
+                  <>
+                    {deleteErr ? <Notice message={deleteErr} /> : null}
+                    <Button
+                      label={deleteBusy ? "Sending the code…" : "Email me the code ✉️"}
+                      onPress={() => void askDeleteCode()}
+                      loading={deleteBusy}
+                    />
+                    <Text style={[styles.deleteFine, { color: c.textMuted }]}>
+                      The code goes to the address on this account — the one shown above.
+                    </Text>
+                  </>
+                )}
+
+                <Pressable
+                  onPress={() => {
+                    setDeleteOpen(false);
+                    setDeleteCode("");
+                    setDeleteErr(null);
+                    setDeleteKey(null);
+                  }}
+                  accessibilityRole="button"
+                  style={styles.deleteResend}
+                >
+                  <Text style={[styles.deleteResendText, { color: c.textMuted }]}>
+                    Keep my account
+                  </Text>
+                </Pressable>
+              </View>
+            )}
           </>
         ) : null}
 
@@ -659,8 +981,9 @@ function DeviceSections({
               when they do.
             </HelpPara>
             <HelpPara label="Paying." color={c.text}>
-              eSewa and Khalti run in test mode here, and cash at the counter is always
-              fine.
+              Checkout runs on a replica of the eSewa and Khalti pages — same steps, same
+              ledger, nothing leaving the app. Cash at the counter is always fine, and the
+              drawer below can point payments at the providers' real test servers instead.
             </HelpPara>
             <HelpPara label="Leagues." color={c.text}>
               A squad locks its place with at least a 25% deposit. Back out and 10% of what
@@ -671,10 +994,11 @@ function DeviceSections({
               Profile, theme and account are here.
             </HelpPara>
           </View>
+          <DemoCheckoutCard />
           <Row
             icon={Trophy}
             title="Back to the home page"
-            sub="FutsalNepal — made with 💚 for players, by players"
+            sub="Futsal Mate — made with 💚 for players, by players"
             onPress={() => router.push("/(app)")}
           />
         </>
@@ -684,6 +1008,44 @@ function DeviceSections({
 }
 
 /* ── pieces ──────────────────────────────────────────────────────────────── */
+
+/**
+ * The payment switch.
+ *
+ * A setting, not a checkout option: it is persisted by
+ * `src/lib/payment-mode.ts`, the next payment reads it from there, and the
+ * toggle below follows the store so a switch made elsewhere is reflected here.
+ */
+function DemoCheckoutCard() {
+  const { colors: c } = useTheme();
+  const [on, setOn] = useState(demoPayments());
+
+  useEffect(() => subscribePaymentMode(() => setOn(demoPayments())), []);
+
+  return (
+    <View style={[styles.card, { backgroundColor: c.surface, borderColor: c.border }]}>
+      <Toggle
+        label="Use the real eSewa and Khalti test servers"
+        sub="Off by default: checkouts run the built-in replica of both gateway pages, which always works. Turn it on to try the providers' real test servers — their shared wallets and locked accounts are why the replica is the default."
+        value={!on}
+        onChange={(next) => setDemoPayments(!next)}
+      />
+      <Text style={{ color: c.textMuted, fontSize: fontSize.sm, lineHeight: 18, marginTop: space[2] }}>
+        {on
+          ? "Checkouts run the replica 🎬 — eSewa 9711111111 / Test@123, MPIN 1122, token 123456; Khalti 9800000001, MPIN 1111, OTP 987654."
+          : "Checkouts go to eSewa UAT and Khalti's sandbox 💳 — if a wallet is empty or an account is locked, the failure screen can move the payment to the replica."}
+      </Text>
+    </View>
+  );
+}
+
+/** "2 hours" / "1 hour" — the reminder lead, in words. */
+function formatLead(minutes: number): string {
+  if (minutes < 60) return `${minutes} minutes`;
+  const hours = minutes / 60;
+  if (Number.isInteger(hours)) return hours === 1 ? "1 hour" : `${hours} hours`;
+  return `${minutes} minutes`;
+}
 
 function PanelHead({
   icon: Icon,
@@ -849,8 +1211,6 @@ const styles = StyleSheet.create({
   },
   gateBtnText: { fontSize: fontSize.sm, fontWeight: "900" },
 
-
-
   heading: { flexDirection: "row", alignItems: "center", gap: space[4] },
   h1: { fontSize: fontSize["3xl"], fontWeight: "900" },
   subheading: { fontSize: fontSize.base, color: colors.stone500 },
@@ -885,6 +1245,20 @@ const styles = StyleSheet.create({
     marginTop: space[4],
   },
 
+  emailHead: { flexDirection: "row", alignItems: "center", gap: space[2], marginBottom: space[1] },
+  emailTitle: { flex: 1, fontSize: fontSize.base, fontWeight: "900" },
+  emailHint: { fontSize: fontSize.xs, fontWeight: "700" },
+  leadBlock: { marginTop: space[2], gap: space[2] },
+  leadLabel: { fontSize: fontSize.xs, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.8 },
+  leadRow: { flexDirection: "row", flexWrap: "wrap", gap: space[2] },
+  leadChip: {
+    minHeight: 36,
+    justifyContent: "center",
+    borderWidth: 1,
+    borderRadius: radius.full,
+    paddingHorizontal: space[3],
+  },
+  leadChipText: { fontSize: fontSize.xs, fontWeight: "900" },
   panelHead: { flexDirection: "row", alignItems: "flex-start", gap: space[3], marginTop: space[4] },
   panelHeadIcon: {
     width: 40,
@@ -1050,6 +1424,36 @@ const styles = StyleSheet.create({
     marginTop: space[3],
   },
   logoutText: { fontSize: fontSize.base, fontWeight: "900" },
+
+  // Deliberately quieter than the logout button above it: sign-out is a normal
+  // thing to do, deleting the account is not.
+  deleteRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: space[3],
+    borderRadius: radius["2xl"],
+    borderWidth: 1,
+    borderStyle: "dashed",
+    paddingHorizontal: space[4],
+    paddingVertical: 14,
+    marginTop: space[2],
+  },
+  deleteCard: {
+    gap: space[3],
+    borderRadius: radius["2xl"],
+    borderWidth: 1,
+    padding: space[4],
+    marginTop: space[3],
+  },
+  deleteHead: { flexDirection: "row", alignItems: "center", gap: space[2] },
+  deleteTitle: { flex: 1, fontSize: fontSize.base, fontWeight: "900" },
+  deleteBody: { fontSize: fontSize.sm, lineHeight: 19 },
+  deleteField: { gap: space[1] },
+  // `Label` carries its own bottom margin; inside a gap'd block that doubles up.
+  labelFlush: { marginBottom: 0 },
+  deleteResend: { alignSelf: "center", paddingVertical: space[1] },
+  deleteResendText: { fontSize: fontSize.sm, fontWeight: "800" },
+  deleteFine: { fontSize: fontSize.xs, lineHeight: 16, textAlign: "center" },
 
   helpPara: { fontSize: fontSize.base, lineHeight: 21, marginBottom: space[3] },
 });

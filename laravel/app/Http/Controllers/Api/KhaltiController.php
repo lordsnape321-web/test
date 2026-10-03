@@ -8,24 +8,38 @@ use App\Models\BookingTeamPayment;
 use App\Models\Court;
 use App\Models\User;
 use App\Models\Venue;
+use App\Services\LeagueEntry;
 use App\Services\Notifier;
 use App\Support\AdvancePayment;
+use App\Support\BookingLedger;
 use App\Support\Futsal;
 use App\Support\LedgerRecord;
 use App\Support\Payments;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Khalti test gateway — `POST /api/payments/khalti/{initiate,verify}`.
  *
  * Same three payment targets as eSewa, but Khalti identifies a session by
- * `pidx` rather than by a signed callback, and quotes amounts in paisa. When no
- * test key is configured — or the sandbox is unreachable — the flow falls back
- * to a local simulator so the demo never breaks.
+ * `pidx` rather than by a signed callback, and quotes amounts in paisa.
+ *
+ * The real test server (`dev.khalti.com`) is the default: `Payments` carries
+ * Khalti's published sandbox key, and `KHALTI_SECRET_KEY` replaces it with your
+ * own merchant key. If the test server rejects the session or cannot be
+ * reached, the call answers with a local simulator URL instead of an error, so a
+ * checkout always has somewhere to go.
  */
 class KhaltiController extends ApiController
 {
+    /**
+     * A Khalti lookup already made while working out what this session is.
+     *
+     * @var array<string, mixed>|null
+     */
+    private ?array $cachedLookup = null;
+
     /** Build a payment session and hand back the page to open. */
     public function initiate(Request $request): JsonResponse
     {
@@ -57,7 +71,7 @@ class KhaltiController extends ApiController
 
         $flags = $this->moneyFlags($booking, $teamPayment, $paymentRequest);
 
-        if (! $teamPayment && ! $paymentRequest && $booking->payment_status === 'paid') {
+        if (! $teamPayment && ! $paymentRequest && $booking->payment_status === 'paid' && ! $flags['payingAdvance']) {
             return $this->fail('Already paid ✅', 400, ['booking' => $booking->toArray()]);
         }
 
@@ -74,42 +88,51 @@ class KhaltiController extends ApiController
         $customer = User::find((int) ($paymentRequest->payer_id ?? $teamPayment->user_id ?? $booking->user_id));
 
         $cfg = Payments::khaltiConfig();
-        $origin = Payments::appOrigin($request);
+        // The app tells us where it lives; see Payments::returnOrigin().
+        $origin = Payments::returnOrigin($request, $request->input('returnOrigin'));
 
         $orderId = Payments::makeKhaltiOrderId((int) $booking->id)
             .($teamPayment ? "-TP-{$teamPayment->id}" : ($paymentRequest ? "-PR-{$paymentRequest->id}" : ''));
 
-        $requestQuery = $paymentRequest ? "&paymentRequestId={$paymentRequest->id}&userId={$paymentRequest->payer_id}" : '';
-
-        $returnUrl = "{$origin}/payment/khalti/callback?bookingId={$booking->id}"
-            .($teamPayment ? "&teamPaymentId={$teamPayment->id}" : '').$requestQuery;
+        /*
+         * Clean return URL, like eSewa's: Khalti appends its own query
+         * (`pidx`, `status`, `purchase_order_id`, …) and a URL that already has
+         * one is a coin flip. Everything needed is in those params — the
+         * booking is found by `pidx` (stored on the row when the session was
+         * created) and the team share or player request by the order id — so
+         * the callback screen needs no hints of its own.
+         */
+        $returnUrl = Payments::returnUrl($request, $request->input('returnUrl'), '/payment/khalti/callback');
 
         $amountPaisa = (int) round($amountNpr * 100);
 
+        $payerId = (int) ($paymentRequest->payer_id ?? $teamPayment->user_id ?? $booking->user_id);
+
         $mockTarget = $teamPayment
             ? "&teamPaymentId={$teamPayment->id}&userId={$teamPayment->user_id}"
-            : ($paymentRequest ? "&paymentRequestId={$paymentRequest->id}&userId={$paymentRequest->payer_id}" : '');
+            : ($paymentRequest ? "&paymentRequestId={$paymentRequest->id}&userId={$paymentRequest->payer_id}" : "&userId={$payerId}");
 
-        // No key configured → the local test simulator, which is a fully
-        // functional demo on its own.
-        if ($cfg['secretKey'] === '') {
-            $mockPidx = 'mock-'.$orderId;
+        // The replica page for this checkout: the same steps as Khalti's, served
+        // by this backend (see Payments::demoGatewayUrl). Answered on both paths
+        // — a demo run opens it, and a real session offers it as the way out of
+        // a sandbox that will not cooperate.
+        $demoUrl = Payments::demoGatewayUrl($request, 'khalti', [
+            'bookingId' => $booking->id,
+            'amount' => $amountNpr,
+            'pidx' => 'mock-'.$orderId,
+            'label' => "booking #FN-{$booking->id}".($venueName ? " · {$venueName}" : ''),
+            'teamPaymentId' => $teamPayment->id ?? null,
+            'paymentRequestId' => $paymentRequest->id ?? null,
+            'userId' => $payerId,
+            'paymentPurpose' => ($paymentRequest?->purpose === 'advance') || (! $teamPayment && ! $paymentRequest && (bool) $booking->advance_payment_required) ? 'advance' : null,
+            'success' => $returnUrl,
+            'failure' => $returnUrl,
+        ]);
 
-            $this->storePidx($booking, $teamPayment, $paymentRequest, $mockPidx);
-
-            return $this->ok([
-                'mock' => true,
-                'pidx' => $mockPidx,
-                'payment_url' => "{$origin}/payment/khalti/mock?pidx=".rawurlencode($mockPidx)."&bookingId={$booking->id}&amount={$amountNpr}".$mockTarget,
-                'amount' => $amountNpr,
-                'bookingId' => $booking->id,
-                'teamPaymentId' => $teamPayment->id ?? null,
-                'paymentRequestId' => $paymentRequest->id ?? null,
-                'venueName' => $venueName,
-                'isDeposit' => ! $teamPayment && ! $paymentRequest && (bool) $booking->deposit_required,
-                'isAdvance' => ($paymentRequest?->purpose === 'advance') || (! $teamPayment && (bool) $booking->advance_payment_required),
-                'testHint' => 'Sandbox simulator — no KHALTI_SECRET_KEY set. Add your Khalti test key to hit the real test-pay page.',
-            ]);
+        // A demo run never calls Khalti: the replica is right here, and their
+        // sandbox (test-pay.khalti.com) is not always willing to talk.
+        if ($request->boolean('demo')) {
+            return $this->demoCheckout($booking, $teamPayment, $paymentRequest, $origin, $amountNpr, $venueName, $orderId, $mockTarget, $demoUrl, '');
         }
 
         try {
@@ -139,32 +162,74 @@ class KhaltiController extends ApiController
                 'venueName' => $venueName,
                 'isDeposit' => ! $teamPayment && ! $paymentRequest && (bool) $booking->deposit_required,
                 'isAdvance' => ($paymentRequest?->purpose === 'advance') || (! $teamPayment && (bool) $booking->advance_payment_required),
-                'testHint' => 'Khalti sandbox: use test ID 9800000001 / MPIN 1111 / OTP 987654',
+                'returnOrigin' => $origin,
+                'demoUrl' => $demoUrl,
+                'testHint' => 'Khalti test server: pay with 9800000001, MPIN 1111, OTP 987654',
             ]);
         } catch (\Throwable $e) {
-            // Sandbox unreachable or key rejected: fall back to the simulator so
-            // the demo keeps working.
-            $mockPidx = 'mock-'.$orderId;
-
-            $this->storePidx($booking, $teamPayment, $paymentRequest, $mockPidx);
-
-            return $this->ok([
-                'mock' => true,
-                'fallback' => true,
-                'fallbackError' => $e->getMessage(),
-                'pidx' => $mockPidx,
-                'payment_url' => "{$origin}/payment/khalti/mock?pidx=".rawurlencode($mockPidx)."&bookingId={$booking->id}&amount={$amountNpr}"
-                    .$mockTarget.'&fallback='.rawurlencode($e->getMessage()),
-                'amount' => $amountNpr,
-                'bookingId' => $booking->id,
-                'teamPaymentId' => $teamPayment->id ?? null,
-                'paymentRequestId' => $paymentRequest->id ?? null,
-                'venueName' => $venueName,
-                'isDeposit' => ! $teamPayment && ! $paymentRequest && (bool) $booking->deposit_required,
-                'isAdvance' => ($paymentRequest?->purpose === 'advance') || (! $teamPayment && (bool) $booking->advance_payment_required),
-                'testHint' => 'Khalti sandbox unreachable — using local simulator so you can still test.',
-            ]);
+            // Sandbox unreachable or key rejected: fall back to the replica so
+            // the checkout still finishes.
+            return $this->demoCheckout($booking, $teamPayment, $paymentRequest, $origin, $amountNpr, $venueName, $orderId, $mockTarget, $demoUrl, $e->getMessage());
         }
+    }
+
+    /**
+     * The demo checkout for a booking payment: Khalti's own page, replicated
+     * locally, with a `mock-` session id the verify path already understands.
+     *
+     * `$fallbackError` is empty when the replica was asked for, and carries the
+     * sandbox's complaint when it is a fallback — the difference between "this
+     * is a demo" and "their server is down", which the checkout page shows.
+     *
+     * @return JsonResponse `{ mock: true, mockUrl, payment_url, pidx, … }`
+     */
+    private function demoCheckout(
+        Booking $booking,
+        ?BookingTeamPayment $teamPayment,
+        ?BookingPaymentRequest $paymentRequest,
+        string $origin,
+        int $amountNpr,
+        string $venueName,
+        string $orderId,
+        string $mockTarget,
+        string $demoUrl,
+        string $fallbackError,
+    ): JsonResponse {
+        $demo = $fallbackError === '';
+        $mockPidx = 'mock-'.$orderId;
+
+        $this->storePidx($booking, $teamPayment, $paymentRequest, $mockPidx);
+
+        $url = "{$origin}/payment/khalti/mock?pidx=".rawurlencode($mockPidx)."&bookingId={$booking->id}&amount={$amountNpr}".$mockTarget
+            .($demo ? '&demo=1' : '&fallback='.rawurlencode($fallbackError));
+
+        // `demo=1` is how the page knows it was chosen rather than fallen back
+        // to; a fallback carries the sandbox's own complaint.
+        $pageUrl = $demo
+            ? $demoUrl.'&demo=1'
+            : $demoUrl.'&fallback='.rawurlencode($fallbackError);
+
+        return $this->ok([
+            'mock' => true,
+            'demo' => $demo,
+            'fallback' => ! $demo,
+            'returnOrigin' => $origin,
+            'fallbackError' => $demo ? null : $fallbackError,
+            'pidx' => $mockPidx,
+            'mockUrl' => $url,
+            'demoUrl' => $pageUrl,
+            'payment_url' => $url,
+            'amount' => $amountNpr,
+            'bookingId' => $booking->id,
+            'teamPaymentId' => $teamPayment->id ?? null,
+            'paymentRequestId' => $paymentRequest->id ?? null,
+            'venueName' => $venueName,
+            'isDeposit' => ! $teamPayment && ! $paymentRequest && (bool) $booking->deposit_required,
+            'isAdvance' => ($paymentRequest?->purpose === 'advance') || (! $teamPayment && (bool) $booking->advance_payment_required),
+            'testHint' => $demo
+                ? 'Demo checkout — a replica of the Khalti page. No real money, no real gateway.'
+                : 'Khalti sandbox unreachable — using the demo checkout so you can still test.',
+        ]);
     }
 
     /**
@@ -176,6 +241,13 @@ class KhaltiController extends ApiController
     {
         AdvancePayment::expireOverdueAdvanceRequests();
 
+        // Serialize verification for a booking. A ledger insert, share update
+        // and cached status must either all commit or all roll back.
+        return DB::transaction(fn () => $this->verifyPayment($request));
+    }
+
+    private function verifyPayment(Request $request): JsonResponse
+    {
         $pidx = trim((string) $request->input('pidx', ''));
         $bookingId = (int) $request->input('bookingId', 0) ?: null;
         $mockApprove = $request->boolean('mockApprove');
@@ -188,11 +260,22 @@ class KhaltiController extends ApiController
         $teamPaymentId = (int) $request->input('teamPaymentId', 0) ?: $this->idFromOrder($orderId, '-TP-');
         $paymentRequestId = (int) $request->input('paymentRequestId', 0) ?: $this->idFromOrder($orderId, '-PR-');
 
+        /*
+         * A league entry fee has no booking; its `LG-…` order id comes back from
+         * the return URL, or from Khalti's own lookup. Resolve that before we
+         * insist on finding a booking that was never created.
+         */
+        if (! $bookingId && ! $mockApprove && ! str_starts_with($pidx, 'mock-')) {
+            if ($league = $this->leagueEntry($pidx, $orderId)) {
+                return $league;
+            }
+        }
+
         if ($bookingId) {
-            $booking = Booking::find($bookingId);
+            $booking = Booking::lockForUpdate()->find($bookingId);
         } else {
             // Without a hint, the session id is the only way to find the booking.
-            $booking = Booking::where('khalti_pidx', $pidx)->first();
+            $booking = Booking::where('khalti_pidx', $pidx)->lockForUpdate()->first();
 
             if (! $booking) {
                 return $this->fail('Booking not found for pidx', 404);
@@ -221,6 +304,19 @@ class KhaltiController extends ApiController
 
         if ($paymentRequestId && ! $paymentRequest) {
             return $this->fail('Payment request not found', 404);
+        }
+
+        $cfg = Payments::khaltiConfig();
+        $isMock = str_starts_with($pidx, 'mock-') || $cfg['secretKey'] === '';
+        // Preserve the whole session identity (truncation caused collisions).
+        $mockReference = 'MOCK-'.substr(hash('sha256', $pidx), 0, 40);
+        // Older app versions used a truncated session reference. A retry of
+        // one of those receipts must not create a new hashed receipt.
+        if ($isMock && $mockApprove && ($replay = LedgerRecord::replay($booking, 'Khalti', 'MOCK-'.mb_substr($pidx, 0, 24)))) {
+            return $this->ok($replay + ['mock' => true]);
+        }
+        if ($isMock && $mockApprove && ($replay = LedgerRecord::replay($booking, 'Khalti', $mockReference))) {
+            return $this->ok($replay + ['mock' => true]);
         }
 
         $payerId = (int) $request->input('userId', 0) ?: null;
@@ -280,15 +376,17 @@ class KhaltiController extends ApiController
                 return $this->fail('Mock payment not approved', 400, ['ok' => false]);
             }
 
+            AdvancePayment::validateCheckout($booking, $request);
+
             $flags = $this->moneyFlags($booking, $teamPayment, $paymentRequest);
             $amount = $this->expectedAmount($booking, $teamPayment, $paymentRequest, $flags);
-            $reference = mb_substr('MOCK-'.mb_substr($pidx, 0, 24), 0, 100);
+            $reference = $mockReference;
 
             return $this->pay($booking, $teamPayment, $paymentRequest, $amount, $reference, 'Khalti simulator', true, $flags);
         }
 
         try {
-            $lookup = Payments::khaltiLookup([
+            $lookup = $this->cachedLookup ?? Payments::khaltiLookup([
                 'secretKey' => $cfg['secretKey'],
                 'lookupUrl' => $cfg['lookupUrl'],
                 'pidx' => $pidx,
@@ -306,6 +404,10 @@ class KhaltiController extends ApiController
         $paidPaisa = (float) ($lookup['total_amount'] ?? 0);
         $paidNpr = $paidPaisa > 0 ? (int) round($paidPaisa / 100) : null;
         $reference = mb_substr((string) ($lookup['transaction_id'] ?? $pidx), 0, 100);
+
+        if ($replay = LedgerRecord::replay($booking, 'Khalti', $reference)) {
+            return $this->ok($replay);
+        }
 
         $flags = $this->moneyFlags($booking, $teamPayment, $paymentRequest);
         $expectedAmount = $this->expectedAmount($booking, $teamPayment, $paymentRequest, $flags);
@@ -361,6 +463,22 @@ class KhaltiController extends ApiController
             return $this->ok($lookup === null ? $payload : $payload + ['lookup' => $lookup]);
         }
 
+        if ($amount <= 0) {
+            return $this->ok(['ok' => true, 'alreadyPaid' => true, 'booking' => $booking->toArray()]);
+        }
+
+        $record = LedgerRecord::recordGatewayPayment([
+            'bookingId' => $booking->id,
+            'amount' => $amount,
+            'method' => 'Khalti',
+            'reference' => $reference,
+            'userId' => $booking->user_id,
+            'note' => $note,
+        ]);
+        if (! $record['recorded']) {
+            return $this->ok(['ok' => true, 'duplicate' => $record['duplicate'], 'booking' => $booking->toArray()]);
+        }
+
         $payingDeposit = (bool) ($flags['payingDeposit'] ?? false);
         $payingAdvance = (bool) ($flags['payingAdvance'] ?? false);
 
@@ -385,14 +503,13 @@ class KhaltiController extends ApiController
 
         $booking->forceFill($patch)->save();
 
-        LedgerRecord::recordGatewayPayment([
-            'bookingId' => $booking->id,
-            'amount' => $amount,
-            'method' => 'Khalti',
-            'reference' => $reference,
-            'userId' => $booking->user_id,
-            'note' => $note,
-        ]);
+        if ($payingAdvance) {
+            AdvancePayment::recordDirectedTeamSharePayment((int) $booking->id, (int) $booking->user_id, $amount, $reference, 'Khalti');
+        }
+        if (! $booking->teamPayments()->exists()) {
+            BookingLedger::syncCachedState($booking);
+        }
+        AdvancePayment::syncVenueAdvance($booking);
 
         if (! $mock) {
             $venue = $this->venueOf($booking);
@@ -429,7 +546,7 @@ class KhaltiController extends ApiController
         $teamPayment->forceFill([
             'payment_status' => 'paid',
             'payment_method' => 'Khalti',
-            'paid_amount' => $amount,
+            'paid_amount' => min((int) $teamPayment->amount_due, (int) $teamPayment->paid_amount + $amount),
             'gateway_txn_id' => mb_substr($reference, 0, 100),
         ])->save();
 
@@ -457,6 +574,8 @@ class KhaltiController extends ApiController
             'advance_payment_status' => (bool) $booking->advance_payment_required ? ($advancePaid ? 'paid' : 'pending') : 'none',
             'gateway_txn_id' => mb_substr($reference, 0, 100),
         ])->save();
+
+        AdvancePayment::syncVenueAdvance($booking);
 
         $venue = $this->venueOf($booking);
 
@@ -519,7 +638,8 @@ class KhaltiController extends ApiController
             'note' => "Khalti teammate {$request->purpose} payment",
         ]);
 
-        AdvancePayment::recordDirectedTeamSharePayment((int) $booking->id, (int) $request->payer_id, $amount, $reference);
+        AdvancePayment::recordDirectedTeamSharePayment((int) $booking->id, (int) $request->payer_id, $amount, $reference, 'Khalti');
+        AdvancePayment::syncVenueAdvance($booking);
 
         $venue = $this->venueOf($booking);
 
@@ -625,9 +745,9 @@ class KhaltiController extends ApiController
     private function expectedAmount(Booking $booking, ?BookingTeamPayment $teamPayment, ?BookingPaymentRequest $paymentRequest, array $flags): int
     {
         return match (true) {
-            (bool) $paymentRequest => (int) $paymentRequest->amount_due,
-            (bool) $teamPayment => (int) $teamPayment->amount_due,
-            (bool) $flags['payingAdvance'] => (int) $booking->advance_payment_amount,
+            (bool) $paymentRequest => AdvancePayment::requestAmount($booking, $paymentRequest),
+            (bool) $teamPayment => max(0, (int) $teamPayment->amount_due - (int) $teamPayment->paid_amount),
+            (bool) $flags['payingAdvance'] => AdvancePayment::remaining($booking),
             (bool) $flags['payingDeposit'] => (int) $booking->deposit_amount,
             default => max(0, (int) $booking->total_price - (int) $booking->paid_amount),
         };
@@ -655,6 +775,69 @@ class KhaltiController extends ApiController
         $court = Court::find((int) $booking->court_id);
 
         return $court ? Venue::find((int) $court->venue_id) : null;
+    }
+
+    /**
+     * Settle a league entry fee from a Khalti callback — when this session is one.
+     *
+     * The `purchase_order_id` Khalti echoes is the only link back to our own
+     * records, so it decides everything: a booking order id (`KH-…`) means this
+     * is not a league payment and the caller carries on with the booking path;
+     * an `LG-…` one names the league and squad. Null means "not a league".
+     *
+     * A lookup already made here is cached, so a booking payment that reached
+     * this probe is not looked up twice.
+     */
+    private function leagueEntry(string $pidx, string $orderId): ?JsonResponse
+    {
+        $league = Payments::parseLeagueRef($orderId);
+
+        // The client told us what this order is and it is not a league one.
+        if ($league === null && $orderId !== '') {
+            return null;
+        }
+
+        $cfg = Payments::khaltiConfig();
+
+        try {
+            $lookup = Payments::khaltiLookup([
+                'secretKey' => $cfg['secretKey'],
+                'lookupUrl' => $cfg['lookupUrl'],
+                'pidx' => $pidx,
+            ]);
+        } catch (\Throwable $e) {
+            // Nothing here says this is a league payment, so leave the booking
+            // path to report the unreachable gateway in its own words.
+            return $league === null ? null : $this->fail($e->getMessage(), 400);
+        }
+
+        $this->cachedLookup = $lookup;
+        $league ??= Payments::parseLeagueRef((string) ($lookup['purchase_order_id'] ?? ''));
+
+        if ($league === null) {
+            return null;
+        }
+
+        $status = (string) ($lookup['status'] ?? '');
+
+        if ($status !== 'Completed') {
+            return $this->fail('Khalti says: '.($status ?: 'not completed'), 400, ['ok' => false, 'status' => $status]);
+        }
+
+        $paidPaisa = (float) ($lookup['total_amount'] ?? 0);
+
+        if ($paidPaisa <= 0) {
+            return $this->fail('Khalti did not report an amount 🛡️', 400);
+        }
+
+        $reference = mb_substr((string) ($lookup['transaction_id'] ?? $pidx), 0, 100);
+        $result = LeagueEntry::settle($league['leagueId'], $league['teamId'], (int) round($paidPaisa / 100), 'Khalti', $reference);
+
+        if (! ($result['ok'] ?? false)) {
+            return $this->fail((string) ($result['error'] ?? 'Could not record that payment'), (int) ($result['status'] ?? 400));
+        }
+
+        return $this->ok($result);
     }
 
     private function idFromOrder(string $orderId, string $marker): ?int

@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\BatchController;
 use App\Http\Controllers\Api\AvailabilityController;
 use App\Http\Controllers\Api\BookingController;
 use App\Http\Controllers\Api\CourtController;
@@ -10,9 +11,11 @@ use App\Http\Controllers\Api\KhaltiController;
 use App\Http\Controllers\Api\LedgerController;
 use App\Http\Controllers\Api\MatchController;
 use App\Http\Controllers\Api\NotificationController;
+use App\Http\Controllers\Api\PaymentHandoffController;
 use App\Http\Controllers\Api\PaymentRequestController;
 use App\Http\Controllers\Api\PlayerController;
 use App\Http\Controllers\Api\PromoController;
+use App\Http\Controllers\Api\PushController;
 use App\Http\Controllers\Api\ReviewController;
 use App\Http\Controllers\Api\SeedController;
 use App\Http\Controllers\Api\StatsController;
@@ -31,7 +34,7 @@ use Illuminate\Support\Facades\Route;
 
 /*
 |--------------------------------------------------------------------------
-| Futsal Nepal API
+| Futsal Mate API
 |--------------------------------------------------------------------------
 |
 | Every route the Expo app calls. The paths and response shapes are the
@@ -44,18 +47,32 @@ use Illuminate\Support\Facades\Route;
 */
 
 Route::get('/health', HealthController::class);
+
+/*
+ * Several reads in one round trip. The expo client batches the requests a
+ * screen makes in the same tick through this route — see the controller for
+ * why the dev server makes that worth doing.
+ */
+Route::post('/batch', BatchController::class);
 Route::get('/stats', StatsController::class);
 Route::get('/availability', [AvailabilityController::class, 'index']);
 
 /* ── auth ───────────────────────────────────────────────────────────────── */
+// Signup is two steps: the code first, then the form with the code in it.
+Route::post('/auth/signup/code', [AuthController::class, 'signupCode']);
 Route::post('/auth/signup', [AuthController::class, 'signup']);
 Route::post('/auth/login', [AuthController::class, 'login']);
 Route::post('/auth/reset', [AuthController::class, 'reset']);
+Route::post('/auth/forgot-password', [AuthController::class, 'forgotPassword']);
+Route::post('/auth/reset-with-code', [AuthController::class, 'resetWithCode']);
 Route::post('/auth/change-password', [AuthController::class, 'changePassword']);
 
 /* ── users ──────────────────────────────────────────────────────────────── */
 Route::get('/users', [UserController::class, 'index']);
 Route::get('/users/{id}', [UserController::class, 'show'])->whereNumber('id');
+// Closing an account: ask for the emailed code, then spend it.
+Route::post('/users/{id}/delete-code', [UserController::class, 'sendDeleteCode'])->whereNumber('id');
+Route::delete('/users/{id}', [UserController::class, 'destroy'])->whereNumber('id');
 Route::patch('/users/{id}', [UserController::class, 'update'])->whereNumber('id');
 
 /* ── venues & courts ────────────────────────────────────────────────────── */
@@ -100,6 +117,16 @@ Route::patch('/bookings/{id}/payment-requests/{requestId}', [PaymentRequestContr
     ->whereNumber('requestId');
 
 /* ── test gateways ─────────────────────────────────────────────────────── */
+// A page, not JSON: browsers that cannot POST a form (a native app's system
+// browser) open this to finish an eSewa checkout. See the controller.
+Route::get('/payments/esewa/handoff', [PaymentHandoffController::class, 'esewa']);
+// The demo checkout, served as a page at an API path: the web build reaches
+// this backend through its `/api` proxy, and a device calls it directly. See
+// `laravel/public/demo-{esewa,khalti}.html`.
+Route::get('/payments/{gateway}/demo', [PaymentHandoffController::class, 'demo'])
+    ->where('gateway', 'esewa|khalti');
+// The same page for a league entry fee, replaying the tournament endpoint.
+Route::get('/payments/esewa/handoff/league', [PaymentHandoffController::class, 'leagueEsewa']);
 Route::post('/payments/esewa/initiate', [EsewaController::class, 'initiate']);
 Route::post('/payments/esewa/verify', [EsewaController::class, 'verify']);
 Route::post('/payments/khalti/initiate', [KhaltiController::class, 'initiate']);
@@ -121,6 +148,13 @@ Route::post('/notifications', [NotificationController::class, 'store']);
 Route::post('/notifications/read-all', [NotificationController::class, 'readAll']);
 Route::patch('/notifications/{id}', [NotificationController::class, 'update'])->whereNumber('id');
 Route::delete('/notifications/{id}', [NotificationController::class, 'destroy'])->whereNumber('id');
+
+/* ── push notifications ─────────────────────────────────────────────────── */
+/* The phone hands over its Expo token; Notifier pushes the same messages it
+   already writes to the bell. See App\Services\PushSender. */
+Route::post('/push/register', [PushController::class, 'register']);
+Route::post('/push/unregister', [PushController::class, 'unregister']);
+Route::get('/push/status', [PushController::class, 'status']);
 
 /* ── loyalty vouchers ───────────────────────────────────────────────────── */
 Route::get('/vouchers', [VoucherController::class, 'index']);

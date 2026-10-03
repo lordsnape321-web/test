@@ -50,7 +50,8 @@ export function Navbar() {
   const router = useRouter();
   const { user, isOwner, signOut } = useAuth();
   const { colors: c } = useTheme();
-  const { sm, lg } = useBreakpoints();
+  const bp = useBreakpoints();
+  const { sm, lg } = bp;
   const insets = useSafeAreaInsets();
   const [open, setOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
@@ -79,13 +80,18 @@ export function Navbar() {
         },
       ]}
     >
-      <View style={[styles.inner, { paddingHorizontal: sm ? space[6] : space[4] }]}>
+      <View
+        style={[
+          styles.inner,
+          { paddingHorizontal: bp.gutter },
+        ]}
+      >
         {/* Brand */}
         <Pressable
           onPress={() => router.push("/")}
           style={styles.brand}
           accessibilityRole="button"
-          accessibilityLabel="FutsalNepal home"
+          accessibilityLabel="Futsal Mate home"
         >
           <LinearGradient
             colors={[brand.emerald500, brand.green700]}
@@ -504,7 +510,6 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     gap: space[3],
     paddingHorizontal: space[4],
-    maxWidth: 1280,
     width: "100%",
     alignSelf: "center",
   },

@@ -10,6 +10,7 @@ import {
   Hourglass,
   Lock,
   LogIn,
+  ExternalLink,
   MapPin,
   PartyPopper,
   QrCode,
@@ -25,8 +26,8 @@ import {
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   Image,
+  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -34,27 +35,37 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { CARD_IMAGE_WIDTH, sizedImage } from "@/lib/images";
 import { SafeAreaView } from "react-native-safe-area-context";
 import {
+  attachBookingTeam,
   chooseBookingTeamPayment,
+  createBookingPaymentRequest,
   decideCompetitionBooking,
   fetchBookings,
   fetchHealth,
   fetchReviews,
   fetchUserStats,
+  fetchUserTeams,
   patchBooking,
   postReview,
 } from "@/api";
+import { prepareGatewayTab, rememberCheckout, startGatewayCheckout } from "@/lib/checkout";
 import { BookingPaymentSummary } from "@/components/BookingPaymentSummary";
+import { PaymentPendingBanner } from "@/components/PaymentPendingBanner";
 import { BookingVenueName } from "@/components/BookingVenueName";
 import { PlayerRatingBadge } from "@/components/PlayerRating";
 import { ReceiptUploader, ReceiptViewer, isOnlineMethod } from "@/components/ReceiptUploader";
 import { StarInput } from "@/components/Reviews";
 import { Button, Notice, Pill, Spinner } from "@/components/ui";
 import TeamLedgerPanel from "@/components/TeamLedgerPanel";
+import { askPlan } from "@/lib/booking-advance";
 import { useAuth } from "@/context/AuthContext";
 import { useTheme } from "@/context/ThemeContext";
 import { hoursUntilGame, type PlayerStats } from "@/lib/loyalty";
+import type { TeamLedgerMember, UserTeamLite } from "@/lib/types";
+import { openLocation } from "@/lib/open-location";
+import { confirmAction, notify } from "@/lib/confirm";
 import { formatNPR, formatTime12, gamePlayed, prettyDate } from "@/lib/futsal";
 import { moneyOf } from "@/lib/money";
 import { APP_BUILD } from "@/lib/build";
@@ -159,6 +170,11 @@ export default function BookingsScreen() {
   const [teamSaving, setTeamSaving] = useState<number | null>(null);
   // Which booking's squad ledger the captain has open, if any.
   const [ledgerFor, setLedgerFor] = useState<number | null>(null);
+  // A "Just us" booking can still be turned into a squad booking from here.
+  const [teamPickerFor, setTeamPickerFor] = useState<DiaryBooking | null>(null);
+  const [teamChoices, setTeamChoices] = useState<UserTeamLite[]>([]);
+  const [teamPickBusy, setTeamPickBusy] = useState<number | null>(null);
+  const [teamPickError, setTeamPickError] = useState("");
 
   const load = useCallback(async (refresh = false) => {
     if (!user) return;
@@ -227,6 +243,63 @@ export default function BookingsScreen() {
     }, [user, load]),
   );
 
+  async function openTeamPicker(b: DiaryBooking) {
+    if (!user) return;
+    setTeamPickerFor(b);
+    setTeamChoices([]);
+    setTeamPickError("");
+    try {
+      setTeamChoices(await fetchUserTeams(user.id));
+    } catch (e) {
+      setTeamPickError(e instanceof Error ? e.message : "Could not load your teams.");
+    }
+  }
+
+  async function chooseTeam(teamId: number) {
+    if (!user || !teamPickerFor) return;
+    setTeamPickBusy(teamId);
+    setTeamPickError("");
+    try {
+      await attachBookingTeam(teamPickerFor.id, user.id, teamId);
+      const name = teamChoices.find((team) => team.id === teamId)?.name ?? "Your team";
+      setTeamPickerFor(null);
+      await load(true);
+      notify("Team added 👥", `${name} is now on this booking. Its cost is split across the squad, and you can ask each player to pay their part from the booking's details.`);
+    } catch (e) {
+      setTeamPickError(e instanceof Error ? e.message : "Could not add that team.");
+    } finally {
+      setTeamPickBusy(null);
+    }
+  }
+
+  /**
+   * Ask one listed player for their part, straight from the ledger panel.
+   *
+   * The purpose follows the money: the venue advance while it is unpaid, the
+   * venue balance while the desk is short, otherwise a reimbursement to whoever
+   * paid the bill. Reimbursements never open a gateway.
+   */
+  async function askFromPanel(b: DiaryBooking, member: TeamLedgerMember): Promise<string> {
+    if (!user) throw new Error("Sign in to ask a teammate.");
+    const advanceDue = Math.max(0, b.paymentSummary?.advanceReceivable ?? 0);
+    const venueBalance = Math.max(0, b.paymentSummary?.receivable ?? 0);
+    const plan = askPlan(advanceDue, venueBalance, member.amountDue, member.collected);
+    if (!Number.isInteger(plan.amount) || plan.amount < 10) {
+      throw new Error(`Nothing left to ask ${member.userName} for.`);
+    }
+    await createBookingPaymentRequest(b.id, {
+      requesterId: user.id,
+      payerIds: [member.userId],
+      amount: plan.amount,
+      purpose: plan.purpose,
+      note: "",
+    });
+    await load(true);
+    return plan.purpose === "reimbursement"
+      ? `${member.userName} was asked to reimburse ${formatNPR(plan.amount)} to you. Record it in the ledger once you have it.`
+      : `${member.userName} was asked to pay ${formatNPR(plan.amount)}${plan.purpose === "advance" ? " toward the venue advance" : " toward the booking"}.`;
+  }
+
   const today = new Date().toISOString().slice(0, 10);
   const gone = (s: string) => s === "cancelled" || s === "rejected";
   const myReviewAt = (venueId?: number) =>
@@ -290,7 +363,7 @@ export default function BookingsScreen() {
       await load();
       setUploadFor(null);
     } catch (e) {
-      Alert.alert("Couldn't save receipt", e instanceof Error ? e.message : "Try again");
+      notify("Couldn't save receipt", e instanceof Error ? e.message : "Try again");
     } finally {
       setUploading(false);
     }
@@ -299,15 +372,18 @@ export default function BookingsScreen() {
   /**
    * Pay via a gateway.
    *
-   * The web app opens a hidden form / redirect into the eSewa or Khalti test
-   * page. React Native has no popup, so against the sandbox gateways the app
-   * posts verify with mockApprove — the identical server path (signature check
-   * skipped, ledger row appended, statuses updated).
+   * The server builds the session and answers with the page to open — the
+   * replica of the gateway's own by default, the real test server when that is
+   * what the app is set to. Either way the return screen verifies before
+   * anything is marked paid, and if a gateway is unreachable the replica takes
+   * over, so nobody is stuck.
    */
   async function payNow(b: DiaryBooking, overrideMethod?: "eSewa" | "Khalti") {
     setPaying(b.id);
     setPayError("");
     setCancelError("");
+    // Reserve the browser tab while the tap that started this is still live.
+    prepareGatewayTab();
     const method = overrideMethod ?? String(b.paymentMethod ?? "");
     if (method !== "eSewa" && method !== "Khalti") {
       setPaying(null);
@@ -328,11 +404,40 @@ export default function BookingsScreen() {
         : b.depositRequired && b.depositStatus !== "paid"
           ? b.depositAmount ?? 0
           : payingMyShare ? shareOutstanding : moneyOf(b).balance);
-      const shareQuery = payingMyShare ? `&teamPaymentId=${myShare!.id}` : "";
-      const path = method === "eSewa"
-        ? `/payment/esewa/mock?bookingId=${b.id}&amount=${encodeURIComponent(String(amount))}&userId=${user?.id ?? 0}${shareQuery}`
-        : `/payment/khalti/mock?bookingId=${b.id}&amount=${encodeURIComponent(String(amount))}&pidx=mock-pidx&userId=${user?.id ?? 0}${shareQuery}`;
-      router.push(path as never);
+      const gateway = method === "eSewa" ? ("esewa" as const) : ("khalti" as const);
+      const input = {
+        bookingId: b.id,
+        userId: user?.id,
+        teamPaymentId: payingMyShare ? myShare!.id : undefined,
+        paymentPurpose:
+          b.advancePaymentRequired && b.advancePaymentStatus !== "paid" ? ("advance" as const) : undefined,
+      };
+
+      // Remembered so the return screens can offer "Try again" in one tap, and
+      // so the pending card shows up wherever the player comes back to.
+      rememberCheckout({
+        kind: "booking",
+        method: gateway,
+        input,
+        label: `${method} · booking #${b.id}`,
+        donePath: "/bookings?refresh=1",
+      });
+
+      if (!user) {
+        setPayError("Sign in to pay this booking.");
+        setPaying(null);
+        return;
+      }
+
+      const outcome = await startGatewayCheckout(gateway, input);
+
+      if (outcome.status === "error") setPayError(outcome.message);
+
+      setPaying(null);
+
+      // The demo checkout is a screen in this app — sign in, MPIN, token, then
+      // the wallet's balance and the Pay button. Nothing leaves the app.
+      if (outcome.status === "demo") router.push(outcome.path as never);
     } catch (e) {
       setPayError(e instanceof Error ? e.message : "Could not start the payment");
       setPaying(null);
@@ -353,15 +458,36 @@ export default function BookingsScreen() {
     }
   }
 
-  function payTeamShare(b: DiaryBooking, share: NonNullable<DiaryBooking["teamPayments"]>[number]) {
+  async function payTeamShare(b: DiaryBooking, share: NonNullable<DiaryBooking["teamPayments"]>[number]) {
     if (share.paymentStatus === "paid" || !["eSewa", "Khalti"].includes(share.paymentMethod)) return;
     setPaying(b.id);
     const gateway = share.paymentMethod === "eSewa" ? "esewa" : "khalti";
-    const query = gateway === "esewa"
-      ? `/payment/esewa/mock?bookingId=${b.id}&amount=${encodeURIComponent(String(share.amountDue))}&teamPaymentId=${share.id}&userId=${user?.id ?? 0}`
-      : `/payment/khalti/mock?bookingId=${b.id}&amount=${encodeURIComponent(String(share.amountDue))}&teamPaymentId=${share.id}&userId=${user?.id ?? 0}&pidx=mock-team-${share.id}`;
+    prepareGatewayTab();
+    const input = { bookingId: b.id, userId: user?.id, teamPaymentId: share.id };
+
+    // Remembered so the return screens can offer "Try again" in one tap, and so
+    // the pending card shows up wherever the player comes back to.
+    rememberCheckout({
+      kind: "booking",
+      method: gateway,
+      input,
+      label: `${share.paymentMethod} · your share on booking #${b.id}`,
+      donePath: "/bookings?refresh=1",
+    });
+
+    if (!user) {
+      setPayError("Sign in to pay this share.");
+      setPaying(null);
+      return;
+    }
+
+    const outcome = await startGatewayCheckout(gateway, input);
+
+    if (outcome.status === "error") setPayError(outcome.message);
+
     setPaying(null);
-    router.push(query as never);
+
+    if (outcome.status === "demo") router.push(outcome.path as never);
   }
 
   function needsOnlinePay(b: DiaryBooking) {
@@ -446,30 +572,28 @@ export default function BookingsScreen() {
   }
 
   async function cancel(b: DiaryBooking) {
-    Alert.alert(
-      "Cancel this booking?",
-      "The venue will be told straight away — and it dings your reliability stars ⭐.",
-      [
-        { text: "Keep it", style: "cancel" },
-        {
-          text: "Cancel booking",
-          style: "destructive",
-          onPress: () => {
-            void (async () => {
-              setCancelling(b.id);
-              setCancelError("");
-              try {
-                await patchBooking(b.id, { status: "cancelled", actor: "player", actorId: user?.id });
-                await load();
-              } catch (e) {
-                setCancelError(e instanceof Error ? e.message : "Couldn't cancel");
-              } finally {
-                setCancelling(null);
-              }
-            })();
-          },
-        },
-      ],
+    confirmAction(
+      {
+        title: "Cancel this booking?",
+        message: "The venue will be told straight away — and it dings your reliability stars ⭐.",
+        confirmLabel: "Cancel booking",
+        cancelLabel: "Keep it",
+        destructive: true,
+      },
+      () => {
+        void (async () => {
+          setCancelling(b.id);
+          setCancelError("");
+          try {
+            await patchBooking(b.id, { status: "cancelled", actor: "player", actorId: user?.id });
+            await load();
+          } catch (e) {
+            setCancelError(e instanceof Error ? e.message : "Couldn't cancel");
+          } finally {
+            setCancelling(null);
+          }
+        })();
+      },
     );
   }
 
@@ -545,14 +669,10 @@ export default function BookingsScreen() {
         ref={scrollRef}
         contentContainerStyle={[
           styles.scroll,
-          {
-            paddingHorizontal: space[4],
-            maxWidth: 1280,
-            width: "100%",
-            alignSelf: "center",
-          },
+          { paddingHorizontal: space[4], width: "100%" },
         ]}
       >
+        <PaymentPendingBanner onSettled={() => void load()} />
         <View style={styles.eyebrowRow}>
           <PartyPopper size={14} color={colors.orange500} />
           <ScrollView
@@ -754,6 +874,8 @@ export default function BookingsScreen() {
                 }}
                 isTeamCaptain={!!user && b.userId === user.id && !!b.teamName}
                 onOpenTeamLedger={() => setLedgerFor(b.id)}
+                canSelectTeam={!!user && b.userId === user.id && !b.teamName && !gone(b.status) && !played(b)}
+                onSelectTeam={() => void openTeamPicker(b)}
                 payLabel={payLabel(b)}
                 onOpenReceipt={() => setViewReceipt(b.receiptUrl ?? "")}
                 onToggleUpload={() =>
@@ -804,13 +926,52 @@ export default function BookingsScreen() {
         </Text>
       </ScrollView>
       {viewReceipt ? <ReceiptViewer url={viewReceipt} onClose={() => setViewReceipt(null)} /> : null}
+      {teamPickerFor ? (
+        <Modal transparent animationType="fade" onRequestClose={() => setTeamPickerFor(null)}>
+          <View style={[styles.teamPickerBackdrop, { backgroundColor: c.scrim }]}>
+            <View style={[styles.teamPickerCard, { backgroundColor: c.surface, borderColor: c.border }]}>
+              <Text style={[styles.teamPickerTitle, { color: c.text }]}>Select a team</Text>
+              <Text style={[styles.teamPickerHint, { color: c.textMuted }]}>
+                This booking&apos;s cost is split equally across the squad, and every teammate can
+                then pay their own part (or reimburse you once you have paid the venue).
+              </Text>
+              {teamPickError ? <Text style={{ color: c.dangerText, fontSize: fontSize.sm }}>{teamPickError}</Text> : null}
+              {teamChoices.map((team) => (
+                <Pressable
+                  key={team.id}
+                  onPress={() => void chooseTeam(team.id)}
+                  disabled={teamPickBusy !== null}
+                  style={[styles.chip, { backgroundColor: c.bg, borderWidth: 1, borderColor: c.border, justifyContent: "center", opacity: teamPickBusy === null || teamPickBusy === team.id ? 1 : 0.5 }]}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Use the team ${team.name}`}
+                >
+                  <Text style={[styles.chipText, { color: c.text }]}>
+                    {teamPickBusy === team.id ? "Adding…" : `${team.name} · ${team.memberCount} members`}
+                  </Text>
+                </Pressable>
+              ))}
+              {teamChoices.length === 0 && !teamPickError ? (
+                <Text style={[styles.teamPickerHint, { color: c.textMuted }]}>Loading your teams…</Text>
+              ) : null}
+              <Pressable onPress={() => setTeamPickerFor(null)} style={styles.closeGhost} accessibilityRole="button">
+                <Text style={[styles.closeGhostText, { color: c.textMuted }]}>Close</Text>
+              </Pressable>
+            </View>
+          </View>
+        </Modal>
+      ) : null}
       {ledgerFor != null && user ? (
         <TeamLedgerPanel
           bookingId={ledgerFor}
           actorId={user.id}
           bookingLabel={filtered.find((x) => x.id === ledgerFor)?.teamName ?? ""}
           onClose={() => setLedgerFor(null)}
-          onChanged={() => void load()}
+          onChanged={() => void load(true)}
+          onAsk={(member) => {
+            const booking = bookings.find((x) => x.id === ledgerFor);
+            if (!booking) throw new Error("Booking not found.");
+            return askFromPanel(booking, member);
+          }}
         />
       ) : null}
     </SafeAreaView>
@@ -847,6 +1008,8 @@ function BookingCard({
   /** True when this booking's player is the captain of the squad. */
   isTeamCaptain,
   onOpenTeamLedger,
+  canSelectTeam,
+  onSelectTeam,
   payLabel,
   onOpenReceipt,
   onToggleUpload,
@@ -892,6 +1055,9 @@ function BookingCard({
   onSaveTeamMethod: () => void;
   onPayTeamShare: () => void;
   isTeamCaptain: boolean;
+  /** True when this is the player's own booking with no squad attached yet. */
+  canSelectTeam?: boolean;
+  onSelectTeam?: () => void;
   onOpenTeamLedger: () => void;
   payLabel: string;
   onOpenReceipt: () => void;
@@ -988,7 +1154,7 @@ function BookingCard({
       ) : null}
       <View style={styles.cardTop}>
         {b.venue?.imageUrl ? (
-          <Image source={{ uri: b.venue.imageUrl }} style={styles.cardImg} />
+          <Image source={{ uri: sizedImage(b.venue.imageUrl, CARD_IMAGE_WIDTH) }} style={styles.cardImg} />
         ) : (
           <View style={[styles.cardImg, { backgroundColor: muted + "33" }]} />
         )}
@@ -1088,10 +1254,16 @@ function BookingCard({
               <Clock size={14} color={isDark ? colors.emerald300 : colors.emerald700} />
               <Text style={[styles.compactFactText, { color: muted }]}>{formatTime12(b.startTime)} – {formatTime12(b.endTime || b.startTime)}</Text>
             </View>
-            <View style={[styles.compactFact, styles.compactFactWide]}>
+            <Pressable
+              onPress={() => void openLocation(b.venue?.locationUrl, b.venue?.address, b.venue?.city)}
+              style={[styles.compactFact, styles.compactFactWide]}
+              accessibilityRole="link"
+              accessibilityLabel="Open the venue in Maps"
+            >
               <MapPin size={14} color={isDark ? colors.emerald300 : colors.emerald700} />
               <Text style={[styles.compactFactText, styles.compactFactWrap, { color: muted }]}>{b.venue?.address ?? "Venue address unavailable"}</Text>
-            </View>
+              <ExternalLink size={11} color={muted} />
+            </Pressable>
           </View>
 
           <Pressable
@@ -1137,6 +1309,17 @@ function BookingCard({
                 </>
               )}
             </View>
+          ) : null}
+          {canSelectTeam ? (
+            <Pressable
+              onPress={onSelectTeam}
+              style={[styles.chip, { backgroundColor: surface, borderWidth: 1, borderColor: border }]}
+              accessibilityRole="button"
+              accessibilityLabel="Select a team for this booking"
+            >
+              <Shield size={12} color={text} />
+              <Text style={[styles.chipText, { color: text }]}>Select team 👥</Text>
+            </Pressable>
           ) : null}
           {b.teamName && isTeamCaptain ? (
             <View style={[styles.teamPaymentCard, { backgroundColor: isDark ? "rgba(16,185,129,0.12)" : "#F0FDF4", borderColor: isDark ? "rgba(52,211,153,0.25)" : "#BBF7D0" }]}>
@@ -1244,17 +1427,36 @@ function BookingCard({
             </Text>
           ) : null}
 
+          {/*
+            Three facts used to be six loose children of one wrapping row: the
+            row gap stacked on top of each text's own margin, so the clock sat
+            twice as far from the time as the calendar sat from the date. Pairing
+            each icon with its text keeps the spacing even, and the whole row
+            wraps between facts instead of inside one.
+          */}
           <View style={styles.detailRow}>
-            <CalendarCheck size={16} color={colors.emerald600} />
-            <Text style={[styles.detailText, { color: muted }]}>{prettyDate(b.date)}</Text>
-            <Clock size={16} color={colors.emerald600} />
-            <Text style={[styles.detailText, { color: muted }]}>
-              {formatTime12(b.startTime)} – {formatTime12(b.endTime || b.startTime)}
-            </Text>
-            <MapPin size={16} color={colors.emerald600} />
-            <Text style={[styles.detailText, { color: muted }]}>
-              {b.venue?.address ?? ""}
-            </Text>
+            <View style={styles.detailPair}>
+              <CalendarCheck size={14} color={colors.emerald600} />
+              <Text style={[styles.detailText, { color: muted }]}>{prettyDate(b.date)}</Text>
+            </View>
+            <View style={styles.detailPair}>
+              <Clock size={14} color={colors.emerald600} />
+              <Text style={[styles.detailText, { color: muted }]}>
+                {formatTime12(b.startTime)} – {formatTime12(b.endTime || b.startTime)}
+              </Text>
+            </View>
+            <Pressable
+              onPress={() => void openLocation(b.venue?.locationUrl, b.venue?.address, b.venue?.city)}
+              style={styles.detailPair}
+              accessibilityRole="link"
+              accessibilityLabel="Open the venue in Maps"
+            >
+              <MapPin size={14} color={colors.emerald600} />
+              <Text style={[styles.detailText, styles.detailLink, { color: colors.emerald600 }]}>
+                {b.venue?.address ?? "Venue address unavailable"}
+              </Text>
+              <ExternalLink size={11} color={colors.emerald600} />
+            </Pressable>
           </View>
 
           {b.competition ? (
@@ -1605,6 +1807,12 @@ function textFaint(muted: string) {
 }
 
 const styles = StyleSheet.create({
+  teamPickerBackdrop: { flex: 1, alignItems: "center", justifyContent: "center", padding: space[4] },
+  teamPickerCard: { width: "100%", maxWidth: 440, borderRadius: radius.lg, borderWidth: 1, padding: space[4], gap: space[2] },
+  teamPickerTitle: { fontSize: fontSize.lg, fontWeight: "700" },
+  teamPickerHint: { fontSize: fontSize.sm, lineHeight: 18 },
+  closeGhost: { paddingVertical: space[2], alignItems: "center" },
+  closeGhostText: { fontSize: fontSize.sm, fontWeight: "600" },
   flex: { flex: 1 },
   center: { alignItems: "center", justifyContent: "center", padding: space[4] },
   scroll: { padding: space[4], paddingBottom: space[16], gap: space[2] },
@@ -1734,7 +1942,7 @@ const styles = StyleSheet.create({
   },
   openBookingText: { fontSize: fontSize.xs, fontWeight: "900" },
   compactFacts: { flexDirection: "row", flexWrap: "wrap", gap: space[2], borderBottomWidth: 1, paddingBottom: space[2], marginTop: space[2] },
-  compactFact: { flexDirection: "row", alignItems: "flex-start", gap: 5, maxWidth: "100%" },
+  compactFact: { flexDirection: "row", alignItems: "center", gap: 5, maxWidth: "100%" },
   compactFactWide: { flexBasis: "100%" },
   compactFactText: { fontSize: fontSize.xs, fontWeight: "700", lineHeight: 16 },
   compactFactWrap: { flexShrink: 1 },
@@ -1781,7 +1989,9 @@ const styles = StyleSheet.create({
     gap: space[2],
     marginTop: space[3],
   },
-  detailText: { fontSize: 13, lineHeight: 18, fontWeight: "600", flexShrink: 1, marginRight: space[2] },
+  detailPair: { flexDirection: "row", alignItems: "center", gap: 5, maxWidth: "100%" },
+  detailText: { fontSize: 13, lineHeight: 18, fontWeight: "600", flexShrink: 1 },
+  detailLink: { textDecorationLine: "underline" },
   compCard: {
     marginTop: space[3],
     borderRadius: radius["2xl"],

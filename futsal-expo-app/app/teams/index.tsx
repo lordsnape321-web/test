@@ -39,7 +39,6 @@ import {
   fetchVenues,
   leaveTeam,
   requestJoinTeam,
-  seedDemo,
 } from "@/api";
 import { Avatar } from "@/components/Avatar";
 import { TeamManager } from "@/components/TeamManager";
@@ -47,6 +46,7 @@ import { Notice, Spinner } from "@/components/ui";
 import { useAuth } from "@/context/AuthContext";
 import { useTheme } from "@/context/ThemeContext";
 import { initials } from "@/lib/futsal";
+import { ensureDemoSeed } from "@/lib/demo-seed";
 import type { TeamCard, TeamInvite } from "@/lib/types";
 import {
   TEAM_DESCRIPTION_MAX,
@@ -144,14 +144,17 @@ export default function TeamsScreen() {
     let alive = true;
     (async () => {
       try {
-        // Seed on first visit so a fresh database has squads to show. The call is
-        // idempotent ("Already seeded"), so re-running it after a search is cheap.
-        try {
-          await seedDemo();
-        } catch {
-          /* seed is best-effort — a live backend may refuse or already be seeded */
+        // Seed on first visit so a fresh database has squads to show — but never
+        // in front of the read. It runs at most once a session, and is only
+        // waited for when the read came back empty, which is the one case where
+        // it can still help.
+        void ensureDemoSeed();
+
+        const listed = await load();
+
+        if (listed.length === 0 && (await ensureDemoSeed())) {
+          await load();
         }
-        await load();
       } catch {
         if (alive) setNoticeBad(true);
       } finally {
@@ -769,7 +772,7 @@ export default function TeamsScreen() {
 
       {/* create modal */}
       <Modal visible={showCreate} transparent animationType="slide" onRequestClose={() => setShowCreate(false)}>
-        <View style={styles.backdrop}>
+        <View style={[styles.backdrop, { backgroundColor: c.scrim }]}>
           <Pressable style={StyleSheet.absoluteFill} onPress={() => setShowCreate(false)} />
           <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={styles.kav}>
             <View style={[styles.sheet, { backgroundColor: c.surface }]}>
@@ -1384,7 +1387,7 @@ const styles = StyleSheet.create({
   joinText: { fontSize: fontSize.base, fontWeight: "900" },
 
   /* create modal */
-  backdrop: { flex: 1, backgroundColor: "rgba(28,25,23,0.5)", justifyContent: "flex-end" },
+  backdrop: { flex: 1, justifyContent: "flex-end" },
   kav: { maxHeight: "92%" },
   sheet: {
     borderTopLeftRadius: radius["3xl"],

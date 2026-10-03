@@ -1,16 +1,18 @@
 {
   "expo": {
-    "name": "Futsal Nepal",
-    "slug": "futsal-nepal",
+    "name": "Futsal Mate",
+    "slug": "futsal-mate",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "scheme": "futsalnepal",
+    "scheme": "futsalmate",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.futsalmate.app"
     },
     "android": {
+      "package": "com.futsalmate.app",
       "adaptiveIcon": {
         "backgroundColor": "#0F172A",
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -26,7 +28,23 @@
     },
     "plugins": [
       "expo-router",
-      "expo-system-ui"
+      "expo-system-ui",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "usesCleartextTraffic": true
+          }
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/android-icon-monochrome.png",
+          "color": "#22c55e",
+          "defaultChannel": "default"
+        }
+      ]
     ],
     "extra": {
       "router": {

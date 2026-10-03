@@ -5,6 +5,7 @@ import {
   Check,
   ChevronLeft,
   Clock,
+  ExternalLink,
   Globe,
   Lock,
   MapPin,
@@ -38,6 +39,7 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { HERO_IMAGE_WIDTH, sizedImage } from "@/lib/images";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { ReviewsSection } from "@/components/Reviews";
 import { ReceiptUploader, isOnlineMethod } from "@/components/ReceiptUploader";
@@ -68,6 +70,10 @@ import {
 } from "@/lib/loyalty";
 import {
   addHours,
+  courtDaySummary,
+  courtHours,
+  courtTimeSlots,
+  DAY_NAMES,
   formatNPR,
   formatTime12,
   gamePlayed,
@@ -75,9 +81,9 @@ import {
   prettyDate,
   prettyDayShort,
   rangeSlots,
-  timeSlots,
   todayISO,
 } from "@/lib/futsal";
+import { openLocation } from "@/lib/open-location";
 import { normalizePromoCode } from "@/lib/promos";
 import { validateCustomPrice, validateNotes, validatePhone, validateTitle } from "@/lib/validation";
 import type { Court, LeagueSummary, UserTeamLite, Venue } from "@/lib/types";
@@ -275,10 +281,11 @@ export default function VenueDetail() {
 
   const court = useMemo(() => courts.find((item) => item.id === courtId) ?? null, [courts, courtId]);
   const days = useMemo(() => next14Days(), []);
-  const slots = useMemo(
-    () => (venue ? timeSlots(venue.openingHour, venue.closingHour) : []),
-    [venue],
-  );
+  // Slots come from the court the player picked: a pitch can keep its own
+  // window, and without one it follows the venue exactly as before.
+  const slots = useMemo(() => courtTimeSlots(court, venue, date), [court, venue, date]);
+  const hoursShown = useMemo(() => courtHours(court, venue, date), [court, venue, date]);
+  const dayWindows = useMemo(() => courtDaySummary(court), [court]);
   const availableMethods = useMemo(() => parsePayments(venue?.acceptedPayments), [venue?.acceptedPayments]);
 
   useEffect(() => {
@@ -575,16 +582,28 @@ export default function VenueDetail() {
           </Pressable>
 
           <View style={[styles.cover, { backgroundColor: c.surface, borderColor: c.border }]}>
-            {venue.imageUrl ? <Image source={{ uri: venue.imageUrl }} style={styles.coverImage} resizeMode="cover" /> : null}
+            {venue.imageUrl ? <Image source={{ uri: sizedImage(venue.imageUrl, HERO_IMAGE_WIDTH) }} style={styles.coverImage} resizeMode="cover" /> : null}
             <View style={styles.coverShade} />
             <View style={styles.coverCopy}>
               <View style={styles.badges}>
                 <View style={styles.ratingBadge}><Star size={12} color="#451A03" fill="#451A03" /><Text style={styles.ratingText}>{venue.rating.toFixed(1)}</Text></View>
                 <Text style={styles.coverBadge}>💬 {venue.totalReviews} reviews</Text>
-                <Text style={styles.coverBadge}><Clock size={12} color="#FFFFFF" /> {venue.openingHour}:00 – {venue.closingHour}:00</Text>
+                <Text style={styles.coverBadge}><Clock size={12} color="#FFFFFF" /> {formatTime12(`${String(venue.openingHour).padStart(2, "0")}:00`)} – {formatTime12(`${String(venue.closingHour).padStart(2, "0")}:00`)}</Text>
               </View>
               <Text style={styles.coverTitle}>{venue.name}</Text>
-              <Text style={styles.coverMeta}><MapPin size={13} color="#FFFFFF" /> {venue.address} • {venue.city}</Text>
+              {/* Tapping the location opens the owner's Maps link, or a Maps search on the address. */}
+              <Pressable
+                onPress={() => void openLocation(venue.locationUrl, venue.address, venue.city)}
+                style={styles.coverLocation}
+                accessibilityRole="link"
+                accessibilityLabel={`Open ${venue.name} in Maps`}
+              >
+                <MapPin size={13} color="#FFFFFF" />
+                <Text style={styles.coverLocationText} numberOfLines={1}>
+                  {venue.address} • {venue.city}
+                </Text>
+                <ExternalLink size={12} color="#FFFFFF" />
+              </Pressable>
               {venue.phone ? <Text style={styles.coverMeta}><Phone size={13} color="#FFFFFF" /> {venue.phone}</Text> : null}
             </View>
           </View>
@@ -634,6 +653,12 @@ export default function VenueDetail() {
                     <View style={styles.rowBetween}><View style={[styles.formatPill, { backgroundColor: c.surface }]}><Users size={12} color={c.textMuted} /><Text style={[styles.tinyStrong, { color: c.textMuted }]}>{item.format ?? "Futsal"}</Text></View>{active ? <View style={styles.checkCircle}><Check size={13} color="#FFFFFF" strokeWidth={3} /></View> : null}</View>
                     <Text style={[styles.courtName, { color: c.text }]}>{item.name}</Text>
                     <Text style={[styles.small, { color: c.textMuted }]}>{item.surface ?? "Indoor turf"}</Text>
+                    <Text style={[styles.tiny, { color: c.textFaint }]}>
+                      🕐 {formatTime12(courtHours(item, venue).opensAt)} – {formatTime12(courtHours(item, venue).closesAt)}
+                    </Text>
+                    {courtDaySummary(item) ? (
+                      <Text style={[styles.tiny, { color: c.textFaint }]}>🔁 {courtDaySummary(item)}</Text>
+                    ) : null}
                     <View style={styles.rowBetween}><Text style={[styles.price, { color: isDark ? colors.emerald300 : colors.emerald700 }]}>{formatNPR(item.pricePerHour)}<Text style={styles.priceSmall}>/hr</Text></Text><Text style={[styles.tiny, { color: c.textFaint }]}>☀️ {formatNPR(item.priceMorning ?? item.pricePerHour)}</Text></View>
                   </Pressable>
                 );
@@ -653,6 +678,18 @@ export default function VenueDetail() {
 
           <SectionCard title="Step 3 • How long + when?" accent="emerald">
             <Text style={[styles.small, { color: c.textMuted }]}>Pick 1, 2 or 3 hours first, then choose a start time. The whole block must be free.</Text>
+            {court ? (
+              <Text style={[styles.tinyStrong, { color: c.textFaint }]}>
+                🕐 {court.name} is open {formatTime12(hoursShown.opensAt)} – {formatTime12(hoursShown.closesAt)}
+                {hoursShown.day !== null
+                  ? ` on ${DAY_NAMES[hoursShown.day]}${(court.dayHours ?? []).some((row) => Number(row.dayOfWeek) === hoursShown.day) ? " (its own hours)" : ""}`
+                  : ""}
+                {hoursShown.inherited ? " (venue hours)" : ""}
+              </Text>
+            ) : null}
+            {dayWindows ? (
+              <Text style={[styles.tiny, { color: c.textFaint }]}>🔁 Other days: {dayWindows}</Text>
+            ) : null}
             <View style={styles.wrapRow}>
               {[1, 2, 3].map((value) => <Choice key={String(value)} label={`${value} hr${value > 1 ? "s" : ""} • ${value} slot${value > 1 ? "s" : ""}`} active={hours === value} onPress={() => { setHours(value); setStart(null); }} />)}
             </View>
@@ -832,7 +869,7 @@ function PaymentBox({ competition = false, methods, selected, onSelect, deposit,
 function SuccessModal({ success, venue, court, date, start, hours, onClose, onTrack }: { success: BookingSuccess | null; venue: Venue; court: Court | null; date: string; start: string | null; hours: number; onClose: () => void; onTrack: () => void }) {
   const { colors: c, isDark } = useTheme();
   if (!success) return null;
-  return <Modal visible transparent animationType="fade" onRequestClose={onClose}><Pressable style={styles.modalBackdrop} onPress={onClose}><View onStartShouldSetResponder={() => true} style={[styles.successCard, { backgroundColor: c.surface, borderColor: c.border }]}><Pressable onPress={onClose} style={styles.closeSuccess}><X size={17} color={c.textMuted} /></Pressable><View style={styles.successIcon}><PartyPopper size={30} color="#FFFFFF" /></View><Text style={[styles.successTitle, { color: c.text }]}>Request sent! 🥳</Text><Text style={[styles.body, { color: c.textMuted }]}>{court?.name} • {prettyDate(date)} • {start ? `${formatTime12(start)} (${hours} hr)` : ""}</Text><Text style={[styles.successPayment, { color: isDark ? colors.emerald300 : colors.emerald700 }]}>{success.total === 0 ? success.freePlay ? "FREE with your loyalty hour! 🎁" : "FREE with your promo code! 🎟️" : success.visibility === "competition" ? `${formatNPR(success.total)} held with the request — payment opens after captain acceptance` : `${formatNPR(success.total)} payment request recorded`}</Text>{success.saved > 0 ? <Text style={[styles.discountNote, { color: isDark ? colors.emerald300 : colors.emerald700 }]}>🎟️ {success.promoCode} saved you {formatNPR(success.saved)}</Text> : null}{success.teamName ? <Text style={[styles.smallStrong, { color: c.textMuted }]}>🛡️ Booked for {success.teamName}</Text> : null}<Text style={[styles.tiny, { color: c.textFaint }]}>Booking ref: #FN-{success.id}</Text>{success.visibility === "competition" ? <Text style={[styles.successNotice, { backgroundColor: isDark ? "rgba(245,158,11,0.12)" : "#FFFBEB", color: isDark ? colors.amber300 : "#92400E" }]}>🆚 {success.competitionPaymentMode === "loser_pays" ? "Loser pays" : "Fair split"} policy saved. The opposition captain must accept before the venue owner is notified.</Text> : <Text style={[styles.successNotice, { backgroundColor: isDark ? "rgba(245,158,11,0.12)" : "#FFFBEB", color: isDark ? colors.amber300 : "#92400E" }]}>⏳ The venue is reviewing it — you&apos;ll be notified when it is confirmed.</Text>}<View style={styles.twoCol}><Pressable onPress={onClose} style={[styles.secondaryAction, { borderColor: c.border }]}><Text style={[styles.smallStrong, { color: c.text }]}>Book another</Text></Pressable><Pressable onPress={onTrack} style={styles.primaryAction}><Text style={styles.primaryActionText}>Track it</Text></Pressable></View></View></Pressable></Modal>;
+  return <Modal visible transparent animationType="fade" onRequestClose={onClose}><Pressable style={[styles.modalBackdrop, { backgroundColor: c.scrim }]} onPress={onClose}><View onStartShouldSetResponder={() => true} style={[styles.successCard, { backgroundColor: c.surface, borderColor: c.border }]}><Pressable onPress={onClose} style={styles.closeSuccess}><X size={17} color={c.textMuted} /></Pressable><View style={styles.successIcon}><PartyPopper size={30} color="#FFFFFF" /></View><Text style={[styles.successTitle, { color: c.text }]}>Request sent! 🥳</Text><Text style={[styles.body, { color: c.textMuted }]}>{court?.name} • {prettyDate(date)} • {start ? `${formatTime12(start)} (${hours} hr)` : ""}</Text><Text style={[styles.successPayment, { color: isDark ? colors.emerald300 : colors.emerald700 }]}>{success.total === 0 ? success.freePlay ? "FREE with your loyalty hour! 🎁" : "FREE with your promo code! 🎟️" : success.visibility === "competition" ? `${formatNPR(success.total)} held with the request — payment opens after captain acceptance` : `${formatNPR(success.total)} payment request recorded`}</Text>{success.saved > 0 ? <Text style={[styles.discountNote, { color: isDark ? colors.emerald300 : colors.emerald700 }]}>🎟️ {success.promoCode} saved you {formatNPR(success.saved)}</Text> : null}{success.teamName ? <Text style={[styles.smallStrong, { color: c.textMuted }]}>🛡️ Booked for {success.teamName}</Text> : null}<Text style={[styles.tiny, { color: c.textFaint }]}>Booking ref: #FN-{success.id}</Text>{success.visibility === "competition" ? <Text style={[styles.successNotice, { backgroundColor: isDark ? "rgba(245,158,11,0.12)" : "#FFFBEB", color: isDark ? colors.amber300 : "#92400E" }]}>🆚 {success.competitionPaymentMode === "loser_pays" ? "Loser pays" : "Fair split"} policy saved. The opposition captain must accept before the venue owner is notified.</Text> : <Text style={[styles.successNotice, { backgroundColor: isDark ? "rgba(245,158,11,0.12)" : "#FFFBEB", color: isDark ? colors.amber300 : "#92400E" }]}>⏳ The venue is reviewing it — you&apos;ll be notified when it is confirmed.</Text>}<View style={styles.twoCol}><Pressable onPress={onClose} style={[styles.secondaryAction, { borderColor: c.border }]}><Text style={[styles.smallStrong, { color: c.text }]}>Book another</Text></Pressable><Pressable onPress={onTrack} style={styles.primaryAction}><Text style={styles.primaryActionText}>Track it</Text></Pressable></View></View></Pressable></Modal>;
 }
 
 const styles = StyleSheet.create({
@@ -852,6 +889,8 @@ const styles = StyleSheet.create({
   ratingText: { color: "#451A03", fontSize: fontSize.xs, fontWeight: "900" },
   coverBadge: { color: "#FFFFFF", backgroundColor: "rgba(15,23,42,0.72)", borderRadius: radius.full, paddingHorizontal: 9, paddingVertical: 4, fontSize: fontSize.xs, fontWeight: "800" },
   coverTitle: { color: "#FFFFFF", fontSize: fontSize["3xl"], fontWeight: "900" },
+  coverLocation: { flexDirection: "row", alignItems: "center", gap: 5, marginTop: 4, alignSelf: "flex-start" },
+  coverLocationText: { color: "#FFFFFF", fontSize: fontSize.sm, fontWeight: "700", flexShrink: 1, textDecorationLine: "underline" },
   coverMeta: { color: "rgba(255,255,255,0.9)", fontSize: fontSize.sm, fontWeight: "700" },
   sectionCard: { borderRadius: radius["3xl"], borderWidth: 1, padding: space[5], gap: space[3] },
   sectionTitle: { fontSize: fontSize.sm, fontWeight: "900", textTransform: "uppercase", letterSpacing: 1.3 },
@@ -938,7 +977,7 @@ const styles = StyleSheet.create({
   error: { color: colors.red500, fontSize: fontSize.xs, fontWeight: "800" },
   freeMessage: { borderRadius: radius.xl, padding: 10, textAlign: "center", backgroundColor: "rgba(139,92,246,0.10)", fontSize: fontSize.sm, fontWeight: "900" },
   hint: { flexDirection: "row", alignItems: "center", textAlign: "center", fontSize: fontSize.xs, fontWeight: "700" },
-  modalBackdrop: { flex: 1, alignItems: "center", justifyContent: "center", padding: space[4], backgroundColor: "rgba(2,6,23,0.70)" },
+  modalBackdrop: { flex: 1, alignItems: "center", justifyContent: "center", padding: space[4] },
   successCard: { width: "100%", maxWidth: 430, borderWidth: 1, borderRadius: radius["3xl"], padding: space[6], alignItems: "center", gap: space[2] },
   closeSuccess: { position: "absolute", right: 14, top: 14, width: 36, height: 36, borderRadius: 18, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(148,163,184,0.14)" },
   successIcon: { width: 64, height: 64, borderRadius: 32, backgroundColor: colors.emerald600, alignItems: "center", justifyContent: "center" },

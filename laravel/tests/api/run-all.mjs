@@ -5,9 +5,10 @@
  *   npm install
  *   BASE_URL=http://127.0.0.1:8000 npm test
  *
- * All six suites live in this directory so the Laravel API tests are
- * self-contained. The two ledger suites open a database connection through
- * `mysql.mjs`; the other four exercise the HTTP contract only.
+ * All suites live in this directory so the Laravel API tests are
+ * self-contained. The ledger suites and `email.mjs` open a database connection
+ * through `mysql.mjs`; the rest — including `batch.mjs`, which checks the
+ * batched-read endpoint — exercise the HTTP contract only.
  *
  * `BASE_URL` defaults to Laravel's local port, `:8000`.
  */
@@ -26,6 +27,8 @@ const SUITES = [
   'venue-defaults.mjs',
   'deposit-split.mjs',
   'court-delete.mjs',
+  'email.mjs',
+  'batch.mjs',
 ].map((file) => ({ file, dir: here }));
 
 const env = {

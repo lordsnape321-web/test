@@ -7,9 +7,10 @@ import {
   Users,
   Wallet,
 } from "lucide-react-native";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  AppState,
   Modal,
   Pressable,
   ScrollView,
@@ -20,7 +21,7 @@ import {
 } from "react-native";
 import { useTheme } from "@/context/ThemeContext";
 import { formatNPR } from "@/lib/futsal";
-import type { TeamLedger, TeamLedgerMember } from "@/lib/types";
+import type { TeamLedger, TeamLedgerEntry, TeamLedgerMember } from "@/lib/types";
 import { fontSize, radius, space } from "@/theme";
 import { fetchTeamLedger, settleTeamShare, teamLedgerAction } from "@/api";
 import { Avatar } from "@/components/Avatar";
@@ -43,6 +44,8 @@ type Props = {
   onClose: () => void;
   /** Fires after every successful write so the booking card can re-read. */
   onChanged?: () => void;
+  /** Asks a listed player for their part; resolves with a message to show. */
+  onAsk?: (member: TeamLedgerMember) => Promise<string>;
 };
 
 /**
@@ -65,6 +68,7 @@ export default function TeamLedgerPanel({
   bookingLabel,
   onClose,
   onChanged,
+  onAsk,
 }: Props) {
   const { colors: c, isDark } = useTheme();
 
@@ -75,32 +79,56 @@ export default function TeamLedgerPanel({
 
   // Which squad member the form is open for, and the fields it fills in.
   const [forId, setForId] = useState<number | null>(null);
+  const [editingEntryId, setEditingEntryId] = useState<number | null>(null);
   const [amount, setAmount] = useState("");
   const [method, setMethod] = useState<string>("Cash at Venue");
   const [note, setNote] = useState("");
+  const [guestOpen, setGuestOpen] = useState(false);
+  const [guestName, setGuestName] = useState("");
+  const [guestAmount, setGuestAmount] = useState("");
+  const [guestMethod, setGuestMethod] = useState<string>("Cash at Venue");
 
   // A member settling their own share, rather than the captain keying it in.
   const [selfTo, setSelfTo] = useState<"captain" | "venue" | null>(null);
   const [selfMethod, setSelfMethod] = useState("Cash at Venue");
 
+  // Read once when the panel opens, then keep it live: a teammate paying from
+  // another phone, or the organizer's other screen, shows up without closing
+  // and reopening the ledger.
+  const busyRef = useRef(busy);
+  useEffect(() => {
+    busyRef.current = busy;
+  }, [busy]);
+
   useEffect(() => {
     let dead = false;
-    fetchTeamLedger(bookingId, actorId)
-      .then((data) => {
-        if (!dead) setLedger(data);
-      })
-      .catch((e) => {
-        if (!dead) setError(e instanceof Error ? e.message : "Couldn't load the squad ledger 🙏");
-      });
+    const read = (report: boolean) =>
+      fetchTeamLedger(bookingId, actorId)
+        .then((data) => {
+          if (!dead) {
+            setLedger(data);
+            setError("");
+          }
+        })
+        .catch((e) => {
+          if (!dead && report) setError(e instanceof Error ? e.message : "Couldn't load the squad ledger 🙏");
+        });
+    void read(true);
+    const timer = setInterval(() => {
+      if (!dead && busyRef.current === "" && AppState.currentState === "active") void read(false);
+    }, 4000);
     return () => {
       dead = true;
+      clearInterval(timer);
     };
   }, [bookingId, actorId]);
 
   function openFor(member: TeamLedgerMember) {
     setForId(member.userId);
-    // Seed with what they still owe, so the common case is one tap.
-    setAmount(String(member.outstanding));
+    setEditingEntryId(null);
+    // Seed with what they still owe the organizer personally, so a teammate
+    // whose share the organizer already covered is still collectable.
+    setAmount(String(member.reimbursementOutstanding ?? member.shareOutstanding ?? member.outstanding));
     setMethod(METHODS[0]);
     setNote("");
     setSelfTo(null);
@@ -108,8 +136,20 @@ export default function TeamLedgerPanel({
     setNotice("");
   }
 
+  function correct(entry: TeamLedgerEntry) {
+    setForId(entry.userId);
+    setEditingEntryId(entry.id);
+    setAmount(String(entry.amount));
+    setMethod(entry.method);
+    setNote(entry.note ?? "");
+    setSelfTo(null);
+    setError("");
+    setNotice("");
+  }
+
   function closeForm() {
     setForId(null);
+    setEditingEntryId(null);
     setSelfTo(null);
     setAmount("");
     setNote("");
@@ -125,17 +165,33 @@ export default function TeamLedgerPanel({
       // An empty box means "whatever they still owe", which the server
       // resolves against the share rather than guessing at zero.
       const res = await teamLedgerAction(bookingId, {
-        action: "collect",
+        action: editingEntryId ? "update" : "collect",
         actorId,
         userId: forId,
+        ...(editingEntryId ? { entryId: editingEntryId } : {}),
         method,
-        ...(amount.trim() ? { amount: Number(amount.replace(/[^\d]/g, "")) } : {}),
+        ...(amount.trim() ? { amount: Number(amount) } : {}),
         note: note.trim(),
       });
       if (res.ledger) setLedger(res.ledger);
       setNotice(res.message ?? "Recorded 💰");
       closeForm();
       onChanged?.();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "That didn't work 🙏");
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function ask(member: TeamLedgerMember) {
+    if (!onAsk) return;
+    setBusy(`ask-${member.userId}`);
+    setError("");
+    setNotice("");
+    try {
+      setNotice(await onAsk(member));
+      setLedger(await fetchTeamLedger(bookingId, actorId));
     } catch (e) {
       setError(e instanceof Error ? e.message : "That didn't work 🙏");
     } finally {
@@ -172,13 +228,13 @@ export default function TeamLedgerPanel({
     }
   }
 
-  async function voidEntry(entryId: number) {
-    setBusy(`void-${entryId}`);
+  async function voidEntry(entryId: number, guest = false) {
+    setBusy(`${guest ? "guest-" : ""}void-${entryId}`);
     setError("");
     setNotice("");
     try {
       const res = await teamLedgerAction(bookingId, {
-        action: "void",
+        action: guest ? "voidGuest" : "void",
         actorId,
         entryId,
       });
@@ -190,6 +246,27 @@ export default function TeamLedgerPanel({
     } finally {
       setBusy("");
     }
+  }
+
+  async function saveGuest() {
+    const value = Number(guestAmount);
+    if (!guestName.trim() || !Number.isInteger(value) || value <= 0) {
+      setError("Enter the guest's name and a positive whole-rupee amount.");
+      return;
+    }
+    setBusy("guest");
+    setError("");
+    try {
+      const res = await teamLedgerAction(bookingId, {
+        action: "guest", actorId, playerName: guestName.trim(), amount: value, method: guestMethod,
+      });
+      if (res.ledger) setLedger(res.ledger);
+      setGuestName(""); setGuestAmount(""); setGuestOpen(false);
+      setNotice(res.message ?? "Guest payment saved.");
+      onChanged?.();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not save guest payment.");
+    } finally { setBusy(""); }
   }
 
   const inputCls = [styles.input, { backgroundColor: c.surface, borderColor: c.border, color: c.text }];
@@ -211,7 +288,6 @@ export default function TeamLedgerPanel({
   }
 
   const { totals, members, isCaptain } = ledger;
-  const open = forId != null ? members.find((m) => m.userId === forId) : undefined;
 
   return (
     <Modal visible animationType="slide" onRequestClose={onClose}>
@@ -221,7 +297,7 @@ export default function TeamLedgerPanel({
           <View style={styles.headerRow}>
             <View style={styles.grow}>
               <Text style={[styles.title, { color: c.text }]}>
-                <Users size={18} color={c.text} /> Squad ledger
+                <Users size={18} color={c.text} /> Player ledger
               </Text>
               <Text style={[styles.sub, { color: c.textMuted }]}>
                 {bookingLabel ? `${bookingLabel} · ` : ""}
@@ -240,7 +316,7 @@ export default function TeamLedgerPanel({
           {!isCaptain ? (
             <View style={[styles.banner, { backgroundColor: isDark ? "rgba(255,255,255,0.05)" : "#F1F5F9" }]}>
               <Text style={[styles.bannerText, { color: c.textMuted }]}>
-                You can see what the squad owes, but only the captain can record what was handed over 👑
+                You can see what the squad owes, but only the booking organizer can record what was handed over.
               </Text>
             </View>
           ) : null}
@@ -248,7 +324,17 @@ export default function TeamLedgerPanel({
           {/* ------------------------------------------------------- the totals */}
           <View style={[styles.totals, { backgroundColor: isDark ? "rgba(255,255,255,0.05)" : "#F1F5F9" }]}>
             <Row label="Total owed" value={formatNPR(totals.due)} color={c.textMuted} />
-            <Row label="Collected" value={formatNPR(totals.collected)} color={c.successText} />
+            <Row label="Player payments" value={formatNPR(totals.collected)} color={c.successText} />
+            {ledger.organizer ? (
+              <>
+                <View style={styles.totalDivider} />
+                <Row label="You paid the venue" value={formatNPR(ledger.organizer.outOfPocket)} color={c.textMuted} />
+                <Row label="Reimbursed to you" value={formatNPR(ledger.organizer.reimbursed)} color={c.successText} />
+                <Row label="Still to collect" value={formatNPR(ledger.organizer.reimbursable)} color={ledger.organizer.reimbursable > 0 ? c.dangerText : c.successText} />
+              </>
+            ) : null}
+            <Row label="Guest collections (separate)" value={formatNPR(totals.guestCollected ?? 0)} color={c.textMuted} />
+            <Text style={[styles.footText, { color: c.textMuted }]}>Includes saved team and open-spot payments. Guest collections do not settle another player's debt or the venue bill.</Text>
             <View style={styles.totalDivider} />
             <Row
               label="Still outstanding"
@@ -262,6 +348,33 @@ export default function TeamLedgerPanel({
           {notice ? (
             <Text style={[styles.notice, { color: c.successText }]}>{notice}</Text>
           ) : null}
+
+          {isCaptain ? (
+            <View style={[styles.form, { borderColor: c.border }]}>
+              <Pressable onPress={() => setGuestOpen((value) => !value)} accessibilityRole="button">
+                <Text style={[styles.formHead, { color: c.text }]}>{guestOpen ? "Hide guest form" : "+ Add payment from an unregistered player"}</Text>
+              </Pressable>
+              {guestOpen ? <>
+                <TextInput accessibilityLabel="Guest player name" placeholder="Player name" maxLength={120} value={guestName} onChangeText={setGuestName} style={inputCls} placeholderTextColor={c.textFaint} />
+                <TextInput accessibilityLabel="Guest payment amount" placeholder="Amount in NPR" keyboardType="number-pad" value={guestAmount} onChangeText={setGuestAmount} style={inputCls} placeholderTextColor={c.textFaint} />
+                <Picker selectedValue={guestMethod} onValueChange={(value) => setGuestMethod(String(value))} style={{ color: c.text }}>
+                  {METHODS.map((m) => <Picker.Item key={m} label={m} value={m} />)}
+                </Picker>
+                <Text style={[styles.footText, { color: c.textMuted }]}>Record money received by the organizer. No account is created and this does not mark the venue paid.</Text>
+                <Pressable onPress={() => void saveGuest()} disabled={busy !== ""} style={[styles.btn, { backgroundColor: c.primary }]} accessibilityRole="button">
+                  <Text style={styles.btnText}>{busy === "guest" ? "Saving…" : "Save guest payment"}</Text>
+                </Pressable>
+              </> : null}
+            </View>
+          ) : null}
+          {(ledger.guests ?? []).map((guest) => (
+            <View key={`guest-${guest.id}`} style={[styles.member, { backgroundColor: c.surface, borderColor: c.border, opacity: guest.voidedAt ? 0.55 : 1 }]}>
+              <Text style={[styles.memberName, { color: c.text }]}>{guest.playerName} · Guest #{guest.id}</Text>
+              <Text style={[styles.entryMain, { color: c.text }]}>{formatNPR(guest.amount)} · {guest.method}{guest.voidedAt ? " · Voided" : " · Received by organizer"}</Text>
+              <Text style={[styles.entrySub, { color: c.textMuted }]}>Recorded by {guest.recordedByName} · {guest.createdAt?.slice(0, 10)}</Text>
+              {isCaptain && !guest.voidedAt ? <Pressable onPress={() => void voidEntry(guest.id, true)} disabled={busy !== ""} accessibilityRole="button"><Text style={[styles.undo, { color: c.textMuted }]}>Undo guest entry</Text></Pressable> : null}
+            </View>
+          ))}
 
           {/* ----------------------------------------------------- the squad */}
           {members.length === 0 ? (
@@ -297,6 +410,14 @@ export default function TeamLedgerPanel({
                       owes {formatNPR(member.outstanding)}
                       {member.collected > 0 ? ` of ${formatNPR(member.amountDue)}` : ""}
                       {member.userLevel ? ` · ${member.userLevel}` : ""}
+                      {(member.openSpots?.length ?? 0) > 0 ? " · Open-spot player" : ""}
+                    </Text>
+                    <Text style={[styles.memberSub, { color: c.textMuted }]}>
+                      {member.venuePaid ? `Paid venue ${formatNPR(member.venuePaid)} · ` : ""}
+                      {member.reimbursed ? `Reimbursed ${formatNPR(member.reimbursed)} · ` : ""}
+                      {(member.reimbursementOutstanding ?? 0) > 0
+                        ? `Still to reimburse you ${formatNPR(member.reimbursementOutstanding ?? 0)}`
+                        : "Nothing to reimburse"}
                     </Text>
                   </View>
                   <View
@@ -324,6 +445,7 @@ export default function TeamLedgerPanel({
                   </View>
                 </View>
 
+                {(member.openSpots ?? []).map((spot) => <Text key={spot.joinId} style={[styles.entrySub, { color: c.textMuted }]}>Open spot · {spot.status} {spot.position ? `· ${spot.position}` : ""}</Text>)}
                 {/* the lines this member has handed over */}
                 {member.entries.length === 0 ? (
                   <Text style={[styles.noEntries, { color: c.textFaint }]}>
@@ -331,18 +453,29 @@ export default function TeamLedgerPanel({
                   </Text>
                 ) : (
                   member.entries.map((entry) => (
-                    <View key={entry.id} style={[styles.entry, { borderColor: c.border }]}>
+                    <View key={`${entry.source ?? "captain"}-${entry.id}`} style={[styles.entry, { borderColor: c.border, opacity: entry.voidedAt ? 0.55 : 1 }]}>
                       <HandCoins size={14} color={c.textFaint} />
                       <View style={styles.grow}>
                         <Text style={[styles.entryMain, { color: c.text }]}>
-                          {formatNPR(entry.amount)} · {entry.method}
+                          {formatNPR(entry.amount)} · {entry.method}{entry.voidedAt ? " · Voided" : ""}
                         </Text>
                         <Text style={[styles.entrySub, { color: c.textFaint }]}>
                           {entry.createdAt ? entry.createdAt.slice(0, 10) : ""}
+                          {entry.source === "venue" ? " · Paid to venue" : entry.source === "open_spot" ? " · Open-spot payment" : entry.source === "share" ? " · Stored share" : " · Reimbursed to you"}
                           {entry.note ? ` · ${entry.note}` : ""}
                         </Text>
                       </View>
-                      {isCaptain ? (
+                      {isCaptain && entry.source === "captain" && !entry.voidedAt ? (
+                        <Pressable
+                          onPress={() => correct(entry)}
+                          disabled={busy !== ""}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Correct the ${formatNPR(entry.amount)} from ${member.userName}`}
+                        >
+                          <Text style={[styles.undo, { color: c.textMuted }]}>Edit</Text>
+                        </Pressable>
+                      ) : null}
+                      {isCaptain && entry.canVoid !== false && !entry.voidedAt ? (
                         <Pressable
                           onPress={() => voidEntry(entry.id)}
                           disabled={busy !== ""}
@@ -454,14 +587,16 @@ export default function TeamLedgerPanel({
                 ) : editing ? (
                   <View style={[styles.form, { borderColor: c.border }]}>
                     <Text style={[styles.formHead, { color: c.text }]}>
-                      Record what {member.userName} handed over
+                      {editingEntryId
+                        ? `Correct ${member.userName}'s entry`
+                        : `Record what ${member.userName} handed over`}
                     </Text>
 
                     <TextInput
                       value={amount}
                       onChangeText={setAmount}
                       keyboardType="number-pad"
-                      placeholder={`${member.outstanding} (what they still owe)`}
+                      placeholder={`${member.shareOutstanding ?? member.outstanding} (share remaining)`}
                       placeholderTextColor={c.textFaint}
                       style={inputCls}
                     />
@@ -510,17 +645,39 @@ export default function TeamLedgerPanel({
                       </Pressable>
                     </View>
                   </View>
-                ) : isCaptain && !settled && member.status !== "none" ? (
-                  <Pressable
-                    onPress={() => openFor(member)}
-                    style={[styles.recordBtn, { borderColor: c.border }]}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Record a payment from ${member.userName}`}
-                  >
-                    <Plus size={14} color={c.text} />
-                    <Text style={[styles.recordText, { color: c.text }]}>Record payment</Text>
-                  </Pressable>
-                ) : member.isYou && !settled && member.status !== "none" ? (
+                ) : isCaptain && member.shareId > 0 ? (
+                  <View style={styles.formBtns}>
+                    {onAsk && (member.reimbursementOutstanding ?? member.outstanding) > 0 ? (
+                      <Pressable
+                        onPress={() => void ask(member)}
+                        disabled={busy !== ""}
+                        style={[styles.recordBtn, { borderColor: c.border, flex: 1 }]}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Ask ${member.userName} to pay their part`}
+                      >
+                        {busy === `ask-${member.userId}` ? (
+                          <Loader2 size={14} color={c.text} />
+                        ) : (
+                          <>
+                            <HandCoins size={14} color={c.text} />
+                            <Text style={[styles.recordText, { color: c.text }]}>Ask to pay</Text>
+                          </>
+                        )}
+                      </Pressable>
+                    ) : null}
+                    {(member.reimbursementOutstanding ?? member.outstanding) > 0 ? (
+                      <Pressable
+                        onPress={() => openFor(member)}
+                        style={[styles.recordBtn, { borderColor: c.border, flex: 1 }]}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Record a reimbursement from ${member.userName}`}
+                      >
+                        <Plus size={14} color={c.text} />
+                        <Text style={[styles.recordText, { color: c.text }]}>Record reimbursement</Text>
+                      </Pressable>
+                    ) : null}
+                  </View>
+                ) : member.isYou && member.shareId > 0 && (member.shareOutstanding ?? member.outstanding) > 0 ? (
                   /* Your own share is yours to settle, and either side of it
                      counts: handing the captain cash and paying the remainder
                      at the venue add up to one settled share. */
@@ -529,7 +686,7 @@ export default function TeamLedgerPanel({
                       setForId(member.userId);
                       setSelfTo("captain");
                       setSelfMethod("Cash at Venue");
-                      setAmount(String(member.outstanding));
+                      setAmount(String(member.shareOutstanding ?? member.outstanding));
                       setError("");
                       setNotice("");
                     }}
@@ -548,8 +705,9 @@ export default function TeamLedgerPanel({
           <View style={styles.footNote}>
             <ReceiptText size={13} color={c.textFaint} />
             <Text style={[styles.footText, { color: c.textFaint }]}>
-              Every line here is saved to the database. Undo keeps the old entry on record
-              rather than deleting it, so the trail stays trustworthy.
+              Every line here is saved to the database and this panel refreshes every few
+              seconds, so a teammate paying elsewhere shows up on its own. Undo keeps the old
+              entry on record rather than deleting it, so the trail stays trustworthy.
             </Text>
           </View>
         </ScrollView>

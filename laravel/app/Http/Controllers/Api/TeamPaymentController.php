@@ -18,6 +18,7 @@ use App\Support\Loyalty;
 use App\Support\TeamStore;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Each member's share of a team booking — `POST/GET /api/bookings/{id}/team-payments`.
@@ -180,7 +181,11 @@ class TeamPaymentController extends ApiController
     public function settle(Request $request, int $id, int $userId): JsonResponse
     {
         AdvancePayment::expireOverdueAdvanceRequests();
+        return DB::transaction(fn () => $this->settleLocked($request, $id, $userId));
+    }
 
+    private function settleLocked(Request $request, int $id, int $userId): JsonResponse
+    {
         $actorId = (int) $request->input('actorId', $userId);
         $paidTo = (string) $request->input('paidTo', 'captain');
         $method = trim((string) $request->input('method', 'Cash at Venue'));
@@ -194,7 +199,7 @@ class TeamPaymentController extends ApiController
             return $this->fail('Record it as eSewa, Khalti, or Cash at Venue 💳', 400);
         }
 
-        $booking = Booking::find($id);
+        $booking = Booking::lockForUpdate()->find($id);
 
         if (! $booking) {
             return $this->fail('Booking not found', 404);

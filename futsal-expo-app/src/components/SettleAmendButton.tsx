@@ -75,7 +75,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#F59E0B",
     borderRadius: radius.full,
     paddingHorizontal: 12,
-    height: 32,
+    height: 34,
   },
   amendLabel: { color: "#FFFFFF", fontSize: fontSize.xs, fontWeight: "900" },
   amendTimer: {
@@ -91,7 +91,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#E2E8F0",
     borderRadius: radius.full,
     paddingHorizontal: 12,
-    height: 32,
+    height: 34,
   },
   lockedText: { color: "#64748B", fontSize: fontSize.xs, fontWeight: "900" },
 });

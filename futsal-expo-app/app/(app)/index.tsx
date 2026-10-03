@@ -26,6 +26,7 @@ import {
   Animated,
   Easing,
   Image,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -39,7 +40,8 @@ import { Notice } from "@/components/ui";
 import { PageContainer, ResponsiveGrid } from "@/components/layout";
 import { useAuth } from "@/context/AuthContext";
 import { useTheme } from "@/context/ThemeContext";
-import { fetchMatches, fetchStats, fetchVenues, seedDemo } from "@/api";
+import { fetchMatches, fetchStats, fetchVenues } from "@/api";
+import { demoSeedError, ensureDemoSeed } from "@/lib/demo-seed";
 import { CITY_OPTIONS, formatNPR } from "@/lib/futsal";
 import { validateSearch } from "@/lib/validation";
 import { useBreakpoints } from "@/lib/responsive";
@@ -110,22 +112,29 @@ export default function HomeScreen() {
 
   useEffect(() => {
     (async () => {
-      let seedError: unknown = null;
-
-      // Seeding is only a development convenience. It must never prevent the
-      // actual reads below: a production database can already have data while
-      // the optional idempotent seed endpoint is disabled or unavailable.
-      try {
-        await seedDemo();
-      } catch (error) {
-        seedError = error;
-      }
+      // Seeding is only a development convenience, and it must never stand in
+      // front of the reads below: on a populated database this screen has no
+      // business waiting for it. It runs at most once a session (see
+      // `ensureDemoSeed`), and is only *waited* for when the reads came back
+      // empty — which is the one case where it can still help.
+      void ensureDemoSeed();
 
       try {
-        const [v, m, s] = await Promise.all([fetchVenues(), fetchMatches(), fetchStats()]);
+        let [v, m, s] = await Promise.all([fetchVenues(), fetchMatches(), fetchStats()]);
+
+        if (v.length === 0) {
+          const seeded = await ensureDemoSeed();
+
+          if (seeded) {
+            [v, m, s] = await Promise.all([fetchVenues(), fetchMatches(), fetchStats()]);
+          }
+        }
+
         setVenues(v);
         setMatches(m.slice(0, 3));
         setStats(s);
+
+        const seedError = demoSeedError();
         setLoadError(
           v.length === 0 && seedError
             ? seedError instanceof Error
@@ -182,8 +191,8 @@ export default function HomeScreen() {
           <Sparkles size={14} color={orangeText} />
           <Text style={[styles.heroBadgeText, { color: isDark ? colors.slate200 : colors.stone700 }]} numberOfLines={2}>
             {user
-              ? `Welcome back, ${user.name.split(" ")[0]}! Your game misses you ⚽`
-              : "Nepal's friendliest futsal family ⚽"}
+              ? "Ready when you are — pick up where you left off ⚽"
+              : "Find a court, join a game, play tonight ⚽"}
           </Text>
         </View>
 
@@ -573,8 +582,8 @@ function HeroVisual() {
   useEffect(() => {
     const loop = Animated.loop(
       Animated.sequence([
-        Animated.timing(floatY, { toValue: -10, duration: 2500, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-        Animated.timing(floatY, { toValue: 0, duration: 2500, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+        Animated.timing(floatY, { toValue: -10, duration: 2500, easing: Easing.inOut(Easing.ease), useNativeDriver: Platform.OS !== "web" }),
+        Animated.timing(floatY, { toValue: 0, duration: 2500, easing: Easing.inOut(Easing.ease), useNativeDriver: Platform.OS !== "web" }),
       ]),
     );
     loop.start();

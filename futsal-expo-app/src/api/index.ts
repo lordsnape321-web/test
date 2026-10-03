@@ -1,3 +1,4 @@
+import { paymentReturnOrigin, paymentReturnUrl } from "@/lib/gateway";
 import { ApiError, apiJson } from "@/lib/api";
 import type { PlayerStats } from "@/lib/loyalty";
 import type { Quota as TeamQuota } from "@/lib/teams";
@@ -42,11 +43,34 @@ import type {
 /* ── auth ────────────────────────────────────────────────────────────────── */
 
 /** POST /api/auth/signup → 201 { user } */
+/**
+ * POST /api/auth/signup/code → emails the six digits that create the account.
+ *
+ * A 409 means the address already has an account (the server says so on
+ * purpose here — "log in instead" is what the person needs to hear), and a 429
+ * means a code was sent less than a minute ago, with `retryAfter` on the body.
+ */
+export function requestSignupCode(input: {
+  email: string;
+  name?: string;
+}): Promise<{ ok: boolean; email: string; expiresIn: number }> {
+  return apiJson("/api/auth/signup/code", { method: "POST", json: input });
+}
+
+/**
+ * POST /api/auth/signup → 201 { user }
+ *
+ * The `code` is not optional: no account is created without the address being
+ * proven first. A 401 means the code was wrong or expired, 400 with `needsCode`
+ * means it was left blank.
+ */
 export function signup(input: {
   name: string;
   email: string;
   phone: string;
   password: string;
+  /** The six digits from `requestSignupCode`. */
+  code: string;
   /** Player or venue-owner account; Laravel defaults to player. */
   role?: "player" | "owner";
   level?: string;
@@ -181,6 +205,32 @@ export function changePassword(input: {
 
 /* ── notifications ───────────────────────────────────────────────────────── */
 
+/**
+ * POST /api/users/:id/delete-code → email the code that closes the account.
+ *
+ * The code goes to the address on the account, and the response says which
+ * inbox that is with the local part masked ("f•••@gmail.com") so the screen can
+ * point at the right place without reading the address out loud.
+ */
+export function requestAccountDeleteCode(userId: number): Promise<{
+  ok: boolean;
+  email: string;
+  expiresIn: number;
+}> {
+  return apiJson(`/api/users/${userId}/delete-code`, { method: "POST", json: {} });
+}
+
+/**
+ * DELETE /api/users/:id — close the account, with the emailed code as proof.
+ *
+ * The account row stays (bookings, payments and team history point at it) but
+ * the identity is erased and the account can never be signed into again, so the
+ * caller must sign the user out and forget the session afterwards.
+ */
+export function deleteAccount(userId: number, code: string): Promise<{ ok: boolean; closed: boolean }> {
+  return apiJson(`/api/users/${userId}`, { method: "DELETE", json: { code } });
+}
+
 /** GET /api/notifications?userId= → { notifications } */
 export async function fetchNotifications(userId: number): Promise<AppNotification[]> {
   const data = await apiJson<{ notifications?: AppNotification[] }>(
@@ -202,6 +252,37 @@ export function markNotificationRead(id: number): Promise<Record<string, unknown
 /** DELETE /api/notifications/:id — remove one note from the inbox. */
 export function deleteNotification(id: number): Promise<Record<string, unknown>> {
   return apiJson(`/api/notifications/${id}`, { method: "DELETE" });
+}
+
+/* ── push notifications ─────────────────────────────────────────────────── */
+
+/**
+ * POST /api/push/register → remember this phone for this account.
+ *
+ * Called on every launch: tokens rotate, and reinstalling the app produces a new
+ * one. The server upserts on the token, so repeating it is free.
+ */
+export function registerPushToken(input: {
+  userId: number;
+  token: string;
+  platform: "android" | "ios";
+  deviceName?: string;
+}): Promise<{ registered: boolean; devices?: number }> {
+  return apiJson(`/api/push/register`, { method: "POST", json: input });
+}
+
+/** POST /api/push/unregister — signing out, or the switch went off. */
+export function unregisterPushToken(token: string): Promise<{ registered: boolean }> {
+  return apiJson(`/api/push/unregister`, { method: "POST", json: { token } });
+}
+
+/** GET /api/push/status?userId= — how many devices this account has registered. */
+export function fetchPushStatus(userId: number): Promise<{
+  enabled: boolean;
+  devices: number;
+  tokens: Array<{ platform: string; deviceName: string; lastSeenAt: string | null }>;
+}> {
+  return apiJson(`/api/push/status?userId=${userId}`);
 }
 
 /* ── site stats ──────────────────────────────────────────────────────────── */
@@ -401,48 +482,170 @@ export function fetchLedger(bookingId: number, refresh = false): Promise<Ledger>
 /* ── payments ────────────────────────────────────────────────────────────── */
 
 /**
- * POST /api/payments/esewa/initiate → { fields, ... }
+ * The two test gateways, as the app drives them.
  *
- * On the web this returns form fields that a hidden form submits to eSewa in a
- * popup. React Native has no popup, so the app posts straight back to verify
- * with mockApprove while the gateways are in sandbox mode — the ledger, the
- * statuses and the audit rows are identical either way.
+ * `initiate` asks the server to build a checkout (and tells it where to send
+ * the browser back to), `verify` settles it. The server owns every rule; see
+ * `src/lib/gateway.ts` for what the app does with the answer.
  */
-export function initiateEsewa(bookingId: number, teamPaymentId?: number, userId?: number, paymentRequestId?: number): Promise<Record<string, unknown>> {
-  return apiJson("/api/payments/esewa/initiate", { method: "POST", json: { bookingId, teamPaymentId, userId, paymentRequestId } });
-}
+export type PaymentInitiateInput = {
+  bookingId: number;
+  teamPaymentId?: number;
+  paymentRequestId?: number;
+  userId?: number;
+  paymentPurpose?: "advance";
+  /**
+   * Run the built-in demo checkout instead of calling the gateway.
+   *
+   * Sent with the request because the *server* builds a different session for
+   * it: the demo route, with the amount and the ids already on it, instead of a
+   * gateway session. See `src/lib/payment-mode.ts`.
+   */
+  demo?: boolean;
+};
 
-/** POST /api/payments/esewa/verify → { ok, ... } */
-export function verifyEsewa(
-  bookingId: number,
-  mockApprove = true,
-  teamPaymentId?: number,
-  paymentRequestId?: number,
-  userId?: number,
-): Promise<Record<string, unknown>> {
-  return apiJson("/api/payments/esewa/verify", {
+export type PaymentInitiate = {
+  /** True when the demo checkout should run instead of a gateway page. */
+  mock?: boolean;
+  fallback?: boolean;
+  /**
+   * The replica page for this checkout, served by the backend
+   * (`/demo-esewa.html`, `/demo-khalti.html`) and opened in the in-app sheet
+   * exactly like a real gateway page.
+   */
+  demoUrl?: string;
+  /** True when the replica was asked for, not fallen back to. */
+  demo?: boolean;
+  fallbackError?: string;
+  testHint?: string;
+  returnOrigin?: string;
+  /** eSewa */
+  url?: string;
+  fields?: Record<string, string>;
+  handoffPath?: string;
+  transactionUuid?: string;
+  /** Khalti */
+  payment_url?: string;
+  pidx?: string;
+  /** Both */
+  mockUrl?: string;
+  amount?: number;
+  bookingId?: number;
+  teamPaymentId?: number | null;
+  paymentRequestId?: number | null;
+};
+
+/**
+ * POST /api/payments/esewa/initiate → the signed form (and a hand-off page).
+ *
+ * `returnOrigin` is how eSewa knows where to return the browser: on the web the
+ * app lives on Expo's origin, not the API's, and on a device only the app knows
+ * the address of the machine it is talking to.
+ */
+export function initiateEsewa(input: PaymentInitiateInput): Promise<PaymentInitiate> {
+  return apiJson<PaymentInitiate>("/api/payments/esewa/initiate", {
     method: "POST",
-    json: { bookingId, mockApprove, teamPaymentId, paymentRequestId, userId },
+    json: {
+      ...input,
+      returnOrigin: paymentReturnOrigin(),
+      // The gateway's redirect target. On a device this is the app's own deep
+      // link, so finishing (or failing) a payment lands back in the app instead
+      // of in the browser's copy of the web build.
+      successUrl: paymentReturnUrl("/payment/esewa/success"),
+      failureUrl: paymentReturnUrl("/payment/esewa/failure"),
+    },
   });
 }
 
-/** POST /api/payments/khalti/initiate → { pidx, ... } */
-export function initiateKhalti(bookingId: number, teamPaymentId?: number, userId?: number, paymentRequestId?: number): Promise<Record<string, unknown>> {
-  return apiJson("/api/payments/khalti/initiate", { method: "POST", json: { bookingId, teamPaymentId, userId, paymentRequestId } });
+/**
+ * POST /api/payments/esewa/verify → { ok, booking, … }
+ *
+ * `data` is the base64 blob eSewa appends to the success URL. With it, the
+ * server checks the HMAC signature and the status API; without it and without
+ * `mockApprove`, there is nothing to verify.
+ */
+export function verifyEsewa(input: {
+  bookingId?: number;
+  data?: string;
+  mockApprove?: boolean;
+  teamPaymentId?: number;
+  paymentRequestId?: number;
+  userId?: number;
+  uuid?: string;
+  paymentPurpose?: "advance";
+  expectedAmount?: number;
+}): Promise<Record<string, unknown>> {
+  return apiJson("/api/payments/esewa/verify", { method: "POST", json: input });
 }
 
-/** POST /api/payments/khalti/verify → { ok, ... } */
-export function verifyKhalti(
-  bookingId: number,
-  pidx: string,
-  mockApprove = true,
-  teamPaymentId?: number,
-  paymentRequestId?: number,
-  userId?: number,
-): Promise<Record<string, unknown>> {
+/** The league entry-fee equivalent of `PaymentInitiateInput` — no booking. */
+export type LeaguePaymentInput = {
+  teamId: number;
+  userId: number;
+  /** Rupees. The server caps it at what the entry fee still owes. */
+  amount: number;
+  /** Run the demo checkout for this entry fee (see `PaymentInitiateInput`). */
+  demo?: boolean;
+};
+
+/**
+ * POST /api/tournaments/:id/payments with action=initiate.
+ *
+ * A league entry fee gets exactly the same answer as a booking payment — a real
+ * eSewa form (with `handoffPath` for a native browser), a real Khalti
+ * `payment_url`, or the replica page's URL (`demoUrl`) — because it is the same
+ * money and the same checkout.
+ */
+export function initiateLeaguePayment(
+  leagueId: number,
+  input: LeaguePaymentInput & { method: "eSewa" | "Khalti" },
+): Promise<PaymentInitiate> {
+  return apiJson<PaymentInitiate>(`/api/tournaments/${leagueId}/payments`, {
+    method: "POST",
+    json: {
+      action: "initiate",
+      ...input,
+      returnOrigin: paymentReturnOrigin(),
+      successUrl: paymentReturnUrl("/payment/esewa/success"),
+      failureUrl: paymentReturnUrl("/payment/esewa/failure"),
+      returnUrl: paymentReturnUrl("/payment/khalti/callback"),
+    },
+  });
+}
+
+/** POST /api/payments/khalti/initiate → { pidx, payment_url } */
+export function initiateKhalti(input: PaymentInitiateInput): Promise<PaymentInitiate> {
+  return apiJson<PaymentInitiate>("/api/payments/khalti/initiate", {
+    method: "POST",
+    json: {
+      ...input,
+      returnOrigin: paymentReturnOrigin(),
+      returnUrl: paymentReturnUrl("/payment/khalti/callback"),
+    },
+  });
+}
+
+/**
+ * POST /api/payments/khalti/verify → { ok, booking, … }
+ *
+ * Khalti returns `pidx` plus `purchase_order_id`; the order id names the target
+ * (a team share, a player request, or the booking itself) so the server can
+ * settle the right row without being told which one it was.
+ */
+export function verifyKhalti(input: {
+  bookingId?: number;
+  pidx: string;
+  mockApprove?: boolean;
+  orderId?: string;
+  teamPaymentId?: number;
+  paymentRequestId?: number;
+  userId?: number;
+  paymentPurpose?: "advance";
+  expectedAmount?: number;
+}): Promise<Record<string, unknown>> {
   return apiJson("/api/payments/khalti/verify", {
     method: "POST",
-    json: { bookingId, pidx, mockApprove, teamPaymentId, paymentRequestId, userId },
+    json: { ...input, order_id: input.orderId },
   });
 }
 
@@ -527,9 +730,16 @@ export function chooseBookingPayment(
 /** POST /api/bookings/:id/payment-requests → captain asks one teammate for one amount. */
 export function createBookingPaymentRequest(
   bookingId: number,
-  input: { requesterId: number; payerIds?: number[]; payerId?: number; amount: number; purpose: "advance" | "booking"; note?: string },
+  input: { requesterId: number; payerIds?: number[]; payerId?: number; amount: number; purpose: "advance" | "booking" | "reimbursement"; note?: string },
 ): Promise<Record<string, unknown>> {
   return apiJson(`/api/bookings/${bookingId}/payment-requests`, { method: "POST", json: input });
+}
+
+/** Keep cancelled requests in the database as history. */
+export function cancelBookingPaymentRequest(bookingId: number, requestId: number, userId: number): Promise<Record<string, unknown>> {
+  return apiJson(`/api/bookings/${bookingId}/payment-requests/${requestId}`, {
+    method: "PATCH", json: { userId, action: "cancel" },
+  });
 }
 
 /** PATCH /api/bookings/:id/payment-requests/:requestId → payer selects eSewa/Khalti. */
@@ -623,8 +833,11 @@ export function leagueTeamsAction(
 
 /**
  * POST /api/tournaments/:id/payments — pay / record / initiate / verify /
- * receipt / prize. Native calls `verify` with `mockApprove: true` directly
- * (the same body the web mock-gateway page posts), skipping initiate+redirect.
+ * receipt / prize.
+ *
+ * `initiate` goes through `initiateLeaguePayment`; `verify` with
+ * `mockApprove: true` is the door the replica page posts to (`demo-khalti.html`
+ * / `demo-esewa.html`), which is where a demo entry fee is settled.
  */
 export function leaguePaymentsAction(
   id: number,
@@ -652,6 +865,20 @@ export function leagueMediaAction(
   body: Record<string, unknown>,
 ): Promise<{ ok?: boolean; message?: string; media?: Partial<LeagueMediaRow> & { id?: number } }> {
   return apiJson(`/api/tournaments/${id}/media`, { method: "POST", json: body });
+}
+
+/**
+ * PATCH /api/bookings/:id — attach a team to a booking made without one.
+ *
+ * "Just us" used to be final, which left the squad split, the ledger and every
+ * teammate request unavailable. The booking is re-split across the roster once
+ * the player picks a team.
+ */
+export function attachBookingTeam(bookingId: number, userId: number, teamId: number): Promise<{ booking?: Booking }> {
+  return apiJson(`/api/bookings/${bookingId}`, {
+    method: "PATCH",
+    json: { actor: "player", actorId: userId, teamId },
+  });
 }
 
 /** GET /api/teams?userId= → { teams } — the viewer's squads (role included). */
@@ -917,12 +1144,36 @@ export function seedDemo(): Promise<Record<string, unknown>> {
  * POST /api/auth/reset — prove you own the account with email + phone, then
  * set a fresh password. Throws ApiError with the server's wording.
  */
-export function resetPassword(input: {
+/*
+ * The phone-verified reset that used to live here (`POST /api/auth/reset`) is no
+ * longer part of the app: the emailed code is the way back into an account, and
+ * offering two ways to do the same thing mostly meant two sets of failure
+ * messages. The route still exists on the API for anything else that calls it.
+ */
+
+/**
+ * POST /api/auth/forgot-password — email a six-digit reset code.
+ *
+ * The server answers the same way whether or not the address has an account, so
+ * the screen can always say "if that email is registered, a code is on its way"
+ * without becoming a way to test which addresses exist. A 429 means the resend
+ * button was pressed too soon (or too often) and the message says how long.
+ */
+export function requestPasswordResetCode(email: string): Promise<Record<string, unknown>> {
+  return apiJson("/api/auth/forgot-password", { method: "POST", json: { email } });
+}
+
+/**
+ * POST /api/auth/reset-with-code — spend the emailed code and set a new
+ * password. Throws ApiError with the server's wording on a wrong or expired
+ * code, including how many tries are left.
+ */
+export function resetPasswordWithCode(input: {
   email: string;
-  phone: string;
+  code: string;
   newPassword: string;
 }): Promise<Record<string, unknown>> {
-  return apiJson("/api/auth/reset", { method: "POST", json: input });
+  return apiJson("/api/auth/reset-with-code", { method: "POST", json: input });
 }
 
 /* ── reviews ─────────────────────────────────────────────────────────────── */

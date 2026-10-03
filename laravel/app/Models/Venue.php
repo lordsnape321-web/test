@@ -32,6 +32,7 @@ class Venue extends Model
         'deposit_percent',
         'default_extra_fee',
         'default_extra_fee_note',
+        'location_url',
         'owner_id',
         'deleted_at',
     ];
@@ -59,7 +60,7 @@ class Venue extends Model
      */
     protected function blankStringColumns(): array
     {
-        return ['description', 'image_url', 'default_extra_fee_note'];
+        return ['description', 'image_url', 'default_extra_fee_note', 'location_url'];
     }
 
     public function courts(): HasMany

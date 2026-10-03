@@ -3,6 +3,7 @@ import React, { useRef, useState } from "react";
 import {
   Animated,
   PanResponder,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -49,7 +50,7 @@ export function SwipeNotificationRow({
     setOffset(0);
     Animated.spring(translateX, {
       toValue: 0,
-      useNativeDriver: true,
+      useNativeDriver: Platform.OS !== "web",
       bounciness: 0,
       speed: 24,
     }).start();
@@ -75,12 +76,12 @@ export function SwipeNotificationRow({
 
         suppressPress.current = true;
         if (finalOffset >= 72 && !n.isRead) {
-          Animated.timing(translateX, { toValue: 112, duration: 150, useNativeDriver: true }).start(() => {
+          Animated.timing(translateX, { toValue: 112, duration: 150, useNativeDriver: Platform.OS !== "web" }).start(() => {
             onRead(n);
             resetPosition();
           });
         } else if (finalOffset <= -72) {
-          Animated.timing(translateX, { toValue: -112, duration: 150, useNativeDriver: true }).start(() => {
+          Animated.timing(translateX, { toValue: -112, duration: 150, useNativeDriver: Platform.OS !== "web" }).start(() => {
             onDelete(n.id);
             resetPosition();
           });
@@ -102,21 +103,37 @@ export function SwipeNotificationRow({
         borderColor: isDark ? "rgba(110,231,183,0.55)" : colors.emerald300,
       };
 
+  // Swipe right (the row moves right) reveals the LEFT edge — that is where
+  // "Mark read" belongs. Swipe left reveals the RIGHT edge, so Delete sits
+  // there. One cue is drawn at a time, on the revealed side: `space-between`
+  // with a single child pushed it to the opposite edge, where the row covered
+  // it.
+  const revealed = offset > 8 ? "left" : offset < -8 ? "right" : null;
+  // Readable on both themes: the underlay is a solid slate/stone, and the cue
+  // uses the light-theme dark red or the dark-theme bright one.
+  const danger = isDark ? colors.red400 : colors.red600;
+  const success = isDark ? colors.emerald400 : colors.emerald700;
+
   return (
     <View style={styles.swipeShell}>
-      <View style={[styles.actionUnderlay, { backgroundColor: c.inset }]} pointerEvents="none">
-        {offset > 8 && !n.isRead ? (
+      <View
+        style={[
+          styles.actionUnderlay,
+          { backgroundColor: isDark ? colors.slate700 : colors.stone100, pointerEvents: "none" },
+        ]}
+      >
+        {revealed === "left" && !n.isRead ? (
           <View style={styles.actionCue}>
             <ArrowRight size={15} color={colors.emerald600} />
             <Check size={15} color={colors.emerald600} />
-            <Text style={[styles.readCue, { color: colors.emerald700 }]}>Mark read</Text>
+            <Text style={[styles.readCue, { color: success }]}>Mark read</Text>
           </View>
         ) : null}
-        {offset < -8 ? (
-          <View style={styles.actionCue}>
-            <Text style={[styles.deleteCue, { color: colors.red600 }]}>Delete</Text>
-            <Trash2 size={15} color={colors.red600} />
-            <ArrowLeft size={15} color={colors.red600} />
+        {revealed === "right" ? (
+          <View style={[styles.actionCue, styles.cueRight]}>
+            <ArrowLeft size={15} color={danger} />
+            <Trash2 size={15} color={danger} />
+            <Text style={[styles.deleteCue, { color: danger }]}>Delete</Text>
           </View>
         ) : null}
       </View>
@@ -175,11 +192,12 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFill,
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
     paddingHorizontal: space[4],
-    backgroundColor: "#F1F5F9",
+    backgroundColor: colors.stone100,
   },
   actionCue: { flexDirection: "row", alignItems: "center", gap: 4 },
+  /** Delete is pinned to the edge a left swipe uncovers. */
+  cueRight: { marginLeft: "auto" },
   readCue: { fontSize: fontSize["2xs"], fontWeight: "900" },
   deleteCue: { fontSize: fontSize["2xs"], fontWeight: "900" },
   noteRow: {

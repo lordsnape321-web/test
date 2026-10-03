@@ -13,6 +13,7 @@ import {
 } from "lucide-react-native";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  AppState,
   ActivityIndicator,
   Image,
   Pressable,
@@ -21,6 +22,7 @@ import {
   Text,
   View,
 } from "react-native";
+import { CARD_IMAGE_WIDTH, sizedImage } from "@/lib/images";
 import { fetchBookings, fetchVenues, patchBooking } from "@/api";
 import {
   BookingDonut,
@@ -81,6 +83,22 @@ export default function OwnerHome() {
           setLoading(false);
         }
       })();
+    }, [load]),
+  );
+
+  // Keep the owner's numbers live: payments and requests change while this
+  // screen sits open on the desk.
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+      const timer = setInterval(() => {
+        if (!active || AppState.currentState !== "active") return;
+        void Promise.resolve(load(true)).catch(() => undefined);
+      }, 5000);
+      return () => {
+        active = false;
+        clearInterval(timer);
+      };
     }, [load]),
   );
 
@@ -422,7 +440,7 @@ export default function OwnerHome() {
               style={[styles.venueCard, { borderColor: c.border, backgroundColor: c.inset }]}
             >
               {v.imageUrl ? (
-                <Image source={{ uri: v.imageUrl }} style={styles.venueImg} />
+                <Image source={{ uri: sizedImage(v.imageUrl, CARD_IMAGE_WIDTH) }} style={styles.venueImg} />
               ) : (
                 <View style={[styles.venueImg, { backgroundColor: c.border }]} />
               )}

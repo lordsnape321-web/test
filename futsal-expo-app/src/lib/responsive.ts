@@ -23,16 +23,15 @@ export type Breakpoints = {
   lg: boolean;
   /** ≥1280 — Tailwind `xl` */
   xl: boolean;
-  /**
-   * Content column width matching the web's `max-w-7xl` (80rem = 1280px),
-   * centred. Below that it is just the viewport minus page gutters.
-   */
-  contentMax: number;
-  /** Horizontal page gutter: `px-4 sm:px-6` */
+  /** ≥1536 — Tailwind `2xl` */
+  "2xl": boolean;
+  /** Horizontal page gutter: 16 / 24 / 32 / 48 as the window grows. */
   gutter: number;
   /**
    * How many equal columns a card grid should use at this width —
-   * mirrors `grid-cols-1 sm:grid-cols-2 lg:grid-cols-3` (and 4-col stats).
+   * mirrors `grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4`
+   * (and 4-col stats). The app fills the window, so extra width becomes more
+   * cards per row rather than empty margins.
    */
   cardColumns: number;
   statColumns: number;
@@ -44,6 +43,7 @@ export function useBreakpoints(): Breakpoints {
   const md = width >= breakpoints.md;
   const lg = width >= breakpoints.lg;
   const xl = width >= breakpoints.xl;
+  const xxl = width >= breakpoints["2xl"];
 
   return {
     width,
@@ -52,9 +52,11 @@ export function useBreakpoints(): Breakpoints {
     md,
     lg,
     xl,
-    contentMax: 1280,
-    gutter: sm ? 24 : 16,
-    cardColumns: lg ? 3 : sm ? 2 : 1,
+    "2xl": xxl,
+    // The page is full-bleed, so the gutters grow with the window instead of a
+    // max-width holding the content back.
+    gutter: xxl ? 48 : xl ? 32 : sm ? 24 : 16,
+    cardColumns: xxl ? 4 : lg ? 3 : sm ? 2 : 1,
     statColumns: sm ? 4 : 2,
   };
 }

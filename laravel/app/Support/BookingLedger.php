@@ -6,6 +6,7 @@ use App\Models\Booking;
 use App\Models\BookingExtra;
 use App\Models\BookingPayment;
 use App\Models\BookingTeamPayment;
+use Illuminate\Contracts\Support\Arrayable;
 
 /**
  * The money side of a booking — `src/lib/booking-ledger.ts`.
@@ -32,10 +33,21 @@ class BookingLedger
      */
     public const SETTLE_EDIT_WINDOW_MS = 5 * 60 * 1000;
 
+    /**
+     * Eloquent keeps columns in a protected attribute bag. Casting a model to
+     * an array exposes its internals, not amount/method/voided_at. Use its
+     * public serialization contract (camelCase here); plain query rows and
+     * legacy arrays are supported as well.
+     */
+    private static function rowAttributes(mixed $row): array
+    {
+        return $row instanceof Arrayable ? $row->toArray() : (array) $row;
+    }
+
     /** A row counts until it is voided inside the correction window. */
     public static function isLive(mixed $row): bool
     {
-        $row = is_object($row) ? (array) $row : (array) $row;
+        $row = self::rowAttributes($row);
 
         return empty($row['voidedAt']) && empty($row['voided_at']);
     }
@@ -49,7 +61,7 @@ class BookingLedger
 
         foreach ($rows as $row) {
             if (self::isLive($row)) {
-                $row = is_object($row) ? (array) $row : (array) $row;
+                $row = self::rowAttributes($row);
                 $total += (int) round((float) ($row['amount'] ?? 0));
             }
         }
@@ -69,7 +81,7 @@ class BookingLedger
      *   balance 0            → "paid"
      *   some money in, rest due → "deposit_paid" if it covers the deposit,
      *                              otherwise "pending"
-     *   nothing in           → leave whatever was there (creation sets it)
+     *   nothing in           → "pending" unless the booking is free
      *
      * Note the comparison is against `owed` (price + live extras), not just
      * `total_price` — a booking that was fully paid and then had an extra
@@ -82,6 +94,12 @@ class BookingLedger
      * "pending" whenever the money sat in the captain's pocket.
      */
     public static function syncCachedState(Booking $booking): void
+    {
+        $booking->forceFill(self::cachedState($booking))->save();
+    }
+
+    /** Compute without writing, so reconciliation can be previewed safely. */
+    public static function cachedState(Booking $booking): array
     {
         $id = (int) $booking->id;
 
@@ -116,9 +134,7 @@ class BookingLedger
         ];
 
         if ($balance === 0) {
-            if ($paid > 0) {
-                $next['payment_status'] = 'paid';
-            }
+            $next['payment_status'] = 'paid';
         } elseif ((bool) $booking->deposit_required && $paid >= (int) $booking->deposit_amount) {
             $next['payment_status'] = 'deposit_paid';
         } else {
@@ -129,7 +145,14 @@ class BookingLedger
             $next['deposit_status'] = $paid >= (int) $booking->deposit_amount ? 'paid' : 'pending';
         }
 
-        $booking->forceFill($next)->save();
+        // An advance means money received by the venue, not cash held by a
+        // team captain. Keep expired requests expired; never reopen a booking.
+        if ((bool) $booking->advance_payment_required && $booking->advance_payment_status !== 'expired') {
+            $venuePaid = self::sumLive(BookingPayment::where('booking_id', $id)->get());
+            $next['advance_payment_status'] = $venuePaid >= (int) $booking->advance_payment_amount ? 'paid' : 'pending';
+        }
+
+        return $next;
     }
 
     /**
@@ -158,7 +181,7 @@ class BookingLedger
                 continue;
             }
 
-            $p = is_object($p) ? (array) $p : (array) $p;
+            $p = self::rowAttributes($p);
             $key = (string) ($p['method'] ?? '') ?: 'Unspecified';
             $byMethod[$key] = ($byMethod[$key] ?? 0) + (int) round((float) ($p['amount'] ?? 0));
         }

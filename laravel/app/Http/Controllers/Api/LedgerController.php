@@ -15,6 +15,7 @@ use App\Support\Futsal;
 use App\Support\Loyalty;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 /**
  * The venue owner's side of a booking's money.
@@ -51,13 +52,18 @@ class LedgerController extends ApiController
     {
         AdvancePayment::expireOverdueAdvanceRequests();
 
+        return DB::transaction(fn () => $this->writeLedger($request, $id));
+    }
+
+    private function writeLedger(Request $request, int $id): JsonResponse
+    {
         $action = (string) $request->input('action', '');
 
         if (! in_array($action, self::ACTIONS, true)) {
             return $this->fail('Unknown ledger action — pick '.implode(', ', self::ACTIONS).' 📋', 400);
         }
 
-        $booking = Booking::find($id);
+        $booking = Booking::lockForUpdate()->find($id);
 
         if (! $booking) {
             return $this->fail('Booking not found', 404);

@@ -21,7 +21,9 @@ import {
   View,
 } from "react-native";
 import { fetchUserTeams, leaguePaymentsAction, leagueTeamsAction } from "@/api";
+import { prepareGatewayTab, rememberCheckout, startLeagueCheckout } from "@/lib/checkout";
 import { PaymentLine } from "@/components/LeagueCard";
+import { PaymentPendingBanner } from "@/components/PaymentPendingBanner";
 import { ReceiptUploader, isOnlineMethod } from "@/components/ReceiptUploader";
 import { useTheme } from "@/context/ThemeContext";
 import { TEAM_APPROVED, TEAM_INVITED, TEAM_REQUESTED, entryStatusLabel } from "@/lib/league";
@@ -41,10 +43,11 @@ const LEAGUE_PAY_METHODS = ["eSewa", "Khalti", "Cash at Venue"];
  * left, and leave and take the 10% back. The rules the server enforces are the
  * same ones written here — the panel just says them before you press anything.
  *
- * Payment adaptation (same seam as booking/[id]): the web initiates a gateway
- * redirect; native posts `action: "verify"` with `mockApprove: true` directly —
- * the exact body the web's mock-gateway page posts, so it runs the identical
- * server path (ledger row + auto-approve on a met deposit).
+ * Paying runs the same checkout as a booking (see `src/lib/checkout.ts`): the
+ * captain is sent to a checkout page — the replica of the gateway by default,
+ * the real test server when the app is set to it — and that page settles the
+ * fee through the same verify call a real gateway's return page would, so the
+ * ledger row and the auto-approval once the deposit is met are the real ones.
  */
 export function LeagueSquadPanel({
   league,
@@ -122,8 +125,9 @@ export function LeagueSquadPanel({
    * Pay through the medium the captain picked 💳
    *
    * Cash at venue moves no money here: the host records it when they take it,
-   * and the screenshot is what bridges the gap. Online methods go straight to
-   * verify+mockApprove (see the note at the top of this file).
+   * and the screenshot is what bridges the gap. Online methods open the real
+   * test server first — eSewa's UAT page or Khalti's sandbox — and only fall
+   * back to the replica page when neither can be reached.
    */
   async function pay(teamId: number, amount: number) {
     const method = methodFor(teamId);
@@ -135,17 +139,37 @@ export function LeagueSquadPanel({
     setBusy(`pay-${teamId}`);
     setMsg("");
     setErr("");
+    // Reserve the browser tab while the tap that started this is still live.
+    prepareGatewayTab();
+    const input = { teamId, userId: viewerId, amount };
+
+    // Remembered so the return screens can offer "Try again" in one tap, and so
+    // the pending card shows up wherever the captain comes back to.
+    rememberCheckout({
+      kind: "league",
+      leagueId: league.id,
+      method: method as "eSewa" | "Khalti",
+      input,
+      label: `${method} · ${league.name} entry — squad #${teamId}`,
+      donePath: `/leagues/${league.id}`,
+    });
+
     try {
-      const data = await leaguePaymentsAction(league.id, {
-        action: "verify",
-        mockApprove: true,
-        userId: viewerId,
-        teamId,
-        amount,
-        method,
-      });
-      setMsg(String(data.message ?? "Payment recorded ✅"));
-      onChanged();
+      const outcome = await startLeagueCheckout(league.id, method as "eSewa" | "Khalti", input);
+
+      if (outcome.status === "error") {
+        setErr(outcome.message);
+        return;
+      }
+
+      if (outcome.status === "demo") {
+        router.push(outcome.path as never);
+        return;
+      }
+
+      // A gateway page is open; it settles the entry fee and returns to this
+      // league's page when it is done.
+      setMsg("Finish the payment in the checkout, then come back — the entry updates the moment it is verified.");
     } catch (e) {
       setErr(e instanceof Error ? e.message : "That didn't work 🙏");
     } finally {
@@ -202,6 +226,8 @@ export function LeagueSquadPanel({
           Your squads in this league
         </Text>
       </View>
+
+      <PaymentPendingBanner onSettled={onChanged} />
 
       {msg || err ? (
         <View style={[styles.notice, { backgroundColor: noticeTone.bg }]}>

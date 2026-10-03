@@ -7,9 +7,9 @@ import {
   Lock,
   Mail,
   PartyPopper,
-  Phone,
+  ShieldCheck,
 } from "lucide-react-native";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   KeyboardAvoidingView,
   Platform,
@@ -17,12 +17,11 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { resetPassword } from "@/api";
-import { Button, Notice } from "@/components/ui";
+import { requestPasswordResetCode, resetPasswordWithCode } from "@/api";
+import { Button, Label, Notice, TextControl } from "@/components/ui";
 import { useAuth } from "@/context/AuthContext";
 import { useTheme } from "@/context/ThemeContext";
 import { ApiError } from "@/lib/api";
@@ -31,17 +30,20 @@ import {
   passwordStrength,
   validateEmail,
   validatePassword,
-  validatePhone,
 } from "@/lib/validation";
 import { colors as tokens, fontSize, radius, space } from "@/theme";
 
 /**
- * Forgot your password? 🔑 — a 1:1 port of the web app's
- * app/forgot-password/page.tsx.
+ * Forgot your password? 🔑
  *
- * Prove it's you with email + phone, pick a fresh password. Same validation
- * chain, same strength meter, same success state. The web's signed-in redirect
- * becomes a gate: if auth says we're already signed in, leave immediately.
+ * One way back in, on purpose: we email a six-digit code, you type it with a new
+ * password. It works whatever device has the inbox and needs no deep link, which
+ * the phone-check path could not say — and offering two ways to do one thing
+ * mostly meant two sets of failure messages, two things to get wrong, and a
+ * screen where half the fields were irrelevant to whoever was looking at it.
+ *
+ * The reset sets a real password: nothing here creates a "temporary" credential
+ * someone has to change later.
  */
 export default function ForgotPasswordScreen() {
   const router = useRouter();
@@ -49,26 +51,73 @@ export default function ForgotPasswordScreen() {
   const { user, ready } = useAuth();
 
   const [email, setEmail] = useState("");
-  const [phone, setPhone] = useState("");
+  const [code, setCode] = useState("");
   const [newPw, setNewPw] = useState("");
   const [showPw, setShowPw] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [codeSent, setCodeSent] = useState(false);
+  const [sendingCode, setSendingCode] = useState(false);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [done, setDone] = useState(false);
+  const [cooldown, setCooldown] = useState(0);
   const strength = passwordStrength(newPw);
-  const inputFill = c.inset;
+  const tick = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     if (ready && user) router.replace(user.role === "owner" ? "/admin" : "/(app)");
   }, [user, ready, router]);
 
-  async function submit() {
+  // "Resend in 42s" — the server enforces one code a minute, so the button
+  // counts it down instead of letting people collect 429s.
+  useEffect(() => {
+    if (cooldown <= 0) {
+      if (tick.current) clearInterval(tick.current);
+      return;
+    }
+    tick.current = setInterval(() => setCooldown((s) => Math.max(0, s - 1)), 1000);
+    return () => {
+      if (tick.current) clearInterval(tick.current);
+    };
+  }, [cooldown]);
+
+  async function sendCode() {
+    const emailError = validateEmail(email);
+    if (emailError) {
+      setFieldErrors({ email: emailError });
+      setError(emailError);
+      return;
+    }
+
+    setBusy(true);
+    setSendingCode(true);
+    setError("");
+    setNotice("");
+    try {
+      await requestPasswordResetCode(email.trim().toLowerCase());
+      setCodeSent(true);
+      setCooldown(60);
+      setNotice(`If ${email.trim().toLowerCase()} has an account, a 6-digit code is on its way. Check spam if it is not there in a minute.`);
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : "Could not send the code. Try again.";
+      // 429 is the cooldown/limit talking — keep the code box visible either way.
+      setError(message);
+      if (err instanceof ApiError && err.status === 429) {
+        setCooldown(60);
+        setCodeSent(true);
+      }
+    } finally {
+      setBusy(false);
+      setSendingCode(false);
+    }
+  }
+
+  async function submitCode() {
     const errs: Record<string, string> = {};
     const em = validateEmail(email);
     if (em) errs.email = em;
-    const ph = validatePhone(phone, { required: true });
-    if (ph) errs.phone = ph;
+    if (code.replace(/\D/g, "").length !== 6) errs.code = "Enter the 6-digit code from your email";
     const pw = validatePassword(newPw, { label: "New password" });
     if (pw) errs.newPw = pw;
     if (Object.keys(errs).length > 0) {
@@ -76,18 +125,19 @@ export default function ForgotPasswordScreen() {
       setError(firstError(...Object.values(errs)) ?? "Check your details 🙏");
       return;
     }
+
     setFieldErrors({});
     setError("");
     setBusy(true);
     try {
-      await resetPassword({
+      await resetPasswordWithCode({
         email: email.trim().toLowerCase(),
-        phone: phone.trim(),
+        code: code.replace(/\D/g, ""),
         newPassword: newPw,
       });
       setDone(true);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Reset failed");
+      setError(err instanceof ApiError ? err.message : "Could not reset your password.");
     } finally {
       setBusy(false);
     }
@@ -100,6 +150,46 @@ export default function ForgotPasswordScreen() {
     return tokens.emerald500;
   };
 
+  const passwordBlock = (
+    <View style={styles.fieldBlock}>
+      <Label style={styles.labelFlush}>New password (min 6 chars)</Label>
+      <TextControl
+        value={newPw}
+        onChangeText={(t) => {
+          setNewPw(t);
+          setFieldErrors((p) => ({ ...p, newPw: "" }));
+        }}
+        placeholder="Something memorable"
+        icon={<Lock size={16} color={c.textFaint} />}
+        secureTextEntry={!showPw}
+        autoCapitalize="none"
+        autoComplete="password"
+        textContentType="newPassword"
+        maxLength={100}
+        error={Boolean(fieldErrors.newPw)}
+        accessibilityLabel="New password"
+        right={
+          <Pressable onPress={() => setShowPw((v) => !v)} accessibilityLabel={showPw ? "Hide password" : "Show password"}>
+            {showPw ? <EyeOff size={16} color={c.textFaint} /> : <Eye size={16} color={c.textFaint} />}
+          </Pressable>
+        }
+      />
+      {newPw ? (
+        <View style={styles.strengthWrap}>
+          <View style={styles.strengthBars}>
+            {[1, 2, 3, 4].map((i) => (
+              <View key={i} style={[styles.strengthBar, { backgroundColor: strengthBarColor(i) }]} />
+            ))}
+          </View>
+          <Text style={[styles.strengthLabel, { color: c.textMuted }]}>
+            {strength.emoji} {strength.label}
+          </Text>
+        </View>
+      ) : null}
+      {fieldErrors.newPw ? <Text style={[styles.fieldError, { color: c.dangerText }]}>{fieldErrors.newPw}</Text> : null}
+    </View>
+  );
+
   return (
     <SafeAreaView style={[styles.flex, { backgroundColor: c.bg }]} edges={["top", "bottom"]}>
       <KeyboardAvoidingView
@@ -107,168 +197,122 @@ export default function ForgotPasswordScreen() {
         behavior={Platform.OS === "ios" ? "padding" : undefined}
       >
         <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
-          <Link href="/login" asChild>
-            <Pressable
-              style={StyleSheet.flatten([styles.back, { backgroundColor: c.surface, borderColor: c.border }])}
-              accessibilityRole="button"
-            >
-              <ChevronLeft size={16} color={c.text} />
-              <Text style={[styles.backText, { color: c.text }]}>Back to login</Text>
-            </Pressable>
-          </Link>
+          <View style={styles.column}>
+            <Link href="/login" asChild>
+              <Pressable
+                style={StyleSheet.flatten([styles.back, { backgroundColor: c.surface, borderColor: c.border }])}
+                accessibilityRole="button"
+              >
+                <ChevronLeft size={16} color={c.text} />
+                <Text style={[styles.backText, { color: c.text }]}>Back to login</Text>
+              </Pressable>
+            </Link>
 
-          <View style={[styles.card, { backgroundColor: c.surface, borderColor: c.border, shadowColor: c.shadow }]}>
-            <View style={styles.hero}>
-              <View style={styles.heroIcon}>
-                <KeyRound size={28} color={tokens.orange600} strokeWidth={2.5} />
+            <View style={[styles.card, { backgroundColor: c.surface, borderColor: c.border, shadowColor: c.shadow }]}>
+              <View style={styles.hero}>
+                <View style={styles.heroIcon}>
+                  <KeyRound size={28} color={tokens.orange600} strokeWidth={2.5} />
+                </View>
+                <Text style={styles.heroTitle}>Forgot your password? 🔑</Text>
+                <Text style={styles.heroSub}>
+                  We email you a 6-digit code — no link to hunt for
+                </Text>
               </View>
-              <Text style={styles.heroTitle}>Forgot your password? 🔑</Text>
-              <Text style={styles.heroSub}>
-                No stress — prove it&apos;s you with your email + phone, and pick a fresh one
-              </Text>
-            </View>
 
-            {done ? (
-              <View style={styles.doneBox}>
-                <View style={styles.doneIcon}>
-                  <PartyPopper size={32} color="#FFFFFF" />
-                </View>
-                <Text style={[styles.doneTitle, { color: c.text }]}>All set! 🎉</Text>
-                <Text style={[styles.doneBody, { color: c.textMuted }]}>
-                  Your password is shiny and new. Log in and get back on court!
-                </Text>
-                <Button label="Go to login ⚽" onPress={() => router.replace("/login")} />
-              </View>
-            ) : (
-              <View style={styles.form}>
-                <Text style={[styles.fieldLabel, { color: c.textFaint }]}>
-                  Your account email
-                </Text>
-                <View
-                  style={[
-                    styles.inputWrap,
-                    {
-                      backgroundColor: inputFill,
-                      borderColor: fieldErrors.email ? c.dangerText : c.border,
-                    },
-                  ]}
-                >
-                  <Mail size={16} color={c.textFaint} />
-                  <TextInput
-                    value={email}
-                    onChangeText={(t) => {
-                      setEmail(t);
-                      setFieldErrors((p) => ({ ...p, email: "" }));
-                    }}
-                    placeholder="you@example.com"
-                    placeholderTextColor={c.textFaint}
-                    keyboardType="email-address"
-                    autoCapitalize="none"
-                    maxLength={100}
-                    style={[styles.input, { color: c.text }]}
-                  />
-                </View>
-                {fieldErrors.email ? (
-                  <Text style={[styles.fieldError, { color: c.dangerText }]}>{fieldErrors.email}</Text>
-                ) : null}
-
-                <Text style={[styles.fieldLabel, { color: c.textFaint }]}>
-                  Registered phone number
-                </Text>
-                <View
-                  style={[
-                    styles.inputWrap,
-                    {
-                      backgroundColor: inputFill,
-                      borderColor: fieldErrors.phone ? c.dangerText : c.border,
-                    },
-                  ]}
-                >
-                  <Phone size={16} color={c.textFaint} />
-                  <TextInput
-                    value={phone}
-                    onChangeText={(t) => {
-                      setPhone(t);
-                      setFieldErrors((p) => ({ ...p, phone: "" }));
-                    }}
-                    placeholder="98XXXXXXXX"
-                    placeholderTextColor={c.textFaint}
-                    keyboardType="phone-pad"
-                    maxLength={16}
-                    style={[styles.input, { color: c.text }]}
-                  />
-                </View>
-                {fieldErrors.phone ? (
-                  <Text style={[styles.fieldError, { color: c.dangerText }]}>{fieldErrors.phone}</Text>
-                ) : null}
-
-                <Text style={[styles.fieldLabel, { color: c.textFaint }]}>
-                  New password (min 6 chars)
-                </Text>
-                <View
-                  style={[
-                    styles.inputWrap,
-                    {
-                      backgroundColor: inputFill,
-                      borderColor: fieldErrors.newPw ? c.dangerText : c.border,
-                    },
-                  ]}
-                >
-                  <Lock size={16} color={c.textFaint} />
-                  <TextInput
-                    value={newPw}
-                    onChangeText={(t) => {
-                      setNewPw(t);
-                      setFieldErrors((p) => ({ ...p, newPw: "" }));
-                    }}
-                    placeholder="Something memorable"
-                    placeholderTextColor={c.textFaint}
-                    secureTextEntry={!showPw}
-                    autoCapitalize="none"
-                    maxLength={100}
-                    style={[styles.input, { color: c.text }]}
-                  />
-                  <Pressable onPress={() => setShowPw((v) => !v)} accessibilityRole="button">
-                    {showPw ? (
-                      <EyeOff size={16} color={c.textFaint} />
-                    ) : (
-                      <Eye size={16} color={c.textFaint} />
-                    )}
-                  </Pressable>
-                </View>
-                {newPw ? (
-                  <View style={styles.strengthWrap}>
-                    <View style={styles.strengthBars}>
-                      {[1, 2, 3, 4].map((i) => (
-                        <View
-                          key={i}
-                          style={[styles.strengthBar, { backgroundColor: strengthBarColor(i) }]}
-                        />
-                      ))}
-                    </View>
-                    <Text style={[styles.strengthLabel, { color: c.textMuted }]}>
-                      {strength.emoji} {strength.label}
-                    </Text>
+              {done ? (
+                <View style={styles.doneBox}>
+                  <View style={styles.doneIcon}>
+                    <PartyPopper size={32} color="#FFFFFF" />
                   </View>
-                ) : null}
-                {fieldErrors.newPw ? (
-                  <Text style={[styles.fieldError, { color: c.dangerText }]}>{fieldErrors.newPw}</Text>
-                ) : null}
-
-                {error ? <Notice message={error} /> : null}
-
-                <Pressable
-                  onPress={() => void submit()}
-                  disabled={busy}
-                  accessibilityRole="button"
-                  style={[styles.submit, { backgroundColor: c.primary }, busy ? styles.dim : null]}
-                >
-                  <Text style={[styles.submitText, { color: c.primaryText }]}>
-                    {busy ? "Resetting…" : "Reset my password 🔑"}
+                  <Text style={[styles.doneTitle, { color: c.text }]}>All set! 🎉</Text>
+                  <Text style={[styles.doneBody, { color: c.textMuted }]}>
+                    Your password is shiny and new. Log in and get back on court!
                   </Text>
-                </Pressable>
-              </View>
-            )}
+                  <Button label="Go to login ⚽" onPress={() => router.replace("/login")} />
+                </View>
+              ) : (
+                <View style={styles.form}>
+                  <View style={styles.fieldBlock}>
+                    <Label style={styles.labelFlush}>Your account email</Label>
+                    <TextControl
+                      value={email}
+                      onChangeText={(t) => {
+                        setEmail(t);
+                        setFieldErrors((p) => ({ ...p, email: "" }));
+                      }}
+                      placeholder="you@example.com"
+                      icon={<Mail size={16} color={c.textFaint} />}
+                      keyboardType="email-address"
+                      autoCapitalize="none"
+                      autoComplete="email"
+                      textContentType="emailAddress"
+                      maxLength={100}
+                      error={Boolean(fieldErrors.email)}
+                      accessibilityLabel="Account email"
+                      returnKeyType={codeSent ? "next" : "go"}
+                      onSubmitEditing={() => (!codeSent ? void sendCode() : undefined)}
+                    />
+                    {fieldErrors.email ? (
+                      <Text style={[styles.fieldError, { color: c.dangerText }]}>{fieldErrors.email}</Text>
+                    ) : null}
+                  </View>
+
+                  {!codeSent ? (
+                        <Button
+                          label={sendingCode ? "Sending the code…" : "Email me a reset code ✉️"}
+                          onPress={() => void sendCode()}
+                          loading={sendingCode}
+                        />
+                      ) : (
+                        <>
+                          <View style={styles.fieldBlock}>
+                            <Label style={styles.labelFlush}>6-digit code</Label>
+                            <TextControl
+                              value={code}
+                              onChangeText={(t) => {
+                                setCode(t.replace(/\D/g, "").slice(0, 6));
+                                setFieldErrors((p) => ({ ...p, code: "" }));
+                              }}
+                              placeholder="123456"
+                              icon={<ShieldCheck size={16} color={c.textFaint} />}
+                              keyboardType="number-pad"
+                              autoComplete="one-time-code"
+                              textContentType="oneTimeCode"
+                              maxLength={6}
+                              error={Boolean(fieldErrors.code)}
+                              accessibilityLabel="Reset code"
+                            />
+                            {fieldErrors.code ? (
+                              <Text style={[styles.fieldError, { color: c.dangerText }]}>{fieldErrors.code}</Text>
+                            ) : null}
+                          </View>
+
+                          {passwordBlock}
+
+                          <Pressable
+                            onPress={() => void sendCode()}
+                            disabled={cooldown > 0 || sendingCode}
+                            accessibilityRole="button"
+                            style={styles.resend}
+                          >
+                            <Text style={[styles.resendText, { color: cooldown > 0 ? c.textFaint : c.primary }]}>
+                              {cooldown > 0 ? `Resend code in ${cooldown}s` : "Send a new code"}
+                            </Text>
+                          </Pressable>
+
+                          <Button
+                            label={busy ? "Resetting…" : "Reset my password 🔑"}
+                            onPress={() => void submitCode()}
+                            loading={busy}
+                          />
+                        </>
+                  )}
+
+                  {notice ? <Notice message={notice} tone="info" /> : null}
+                  {error ? <Notice message={error} /> : null}
+                </View>
+              )}
+            </View>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -278,7 +322,8 @@ export default function ForgotPasswordScreen() {
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
-  scroll: { padding: space[4], paddingBottom: space[10] },
+  scroll: { padding: space[4], paddingBottom: space[10], flexGrow: 1, justifyContent: "center" },
+  column: { width: "100%", maxWidth: 448, alignSelf: "center" },
 
   back: {
     flexDirection: "row",
@@ -289,20 +334,22 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     paddingHorizontal: space[4],
     paddingVertical: space[2],
-    marginBottom: space[5],
+    marginBottom: space[4],
   },
   backText: { fontSize: fontSize.sm, fontWeight: "900" },
 
   card: {
-    borderRadius: radius["3xl"],
+    borderRadius: 32,
     borderWidth: 1,
     overflow: "hidden",
-    shadowColor: "rgba(180,120,60,0.15)",
+    shadowOpacity: 0.14,
+    shadowRadius: 30,
     shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 1,
-    shadowRadius: 24,
     elevation: 4,
   },
+
+  // Orange hero, like Login's and Signup's green one: the same orange either way
+  // so the title stays readable in light and dark mode.
   hero: {
     backgroundColor: tokens.orange500,
     padding: space[6],
@@ -317,70 +364,31 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  heroTitle: {
-    fontSize: fontSize["2xl"],
-    fontWeight: "900",
-    color: "#FFFFFF",
-    marginTop: space[3],
-    textAlign: "center",
-  },
-  heroSub: {
-    fontSize: fontSize.base,
-    color: tokens.orange100,
-    marginTop: space[1],
-    textAlign: "center",
-  },
+  heroTitle: { marginTop: space[3], color: "#FFFFFF", fontSize: fontSize["2xl"], fontWeight: "900", textAlign: "center" },
+  heroSub: { marginTop: space[1], color: tokens.orange100, fontSize: fontSize.base, lineHeight: 20, textAlign: "center" },
 
-  doneBox: { padding: space[6], gap: space[3], alignItems: "stretch" },
+  form: { padding: space[6], paddingTop: space[5], gap: space[3] },
+
+  fieldBlock: { gap: space[1] },
+  // `Label` carries its own bottom margin; inside a gap'd block that doubles up.
+  labelFlush: { marginBottom: 0 },
+  fieldError: { fontSize: fontSize.xs, fontWeight: "700" },
+  strengthWrap: { gap: 4, marginTop: space[1] },
+  strengthBars: { flexDirection: "row", gap: 4 },
+  strengthBar: { height: 6, flex: 1, borderRadius: 99 },
+  strengthLabel: { fontSize: fontSize.xs, fontWeight: "700" },
+  resend: { alignSelf: "center", paddingVertical: space[1] },
+  resendText: { fontSize: fontSize.sm, fontWeight: "800" },
+
+  doneBox: { padding: space[7], alignItems: "center", gap: space[3] },
   doneIcon: {
     width: 64,
     height: 64,
-    borderRadius: radius.full,
+    borderRadius: 32,
     backgroundColor: tokens.emerald600,
     alignItems: "center",
     justifyContent: "center",
-    alignSelf: "center",
   },
-  doneTitle: { fontSize: fontSize.xl, fontWeight: "900", textAlign: "center" },
-  doneBody: { fontSize: fontSize.base, textAlign: "center" },
-
-  form: { padding: space[5] },
-  fieldLabel: {
-    fontSize: fontSize.xs,
-    fontWeight: "900",
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
-    marginTop: space[3],
-    marginBottom: 6,
-  },
-  inputWrap: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: space[2],
-    borderWidth: 1,
-    borderRadius: radius["2xl"],
-    paddingHorizontal: space[4],
-  },
-  input: { flex: 1, paddingVertical: 12, fontSize: fontSize.base, fontWeight: "600" },
-  fieldError: {
-    fontSize: fontSize.xs,
-    fontWeight: "700",
-    marginTop: 4,
-  },
-
-  strengthWrap: { marginTop: 6 },
-  strengthBars: { flexDirection: "row", gap: 4 },
-  strengthBar: { flex: 1, height: 6, borderRadius: radius.full },
-  strengthLabel: { fontSize: fontSize.xs, fontWeight: "700", marginTop: 4 },
-
-  submit: {
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: tokens.orange500,
-    borderRadius: radius["2xl"],
-    paddingVertical: 14,
-    marginTop: space[4],
-  },
-  submitText: { fontSize: fontSize.base, fontWeight: "900" },
-  dim: { opacity: 0.5 },
+  doneTitle: { fontSize: fontSize["2xl"], fontWeight: "900" },
+  doneBody: { fontSize: fontSize.base, lineHeight: 21, textAlign: "center", marginBottom: space[2] },
 });
