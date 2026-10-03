@@ -258,7 +258,7 @@ curl -s http://192.168.1.20:8000/api/health | python3 -m json.tool
 ```json
 {
   "ok": true,
-  "build": "b33ce2b",
+  "build": "a720ec4",
   "buildSource": "git",
   "code": {
     "leagueScoreFix": true,
@@ -276,8 +276,9 @@ curl -s http://192.168.1.20:8000/api/health | python3 -m json.tool
 - **`code`** names the fixes that have shipped as *behaviour*, not as a version
   number, so `false` on any of them means that copy of the backend predates it.
 
-After changing backend code, restart the server (`Ctrl-C` on `php artisan serve`,
-then start it again), and clear Laravel's caches if anything still looks stale:
+Fixes land on `main`, so updating the backend is `git pull`, then a restart
+(`Ctrl-C` on `php artisan serve`, then start it again), plus `php artisan
+optimize:clear` if anything still looks stale:
 
 ```bash
 php artisan optimize:clear
