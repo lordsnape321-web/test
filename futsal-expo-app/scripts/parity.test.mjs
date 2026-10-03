@@ -325,6 +325,58 @@ check(
   /<PushBridge \/>/.test(flat(join(appRoot, "app", "_layout.tsx"))),
 );
 
+/* ── 8. a server that admits which code it is running ────────────────────── */
+
+// Round 7 was lost to a `php artisan serve` process running pre-fix code: the
+// fix was in the repo, the phone still saw the old fatal, and there was no way
+// to tell from the outside. /api/health now answers that question directly, and
+// the app names the cause instead of dumping a stack trace into a toast.
+const health = flat(join(repoRoot, "laravel", "app", "Http", "Controllers", "Api", "HealthController.php"));
+check(
+  "the build id is read from the checkout, not typed in by hand",
+  /private static function buildId\(\)/.test(health) && /function gitDir\(\)/.test(health),
+);
+check(
+  "and a checkout with no git metadata admits the id is unknown rather than guessing",
+  /'buildSource' => \$build \? 'git' : 'unknown'/.test(health) && ! /self::BUILD/.test(health),
+);
+check(
+  "health reports whether the score fix is in this code",
+  /'leagueScoreFix' =>/.test(health) && /class_exists\(League::class\)/.test(health),
+);
+check(
+  "health reports the payment-aware rating and push too",
+  /'paymentAwareRatingFix' =>/.test(health) && /'pushNotifications' =>/.test(health),
+);
+
+const api = flat(join(appRoot, "src", "lib", "api.ts"));
+check(
+  "the app turns a PHP fatal into a sentence naming the cause",
+  /function staleServerHint\(message: string\)/.test(api) &&
+    /The server is running older code than this app/.test(api),
+);
+check(
+  "and both error paths go through it",
+  (api.match(/staleServerHint\(payload\./g) ?? []).length === 2,
+);
+
+// The static checker is what proves the score bug cannot come back. It has to
+// cover the whole tree, and it has to know the real PSR-4 map rather than
+// assuming everything lives under App\.
+const refs = flat(join(repoRoot, "laravel", "tests", "static", "class-refs.mjs"));
+check(
+  "the class-reference guard reads composer's PSR-4 map",
+  /psr4Map\(\)/.test(refs) && /composer\.json/.test(refs),
+);
+check(
+  "and checks every root a class can be referenced from",
+  /\[\"app\", \"routes\", \"database\", \"config\", \"public\", \"tests\"\]/.test(refs),
+);
+check(
+  "including imports that point at nothing",
+  /brokenImports/.test(refs),
+);
+
 console.log(
   failed === 0 ? "\nparity: all assertions passed\n" : `\nparity: ${failed} failed\n`,
 );

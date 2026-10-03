@@ -115,6 +115,28 @@ export class ApiError extends Error {
 }
 
 /** Pull a readable message out of an error response, whatever shape it is. */
+/**
+ * A PHP fatal, translated.
+ *
+ * `safeParse` turns any non-JSON response into `{ error: <raw text> }`, so a
+ * Laravel error page — a whole debug stack trace in development — lands in a
+ * toast and the player (or the person holding the phone who is testing) is left
+ * reading HTML. There is exactly one usual cause of "Class … not found" in this
+ * product, and it is worth naming: the phone is running newer code than the
+ * server it is talking to. That is a one-line fix on the backend, and this
+ * sentence is what makes it findable.
+ */
+function staleServerHint(message: string): string | null {
+  const missing = /Class\s+["']([^"']+)["']\s+not found/i.exec(message);
+
+  if (!missing) return null;
+
+  return (
+    `The server is running older code than this app — it is missing ${missing[1]}. ` +
+    "Update the backend, restart it, then try again. /api/health shows the build it is running."
+  );
+}
+
 function messageFrom(body: unknown, fallback: string): string {
   if (!body || typeof body !== "object") return fallback;
 
@@ -124,8 +146,13 @@ function messageFrom(body: unknown, fallback: string): string {
     errors?: unknown;
   };
 
-  if (typeof payload.error === "string" && payload.error.trim()) return payload.error;
-  if (typeof payload.message === "string" && payload.message.trim()) return payload.message;
+  if (typeof payload.error === "string" && payload.error.trim()) {
+    return staleServerHint(payload.error) ?? payload.error;
+  }
+
+  if (typeof payload.message === "string" && payload.message.trim()) {
+    return staleServerHint(payload.message) ?? payload.message;
+  }
 
   // Keep this tolerant of Laravel's default validation envelope too. The
   // application normally returns `{ error }`, but a proxy, package, or future

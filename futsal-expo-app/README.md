@@ -242,6 +242,52 @@ Which messages get pushed is decided in one place — the `PUSH_TYPES` list in
 payments, squads, leagues and kick-off reminders. Reviews and promo chatter stay
 in the bell, where they can wait.
 
+### Is the server running the newest code?
+
+A fix in the checkout is only a fix once the process serving the API has it. Round
+7 lost a cycle to exactly that: `BookingController` was missing one `use`
+statement, the fix was committed, and the phone kept showing the old fatal because
+`php artisan serve` was still running the code it had loaded.
+
+`/api/health` answers the question directly:
+
+```bash
+curl -s http://192.168.1.20:8000/api/health | python3 -m json.tool
+```
+
+```json
+{
+  "ok": true,
+  "build": "b33ce2b",
+  "buildSource": "git",
+  "code": {
+    "leagueScoreFix": true,
+    "paymentAwareRatingFix": true,
+    "pushNotifications": true
+  }
+}
+```
+
+- **`build`** is the commit the running code is on, read from the checkout's
+  `.git` on every request. A checkout with no git metadata — a ZIP download, a
+  container that copied files in — reports `"build": null` and
+  `"buildSource": "unknown"` instead of naming a commit that is not the one
+  running.
+- **`code`** names the fixes that have shipped as *behaviour*, not as a version
+  number, so `false` on any of them means that copy of the backend predates it.
+
+After changing backend code, restart the server (`Ctrl-C` on `php artisan serve`,
+then start it again), and clear Laravel's caches if anything still looks stale:
+
+```bash
+php artisan optimize:clear
+```
+
+The app now recognises the failure mode from the other side too: a PHP
+`Class … not found` in a response is shown as "The server is running older code
+than this app", with the class name, instead of dumping a stack trace into a
+toast.
+
 ## Backend boundary
 
 All network calls go through `src/lib/api.ts` and `src/api/index.ts`. The Expo
