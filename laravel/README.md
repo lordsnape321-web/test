@@ -56,6 +56,51 @@ php artisan optimize:clear
 php artisan route:list --path=api
 ```
 
+### Updating a server that is already running
+
+Laravel does not hot-reload. `php artisan serve` keeps answering with the code it
+compiled, and PHP's opcache holds compiled files too, so a fix can be sitting in
+the checkout while the running server still fails the old way. This has cost real
+debugging time: a missing `use` statement in `BookingController` was fixed in the
+repository while the phone kept showing the same "class not found" error, because
+the server had not been restarted (and, once, because `main` itself was still the
+old code).
+
+Every fix lands on `main`, so updating is:
+
+```bash
+cd laravel
+git pull                          # main carries every fix
+php artisan optimize:clear        # drop cached routes/config
+# Ctrl-C the running server, then bring it back:
+php artisan serve --host=0.0.0.0 --port=8000
+```
+
+Check what is now running:
+
+```bash
+curl -s http://127.0.0.1:8000/api/health
+```
+
+```json
+{
+  "ok": true,
+  "build": "a720ec4",
+  "buildSource": "git",
+  "code": {
+    "leagueScoreFix": true,
+    "paymentAwareRatingFix": true,
+    "pushNotifications": true
+  }
+}
+```
+
+`build` is the commit the running process is on, read from `.git` on every
+request (no hand-typed version to drift). `code` answers the question you
+actually have — *does this server have the fix?* — so a copy of the backend from
+before a fix reports `false` instead of looking merely quiet. Any `false`, or a
+missing `code` block entirely, means that checkout predates the fix.
+
 ## Why screens answer in one round trip
 
 `php artisan serve` handles **one request at a time**, so a screen that needs
