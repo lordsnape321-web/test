@@ -1,0 +1,215 @@
+{
+  "now": "2026-10-03 12:00:00",
+  "trust": 100,
+  "scenarios": [
+    {
+      "name": "new player",
+      "rows": []
+    },
+    {
+      "name": "four played and paid",
+      "rows": [
+        {
+          "status": "completed",
+          "created_at": "2026-09-20 18:00:00",
+          "payment_status": "paid",
+          "paid_amount": 1200,
+          "settled_at": "2026-09-20 18:00:00",
+          "total_price": 1200
+        },
+        {
+          "status": "completed",
+          "created_at": "2026-09-20 18:00:00",
+          "payment_status": "paid",
+          "paid_amount": 1200,
+          "settled_at": "2026-09-20 18:00:00",
+          "total_price": 1200
+        },
+        {
+          "status": "completed",
+          "created_at": "2026-09-20 18:00:00",
+          "payment_status": "paid",
+          "paid_amount": 1200,
+          "settled_at": "2026-09-20 18:00:00",
+          "total_price": 1200
+        },
+        {
+          "status": "completed",
+          "created_at": "2026-09-20 18:00:00",
+          "payment_status": "paid",
+          "paid_amount": 1200,
+          "settled_at": "2026-09-20 18:00:00",
+          "total_price": 1200
+        }
+      ]
+    },
+    {
+      "name": "three played, one cancelled",
+      "rows": [
+        {
+          "status": "completed",
+          "created_at": "2026-09-20 18:00:00",
+          "payment_status": "paid",
+          "paid_amount": 1200,
+          "settled_at": "2026-09-20 18:00:00",
+          "total_price": 1200
+        },
+        {
+          "status": "completed",
+          "created_at": "2026-09-20 18:00:00",
+          "payment_status": "paid",
+          "paid_amount": 1200,
+          "settled_at": "2026-09-20 18:00:00",
+          "total_price": 1200
+        },
+        {
+          "status": "completed",
+          "created_at": "2026-09-20 18:00:00",
+          "payment_status": "paid",
+          "paid_amount": 1200,
+          "settled_at": "2026-09-20 18:00:00",
+          "total_price": 1200
+        },
+        {
+          "status": "cancelled",
+          "created_at": "2026-09-25 18:00:00",
+          "payment_status": "pending",
+          "paid_amount": 0,
+          "settled_at": null,
+          "total_price": 1200
+        }
+      ]
+    },
+    {
+      "name": "three paid, one still owing",
+      "rows": [
+        {
+          "status": "completed",
+          "created_at": "2026-09-20 18:00:00",
+          "payment_status": "paid",
+          "paid_amount": 1200,
+          "settled_at": "2026-09-20 18:00:00",
+          "total_price": 1200
+        },
+        {
+          "status": "completed",
+          "created_at": "2026-09-20 18:00:00",
+          "payment_status": "paid",
+          "paid_amount": 1200,
+          "settled_at": "2026-09-20 18:00:00",
+          "total_price": 1200
+        },
+        {
+          "status": "completed",
+          "created_at": "2026-09-20 18:00:00",
+          "payment_status": "paid",
+          "paid_amount": 1200,
+          "settled_at": "2026-09-20 18:00:00",
+          "total_price": 1200
+        },
+        {
+          "status": "completed",
+          "created_at": "2026-09-20 18:00:00",
+          "payment_status": "pending",
+          "paid_amount": 0,
+          "settled_at": null,
+          "total_price": 1200
+        }
+      ]
+    },
+    {
+      "name": "played once, bill open",
+      "rows": [
+        {
+          "status": "completed",
+          "created_at": "2026-09-20 18:00:00",
+          "payment_status": "pending",
+          "paid_amount": 0,
+          "settled_at": null,
+          "total_price": 1200
+        }
+      ]
+    },
+    {
+      "name": "the same game, settled",
+      "rows": [
+        {
+          "status": "completed",
+          "created_at": "2026-09-20 18:00:00",
+          "payment_status": "paid",
+          "paid_amount": 1200,
+          "settled_at": "2026-09-20 18:00:00",
+          "total_price": 1200
+        }
+      ]
+    },
+    {
+      "name": "cancels only",
+      "rows": [
+        {
+          "status": "cancelled",
+          "created_at": "2026-09-25 18:00:00",
+          "payment_status": "pending",
+          "paid_amount": 0,
+          "settled_at": null,
+          "total_price": 1200
+        },
+        {
+          "status": "cancelled",
+          "created_at": "2026-09-25 18:00:00",
+          "payment_status": "pending",
+          "paid_amount": 0,
+          "settled_at": null,
+          "total_price": 1200
+        }
+      ]
+    },
+    {
+      "name": "one played, one cancelled",
+      "rows": [
+        {
+          "status": "completed",
+          "created_at": "2026-09-20 18:00:00",
+          "payment_status": "paid",
+          "paid_amount": 1200,
+          "settled_at": "2026-09-20 18:00:00",
+          "total_price": 1200
+        },
+        {
+          "status": "cancelled",
+          "created_at": "2026-09-25 18:00:00",
+          "payment_status": "pending",
+          "paid_amount": 0,
+          "settled_at": null,
+          "total_price": 1200
+        }
+      ]
+    },
+    {
+      "name": "history without payment columns",
+      "rows": [
+        {
+          "status": "completed",
+          "created_at": "2026-09-20 18:00:00"
+        },
+        {
+          "status": "completed",
+          "created_at": "2026-09-21 18:00:00"
+        }
+      ]
+    },
+    {
+      "name": "settled at the desk",
+      "rows": [
+        {
+          "status": "completed",
+          "created_at": "2026-09-20 18:00:00",
+          "payment_status": "pending",
+          "paid_amount": 1200,
+          "settled_at": "2026-09-22 10:00:00",
+          "total_price": 1200
+        }
+      ]
+    }
+  ]
+}

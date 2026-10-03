@@ -49,6 +49,13 @@ export const STORAGE_KEYS = {
    * change without a rebuild. See `apiBase()` in `src/lib/api.ts`.
    */
   apiBase: "futsal.api-base",
+  /**
+   * This phone's Expo push token, once it has one.
+   *
+   * Kept so signing out can tell the server which handset to forget — the app
+   * cannot ask Expo for the token again after the account is gone.
+   */
+  pushToken: "futsal.push-token",
 } as const;
 
 const HYDRATE = Object.values(STORAGE_KEYS);

@@ -256,6 +256,75 @@ check(
   /cleartext|network security policy/i.test(readFileSync(join(appRoot, "src", "lib", "api.ts"), "utf8")),
 );
 
+/* ── 7. scores, payment-aware ratings, and push ──────────────────────────── */
+
+// Scoring a competition game 500'd with "class .../League not found" because
+// BookingController called `League::recordFor` with no import. PHP resolves a
+// bare name against the file's own namespace first, so the missing `use` was a
+// fatal nobody would notice until an owner typed a score. The static checker is
+// the real guard (`node laravel/tests/static/class-refs.mjs`); this is the pin.
+const bookingController = flat(join(repoRoot, "laravel", "app", "Http", "Controllers", "Api", "BookingController.php"));
+check(
+  "scoring a game resolves League, not App\\Http\\Controllers\\Api\\League",
+  /use App\\Support\\League;/.test(bookingController) && /League::recordFor/.test(bookingController),
+);
+
+// The rating only ever moved on attendance because the history query fetched
+// `status` and nothing else. Every rating caller must select the payment
+// columns, and they must come from one list so a new caller cannot forget.
+const loyalty = flat(join(repoRoot, "laravel", "app", "Support", "Loyalty.php"));
+check(
+  "one list decides which booking columns the rating reads",
+  /HISTORY_COLUMNS = \['status', 'created_at', 'payment_status', 'paid_amount', 'settled_at', 'total_price'\]/.test(loyalty),
+);
+check(
+  "and payment is what the rating is built from",
+  /paidGames/.test(loyalty) && /TRUST_COMPLETE_OWED_BOOST/.test(loyalty) && /trustAfterPaid/.test(loyalty),
+);
+
+const ratingCallers = [
+  ["BookingController.php", join(repoRoot, "laravel", "app", "Http", "Controllers", "Api", "BookingController.php")],
+  ["PlayerController.php", join(repoRoot, "laravel", "app", "Http", "Controllers", "Api", "PlayerController.php")],
+  ["UserController.php", join(repoRoot, "laravel", "app", "Http", "Controllers", "Api", "UserController.php")],
+  ["BookingPresenter.php", join(repoRoot, "laravel", "app", "Services", "BookingPresenter.php")],
+];
+const withoutPayment = ratingCallers.filter(([, path]) => !/Loyalty::HISTORY_COLUMNS/.test(flat(path)));
+check(
+  "every rating caller selects the payment columns",
+  withoutPayment.length === 0,
+  withoutPayment.map(([name]) => name).join(", "),
+);
+
+// Push is a transport on the existing funnel, not a second notification system:
+// if it is ever written outside Notifier, some messages would silently never
+// reach a phone.
+const notifier = flat(join(repoRoot, "laravel", "app", "Services", "Notifier.php"));
+check(
+  "push hangs off the one funnel every message already goes through",
+  /PUSH_TYPES/.test(notifier) && /PushSender::send\(/.test(notifier),
+);
+check(
+  "and stays silent for an install with no phones registered",
+  /if \(\$tokens === \[\]\)/.test(flat(join(repoRoot, "laravel", "app", "Services", "PushSender.php"))),
+);
+check(
+  "the notifications plugin is in the build, so Android 13 can grant permission",
+  (appJson.plugins ?? []).some((plugin) => (Array.isArray(plugin) ? plugin[0] : plugin) === "expo-notifications"),
+);
+check(
+  "the CI build proves the manifest can receive push at all",
+  /POST_NOTIFICATIONS/.test(readFileSync(join(repoRoot, ".github", "workflows", "android-apk.yml"), "utf8")),
+);
+check(
+  "the phone asks for a token, and survives having none",
+  existsSync(join(appRoot, "src", "lib", "push.ts")) &&
+    /EXPO_PUBLIC_EAS_PROJECT_ID/.test(readFileSync(join(appRoot, "src", "lib", "push.ts"), "utf8")),
+);
+check(
+  "the bridge is mounted once, inside the auth provider",
+  /<PushBridge \/>/.test(flat(join(appRoot, "app", "_layout.tsx"))),
+);
+
 console.log(
   failed === 0 ? "\nparity: all assertions passed\n" : `\nparity: ${failed} failed\n`,
 );

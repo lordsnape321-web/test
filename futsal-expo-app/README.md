@@ -196,6 +196,52 @@ Two things have to line up for a LAN address to work:
   setting existed cannot — reinstall the newest APK. An https backend needs no
   exception, and its certificate has to be valid.
 
+## Push notifications
+
+Notifications already work without any of this: every event writes a row,
+the bell polls and `/notifications` lists them. Push adds the part that
+matters — finding out while the app is closed.
+
+Three legs, in the order they start working:
+
+1. **The in-app bell.** Always on, no setup. `laravel/app/Services/Notifier.php`
+   is the single funnel; every controller calls it.
+2. **Foreground banners.** With the notification permission granted, a message
+   that lands while the app is open is presented as a real device banner instead
+   of only moving the badge — `announceNewNotifications()` in `src/lib/push.ts`,
+   driven by the bell's existing 15-second poll. This works in Expo Go and in an
+   APK with no accounts or keys.
+3. **Remote push (app closed).** The server forwards every push-worthy
+   notification to Expo's push service (`App\Services\PushSender`), which fans
+   out to FCM/APNs. This is the only leg that needs something from you: Expo has
+   to know which project the tokens belong to.
+
+   ```bash
+   EXPO_PUBLIC_EAS_PROJECT_ID=<uuid>     # at build time, or extra.eas.projectId in app.json
+   ```
+
+   The UUID comes from `eas init` (or `eas project:info`) once the project is
+   linked to an Expo account. Set it as the repository **variable**
+   `EAS_PROJECT_ID` and the APK workflow bakes it in; leave it unset and the app
+   logs one line, keeps the bell and the banners, and shows "This build has no
+   Expo project id yet" under Settings → Phone notifications. Nothing else has
+   to change to switch it on: phones register themselves on the next launch.
+
+   The APK run also asserts that the generated manifest carries
+   `POST_NOTIFICATIONS` and Expo's Firebase messaging service, so a build that
+   could never receive push fails the check instead of shipping quietly broken.
+
+The phone side lives in `src/lib/push.ts` (permission, token, tap routing) and
+`src/components/PushBridge.tsx` (registers on sign-in, forgets the handset on
+sign-out). Settings → Phone notifications is the switch, saved on the account
+(`push_notifications`) *and* mirrored in the phone's own token registration, so
+turning it off stops the buzz immediately without losing the permission.
+
+Which messages get pushed is decided in one place — the `PUSH_TYPES` list in
+`Notifier` — and is deliberately the same list as the emails: bookings,
+payments, squads, leagues and kick-off reminders. Reviews and promo chatter stay
+in the bell, where they can wait.
+
 ## Backend boundary
 
 All network calls go through `src/lib/api.ts` and `src/api/index.ts`. The Expo

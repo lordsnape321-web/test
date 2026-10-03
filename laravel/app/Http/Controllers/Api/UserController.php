@@ -63,7 +63,7 @@ class UserController extends ApiController
             return $this->fail('User not found', 404);
         }
 
-        $history = Booking::where('user_id', $id)->get(['status', 'created_at'])->toArray();
+        $history = Booking::where('user_id', $id)->get(Loyalty::HISTORY_COLUMNS)->toArray();
         $stats = Loyalty::playerRating($history, now(), (int) $user->trust_score);
 
         return $this->ok(['user' => $user->toArray(), 'stats' => $stats]);
@@ -167,6 +167,13 @@ class UserController extends ApiController
 
         if ($request->has('emailReminders')) {
             $patch['email_reminders'] = filter_var($request->input('emailReminders'), FILTER_VALIDATE_BOOLEAN);
+        }
+
+        // The push switch, set from Settings → Alerts → Push. Turning it off
+        // stops delivery immediately; the phone keeps its row so turning it back
+        // on needs no new permission prompt.
+        if ($request->has('pushNotifications')) {
+            $patch['push_notifications'] = filter_var($request->input('pushNotifications'), FILTER_VALIDATE_BOOLEAN);
         }
 
         if ($request->has('reminderMinutes')) {

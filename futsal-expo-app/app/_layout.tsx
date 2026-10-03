@@ -16,6 +16,7 @@ import { ThemeProvider, useTheme } from "@/context/ThemeContext";
 import { GatewaySheet } from "@/components/GatewaySheet";
 import { MobileNav } from "@/components/MobileNav";
 import { Navbar } from "@/components/Navbar";
+import { PushBridge } from "@/components/PushBridge";
 import { TurfBackdrop } from "@/components/TurfBackdrop";
 import { hydratePaymentMode } from "@/lib/payment-mode";
 import { announce, mark } from "@/lib/perf";
@@ -93,6 +94,9 @@ export default function RootLayout() {
       <ThemeProvider>
         <AuthProvider>
           <ThemedStatusBar />
+          {/* Registers this phone for push once someone is signed in, and routes
+              a tapped notification to the screen it is about. Invisible. */}
+          <PushBridge />
           <Shell />
           {/* One sheet for the whole app: on a phone a Pay opens the gateway's
               page here instead of sending the player to a browser. */}

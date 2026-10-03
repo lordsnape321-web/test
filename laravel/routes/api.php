@@ -15,6 +15,7 @@ use App\Http\Controllers\Api\PaymentHandoffController;
 use App\Http\Controllers\Api\PaymentRequestController;
 use App\Http\Controllers\Api\PlayerController;
 use App\Http\Controllers\Api\PromoController;
+use App\Http\Controllers\Api\PushController;
 use App\Http\Controllers\Api\ReviewController;
 use App\Http\Controllers\Api\SeedController;
 use App\Http\Controllers\Api\StatsController;
@@ -147,6 +148,13 @@ Route::post('/notifications', [NotificationController::class, 'store']);
 Route::post('/notifications/read-all', [NotificationController::class, 'readAll']);
 Route::patch('/notifications/{id}', [NotificationController::class, 'update'])->whereNumber('id');
 Route::delete('/notifications/{id}', [NotificationController::class, 'destroy'])->whereNumber('id');
+
+/* ── push notifications ─────────────────────────────────────────────────── */
+/* The phone hands over its Expo token; Notifier pushes the same messages it
+   already writes to the bell. See App\Services\PushSender. */
+Route::post('/push/register', [PushController::class, 'register']);
+Route::post('/push/unregister', [PushController::class, 'unregister']);
+Route::get('/push/status', [PushController::class, 'status']);
 
 /* ── loyalty vouchers ───────────────────────────────────────────────────── */
 Route::get('/vouchers', [VoucherController::class, 'index']);

@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Models\Concerns\CamelCasedAttributes;
+use App\Support\Loyalty;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -40,6 +41,42 @@ class Booking extends Model
         'advance_payment_requested_at', 'cancellation_money_status', 'cancellation_received_amount',
         'cancellation_refunded_amount', 'cancellation_money_resolved_at', 'cancellation_money_resolved_by',
     ];
+
+    /**
+     * The one money-related rule that belongs to the row itself.
+     *
+     * A game marked played while the venue is still waiting for its money earns
+     * part of the completion credit; settling that bill afterwards earns the
+     * rest (Loyalty::TRUST_PAID_LATE_BOOST), so a player who always pays ends up
+     * in the same place whether they pay at the desk or a week later.
+     *
+     * This lives on the model, not in a controller, because the bill can be
+     * settled from three different places — the owner marking it paid, an eSewa
+     * verify, a Khalti verify — and the credit must be given exactly once, on the
+     * transition, whichever one did it. `wasChanged()` is what makes that safe.
+     */
+    protected static function booted(): void
+    {
+        static::updated(function (Booking $booking): void {
+            if (! $booking->wasChanged('payment_status') || $booking->payment_status !== 'paid') {
+                return;
+            }
+
+            if ($booking->status !== 'completed' || ! $booking->user_id) {
+                return;
+            }
+
+            $user = User::find((int) $booking->user_id);
+
+            if (! $user) {
+                return;
+            }
+
+            $before = (int) ($user->trust_score ?? Loyalty::TRUST_START);
+
+            $user->forceFill(['trust_score' => Loyalty::trustAfterPaid($before)])->save();
+        });
+    }
 
     /**
      * @return array<string, string>

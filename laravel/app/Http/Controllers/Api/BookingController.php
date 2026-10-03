@@ -21,6 +21,7 @@ use App\Services\Notifier;
 use App\Support\AdvancePayment;
 use App\Support\BookingLedger;
 use App\Support\Futsal;
+use App\Support\League;
 use App\Support\Loyalty;
 use App\Support\OpenGames;
 use App\Support\PromoStore;
@@ -180,7 +181,7 @@ class BookingController extends ApiController
 
         $booker = User::find($userId);
         $bookerTrust = (int) ($booker->trust_score ?? Loyalty::TRUST_START);
-        $myHistory = Booking::where('user_id', $userId)->get(['status', 'created_at'])->toArray();
+        $myHistory = Booking::where('user_id', $userId)->get(Loyalty::HISTORY_COLUMNS)->toArray();
         $stats = Loyalty::playerRating($myHistory, now(), $bookerTrust);
 
         if ($stats['blocked']) {
@@ -990,15 +991,27 @@ class BookingController extends ApiController
                 $this->checkLoyalty((int) $next->user_id, (int) $venue->id, (string) $venue->name);
             }
 
-            $trust = $this->adjustTrust((int) $next->user_id, 'complete');
+            // Paid-up play is worth the full boost; play with the bill still
+            // open earns part of it now and the rest when the bill settles
+            // (Booking::booted), so the message says which one happened.
+            $settled = Loyalty::bookingSettled($next->toArray());
+            $trust = $this->adjustTrust((int) $next->user_id, 'complete', $settled);
             $label = $trust ? Loyalty::trustLabel($trust['after']) : null;
+
+            $trustLine = '';
+
+            if ($trust) {
+                $gain = (int) $trust['after'] - (int) $trust['before'];
+                $trustLine = " Trust {$trust['before']} → {$trust['after']} (+{$gain}) {$label['emoji']} — ".
+                    ($settled ? 'keep showing up! 💪' : 'settle the balance and the rest lands automatically 💸');
+            }
 
             Notifier::notify(
                 (int) $next->user_id,
                 'info',
                 "🎉 Hope you had a blast at {$where}!",
                 'How was your game? Drop a quick review with stars + a message — it helps the venue and other players! ⭐'
-                .($trust ? " Trust {$trust['before']} → {$trust['after']} (+".Loyalty::TRUST_COMPLETE_BOOST.") {$label['emoji']} — keep showing up! 💪" : ''),
+                .$trustLine,
                 '/bookings?focus=' . $booking->id
             );
         }
@@ -1287,9 +1300,13 @@ class BookingController extends ApiController
     /**
      * Move a player's trust score after they complete or cancel a game.
      *
+     * `$paidUp` only matters for a completion: showing up is worth less when the
+     * venue is still out of pocket, and the difference is handed back by the
+     * Booking model the moment that bill is settled.
+     *
      * @return array{before: int, after: int}|null
      */
-    private function adjustTrust(int $userId, string $kind): ?array
+    private function adjustTrust(int $userId, string $kind, bool $paidUp = true): ?array
     {
         $user = User::find($userId);
 
@@ -1298,7 +1315,11 @@ class BookingController extends ApiController
         }
 
         $before = (int) ($user->trust_score ?? Loyalty::TRUST_START);
-        $after = $kind === 'complete' ? Loyalty::trustAfterComplete($before) : Loyalty::trustAfterCancel($before);
+        $after = match ($kind) {
+            'paid' => Loyalty::trustAfterPaid($before),
+            'cancel' => Loyalty::trustAfterCancel($before),
+            default => Loyalty::trustAfterComplete($before, $paidUp),
+        };
 
         $user->forceFill(['trust_score' => $after])->save();
 

@@ -28,6 +28,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Avatar } from "@/components/Avatar";
+import { registerForPush, remotePushConfigured, unregisterPush } from "@/lib/push";
 import { Button, Label, Notice, TextControl, Toggle } from "@/components/ui";
 import { useAuth } from "@/context/AuthContext";
 import { useTheme } from "@/context/ThemeContext";
@@ -95,6 +96,8 @@ export default function SettingsScreen() {
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [emailSaving, setEmailSaving] = useState(false);
   const [emailMsg, setEmailMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [pushSaving, setPushSaving] = useState(false);
+  const [pushMsg, setPushMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
   // Closing an account. Two deliberate taps stand between the button and the
   // irreversible thing: opening the panel, then asking for the code. Nothing
@@ -148,6 +151,7 @@ export default function SettingsScreen() {
   async function saveEmailPref(patch: {
     emailNotifications?: boolean;
     emailReminders?: boolean;
+    pushNotifications?: boolean;
     reminderMinutes?: number;
   }, message: string) {
     if (!user) return;
@@ -160,6 +164,42 @@ export default function SettingsScreen() {
       setEmailMsg({ ok: false, text: "Could not save that — try again 🙏" });
     } finally {
       setEmailSaving(false);
+    }
+  }
+
+  /**
+   * The push switch, which is two things at once: the account preference, and
+   * whether this phone currently has a token on the server.
+   *
+   * Turning it on asks for permission and registers (so the phone starts
+   * buzzing immediately); turning it off hands the token back. The preference
+   * is saved either way — a phone that cannot register (no project id, blocked
+   * permission) still gets to keep its answer.
+   */
+  async function savePushPref(next: boolean) {
+    if (!user) return;
+
+    setPushSaving(true);
+    setPushMsg(null);
+
+    try {
+      await updateProfile({ pushNotifications: next });
+
+      if (next) {
+        const result = await registerForPush(user.id);
+        setPushMsg(
+          result.ok
+            ? { ok: true, text: "Push is on — we will buzz this phone 🔔" }
+            : { ok: false, text: result.reason },
+        );
+      } else {
+        await unregisterPush();
+        setPushMsg({ ok: true, text: "Push is off for this phone — the bell still updates 🔕" });
+      }
+    } catch {
+      setPushMsg({ ok: false, text: "Could not save that — try again 🙏" });
+    } finally {
+      setPushSaving(false);
     }
   }
 
@@ -565,6 +605,26 @@ export default function SettingsScreen() {
                 </View>
               </View>
               {emailMsg ? <Notice message={emailMsg.text} tone={emailMsg.ok ? "success" : "error"} /> : null}
+            </View>
+
+            {/* ---------- PUSH ---------- */}
+            <View style={[styles.card, { backgroundColor: c.surface, borderColor: c.border }]}>
+              <View style={styles.emailHead}>
+                <Bell size={16} color={c.activeText} />
+                <Text style={[styles.emailTitle, { color: c.text }]}>Phone notifications</Text>
+                {pushSaving ? <Text style={[styles.emailHint, { color: c.textFaint }]}>Saving…</Text> : null}
+              </View>
+              <Toggle
+                label="Push notifications"
+                sub={
+                  remotePushConfigured()
+                    ? "A buzz on your phone for bookings, payments and kick-off reminders"
+                    : "This build has no Expo project id yet, so only the in-app bell works"
+                }
+                value={user?.pushNotifications ?? true}
+                onChange={(next) => void savePushPref(next)}
+              />
+              {pushMsg ? <Notice message={pushMsg.text} tone={pushMsg.ok ? "success" : "error"} /> : null}
             </View>
 
             {notesLoading ? null : notes.length === 0 ? (

@@ -18,6 +18,11 @@
 # variable API_BASE (Settings → Secrets and variables → Actions → Variables).
 # Leave it unset and the app falls back to its build default, and the sign-in
 # screen's "Server address" can point it at any reachable Laravel afterwards.
+#
+# Push notifications need one more optional variable: EAS_PROJECT_ID. Set it and
+# the APK registers for remote push (the app already presents banners from the
+# in-app bell without it); leave it unset and the app says so instead of failing
+# silently. See the README's push section for where the id comes from.
 name: Android APK
 
 on:
@@ -68,7 +73,7 @@ jobs:
       # phone needs: without this attribute Android refuses every plain-http
       # call to a LAN backend, which is indistinguishable from "server not
       # found" on the device. Fail loudly if a future prebuild drops it.
-      - name: Check the manifest allows a plain-http LAN backend
+      - name: Check the project can reach the backend and receive push
         run: |
           manifest=android/app/src/main/AndroidManifest.xml
           grep -q 'android:usesCleartextTraffic="true"' "$manifest" \
@@ -76,12 +81,28 @@ jobs:
           grep -q 'package="com.futsalmate.app"' android/app/build.gradle \
             || grep -q 'com.futsalmate.app' android/app/build.gradle \
             || { echo "::error::applicationId is not com.futsalmate.app"; exit 1; }
-          echo "manifest ok: cleartext allowed for LAN testing, package com.futsalmate.app"
+          # Push: the notification icon and colour come from the app manifest,
+          # but Android 13's POST_NOTIFICATIONS permission and the Firebase
+          # messaging service come from the library manifest and are merged in
+          # by Gradle. Check both places, so a dependency that stops shipping
+          # them fails the run instead of shipping a phone that never buzzes.
+          grep -q 'com.google.firebase.messaging.default_notification_icon' "$manifest" \
+            || { echo "::error::notification icon meta-data missing from $manifest"; exit 1; }
+          notif_manifest=node_modules/expo-notifications/android/src/main/AndroidManifest.xml
+          grep -q 'android.permission.POST_NOTIFICATIONS' "$notif_manifest" \
+            || { echo "::error::POST_NOTIFICATIONS missing from $notif_manifest"; exit 1; }
+          grep -q 'FirebaseMessagingService' "$notif_manifest" \
+            || { echo "::error::FirebaseMessagingService missing from $notif_manifest"; exit 1; }
+          node -e "const p=require('./app.json').expo.plugins||[]; const ok=p.some(x=>(Array.isArray(x)?x[0]:x)==='expo-notifications'); if(!ok){console.error('::error::expo-notifications plugin is missing from app.json');process.exit(1)}"
+          echo "manifest ok: cleartext allowed for LAN testing, package com.futsalmate.app, push wired"
 
       - name: Build the release APK
         working-directory: futsal-expo-app/android
         env:
           EXPO_PUBLIC_API_BASE: ${{ vars.API_BASE }}
+          # Optional: without it the app skips remote push registration and
+          # keeps the in-app bell + foreground banners.
+          EXPO_PUBLIC_EAS_PROJECT_ID: ${{ vars.EAS_PROJECT_ID }}
           EXPO_NO_TELEMETRY: "1"
           CI: "1"
         run: |

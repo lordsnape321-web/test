@@ -99,6 +99,8 @@ export type User = {
   /** Email switches (Settings → Alerts → Email). */
   emailNotifications?: boolean;
   emailReminders?: boolean;
+  /** …and a buzz on the phones this account is signed in on. */
+  pushNotifications?: boolean;
   /** Minutes before kick-off the reminder lands. */
   reminderMinutes?: number;
 };

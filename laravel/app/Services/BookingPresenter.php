@@ -62,11 +62,17 @@ class BookingPresenter
         $histories = $userIds === []
             ? []
             : Booking::whereIn('user_id', $userIds)
-                ->get(['user_id', 'status', 'created_at'])
+                ->get(['user_id', ...Loyalty::HISTORY_COLUMNS])
                 ->groupBy('user_id')
                 ->map(fn ($group) => $group->map(fn ($b) => [
                     'status' => $b->status,
                     'created_at' => $b->created_at,
+                    // Payment is half of reliability: played-and-unpaid has to
+                    // reach `playerRating` or the number would never move.
+                    'payment_status' => $b->payment_status,
+                    'paid_amount' => $b->paid_amount,
+                    'settled_at' => $b->settled_at,
+                    'total_price' => $b->total_price,
                 ])->all())
                 ->all();
 

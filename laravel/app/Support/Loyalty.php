@@ -29,7 +29,22 @@ class Loyalty
 
     public const TRUST_START = 100;
 
+    /** Showing up and settling up. */
     public const TRUST_COMPLETE_BOOST = 8;
+
+    /**
+     * Showing up with money still owing.
+     *
+     * A game played is worth something — the court was used, the other players
+     * got their match — but a venue that is still out of pocket should not look
+     * exactly like one that was paid. The remaining five points are handed over
+     * by `TRUST_PAID_LATE_BOOST` when the bill is settled, so a player who pays
+     * late ends up in the same place as one who paid up front.
+     */
+    public const TRUST_COMPLETE_OWED_BOOST = 3;
+
+    /** Settling a completed game's bill afterwards — the other half of the 8. */
+    public const TRUST_PAID_LATE_BOOST = 5;
 
     public const TRUST_CANCEL_PENALTY = 15;
 
@@ -97,14 +112,89 @@ class Loyalty
         return ['label' => 'Low trust', 'emoji' => '🚨'];
     }
 
-    public static function trustAfterComplete(int $score): int
+    /**
+     * A game was played. `$paidUp` is whether the venue actually has its money:
+     * paid-up play earns the full boost, play with a balance owing earns the
+     * smaller one until the bill is settled.
+     */
+    public static function trustAfterComplete(int $score, bool $paidUp = true): int
     {
-        return min(100, max(0, (int) round($score + self::TRUST_COMPLETE_BOOST)));
+        $boost = $paidUp ? self::TRUST_COMPLETE_BOOST : self::TRUST_COMPLETE_OWED_BOOST;
+
+        return min(100, max(0, (int) round($score + $boost)));
+    }
+
+    /** The bill on an already-played game was settled. */
+    public static function trustAfterPaid(int $score): int
+    {
+        return min(100, max(0, (int) round($score + self::TRUST_PAID_LATE_BOOST)));
     }
 
     public static function trustAfterCancel(int $score): int
     {
         return min(100, max(0, (int) round($score - self::TRUST_CANCEL_PENALTY)));
+    }
+
+    /**
+     * The booking columns `playerRating()` reads.
+     *
+     * Every caller must select exactly these, or a rating is computed from
+     * half the story — which is how "payment does not move the number" got in.
+     * Named here so the next caller cannot forget.
+     *
+     * @var list<string>
+     */
+    public const HISTORY_COLUMNS = ['status', 'created_at', 'payment_status', 'paid_amount', 'settled_at', 'total_price'];
+
+    /**
+     * The same question as `bookingSettled()`, for a history row.
+     *
+     * A caller may have already decided (`paid => true/false`), or may have
+     * selected no payment columns at all — in which case the row cannot be
+     * judged and is left out of the penalty.
+     *
+     * @param  array<string, mixed>  $row
+     */
+    private static function rowSettled(array $row): bool
+    {
+        if (array_key_exists('paid', $row)) {
+            return (bool) $row['paid'];
+        }
+
+        $hasPaymentColumns = array_key_exists('payment_status', $row)
+            || array_key_exists('paid_amount', $row)
+            || array_key_exists('settled_at', $row)
+            || array_key_exists('total_price', $row);
+
+        return $hasPaymentColumns ? self::bookingSettled($row) : true;
+    }
+
+    /**
+     * Has this booking's money landed?
+     *
+     * Three equivalent signals, because a booking can be settled from three
+     * places: the owner marks the ledger settled (`settled_at`), a gateway
+     * payment lands (`payment_status` becomes `paid` once what was received
+     * covers the price), or the payment desk records cash against it
+     * (`paid_amount` + `total_price`). A free game (`total_price` 0) counts as
+     * settled: there is nothing to owe.
+     *
+     * @param  array<string, mixed>  $row  A booking row, or the fields of one.
+     */
+    public static function bookingSettled(array $row): bool
+    {
+        if (! empty($row['settled_at'])) {
+            return true;
+        }
+
+        if ((string) ($row['payment_status'] ?? '') === 'paid') {
+            return true;
+        }
+
+        $owed = (int) ($row['total_price'] ?? 0);
+        $paid = (int) ($row['paid_amount'] ?? 0);
+
+        return $owed <= 0 || $paid >= $owed;
     }
 
     /**
@@ -184,6 +274,21 @@ class Loyalty
         $confirmed = $count('confirmed');
         $total = count($rows);
 
+        /*
+         * A completed game is not one thing. Played and paid is the whole
+         * point of the app; played with the venue still owed is a real game
+         * with a real problem attached, and the rating says so — that is what
+         * makes the number move on payment as well as on attendance.
+         *
+         * `paid` is read off each row when the caller selected the payment
+         * columns (every caller does); a row that carries no payment fields at
+         * all is treated as settled, so a caller that only wanted statuses does
+         * not silently punish everybody.
+         */
+        $played = array_values(array_filter($rows, fn ($b) => (string) ($b['status'] ?? '') === 'completed'));
+        $paidGames = count(array_filter($played, fn ($b) => self::rowSettled($b)));
+        $unpaidGames = count($played) - $paidGames;
+
         $reference = $now ? now()->parse((string) $now) : now();
         $monthStart = $reference->copy()->startOfMonth();
 
@@ -205,12 +310,24 @@ class Loyalty
             }
         }));
 
-        // 5 stars minus cancellations; completed games heal the score.
+        /*
+         * 5 stars, earned per game:
+         *
+         *   played and paid up   → a whole credit
+         *   played, money owing  → half a credit
+         *   cancelled            → nothing, and it still counts against you
+         *
+         * So a squad-mate who always pays sits at 5.0, one who plays but lets
+         * the balance ride drifts down until they settle (the history is
+         * re-read every time, so paying heals it), and a serial canceller sinks
+         * fastest. Paying is worth as much as showing up — both are the deal.
+         */
+        $credits = $paidGames + $unpaidGames * 0.5;
         $decisive = $completed + $cancelled;
         $rating = 5.0;
 
         if ($decisive > 0) {
-            $rating = round((($completed / $decisive) * 5 + PHP_FLOAT_EPSILON) * 10) / 10;
+            $rating = round((($credits / $decisive) * 5 + PHP_FLOAT_EPSILON) * 10) / 10;
 
             if ($completed === 0 && $cancelled > 0) {
                 $rating = max(1, round((5 - $cancelled * 0.8) * 10) / 10);
@@ -219,6 +336,9 @@ class Loyalty
 
         [$label, $emoji] = match (true) {
             $total === 0 => ['New player', '🌱'],
+            // A name for the specific problem, not just a lower number: the
+            // profile should say *why* the stars dropped.
+            $unpaidGames > 0 && $rating < 4.5 => ['Owes on a played game', '💸'],
             $rating >= 4.5 => ['Super reliable', '🌟'],
             $rating >= 3.5 => ['Reliable', '✅'],
             $rating >= 2.5 => ['Needs care', '⚠️'],
@@ -235,6 +355,8 @@ class Loyalty
             'pending' => $pending,
             'confirmed' => $confirmed,
             'total' => $total,
+            'paidGames' => $paidGames,
+            'unpaidGames' => $unpaidGames,
             'rating' => $rating,
             'label' => $label,
             'emoji' => $emoji,

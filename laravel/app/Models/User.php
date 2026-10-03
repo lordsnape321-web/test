@@ -49,6 +49,7 @@ class User extends Authenticatable
         'trust_score',
         'email_notifications',
         'email_reminders',
+        'push_notifications',
         'reminder_minutes',
     ];
 
@@ -70,6 +71,7 @@ class User extends Authenticatable
             // Opt-in-by-default email switches — see App\Services\Mailer.
             'email_notifications' => 'boolean',
             'email_reminders' => 'boolean',
+            'push_notifications' => 'boolean',
             'reminder_minutes' => 'integer',
         ];
     }
@@ -90,6 +92,18 @@ class User extends Authenticatable
     public function wantsReminders(): bool
     {
         return $this->email_reminders === null ? true : (bool) $this->email_reminders;
+    }
+
+    /**
+     * …and the buzz on the phone?
+     *
+     * Same default as the email switches: on. A missing value means the column
+     * arrived after this account did, and silence would look like a broken app
+     * rather than a choice.
+     */
+    public function wantsPush(): bool
+    {
+        return $this->push_notifications === null ? true : (bool) $this->push_notifications;
     }
 
     /**

@@ -20,6 +20,7 @@ import { useAuth } from "@/context/AuthContext";
 import { useTheme } from "@/context/ThemeContext";
 import { useBreakpoints } from "@/lib/responsive";
 import { fetchBookings, fetchNotifications, fetchVenues } from "@/api";
+import { announceNewNotifications } from "@/lib/push";
 import { colors, fontSize, radius, space } from "@/theme";
 
 /**
@@ -104,6 +105,9 @@ function useOwnerBadges(userId: number | undefined) {
         list.filter((b) => b.status === "pending" && b.venue && mine.has(b.venue.id)).length,
       );
       setUnread(notes.filter((n) => !n.isRead).length);
+      // Owners are the people most likely to be waiting on a booking request;
+      // a new one earns a real banner while the app is open.
+      void announceNewNotifications(notes);
     } catch {
       /* badges are best-effort */
     }

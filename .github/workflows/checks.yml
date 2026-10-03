@@ -1,0 +1,100 @@
+# The tests that are cheap enough to run on every push.
+#
+# The APK workflow proves the app *builds*; this one proves it is still the app
+# we think it is. Three kinds of guard, all of them born from a real bug:
+#
+#   • `laravel/tests/static/class-refs.mjs` — round 7 shipped a 500 on "update
+#     the score" because BookingController called `League::recordFor` with no
+#     `use App\Support\League;`. PHP resolves a bare name against the file's own
+#     namespace before the global one, so the call was a fatal that no unit test
+#     saw. This walks every `Foo::` in app/ and fails when it resolves nowhere.
+#
+#   • `laravel/tests/scripts/loyalty-rating.php` — the reading rules. It loads
+#     the real `App\Support\Loyalty` with a two-method `now()` shim, so it runs
+#     without composer, a database, or PHPUnit.
+#
+#   • `futsal-expo-app/scripts/rating.test.mjs` — the same scenarios through the
+#     TypeScript mirror *and* the PHP class, asserting the two agree field for
+#     field. One rule, two implementations, one test that refuses to let them
+#     drift.
+name: Checks
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - "arena/01a0effd-test"
+      - main
+  pull_request:
+
+concurrency:
+  group: checks-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  laravel:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.3"
+          coverage: none
+
+      # Composer is not installed here on purpose: none of these checks need the
+      # framework, and installing it would make the fast checks slow.
+      - name: Lint every PHP file
+        run: |
+          find laravel/app laravel/config laravel/routes laravel/database laravel/tests \
+            -name '*.php' -print0 | xargs -0 -n1 php -l > /dev/null
+          echo "every PHP file parses"
+
+      - name: Every class reference resolves
+        run: node laravel/tests/static/class-refs.mjs
+
+      - name: The rating moves on payment, not only on attendance
+        run: php laravel/tests/scripts/loyalty-rating.php
+
+  app:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: futsal-expo-app
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: futsal-expo-app/package-lock.json
+
+      # The rating parity test runs the real PHP class; the rest of the app
+      # checks are node-only.
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.3"
+          coverage: none
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Types
+        run: npm run typecheck
+
+      - name: Web/mobile parity guards
+        run: node scripts/parity.test.mjs
+
+      - name: Source-level guards
+        run: |
+          node scripts/armband.test.mjs
+          node scripts/structure-check.mjs
+
+      - name: Rating parity between PHP and TypeScript
+        run: |
+          npx esbuild scripts/rating.test.mjs --bundle --platform=node --format=esm \
+            --tsconfig=tsconfig.json --outfile=scripts/.tmp/rating.mjs
+          node scripts/.tmp/rating.mjs

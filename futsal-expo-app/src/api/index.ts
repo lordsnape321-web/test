@@ -254,6 +254,37 @@ export function deleteNotification(id: number): Promise<Record<string, unknown>>
   return apiJson(`/api/notifications/${id}`, { method: "DELETE" });
 }
 
+/* ── push notifications ─────────────────────────────────────────────────── */
+
+/**
+ * POST /api/push/register → remember this phone for this account.
+ *
+ * Called on every launch: tokens rotate, and reinstalling the app produces a new
+ * one. The server upserts on the token, so repeating it is free.
+ */
+export function registerPushToken(input: {
+  userId: number;
+  token: string;
+  platform: "android" | "ios";
+  deviceName?: string;
+}): Promise<{ registered: boolean; devices?: number }> {
+  return apiJson(`/api/push/register`, { method: "POST", json: input });
+}
+
+/** POST /api/push/unregister — signing out, or the switch went off. */
+export function unregisterPushToken(token: string): Promise<{ registered: boolean }> {
+  return apiJson(`/api/push/unregister`, { method: "POST", json: { token } });
+}
+
+/** GET /api/push/status?userId= — how many devices this account has registered. */
+export function fetchPushStatus(userId: number): Promise<{
+  enabled: boolean;
+  devices: number;
+  tokens: Array<{ platform: string; deviceName: string; lastSeenAt: string | null }>;
+}> {
+  return apiJson(`/api/push/status?userId=${userId}`);
+}
+
 /* ── site stats ──────────────────────────────────────────────────────────── */
 
 /** GET /api/stats → { stats } — the counters shown on the home hero. */
